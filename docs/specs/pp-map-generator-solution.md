@@ -107,7 +107,7 @@ Everything is deterministic in the seed and verified by 36 tests (`uv run pytest
           render_editor.render_map ──▶ out/render/pp/ppmap_s<seed>.png
           pp_map.export_vmap        ──▶ out/vmap/ppmap_s<seed>.vmap
           pp_map.apply_playability  ──▶ players / teams / victory / town ownership
-          (--install)               ──▶ ~/.var/app/eu.vcmi.VCMI/.../Maps/pp-gen/
+          (--install)               ──▶ <vcmi_paths.maps_dir()>/pp-gen/
 ```
 
 **Module inventory** (the solution proper):
@@ -614,8 +614,9 @@ playability concerns out of it entirely and owns them deterministically.
   LODs (all four DEF compression formats), painter's order by (y, x). What you see is
   what the editor shows — including the colored-disc random-class sprites.
 - Outputs land in gitignored `out/render/pp/` and `out/vmap/`. `--install` (explicit
-  opt-in) copies `.vmap`s into `~/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/pp-gen/` — a
-  dedicated subfolder so the whole batch is trivially removable.
+  opt-in) copies `.vmap`s into the local VCMI install's `Maps/pp-gen/` — located
+  per-platform by `vcmi_paths.py`, a dedicated subfolder so the whole batch is trivially
+  removable.
 
 ---
 

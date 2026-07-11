@@ -11,6 +11,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pp_stats as PS           # noqa: E402
+import vcmi_paths as VP         # noqa: E402
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
@@ -302,10 +303,9 @@ def test_g2_repair_carves_vegetation_only():
 def test_vmap_export_roundtrip():
     """export_vmap writes an editor-shaped .vmap: reads back, visitables carry
     visitableFrom, and a playable slot is wired to the town."""
-    import glob
     import json
     import zipfile
-    if not glob.glob("/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/RandomMaps/*.vmap"):
+    if not VP.find_vmap_template():
         pytest.skip("VCMI template .vmap not available")
     import ontology as ON
     import pp_map as PM
@@ -343,10 +343,9 @@ def test_vmap_export_game_contracts():
     entrance is ONE tile left of the anchor, not mirrored), export masks are V-padded to
     the sprite tile extent (VCMI truncates sprites outside the mask), guards fight
     (character=hostile) and towns start with a fort."""
-    import glob
     import json
     import zipfile
-    if not glob.glob("/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/RandomMaps/*.vmap"):
+    if not VP.find_vmap_template():
         pytest.skip("VCMI template .vmap not available")
     import ontology as ON
     import pp_gameplay as PG
@@ -417,10 +416,9 @@ def test_parse_teams():
 def test_playability_overlay():
     """apply_playability: exactly N playable slots wired to their towns, team matrix set,
     victory = defeat all (standardWin)."""
-    import glob
     import json
     import zipfile
-    if not glob.glob("/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/RandomMaps/*.vmap"):
+    if not VP.find_vmap_template():
         pytest.skip("VCMI template .vmap not available")
     import ontology as ON
     import pp_map as PM
@@ -463,10 +461,9 @@ def test_playability_overlay_alliance_grouping():
     top-level header["teams"] grouping — this is what VCMI's map-select screen actually
     reads to show alliances; the per-player "team" int alone is not enough (bug reported
     2026-07-05: '2v2' teams weren't shown when the map was selected in VCMI)."""
-    import glob
     import json
     import zipfile
-    if not glob.glob("/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/RandomMaps/*.vmap"):
+    if not VP.find_vmap_template():
         pytest.skip("VCMI template .vmap not available")
     import ontology as ON
     import pp_map as PM
@@ -494,10 +491,9 @@ def test_playability_overlay_random_town_shows_random_in_lobby():
     (isFactionRandom false + allowedFactions defaulting to ALL on an absent key) picks the
     first faction by id (Castle) instead of showing 'random' in the lobby — the bug reported
     2026-07-03: every player's town appeared fixed to Castle."""
-    import glob
     import json
     import zipfile
-    if not glob.glob("/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/RandomMaps/*.vmap"):
+    if not VP.find_vmap_template():
         pytest.skip("VCMI template .vmap not available")
     import pp_gameplay as PG
     import pp_map as PM

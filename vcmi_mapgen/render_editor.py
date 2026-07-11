@@ -13,9 +13,12 @@ Usage:
 import sys, os, struct, zlib, zipfile, re, json, argparse, collections
 from PIL import Image
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import vcmi_paths  # noqa: E402
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOD_DIR = "/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Data"
-LOD_FILES = ["H3sprite.lod", "H3ab_spr.lod", "H3bitmap.lod", "H3ab_bmp.lod"]
+LOD_DIR = vcmi_paths.data_dir()
+LOD_FILES = vcmi_paths.LOD_FILES
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
 TERR_DEF = {

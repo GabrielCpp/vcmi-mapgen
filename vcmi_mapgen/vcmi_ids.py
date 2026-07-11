@@ -5,12 +5,12 @@ config/objects/*.json : { "<type>": { "index": <class>, "types": { "<subtype>": 
 config/creatures/*.json, config/factions/*.json : { "<identifier>": { "index": <id> } }  (for monster/town subtypes)
 """
 
-import json, re, glob, os
+import json, re, glob, os, sys
 
-_BASES = [
-    "/var/lib/flatpak/app/eu.vcmi.VCMI/current/active/files/share/vcmi/config",
-    os.path.expanduser("~/.var/app/eu.vcmi.VCMI/data/vcmi/Mods"),
-]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import vcmi_paths  # noqa: E402
+
+_BASES = vcmi_paths.config_bases()
 
 
 def _relaxed(t):

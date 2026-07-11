@@ -56,6 +56,16 @@ uv run python -m vcmi_mapgen.extract_faithful
 uv run pytest
 ```
 
-Editor-quality rendering reads the H3 sprite LOD files from a local VCMI install
-(`~/.var/app/eu.vcmi.VCMI/data/vcmi/Data`). The rendering tests are skipped when those
-files are absent.
+Editor-quality rendering reads the H3 sprite LOD files from a local VCMI install. The
+install is located per-platform by `vcmi_mapgen/vcmi_paths.py` — macOS
+`~/Library/Application Support/vcmi`, Linux Flatpak `~/.var/app/eu.vcmi.VCMI/data/vcmi`
+or XDG `~/.local/share/vcmi`, Windows `~/Documents/My Games/vcmi` — so nothing needs
+configuring on a normal install. Print what it resolved to on this machine with:
+
+```bash
+uv run python -m vcmi_mapgen.vcmi_paths
+```
+
+Override any of it with `VCMI_HOME`, `VCMI_DATA_DIR` (the LODs), `VCMI_MAPS_DIR`,
+`VCMI_INSTALL` (VCMI's own `config/` + `Mods/`) or `VCMI_VMAP_TEMPLATE`. The rendering
+tests are skipped when the LOD files are absent.

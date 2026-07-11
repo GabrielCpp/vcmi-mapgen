@@ -21,15 +21,13 @@ import vcmi_mapgen.render_editor as RE
 import vcmi_mapgen.obj_resolve as OR
 import vcmi_mapgen.faithful as FA
 import vcmi_mapgen.zone_engine as ZE
+import vcmi_mapgen.vcmi_paths as VP
 
 TEST_MAP = "All for One"
 
 # Skip the whole module if the H3 sprite LODs are not installed on this machine.
-_lod_present = os.path.isdir(RE.LOD_DIR) and any(
-    os.path.exists(os.path.join(RE.LOD_DIR, f)) for f in RE.LOD_FILES
-)
 pytestmark = pytest.mark.skipif(
-    not _lod_present, reason=f"H3 sprite LOD files not found in {RE.LOD_DIR}"
+    not VP.has_lod(), reason=f"H3 sprite LOD files not found in {VP.data_dir()}"
 )
 
 # One representative DEF per H3 sprite compression format (discovered from the LOD):
@@ -162,6 +160,8 @@ def test_render_is_deterministic():
 def test_rebuilt_map_renders_pixel_identical_to_source(tmp_path):
     """The bit-exact guarantee at the pixel level: an identity rebuild of the test map
     renders byte-for-byte identically to the source map through the same path."""
+    if not VP.find_vmap_template():
+        pytest.skip("VCMI template .vmap not available")
     src_fm = OR.load_faithful(TEST_MAP)
     template = ZE.extract_template(TEST_MAP)
     rebuilt_fm, stats = ZE.rebuild_map(template, src_fm["terrain"], identity=True)

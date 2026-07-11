@@ -3,11 +3,12 @@ the writer. A map is terrain (per-tile structured) + objects (authoritative ids 
 animation + mask). Anything in this shape round-trips to an editor-valid .vmap.
 """
 
-import json, re, glob, sys, os
+import json, re, sys, os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import vmapwrite
 import ontology
+import vcmi_paths
 
 TCODE = {
     0: "dt",
@@ -124,9 +125,7 @@ def to_vmap(fm, out_path, name=None):
                 del vo["options"]["sameAsTown"]
                 if not vo["options"]:
                     del vo["options"]
-    header, _, _, _ = vmapwrite.read_raw(
-        glob.glob("/home/gabriel/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/RandomMaps/*.vmap")[0]
-    )
+    header, _, _, _ = vmapwrite.read_raw(vcmi_paths.vmap_template_or_die())
     # Wire EACH player slot to its own starting town so the map is actually playable.
     # VCMI links a player to a town via mainTown = town_anchor - (2,2) (verified against
     # the random-map template); the town object itself stays owner=None. Earlier we
