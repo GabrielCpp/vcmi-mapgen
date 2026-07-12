@@ -10,3 +10,4 @@ __pycache__/
 /.agents/*
 !/.agents/agents.mk
 !/.agents/flavors/
+**/.DS_Store

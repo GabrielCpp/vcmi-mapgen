@@ -126,6 +126,96 @@ def g2_repair(size, grid, objs, targets, costly=frozenset()):
     return objs, len(removed)
 
 
+def _ensure_boat_access(size, grid, objs, comps, targets, reach_targets):
+    """Make `boat_ok` concrete: a target-holding land component is sea-excused only
+    when traverse's own boat-link model can get there from the same root component G2 uses.
+    If the shared water body has no reachable embark source, add one deterministic boat on
+    the root shore. Returns (objs, excused_component_indexes)."""
+    import traverse as TR
+
+    if not comps or not reach_targets:
+        return objs, set()
+    tile_comp = {t: i for i, comp in enumerate(comps) for t in comp}
+    root_tile = next((t for t in targets if t in tile_comp), None)
+    if root_tile is None:
+        return objs, set()
+    root_idx = tile_comp[root_tile]
+    target_idxs = {tile_comp[t] for t in reach_targets if t in tile_comp}
+    target_idxs.discard(root_idx)
+    if not target_idxs:
+        return objs, {root_idx}
+
+    W = H = size
+    blocked = [[grid[y][x] >= 8 for x in range(W)] for y in range(H)]
+    for o in objs:
+        for cx, cy, blk in OR.mask_cells(o["mask"], o["x"], o["y"]):
+            if blk and 0 <= cx < W and 0 <= cy < H:
+                blocked[cy][cx] = True
+    terr = [[{"t": grid[y][x]} for x in range(W)] for y in range(H)]
+    water_comp, water_comps, shores = TR._water_components(terr, blocked, W, H)
+    if not water_comps:
+        return objs, {root_idx}
+
+    shore_cids = collections.defaultdict(set)
+    for cid, shore in enumerate(shores):
+        for t in shore:
+            shore_cids[t].add(cid)
+
+    fm = {"terrain": [terr], "objects": objs}
+    links = TR._boat_links(fm, {0: (blocked, W, H)})
+    root_comp = comps[root_idx]
+    accessible_cids = set()
+    for bx, by, l in links:
+        if l != 0 or (bx, by) not in root_comp:
+            continue
+        for dx, dy, dl in links[(bx, by, l)]:
+            if dl == 0:
+                accessible_cids.update(shore_cids.get((dx, dy), ()))
+
+    excused = {root_idx}
+    for idx in sorted(target_idxs):
+        comp = comps[idx]
+        if any(cid in accessible_cids for t in comp for cid in shore_cids.get(t, ())):
+            excused.add(idx)
+
+    ident = ON.identity_of("avxboat0")
+    occupied = {(cx, cy) for o in objs
+                for cx, cy, _blk in OR.mask_cells(o["mask"], o["x"], o["y"])}
+
+    def boat_fits(ax, ay, cid):
+        cells = [(cx, cy) for cx, cy, _blk in OR.mask_cells(ident["mask"], ax, ay)]
+        if any((cx, cy) in occupied or water_comp.get((cx, cy)) != cid for cx, cy in cells):
+            return False
+        return any((cx + dx, cy + dy) in root_comp
+                   for cx, cy in cells for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+
+    for idx in sorted(target_idxs):
+        if idx in excused:
+            continue
+        comp = comps[idx]
+        candidate_cids = sorted(cid for cid, shore in enumerate(shores)
+                                if (shore & root_comp) and (shore & comp))
+        for cid in candidate_cids:
+            if cid in accessible_cids:
+                excused.add(idx)
+                break
+            anchor = next((t for t in sorted(water_comps[cid])
+                           if boat_fits(t[0], t[1], cid)), None)
+            if anchor is None:
+                continue
+            objs = list(objs)
+            objs.append({"x": anchor[0], "y": anchor[1], "l": 0,
+                         "purpose": "WATER_TRANSPORT",
+                         "type": ident.get("type"), "subtype": ident.get("subtype"),
+                         "animation": ident["animation"], "mask": ident["mask"],
+                         "template": {"animation": ident["animation"], "mask": ident["mask"]}})
+            occupied.update((cx, cy) for cx, cy, _blk in OR.mask_cells(ident["mask"], *anchor))
+            accessible_cids.add(cid)
+            excused.add(idx)
+            break
+    return objs, excused
+
+
 def fill_open_islands(size, grid, objs, targets, seed=1, boat_ok=True, costly=frozenset()):
     """User-mandated: no empty, unreachable open ground. `g2_repair` above only guards
     NAMED targets (gameplay approaches, pickups) — ordinary open tiles that vegetation
@@ -189,7 +279,9 @@ def fill_open_islands(size, grid, objs, targets, seed=1, boat_ok=True, costly=fr
         comps.append(comp)
 
     if boat_ok:
-        islands = [c for c in comps if not (c & reach_targets)]
+        objs, sea_excused = _ensure_boat_access(size, grid, objs, comps, targets, reach_targets)
+        islands = [c for i, c in enumerate(comps)
+                   if not (c & reach_targets) or i not in sea_excused]
     else:
         mainland = max(comps, key=len) if comps else None
         islands = [c for c in comps if c is not mainland]

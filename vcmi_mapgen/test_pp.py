@@ -1015,6 +1015,46 @@ def test_portal_reward_zone():
     assert nfill == 0, f"rescued zone must not be decoration-filled, filled {nfill} tiles"
 
 
+def test_boat_ok_adds_real_sea_access_for_target_island():
+    """A target-holding island is not boat-reachable just because it touches water: the
+    water component needs an actual embark source on the reachable shore."""
+    import pp_map as PM
+    import traverse as TR
+
+    S = 20
+    GRASS, WATER = 2, 8
+    grid = [[GRASS] * S for _ in range(S)]
+    for y in range(S):
+        for x in range(8, 12):
+            grid[y][x] = WATER
+
+    def mk(typ, x, y, purpose):
+        return {"type": typ, "subtype": "s", "animation": "X", "mask": ["A"],
+                "x": x, "y": y, "l": 0, "purpose": purpose,
+                "template": {"animation": "X", "mask": ["A"]}}
+
+    objs = [mk("town", 3, 10, "TOWN"), mk("mine", 15, 10, "MINE")]
+    targets = [(3, 10), (15, 10)]
+    cell = {"view": 0, "rt": 0, "rd": 0, "ot": 0, "od": 0, "m": 0}
+
+    def fm(os):
+        return {"name": "synthetic-island", "width": S, "height": S, "twoLevel": False,
+                "players": 1, "main_town": {"l": 0, "x": 1, "y": 8},
+                "terrain": [[[dict(cell, t=grid[y][x]) for x in range(S)] for y in range(S)]],
+                "objects": os}
+
+    before = TR.traverse(fm(objs))
+    assert before["unreachable_mines"], "without a vessel the island mine is unreachable"
+
+    fixed, _nrec, nfill = PM.fill_open_islands(S, grid, list(objs), targets, seed=11,
+                                               boat_ok=True)
+    assert nfill == 0, "the target island must not be hidden under decoration"
+    assert any(o["type"] == "boat" for o in fixed), "a reachable-shore boat is required"
+    after = TR.traverse(fm(fixed))
+    assert after["unreachable_mines"] == []
+    assert after["ok"] is True
+
+
 def test_seal_zone_borders_closes_or_guards():
     """Every cross-zone 8-adjacent open crossing outside the planned entrance bands is
     either SEALED with a blocking decoration or contested by a back-path GUARD's zone of
