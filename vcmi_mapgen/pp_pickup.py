@@ -314,13 +314,22 @@ def _place_one(objs, used, reach, rng, st, purpose, pool, x, y,
 
 
 def place_scatter(ts, zones, zid, terrain, open_set, prot, seed=1, bounds=None,
-                  entrances=None):
+                  entrances=None, keep_clear=frozenset()):
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
     around). Returns (objs, used, reach): `used` and `reach` (this zone's own BFS-reachable
     open tiles) are handed to `place_pocket_caches` so the global pocket pass knows which
     tiles this zone already spent on scatter and can treat the rest as this zone's share of
     the whole map's reachable field.
+
+    `keep_clear` seeds `used` with tiles nothing may cover — the tiles this zone's GUARDS
+    stand on. `_legal` gates only a pickup's INTERACTIVE cell on `open_set`; its overlay
+    cells may bleed anywhere not in `used`, which is right for a wall or a cliff but not for
+    a monster: a resource pile's art was landing squarely on a guard's tile, hiding it. Only
+    the guards' own tiles are seeded, not whole gameplay footprints — sprite art overlapping
+    a mine's art is the ordinary H3 look and forbidding it costs ~10% of the map's loot,
+    while a hidden monster is a bug. It carries into the pocket-cache and seer-hut passes,
+    which both inherit this `used`.
 
     Guarded pocket caches are NOT placed here — see `place_pocket_caches`, which must run
     once for the WHOLE map after every zone's scatter is done (a genuine pocket must be
@@ -356,7 +365,7 @@ def place_scatter(ts, zones, zid, terrain, open_set, prot, seed=1, bounds=None,
     pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
     pool_art = ON.gameplay_pool(terrain, "REWARD_PICKUP")
 
-    objs, used = [], set()
+    objs, used = [], set(keep_clear)
 
     # rewards here are LOOT (treasure chests, campfires — the corpus mix), not artifacts: the
     # tiered random artifacts sit behind the cache guards instead. User-mandated: scattered

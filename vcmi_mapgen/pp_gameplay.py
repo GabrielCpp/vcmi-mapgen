@@ -396,6 +396,16 @@ def _cells(ident, ax, ay):
     return allc, blk, approach
 
 
+# S / SW / SE first: H3 draws objects by increasing y, so a guard SOUTH of the object it
+# guards is drawn AFTER (in front of) that object's sprite — visible on it, never behind it.
+_ADJ8 = ((0, 1), (-1, 1), (1, 1), (-1, 0), (1, 0), (0, -1), (-1, -1), (1, -1))
+
+
+def _adjacent8(t):
+    """The 8 neighbours of `t`, south-first (see `_ADJ8`)."""
+    return [(t[0] + dx, t[1] + dy) for dx, dy in _ADJ8]
+
+
 GAP = 2  # free tiles kept between any two gameplay footprints — gameplay
 # neighbours VEGETATION (which fills the gap), not other gameplay
 
@@ -750,6 +760,14 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
         """A cell the mine seal may build on: this zone's land, still free."""
         return (c in ts and c not in occupied and c not in avoid and c not in ent_reserved)
 
+    def standable(c):
+        """A cell a MONSTER may stand on: this zone's land, clear of every footprint placed
+        so far (`occupied` holds WHOLE footprints, overlay cells included — so a guard can
+        never end up under another object's sprite) and off every visit tile already claimed
+        (`approaches`), which would otherwise wall that object's own visitor out."""
+        return (c in ts and c not in occupied and c not in avoid
+                and c not in ent_reserved and c not in set(approaches))
+
     town_center = None  # set once the zone's town settles
     town_mines_left = 2 if n_town else 0  # sawmill + ore pit anchor NEAR the town
     for purpose, ident in wanted:
@@ -793,16 +811,40 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
                         node = (node[0] + dx, node[1] + dy)
                         break
             if fit:
+                # an 'A' generator is guarded from BESIDE (see below), so an anchor with no
+                # free tile beside its visit cell is not a legal anchor at all: settling it
+                # would leave the generator unguarded, and every mine is guarded. Keep
+                # scanning instead. Checked BEFORE `settle`, hence the explicit `own`
+                # exclusion — `occupied` does not hold this object's own footprint yet.
+                gspot = None
+                if purpose == "MINE" and fit[2] in set(fit[0]):
+                    own = set(fit[0])
+                    gspot = next((c for c in _adjacent8(fit[2])
+                                  if c not in own and standable(c)), None)
+                    if gspot is None:
+                        continue
                 approach = settle(purpose, ident, fit, node)
                 if purpose == "TOWN":  # the economy pair anchors around this
                     mh = len(ident["mask"])
                     mw = max(len(r) for r in ident["mask"])
                     town_center = (node[0] - (mw - 1) / 2.0, node[1] - (mh - 1) / 2.0)
-                # every mine gets a guard ON the approach (fight to flip), strength ~
-                # resource rarity (user-mandated: mines must always be guarded, never left
-                # open) — and its 4 other approach-grid tiles (visitableFrom's W/E/SW/SE)
-                # are sealed with a blocking decoration so the guard actually gates the
-                # mine instead of being trivially walked around from the side.
+                # every mine gets a guard (fight to flip), strength ~ resource rarity
+                # (user-mandated: mines must always be guarded, never left open). WHERE the
+                # guard stands depends on how the object is visited:
+                #
+                #   'X' mines (all but two) — the visit tile is the free ground BELOW the
+                #     entrance cell, outside the footprint. The guard takes it, and the 4
+                #     other approach-grid tiles (visitableFrom's W/E/SW/SE) are sealed with a
+                #     blocking decoration so the guard gates the mine instead of being
+                #     trivially walked around from the side.
+                #   'A' generators (windmill, magicSpring) — the visit tile is one of the
+                #     object's OWN footprint cells. A guard emitted there stands UNDER the
+                #     sprite: invisible, and two objects on one tile. H3 guards these from
+                #     BESIDE (corpus: 31 of 34 windmill guards sit off-footprint, adjacent to
+                #     the visit tile) — a monster's zone of control covers the tiles around
+                #     it, so stepping onto the visit tile still starts the fight. No flank
+                #     seal: that seal closes the tiles around the cell a hero enters FROM,
+                #     which an 'A' visitable does not have.
                 if purpose == "MINE":
                     subtype = str(ident.get("subtype"))
                     lvl = MINE_GUARD_LVL.get(subtype, 3)
@@ -811,6 +853,12 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
                     if subtype not in ("sawmill", "orePit") and rng.random() < 0.25:
                         lvl += 1
                     gident = rnd_monster(lvl)
+                    if gspot is not None:                # 'A' generator: guard it from beside
+                        # `_adjacent8` is south-first, so the guard also lands in FRONT of the
+                        # sprite in H3's y-ordered draw rather than behind it.
+                        emit("GUARD", gident, gspot[0], gspot[1])
+                        occupied.add(gspot)
+                        break
                     emit("GUARD", gident, approach[0], approach[1])
                     occupied.add(approach)  # no vegetation/pickup may stack there
                     ex, ey = approach[0], approach[1] - 1  # the entrance ('X') cell

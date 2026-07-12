@@ -334,8 +334,20 @@ def fill_open_islands(size, grid, objs, targets, seed=1, boat_ok=True, costly=fr
         objs = [o for i, o in enumerate(objs) if i not in removed]
     n_filled = 0
     if filled_tiles:
+        # Never drop filler ON something already standing here. `hard` above cannot be used
+        # for this: it is built from BLOCKING cells only, and the objects most at risk own no
+        # blocking cell at all — a monster, a resource pile, a monolith and a windmill are all
+        # pure 'A'/'V' masks. They therefore stayed in `open_set`, and an island component
+        # containing one was filled right over the top of it (a guard entombed in a rock).
+        # Connectivity still reasons about blocking cells only (those objects ARE walkable —
+        # excluding them would fake an island out of any tile a monster stands on); it is only
+        # the FILL that must respect every footprint.
+        occupied_any = {(cx, cy) for o in objs
+                        for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"])}
         by_terrain = collections.defaultdict(list)
         for t in filled_tiles:
+            if t in occupied_any:
+                continue
             by_terrain[terrain_of.get(t)].append(t)
         for terrain, tiles in by_terrain.items():
             if terrain is None:
@@ -550,8 +562,11 @@ def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid,
             owner[t] = zid
             tname[t] = terr
     blocked = set()
-    for o in objs:
-        blocked.update(_blocking_cells(o))
+    covered = set()          # every cell ANY object's art covers — blocking or overlay. A
+    for o in objs:           # guard standing on one is drawn behind that sprite (invisible),
+        blocked.update(_blocking_cells(o))                      # so it is only ever a
+        covered.update((cx, cy) for cx, cy, _b in                # last-resort guard tile.
+                       OR.mask_cells(o["mask"], o["x"], o["y"]))
     land = {(x, y) for y in range(H) for x in range(W) if grid[y][x] < 8}
     open_all = land - blocked
     bands = set()
@@ -598,7 +613,10 @@ def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid,
                          "type": ident.get("type"), "subtype": ident.get("subtype"),
                          "animation": ident["animation"], "mask": ident["mask"],
                          "template": {"animation": ident["animation"],
-                                      "mask": ident["mask"]}})
+                                      "mask": ident["mask"]},
+                         "seal": True})     # structural, though it reads as ordinary scenery:
+        # this decoration IS the closed crossing. Tagging it keeps `unbury_monsters` from
+        # razing it as scenery to free a guard and silently re-opening the border.
         sealed.add(pick)
         pairs = [p for p in pairs if pick not in p]
 
@@ -614,7 +632,20 @@ def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid,
         if not cands:
             unguarded += 1
             continue
-        g = cands[0]
+        # A guard under a mountain/tree overlay still gates the crossing but cannot be seen,
+        # so prefer a crossing tile clear of every sprite. If BOTH sides are covered, stand
+        # the guard on a clear tile adjacent to BOTH t and n instead: a monster's zone of
+        # control covers the tiles around it, so the crossing stays contested from there
+        # (this is why the skip test above is a Chebyshev-1 test, not an equality test) and
+        # the guard is visible. If even that fails, the guard still goes down on a covered
+        # tile — the border invariant (no free informal crossing) outranks visibility, and
+        # `unbury_monsters` gets the last word on it once the level is final.
+        g = next((c for c in cands if c not in covered), None)
+        if g is None:
+            beside = sorted(
+                c for c in set(PG._adjacent8(t)) & set(PG._adjacent8(n))
+                if c in open_all and c not in covered and c not in hard_avoid and c in owner)
+            g = beside[0] if beside else cands[0]
         gident = PG.rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
         new_objs.append({"x": g[0], "y": g[1], "l": 0, "purpose": "GUARD",
                          "type": gident.get("type"), "subtype": gident.get("subtype"),
@@ -786,9 +817,14 @@ def _run_level(level, W, H, grid, zones, player_zids, ledger, gstats, seed, has_
         # Approach tiles and non-blocking occupied footprint cells ARE walkable in-game.
         passable = ts - blocked - gblocked
         # scatter loot never sits on the rim: a pickup there is a walkable, unsealable hole
+        # the tiles this zone's guards stand on: no pickup's art may cover one (see
+        # place_scatter's `keep_clear`) — a monster drawn behind a resource pile is invisible
+        guard_tiles_z = {c for o in gobjs if o.get("purpose") == "GUARD"
+                         for c in OR.mask_interactive_cells(o["mask"], o["x"], o["y"])}
         sobjs, sused, reach = PK.place_scatter(ts, zones, zid, terrain,
                                               open_set - (rim8 - ent_bands), prot, seed=seed,
-                                              bounds=(W, H), entrances=z_entr)
+                                              bounds=(W, H), entrances=z_entr,
+                                              keep_clear=guard_tiles_z)
         objs.extend(sobjs)
         targets.extend(approaches)
         targets.extend((o["x"], o["y"]) for o in sobjs)
@@ -817,15 +853,184 @@ def _run_level(level, W, H, grid, zones, player_zids, ledger, gstats, seed, has_
         print(f"  L{level} border seal: {len(sealed)} cells closed, "
               f"{len(guard_tiles)} back-path guards"
               + (f", {n_open} crossings left free (unguardable)" if n_open else ""))
+    # the seal runs after every zone's `used` was frozen, so its objects are invisible to the
+    # passes that come next (seer huts, pocket caches). Their INTERACTIVE cells are safe —
+    # `open_set` drops them below — but `_legal` gates a pickup's OVERLAY cells on `used`
+    # alone, so without this a cache's art lands on a back-path guard and hides it.
+    seal_cells = {(cx, cy) for o in sobjs_seal
+                  for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"])}
     for zr in zone_records:                          # keep pocket detection honest
         zr["passable"] -= sealed
         zr["open_set"] -= sealed | guard_tiles
+        zr["used"] |= seal_cells
 
     return objs, targets, zone_records, town_of_zone, has_water, nz, frozenset(ridge)
 
 
 def _blocking_cells(o):
     return [(cx, cy) for cx, cy, blk in OR.mask_cells(o["mask"], o["x"], o["y"]) if blk]
+
+
+def is_monster(o):
+    """A hostile creature stack — a GUARD from any emitter (mine, entrance, back-path, pocket
+    cache, portal), or a raw random monster."""
+    return o.get("purpose") == "GUARD" or str(o.get("type", "")).startswith("randomMonster")
+
+
+def unbury_monsters(size, grid, objs, owner=None):
+    """User-mandated invariant, enforced once on the level's FINAL object set: a monster must
+    STAND ON free ground — never on a tile another object's art covers.
+
+    A monster placed on a covered tile is drawn behind that object's sprite (H3 draws by
+    increasing y, and the sprite that owns the tile is almost always the taller one), so it
+    is invisible on the map: the player walks into a fight with a windmill or a mountain.
+    Every emitter now avoids this at the source, but no single emitter can guarantee it —
+    a zone samples its vegetation against its OWN gameplay only, so the mountain it grows on
+    its border can still overhang the guard the NEIGHBOURING zone put down, and the island
+    fill / seal passes add art later still. Hence this final sweep.
+
+    The repair is a one-tile step: the monster moves to a free 8-neighbour (south first, so
+    it ends up in FRONT of whatever it guards). That preserves what the guard is for — a
+    monster's zone of control covers the tiles around it, so the object, pocket mouth or
+    crossing it stood on is still contested from one tile away, and a hero stepping onto it
+    starts the fight exactly as before. Monsters block nothing, so moving one can never
+    change passability.
+
+    When every neighbour is taken too (a guard hemmed in by a forest), the monster cannot
+    move, so the DECORATION burying it goes instead — pure scenery, and deleting it only ever
+    frees tiles, which cannot strand anything. Three decorations are off-limits:
+
+      - anything with a `purpose` (gameplay) or a `seal` flag (a border seal IS a closed
+        crossing) — deleting those would cost a mine or re-open a border;
+      - scenery that is load-bearing for the BORDER. Freeing a blocking tile can hand back a
+        cross-zone crossing that `seal_zone_borders` closed, and nothing re-runs after this.
+        A decoration is safe to raze when every tile it blocks either (a) has only same-zone
+        land around it, so opening it cannot put two zones in contact at all, or (b) lies
+        within Chebyshev 1 of the monster, whose zone of control then contests whatever it
+        opens — the same test the border pass itself uses to decide a crossing is guarded.
+        Scenery failing both is left standing and the monster stays buried (and counted).
+
+    `seal` guards may be freed this second way but are never STEPPED: a back-path guard IS
+    the border, contesting every crossing within its zone of control, and this pass cannot
+    see which crossings those were — a blind step could silently re-open one. Razing the
+    scenery on top of one keeps it exactly where the border pass put it.
+
+    Only the VISIT cell is considered. A random monster's placeholder def carries a 2x2 of
+    decorative overlay cells, but VCMI resolves it to a concrete creature — a single-tile
+    object — at game start (every one of the corpus's 13 863 placed monsters has a 1-cell
+    mask), so its overlay cells describe no tile it truly owns.
+
+    `owner` maps a tile to its zone id (absent = not this level's land). Without it no
+    decoration counts as zone-interior, so razing falls back to the zone-of-control rule
+    alone — safe, just more conservative.
+
+    Returns (objs, n_moved, n_freed, n_stuck); monsters that move are mutated in place."""
+    owner = owner or {}
+    blocked_by = collections.defaultdict(list)       # tile -> the objects blocking it
+    for o in objs:
+        for c in _blocking_cells(o):
+            blocked_by[c].append(o)
+
+    def near(a, b):
+        return max(abs(a[0] - b[0]), abs(a[1] - b[1])) <= 1
+
+    def razable(o, visit):
+        """Can the monster on `visit` delete `o` to climb out from under it? Returns the
+        tiles that must be re-sealed afterwards (possibly none), or None to refuse.
+
+        Razing hands back every tile `o` blocked. Where that would put two zones' OPEN tiles
+        in contact, it hands back a free cross-zone crossing — the one thing the border pass
+        can no longer come back and close. Rather than refuse (which leaves the monster
+        buried), close it here: a 1-cell blocking decoration goes back on the tile, exactly
+        what `seal_zone_borders` puts on a crossing. Only OPEN neighbours can form a crossing
+        (a neighbour some other sprite still blocks is none), and a contact within the
+        monster's own zone of control is already contested, so neither needs a seal."""
+        if o.get("purpose") or o.get("seal") or is_monster(o):
+            return None                              # gameplay, a border seal, or a monster
+
+        def will_be_open(t):
+            if not (0 <= t[0] < size and 0 <= t[1] < size) or grid[t[1]][t[0]] >= 8:
+                return False
+            return not any(k is not o and id(k) not in razed
+                           for k in blocked_by.get(t, ()))
+
+        reseal = []
+        for c in _blocking_cells(o):                 # every tile this raze hands back
+            zc = owner.get(c)
+            if zc is None:
+                continue
+            leaks = any(owner.get(n) not in (None, zc) and will_be_open(n)
+                        and not (near(c, visit) or near(n, visit))
+                        for n in PG._adjacent8(c))
+            if not leaks:
+                continue
+            if c == visit or c in taken:             # re-sealing would re-bury a monster
+                return None
+            terr = ZE.TNAME.get(grid[c[1]][c[0]])
+            pool = ON.decor_pool(terr, blocking=True, max_cells=1,
+                                 exclude_types=ZE.EXCLUDE_DECOR_TYPES) if terr else None
+            if not pool:
+                return None                          # nothing to close it with — leave it be
+            reseal.append((c, pool[(c[0] * 92821 ^ c[1] * 131071) % len(pool)]))
+        return reseal
+
+    coverers = collections.defaultdict(list)         # tile -> non-monster objs covering it
+    for o in objs:
+        if is_monster(o):
+            continue
+        for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"]):
+            coverers[(cx, cy)].append(o)
+    taken = {c for o in objs if is_monster(o)
+             for c in OR.mask_interactive_cells(o["mask"], o["x"], o["y"])}
+    razed = set()                                    # id()s of decorations deleted below
+    added = []                                       # 1-cell seals replacing what they held
+
+    def free(c):
+        return (0 <= c[0] < size and 0 <= c[1] < size and grid[c[1]][c[0]] < 8
+                and not coverers.get(c) and c not in taken)
+
+    n_moved = n_freed = n_stuck = 0
+    for o in sorted((o for o in objs if is_monster(o)), key=lambda o: (o["y"], o["x"])):
+        visit = OR.mask_interactive_cells(o["mask"], o["x"], o["y"])
+        buried = [c for c in visit if coverers.get(c)]
+        if not buried:
+            continue
+        (vx, vy) = buried[0]
+        spot = (None if o.get("seal")                # a border guard never steps (see above)
+                else next((c for c in PG._adjacent8((vx, vy)) if free(c)), None))
+        if spot is not None:
+            taken.difference_update(visit)
+            o["x"] += spot[0] - vx                   # the anchor travels with the visit cell
+            o["y"] += spot[1] - vy
+            taken.update(OR.mask_interactive_cells(o["mask"], o["x"], o["y"]))
+            n_moved += 1
+            continue
+        on_top = [c for c in coverers[(vx, vy)] if id(c) not in razed]
+        plans = [razable(dec, (vx, vy)) for dec in on_top]
+        if any(p is None for p in plans):
+            n_stuck += 1                             # gameplay, a border seal, or scenery
+            continue                                 # whose tiles cannot be handed back
+        for dec, reseal in zip(on_top, plans):       # raze the scenery instead
+            razed.add(id(dec))
+            for cx, cy, _b in OR.mask_cells(dec["mask"], dec["x"], dec["y"]):
+                coverers[(cx, cy)] = [k for k in coverers[(cx, cy)] if k is not dec]
+            for (c, ident) in reseal:                # keep the crossings it held closed, shut
+                seal = {"x": c[0], "y": c[1], "l": 0,
+                        "type": ident.get("type"), "subtype": ident.get("subtype"),
+                        "animation": ident["animation"], "mask": ident["mask"],
+                        "template": {"animation": ident["animation"],
+                                     "mask": ident["mask"]},
+                        "seal": True}
+                added.append(seal)
+                for cx, cy, blk in OR.mask_cells(seal["mask"], c[0], c[1]):
+                    coverers[(cx, cy)].append(seal)
+                    if blk:
+                        blocked_by[(cx, cy)].append(seal)
+        n_freed += 1
+
+    if razed or added:
+        objs = [o for o in objs if id(o) not in razed] + added
+    return objs, n_moved, n_freed, n_stuck
 
 
 def _warn_sliver_zones(zones, level, protect=frozenset()):
@@ -958,6 +1163,15 @@ def _repair_and_finish_level(level, size, grid, objs, targets, zone_records, see
                     drop.add(ib if str(oa.get("type")) >= str(ob.get("type")) else ia)
     if drop:
         objs = [o for i, o in enumerate(objs) if i not in drop]
+
+    # LAST: every object this level will ever have is now placed, so the "a monster stands on
+    # free ground" invariant can finally be settled map-wide (see `unbury_monsters`).
+    objs, n_moved, n_freed, n_stuck = unbury_monsters(
+        size, grid, objs, owner={t: zr["zid"] for zr in zone_records for t in zr["ts"]})
+    if n_moved or n_freed or n_stuck:
+        print(f"  L{level} monsters: {n_moved} stepped off an object's art, "
+              f"{n_freed} freed by razing the scenery on top of them"
+              + (f", {n_stuck} STILL BURIED (under gameplay/a border seal)" if n_stuck else ""))
 
     return objs, ncarved, nreconn, nfilled, n_pockets, len(drop)
 

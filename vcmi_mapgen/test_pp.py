@@ -1103,3 +1103,146 @@ def test_seal_zone_borders_closes_or_guards():
                 continue
             assert t in bands or n in bands or zoc(t) or zoc(n), \
                 f"free unguarded crossing survived at {t}->{n}"
+
+
+def _cover_map(objs, skip=()):
+    """tile -> the objects whose mask covers it (art included), excluding `skip`."""
+    import collections
+
+    import obj_resolve as OR
+    cover = collections.defaultdict(list)
+    for o in objs:
+        if o in skip:
+            continue
+        for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"]):
+            cover[(cx, cy)].append(o)
+    return cover
+
+
+S_UB, GRASS_UB = 12, 2
+
+
+def _ub_world():
+    """A 12x12 grass level split into zone 1 (x<6) and zone 2 (x>=6)."""
+    grid = [[GRASS_UB] * S_UB for _ in range(S_UB)]
+    owner = {(x, y): (1 if x < 6 else 2) for y in range(S_UB) for x in range(S_UB)}
+    return grid, owner
+
+
+def _ub_monster(x, y):
+    return {"x": x, "y": y, "l": 0, "purpose": "GUARD", "type": "randomMonsterLevel3",
+            "subtype": "s", "animation": "M", "mask": ["VV", "VA"],
+            "template": {"animation": "M", "mask": ["VV", "VA"]}}
+
+
+def _ub_rock(x, y):
+    return {"x": x, "y": y, "l": 0, "type": "rock", "subtype": "r", "animation": "R",
+            "mask": ["B"], "template": {"animation": "R", "mask": ["B"]}}
+
+
+def test_unbury_monsters_steps_off_art_or_razes_it():
+    """A monster must stand on free ground, never under another object's sprite: it steps to a
+    free neighbour when it has one, and when it is hemmed in, the scenery on top of it is
+    razed instead."""
+    import obj_resolve as OR
+    import pp_map as PM
+
+    grid, owner = _ub_world()
+
+    roomy = _ub_monster(2, 2)                        # under a tree's overlay, room to move
+    tree = {"x": 3, "y": 3, "l": 0, "type": "trees", "subtype": "t", "animation": "T",
+            "mask": ["VVV", "VBV"], "template": {"animation": "T", "mask": ["VVV", "VBV"]}}
+    assert (2, 2) in {(cx, cy) for cx, cy, _b in OR.mask_cells(tree["mask"], 3, 3)}, \
+        "fixture: the tree's art must cover the guard"
+
+    hemmed = _ub_monster(9, 8)                       # walled in on all 8 sides, under art
+    walls = [_ub_rock(x, y) for x in range(8, 11) for y in range(7, 10) if (x, y) != (9, 8)]
+    canopy = {"x": 9, "y": 8, "l": 0, "type": "mountain", "subtype": "m", "animation": "K",
+              "mask": ["VV"], "template": {"animation": "K", "mask": ["VV"]}}
+
+    objs = [roomy, tree, hemmed, canopy] + walls
+    objs, n_moved, n_freed, n_stuck = PM.unbury_monsters(S_UB, grid, objs, owner=owner)
+
+    assert n_stuck == 0, "every monster must end up on free ground"
+    assert (n_moved, n_freed) == (1, 1)
+    assert (roomy["x"], roomy["y"]) != (2, 2), "the guard with room steps aside"
+    assert tree in objs, "razing is the fallback — a guard that CAN move never fells a tree"
+    assert (hemmed["x"], hemmed["y"]) == (9, 8), "a walled-in guard has nowhere to step"
+    assert canopy not in objs, "so the art on top of it is razed instead"
+
+    monsters = [o for o in objs if PM.is_monster(o)]
+    cover = _cover_map(objs, skip=monsters)
+    for m in monsters:
+        for c in OR.mask_interactive_cells(m["mask"], m["x"], m["y"]):
+            assert not cover[c], f"monster at {c} still stands under {cover[c]}"
+
+
+def test_unbury_monsters_reseals_a_border_it_razed():
+    """Razing hands back every tile the scenery blocked. Where that would put two zones' open
+    tiles back in contact — a free crossing `seal_zone_borders` can no longer close — the tile
+    is re-sealed with a blocking decoration, so freeing a guard never re-opens a border."""
+    import obj_resolve as OR
+    import pp_map as PM
+
+    grid, owner = _ub_world()
+
+    # the guard sits at (2,8), walled in. The scenery burying it is anchored far away: its art
+    # reaches the guard, but the only tile it BLOCKS is (5,8) — zone 1's edge, whose open
+    # neighbour (6,8) is zone 2. That blocker is all that keeps the crossing shut, and it is 3
+    # tiles from the guard, so the guard's zone of control does not contest it.
+    guard = _ub_monster(2, 8)
+    walls = [_ub_rock(x, y) for x in range(1, 4) for y in range(7, 10) if (x, y) != (2, 8)]
+    ridge = {"x": 5, "y": 8, "l": 0, "type": "mountain", "subtype": "m", "animation": "K",
+             "mask": ["VVVB"], "template": {"animation": "K", "mask": ["VVVB"]}}
+    assert [(cx, cy) for cx, cy, b in OR.mask_cells(ridge["mask"], 5, 8) if b] == [(5, 8)]
+
+    objs, n_moved, n_freed, n_stuck = PM.unbury_monsters(
+        S_UB, grid, [guard, ridge] + walls, owner=owner)
+
+    assert (n_moved, n_freed, n_stuck) == (0, 1, 0)
+    assert ridge not in objs, "the scenery burying the guard is razed"
+    assert not _cover_map(objs, skip=[guard])[(2, 8)], "the guard now stands in the open"
+
+    reseal = [o for o in objs if o.get("seal")]
+    assert len(reseal) == 1, f"the crossing the ridge held shut must be re-sealed: {reseal}"
+    cells = [(cx, cy) for cx, cy, b in OR.mask_cells(reseal[0]["mask"],
+                                                     reseal[0]["x"], reseal[0]["y"]) if b]
+    assert cells == [(5, 8)], f"re-sealed on the tile the raze opened, got {cells}"
+
+
+@needs_stats
+def test_generated_map_has_no_monster_standing_on_an_object():
+    """End to end, on a real generated map: no monster stands on a tile any other object's art
+    covers — not a windmill's, not an obstacle's. A monster on a covered tile is drawn behind
+    that sprite and is invisible, and a guard the player cannot see is a guard that reads as a
+    bug. Windmills are the case that made this a rule: their mask is 'A'-visitable, so their
+    visit tile is one of their OWN footprint cells, and the guard used to be emitted straight
+    onto it — under the mill."""
+    import obj_resolve as OR
+    import pp_map as PM
+
+    _levels, _surfs, objs, _info, _pt = PM.build(seed=7, size=48, players=2,
+                                                 water_mode="none")
+    monsters = [o for o in objs if PM.is_monster(o)]
+    assert monsters, "a generated map always carries guards"
+
+    cover = _cover_map(objs, skip=monsters)
+    for m in monsters:
+        for c in OR.mask_interactive_cells(m["mask"], m["x"], m["y"]):
+            on_top = [(o.get("type"), o.get("purpose")) for o in cover[c]]
+            assert not on_top, f"monster at {c} stands under {on_top}"
+
+    # and the guard of an 'A'-visitable generator still GATES it: adjacent to the visit tile,
+    # so a hero stepping on it enters the monster's zone of control and must fight
+    mvisit = {c for m in monsters
+              for c in OR.mask_interactive_cells(m["mask"], m["x"], m["y"])}
+    gens = [o for o in objs if o.get("purpose") == "MINE"
+            and o["type"] in ("windmill", "magicSpring", "waterWheel", "mysticalGarden")]
+    for g in gens:
+        cells = {(cx, cy) for cx, cy, _b in OR.mask_cells(g["mask"], g["x"], g["y"])}
+        visit = OR.mask_interactive_cells(g["mask"], g["x"], g["y"])
+        assert not (cells & mvisit), f"{g['type']} at {g['x'], g['y']} has a monster ON it"
+        if visit and any(o["type"] == "windmill" for o in [g]):
+            v = visit[0]
+            assert any(max(abs(c[0] - v[0]), abs(c[1] - v[1])) <= 1 for c in mvisit), \
+                f"windmill at {g['x'], g['y']} lost its guard — visit tile {v} uncontested"

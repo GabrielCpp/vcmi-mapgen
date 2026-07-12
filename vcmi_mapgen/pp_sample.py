@@ -79,20 +79,25 @@ def build_model(terrain):
         if ca in cidx and cb in cidx:
             T[cidx[ca], cidx[cb]] = row
 
-    idents, iweights, iblk = [], [], []
+    idents, iweights, iblk, iall = [], [], [], []
     for c in cats:
         w = st["anim_w"].get(c, {})
         ids = by_cat[c]
         idents.append(ids)
         iweights.append([w.get(i["animation"].lower(), 0) + BASE_W for i in ids])
-        blk = []
+        blk, allc = [], []
         for i in ids:
             cells = [(cx, cy, b) for cx, cy, b in OR.mask_cells(i["mask"], 0, 0)]
             blk.append([(cx, cy) for cx, cy, b in cells if b])
+            # `iall` = the WHOLE footprint, overlay art included. `iblk` decides what a
+            # sprite BLOCKS; `iall` decides what it COVERS — and covering a gameplay tile
+            # buries that object under the art even when the tile stays walkable.
+            allc.append([(cx, cy) for cx, cy, _b in cells])
         iblk.append(blk)
+        iall.append(allc)
 
     return {"terrain": terrain, "cats": cats, "L": L, "T": T,
-            "idents": idents, "iweights": iweights, "iblk": iblk,
+            "idents": idents, "iweights": iweights, "iblk": iblk, "iall": iall,
             "sigma": PS.cox_sigma(st),
             "target": st["veg_blocked_frac"], "runs": st["runs"]}
 
@@ -270,13 +275,23 @@ def sample_zone(ts, zones, zid, model, seed=1, steps_per_tile=STEPS_PER_TILE, pr
         return float((T[c] * np.minimum(rc, SAT)).sum())
 
     def blocked_cells(c, ii, x, y):
-        """Absolute blocking cells of ident ii of category c anchored at (x,y); None = illegal."""
+        """Absolute blocking cells of ident ii of category c anchored at (x,y); None = illegal.
+
+        `inz`/`protm` gate the BLOCKING cells only — a sprite's overlay art may legally
+        overhang the zone edge or a walkable corridor (it takes no tile away). `forbid`
+        gates the WHOLE footprint: those are the gameplay footprints, visit tiles and
+        guards, and art drawn over one buries it (H3 draws by increasing y, so the taller
+        vegetation behind an object wins) even though the tile stays walkable. This is what
+        "vegetation may never bury gameplay" means, and checking only `iblk` did not
+        deliver it — a mountain's overlay rows sat squarely on mine guards."""
+        for (dx, dy) in model["iall"][c][ii]:
+            if (x + dx, y + dy) in forbid:
+                return None
         cells = []
         for (dx, dy) in model["iblk"][c][ii]:
             bx, by = x + dx, y + dy
             lx, ly = bx - x0, by - y0
-            if (not (0 <= lx < W and 0 <= ly < H) or not inz[ly, lx] or protm[ly, lx]
-                    or (bx, by) in forbid):
+            if (not (0 <= lx < W and 0 <= ly < H) or not inz[ly, lx] or protm[ly, lx]):
                 return None
             cells.append((bx, by))
         return cells
