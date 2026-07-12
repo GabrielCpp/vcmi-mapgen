@@ -37,6 +37,9 @@ import zone_field as ZF         # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIN_AREA = 25          # vegetate even smallish zones (the stats floor stays 60 in pp_stats)
+# VCMI's player colours in engine order (config/gameConfig.json). Slot i of a generated map
+# is PLAYER_COLORS[i]; eight is the hard ceiling on players.
+PLAYER_COLORS = ["red", "blue", "tan", "green", "orange", "purple", "teal", "pink"]
 
 
 def g2_repair(size, grid, objs, targets, costly=frozenset()):
@@ -309,45 +312,45 @@ def apply_playability(vmap_path, player_towns, teams):
     z.close()
     h = json.loads(files["header.json"].decode())
     vobjs = json.loads(files["objects.json"].decode())
-    pids = sorted(p for p, pl in h["players"].items() if isinstance(pl, dict))
+    # The map's player slots are OURS to define, not the header template's. Reading them off
+    # the template capped the map at whatever player count that .vmap happened to have — a
+    # 2-player template silently turned `--players 4` into a 2-player map. Emit exactly one
+    # slot per start town, in VCMI's own colour order (gameConfig.json), and let absent
+    # colours stay absent (which is what a real .vmap does).
+    pids = PLAYER_COLORS[:len(player_towns)]
+    h["players"] = {}
     for i, pid in enumerate(pids):
-        pl = h["players"][pid]
-        if i < len(player_towns):
-            t = player_towns[i]
-            pl["mainTown"] = {"generateHero": True, "l": t.get("l", 0),
-                              "x": t["x"] - 2, "y": t["y"] - 2}
-            pl["canPlay"] = "PlayerOrAI"
-            pl["team"] = int(teams[i])
-            if t.get("type") == "town":
-                # concrete start town (spare-neutral top-up): the lobby must not offer
-                # factions the map cannot honour — restrict to the authored one, exactly
-                # like VCMI's own RMG maps do
-                pl["allowedFactions"] = {"anyOf": [f"core:{t['subtype']}"]}
-                pl.pop("randomFaction", None)
-            else:
-                # randomTown start: any faction; VCMI resolves the OWNED random town to
-                # the lobby pick (CGTownInstance::randomizeFaction). PlayerInfo::defaultCastle()
-                # only returns RANDOM when isFactionRandom is set — an absent/permissive
-                # allowedFactions alone still defaults the lobby dropdown to the first
-                # faction (Castle) sorted by id. Field name from MapFormatJson.cpp's
-                # serializePlayerInfo: handler.serializeBool("randomFaction", ...).
-                pl.pop("allowedFactions", None)
-                pl["randomFaction"] = True
-            for vo in vobjs:                         # ownership lives on the town object
-                if (vo["x"] == t["x"] and vo["y"] == t["y"]
-                        and vo.get("l", 0) == t.get("l", 0)
-                        and vo.get("type") in ("town", "randomTown")):
-                    vo.setdefault("options", {})["owner"] = pid
-                    break
+        t = player_towns[i]
+        pl = h["players"][pid] = {
+            "mainTown": {"generateHero": True, "l": t.get("l", 0),
+                         "x": t["x"] - 2, "y": t["y"] - 2},
+            "canPlay": "PlayerOrAI",
+            "team": int(teams[i]),
+        }
+        if t.get("type") == "town":
+            # concrete start town (spare-neutral top-up): the lobby must not offer
+            # factions the map cannot honour — restrict to the authored one, exactly
+            # like VCMI's own RMG maps do
+            pl["allowedFactions"] = {"anyOf": [f"core:{t['subtype']}"]}
         else:
-            pl["mainTown"] = None
-            pl["canPlay"] = "false"
-            pl.pop("team", None)
+            # randomTown start: any faction; VCMI resolves the OWNED random town to
+            # the lobby pick (CGTownInstance::randomizeFaction). PlayerInfo::defaultCastle()
+            # only returns RANDOM when isFactionRandom is set — an absent/permissive
+            # allowedFactions alone still defaults the lobby dropdown to the first
+            # faction (Castle) sorted by id. Field name from MapFormatJson.cpp's
+            # serializePlayerInfo: handler.serializeBool("randomFaction", ...).
+            pl["randomFaction"] = True
+        for vo in vobjs:                             # ownership lives on the town object
+            if (vo["x"] == t["x"] and vo["y"] == t["y"]
+                    and vo.get("l", 0) == t.get("l", 0)
+                    and vo.get("type") in ("town", "randomTown")):
+                vo.setdefault("options", {})["owner"] = pid
+                break
     # VCMI's lobby/map-select screen reads alliances from this top-level grouping —
     # not from each player's individual "team" int above — so it must be set for
     # the UI to show teams at all. Real VCMI RMG maps omit the key entirely for FFA.
     groups = defaultdict(list)
-    for i, pid in enumerate(pids[:len(player_towns)]):
+    for i, pid in enumerate(pids):
         groups[int(teams[i])].append(pid)
     allied = [members for members in groups.values() if len(members) > 1]
     if allied:
@@ -599,6 +602,10 @@ def _run_level(level, W, H, grid, zones, player_zids, ledger, gstats, seed, has_
                 print(f"  sea  {wi:>3} water    {len(comp):>5} tiles: {len(wobjs):>3} sea objects")
             wi += 1
 
+    # this level's walkable land (every zone) — the mine seal checks its intended entrance
+    # against it, so a mine on the map's edge is never sealed into a dead pocket
+    land = frozenset((x, y) for y in range(H) for x in range(W) if grid[y][x] < 8)
+
     for zid, z in sorted(zones.items()):
         terrain = ZE.TNAME.get(z["terrain_type"])
         if terrain in (None, "water", "rock") or z["area"] < MIN_AREA:
@@ -623,7 +630,7 @@ def _run_level(level, W, H, grid, zones, player_zids, ledger, gstats, seed, has_
             force_town=zid in player_zids, ledger=ledger, has_water=has_water,
             level=level, has_subterrain=has_subterrain, avoid=tunnel_protect & ts,
             preoccupied=z_gate_occ, preblocked=z_gate_blk, preapproaches=z_gate_appr,
-            entrances=z_entr)
+            entrances=z_entr, land=land)
         objs.extend(gobjs)
         if zid in player_zids:
             t = next((o for o in gobjs if o.get("purpose") == "TOWN"), None)

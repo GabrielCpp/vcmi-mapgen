@@ -126,6 +126,62 @@ def test_gameplay_layer_legal_and_deterministic():
             assert d > PG.GAP, f"objects {i},{j} too close (cheb {d})"
 
 
+def test_mine_seal_never_walls_a_mine_in_at_the_map_edge():
+    """A guarded mine's seal leaves exactly ONE way in — the tile below the guard. On the
+    map's bottom edge that tile is off-map, and sealing the flanks anyway walled the mine
+    AND its guard into a dead pocket that g2_repair cannot carve open (MINE_SEALs are not
+    vegetation): every 72x72 seed shipped an unreachable mine at y=70. The seal must check
+    its intended entrance is real land and keep a flank open when it is not."""
+    import collections
+
+    import pp_gameplay as PG
+    import traverse as TR
+    if not os.path.exists(PG.STATS_PATH):
+        pytest.skip("gameplay stats not mined")
+
+    # a shallow zone lying flush against the map's bottom edge, so mines land low enough
+    # that their guarded entrance would fall off the map
+    W = H = 40
+    ts = {(x, y) for x in range(W) for y in range(35, H)}
+    zones = {1: {"tiles_set": sorted(ts), "centroid": (19.5, 37.0), "area": len(ts),
+                 "terrain_type": 2}}
+    land = frozenset(ts)
+    checked = 0
+    for seed in range(20):
+        objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=seed, land=land)
+        blocked = set()                              # every blocking cell placed in the zone
+        for o in objs:
+            for cx, cy, ch in TR._mask_cells(o["x"], o["y"], o["template"]["mask"]):
+                if ch in ("B", "X"):
+                    blocked.add((cx, cy))
+        for m in (o for o in objs if o["purpose"] == "MINE"):
+            # a mine is ENTERED through its visitable ('A'/'X') cell: the hero must stand on
+            # that cell or next to it. Those tiles — not the ones merely touching the mine's
+            # blocking body — are what the seal ring closes, so they are what must stay
+            # connected to the rest of the map.
+            visit = [(cx, cy) for cx, cy, ch in
+                     TR._mask_cells(m["x"], m["y"], m["template"]["mask"]) if ch in ("A", "X")]
+            stand = [n for x, y in visit
+                     for n in ((x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1))
+                     if n in land and n not in blocked]
+            assert stand, f"seed {seed}: mine at {(m['x'], m['y'])} has no approach tile at all"
+            checked += 1
+            # flood from there over open land: it must escape the seal ring, i.e. reach
+            # land well away from the mine itself
+            seen, q = set(stand), collections.deque(stand)
+            while q:
+                x, y = q.popleft()
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    n = (x + dx, y + dy)
+                    if n in land and n not in blocked and n not in seen:
+                        seen.add(n)
+                        q.append(n)
+            assert len(seen) > 8, (
+                f"seed {seed}: mine at {(m['x'], m['y'])} is sealed into a {len(seen)}-cell "
+                f"pocket — its guarded entrance must stay on the map")
+    assert checked >= 5, f"only {checked} mines placed — the edge case is not being exercised"
+
+
 def test_select_player_zones_far_apart():
     """Player zones must be big AND mutually far apart — never all clustered together."""
     import pp_map as PM
@@ -483,7 +539,10 @@ def test_playability_overlay_alliance_grouping():
     p = PM.export_vmap([cells], towns, os.path.abspath(out), name="test")
     PM.apply_playability(p, towns, teams=[0, 0, 1, 1])
     h = json.loads(zipfile.ZipFile(p).read("header.json").decode())
-    assert sorted(sorted(g) for g in h["teams"]) == [["blue", "green"], ["orange", "red"]]
+    # slot i is PLAYER_COLORS[i] (red, blue, tan, green) — the colours no longer depend on
+    # which .vmap the header template came from
+    assert sorted(sorted(g) for g in h["teams"]) == [["blue", "red"], ["green", "tan"]]
+    assert sorted(h["players"]) == ["blue", "green", "red", "tan"], "one slot per start town"
 
 
 def test_playability_overlay_random_town_shows_random_in_lobby():
@@ -518,7 +577,9 @@ def test_playability_overlay_random_town_shows_random_in_lobby():
     owners = [o["options"]["owner"] for o in vobjs
               if o.get("type") in ("town", "randomTown")
               and o.get("options", {}).get("owner") is not None]
-    assert owners == ["blue"], "the single town must be owned by the sole (blue) player"
+    # slot 0 is red — VCMI's first player colour (pp_map.PLAYER_COLORS), no longer whichever
+    # colour sorted first among the header template's own slots
+    assert owners == ["red"], "the single town must be owned by the sole (red) player"
 
 
 def test_zone_gate_bands_wide_and_protected():

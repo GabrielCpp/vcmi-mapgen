@@ -26,6 +26,9 @@ import sys
 
 LOD_FILES = ["H3sprite.lod", "H3ab_spr.lod", "H3bitmap.lod", "H3ab_bmp.lod"]
 
+# The repo's own map corpus — also where the checked-in .vmap header template lives.
+REPO_MAPS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maps")
+
 
 def _first_dir(candidates, default=None):
     """First candidate that exists, else `default` (or the first candidate)."""
@@ -130,19 +133,21 @@ def config_bases():
 def find_vmap_template():
     """An existing .vmap whose header we clone when writing a new map.
 
-    VCMI writes random maps into `Maps/RandomMaps/`, so that's the usual source; any
-    .vmap under Maps/ will do. Returns None when the install has none — callers should
+    The repo ships one under `maps/RandomMaps/` so the writer works on any checkout with no
+    VCMI install at all; failing that we take one from the local install (VCMI saves random
+    maps into `Maps/RandomMaps/`). Returns None when there is none anywhere — callers should
     say so plainly rather than crash on an empty glob.
     """
     env = os.environ.get("VCMI_VMAP_TEMPLATE")
     if env:
         p = os.path.expanduser(env)
         return p if os.path.exists(p) else None
-    m = maps_dir()
-    hits = sorted(glob.glob(os.path.join(m, "RandomMaps", "*.vmap"))) or sorted(
-        glob.glob(os.path.join(m, "**", "*.vmap"), recursive=True)
-    )
-    return hits[0] if hits else None
+    for d in (os.path.join(REPO_MAPS, "RandomMaps"), REPO_MAPS,
+              os.path.join(maps_dir(), "RandomMaps"), maps_dir()):
+        hits = sorted(glob.glob(os.path.join(d, "*.vmap")))
+        if hits:
+            return hits[0]
+    return None
 
 
 def vmap_template_or_die():
@@ -150,8 +155,9 @@ def vmap_template_or_die():
     p = find_vmap_template()
     if not p:
         raise FileNotFoundError(
-            f"No .vmap template found under {maps_dir()!r}. Save a random map from VCMI "
-            f"(it lands in Maps/RandomMaps/), or point VCMI_VMAP_TEMPLATE at a .vmap."
+            f"No .vmap template found under {os.path.join(REPO_MAPS, 'RandomMaps')!r} or "
+            f"{maps_dir()!r}. Save a random map from the VCMI editor into either, or point "
+            f"VCMI_VMAP_TEMPLATE at a .vmap."
         )
     return p
 

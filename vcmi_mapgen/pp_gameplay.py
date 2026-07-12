@@ -455,7 +455,7 @@ def _info_pool(terrain, has_water, has_subterrain=False):
 def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=False, ledger=None,
                 has_water=False, level=0, has_subterrain=False, avoid=frozenset(),
                 preoccupied=frozenset(), preblocked=frozenset(), preapproaches=(),
-                entrances=None):
+                entrances=None, land=None):
     """Gameplay objects for one zone. Returns (objs, occupied, blocked, approaches):
     `occupied` = every footprint cell (no vegetation there), `blocked` = the impassable
     subset (the walkable web must route around these; approach tiles are never in it).
@@ -505,7 +505,12 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
     gameplay footprint may squat on a band (the crossing must stay walkable), and the
     zone-edge guard pass guards the planned entrance reps directly (prob
     ENTRANCE_GUARD_PROB, single-side ownership zid < other) instead of hunting
-    pocket-mouths inside wide-open borders."""
+    pocket-mouths inside wide-open borders.
+
+    `land` (this level's walkable tiles, all zones) is what the mine seal tests its intended
+    entrance against — the entrance may legitimately lie in the neighbouring zone, but it
+    may NOT lie off the map. Defaults to `ts`, which is conservative: an entrance outside
+    this zone then reads as off-map and one flank is left unsealed."""
     import random
 
     st = mine_gameplay(level=level)[terrain]
@@ -741,6 +746,10 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
                 near.add((x + gx, y + gy))
         emit("MINE_SEAL", ident, x, y)
 
+    def sealable(c):
+        """A cell the mine seal may build on: this zone's land, still free."""
+        return (c in ts and c not in occupied and c not in avoid and c not in ent_reserved)
+
     town_center = None  # set once the zone's town settles
     town_mines_left = 2 if n_town else 0  # sawmill + ore pit anchor NEAR the town
     for purpose, ident in wanted:
@@ -805,19 +814,29 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
                     emit("GUARD", gident, approach[0], approach[1])
                     occupied.add(approach)  # no vegetation/pickup may stack there
                     ex, ey = approach[0], approach[1] - 1  # the entrance ('X') cell
+                    # The seal closes the four flanking tiles, leaving exactly ONE way in:
+                    # the tile BELOW the guard. Nothing checked that tile was on the map —
+                    # a mine anchored on the bottom edge row had its only entrance off-map,
+                    # so the seal walled the mine AND its guard into a dead pocket. Nothing
+                    # downstream could undo it either: g2_repair carves vegetation, and a
+                    # MINE_SEAL is not vegetation. So verify the entrance is real land, and
+                    # if it is not, leave one flank open. The guard still gates the mine —
+                    # every remaining way onto the mine's visitable tile is adjacent to it.
+                    entrance = (approach[0], approach[1] + 1)
+                    flanks = [(ex - 1, ey), (ex + 1, ey), (ex - 1, ey + 1), (ex + 1, ey + 1)]
+                    if entrance not in (land if land is not None else ts):
+                        # prefer keeping a guard-orthogonal flank (the ey+1 row) open
+                        keep = next((c for c in ((ex - 1, ey + 1), (ex + 1, ey + 1),
+                                                 (ex - 1, ey), (ex + 1, ey)) if sealable(c)), None)
+                        if keep is not None:
+                            flanks.remove(keep)
                     seal_pool = ON.decor_pool(
                         terrain, blocking=True, max_cells=1, exclude_types=ZE.EXCLUDE_DECOR_TYPES
                     )
                     if seal_pool:
-                        for sx, sy in (
-                            (ex - 1, ey),
-                            (ex + 1, ey),
-                            (ex - 1, ey + 1),
-                            (ex + 1, ey + 1),
-                        ):
-                            if ((sx, sy) in ts and (sx, sy) not in occupied
-                                    and (sx, sy) not in avoid and (sx, sy) not in ent_reserved):
-                                seal_cell(rng.choice(seal_pool), sx, sy)
+                        for cell in flanks:
+                            if sealable(cell):
+                                seal_cell(rng.choice(seal_pool), cell[0], cell[1])
                 break
 
     # a shipyard on the shore of a coastal zone (mined WATER_TRANSPORT density, boosted for

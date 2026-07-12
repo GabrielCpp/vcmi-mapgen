@@ -121,15 +121,111 @@ def _gate_links(fm, grids):
     return trigger
 
 
+def _water_components(terr, blocked, W, H):
+    """4-connected seas. Returns (tile -> comp id, [comp cells], [comp shore]) where a comp's
+    shore is every passable LAND tile 4-adjacent to it — the tiles a hero may step off onto."""
+    comp, comps = {}, []
+    for y0 in range(H):
+        for x0 in range(W):
+            if terr[y0][x0]["t"] != WATER or (x0, y0) in comp:
+                continue
+            cid, cells = len(comps), set()
+            comp[(x0, y0)] = cid
+            q = collections.deque([(x0, y0)])
+            while q:
+                x, y = q.popleft()
+                cells.add((x, y))
+                for dx, dy in NB4:
+                    nx, ny = x + dx, y + dy
+                    if (0 <= nx < W and 0 <= ny < H and terr[ny][nx]["t"] == WATER
+                            and (nx, ny) not in comp):
+                        comp[(nx, ny)] = cid
+                        q.append((nx, ny))
+            comps.append(cells)
+    shores = []
+    for cells in comps:
+        s = set()
+        for x, y in cells:
+            for dx, dy in NB4:
+                nx, ny = x + dx, y + dy
+                if (0 <= nx < W and 0 <= ny < H and not blocked[ny][nx]
+                        and terr[ny][nx]["t"] != WATER):
+                    s.add((nx, ny))
+        shores.append(s)
+    return comp, comps, shores
+
+
+def _boat_links(fm, grids):
+    """Sea travel — the other half of H3 movement, and without it this gate condemns maps
+    that are perfectly playable (a real corpus map scored reach=0.34 with 6 "unreachable"
+    towns purely because they sat across water).
+
+    A hero who can board a vessel sails a whole water component and steps off on ANY of its
+    shore tiles. Three things put a player to sea, each modelled as a boarding tile:
+      - a `boat` object — board it from the land beside it;
+      - a `shipyard` — buys a boat into the water it touches, board from its approach;
+      - a COASTAL TOWN — every player's (and the AI's) town builds a shipyard when it sits
+        on the shore, so a town touching water is a boat source in its own right.
+    Returns the same trigger map shape as `_gate_links`: standing on a boarding tile
+    enqueues every shore tile of the seas it opens."""
+    trigger = collections.defaultdict(set)
+    for l, (blocked, W, H) in grids.items():
+        terr = fm["terrain"][l]
+        comp, comps, shores = _water_components(terr, blocked, W, H)
+        if not comps:
+            continue
+        boarding = [set() for _ in comps]
+        for o in fm["objects"]:
+            if o.get("l", 0) != l:
+                continue
+            is_boat = o["type"] == "boat"
+            if not (is_boat or o["type"] == "shipyard"
+                    or TYPE2PURPOSE.get(o["type"]) == "TOWN"):
+                continue
+            cells = [(cx, cy) for cx, cy, _ in _mask_cells(o["x"], o["y"], o["mask"])]
+            seas = set()
+            for cx, cy in cells:
+                if is_boat and (cx, cy) in comp:      # the boat floats ON its sea
+                    seas.add(comp[(cx, cy)])
+                for dx, dy in NB4:                    # a shipyard/town merely TOUCHES it
+                    if (cx + dx, cy + dy) in comp:
+                        seas.add(comp[(cx + dx, cy + dy)])
+            if not seas:
+                continue
+            # where the hero must stand to board: the passable land beside the vessel
+            board = set()
+            for cx, cy in cells:
+                for dx, dy in NB4:
+                    nx, ny = cx + dx, cy + dy
+                    if (0 <= nx < W and 0 <= ny < H and not blocked[ny][nx]
+                            and terr[ny][nx]["t"] != WATER):
+                        board.add((nx, ny))
+            board |= {(x, y) for x, y in _approaches(o, blocked, W, H)
+                      if terr[y][x]["t"] != WATER}
+            for cid in seas:
+                boarding[cid] |= board
+        for cid, shore in enumerate(shores):
+            if not boarding[cid]:
+                continue                               # a sea with no vessel is a wall
+            landfall = {(x, y, l) for x, y in shore}
+            for bx, by in boarding[cid]:
+                trigger[(bx, by, l)] |= landfall
+    return trigger
+
+
 def traverse(fm, em=None):
     """Return a reachability report for the realized (possibly two-level) map.
     BFS walks passable land from the start town, descending/ascending through
-    subterranean-gate pairs, so cavern objects are reachable only if the surface
-    gate is reachable and the cavern is connected to it."""
+    subterranean-gate pairs (so cavern objects are reachable only if the surface gate is
+    reachable and the cavern is connected to it) and PUTTING TO SEA wherever a boat,
+    a shipyard or a coastal town lets a player embark (`_boat_links`) — an island across
+    open water is reachable in H3 and the gate must say so."""
     grids = {l: passable_grid(fm, l) for l in range(len(fm["terrain"]))}
     blocked, W, H = grids[0]
     seed, start = _start_seed(fm, blocked, W, H)
     trigger = _gate_links(fm, grids)
+    for t, dest in _boat_links(fm, grids).items():   # sea travel, same trigger mechanism
+        trigger[t] |= dest
 
     reached = set((x, y, 0) for x, y in seed)
     q = collections.deque(reached)
@@ -173,7 +269,11 @@ def traverse(fm, em=None):
         zones_reached, zones_total = len(seen_z), total
         bad_zones = sorted(set(range(total)) - seen_z)
 
-    n_passable = sum(not blocked[y][x] for y in range(H) for x in range(W))
+    # both counts span EVERY level: `reached` always did, so a surface-only denominator made
+    # the ratio exceed 1 on a two-level map (silently clamped downstream, hiding the surface
+    # the hero never actually walked).
+    n_passable = sum(not bl[y][x] for bl, lw, lh in grids.values()
+                     for y in range(lh) for x in range(lw))
     cavern_reached = sum(1 for (x, y, l) in reached if l == 1) if len(grids) > 1 else None
     ok = start is not None and not bad_towns and not bad_mines and not bad_zones
     return {
