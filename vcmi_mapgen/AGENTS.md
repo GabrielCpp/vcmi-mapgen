@@ -11,14 +11,17 @@
   engine's input. Regenerate from `maps/` with `python -m vcmi_mapgen.extract_vmap`. The
   engine-internal mask charset (`'X'` blocked-entrance vs `'A'` walk-on) is NOT read back
   from a `.vmap`'s `template.mask` (VCMI's own charset can't represent that distinction —
-  see `kit.vmap.terrain.vcmi_mask`'s docstring); it's re-derived deterministically from the
-  ontology by object identity instead.
-- Object identity comes from VCMI's own config via `vcmi_mapgen/vcmi_ids.py`
+  see `kit.vmap.terrain.vcmi_mask`'s docstring); `load_faithful` re-derives it from
+  `ontology.mask_of(animation)` instead, falling back to the file's own mask only when the
+  ontology has no data for that animation at all (heroes — their per-portrait animations
+  aren't in `objects.txt`'s catalog — where the fallback is safe since a hero's mask has no
+  `'B'` cell to begin with).
+- Object identity comes from VCMI's own config via `vcmi_mapgen/kit/vcmi_config.py`
   (`resolve(obj_class, obj_subid) → (type, subtype)`). Never guess subtypes. The reference
   C++ format sources are in `vcmi-h3m-format-reference/`.
 - A visitable object's template needs `visitableFrom` (the 3×3 approach grid) or the editor
   warns "no visitable directions" — `faithful.to_vmap` sets it.
-- Footprints: `obj_resolve.mask_cells(mask, x, y)` expands a mask anchored at its
+- Footprints: `kit.objects.mask_cells(mask, x, y)` expands a mask anchored at its
   bottom-right cell; `'B'` = blocking, `'A'`/`'V'` = visitable/overlay, `' '` = empty.
 
 ## Segmentation

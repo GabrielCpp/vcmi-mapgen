@@ -308,8 +308,7 @@ def main():
     os.makedirs(rdir, exist_ok=True)
 
     if args.verdict:
-        import glob
-        maps = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(ZE.ROOT, "maps_json", "*.json")))[:args.verdict]
+        maps = OR.all_map_names()[:args.verdict]
         agg = collections.Counter()
         nrooms = []; npockets = []; widths = []; ngz = 0; nz = 0
         for mp in maps:

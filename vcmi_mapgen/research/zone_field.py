@@ -53,11 +53,10 @@ def _feat(x, y, openmap, edist):
 def learn(terrain, nmaps=159):
     """P(open | left_run, up_run, edge_bin) and the mean open fraction, over corpus zones of one
     terrain. Raster order so left/up are causal."""
-    import glob
     op = collections.Counter()
     tot = collections.Counter()
     fracs = []
-    maps = sorted(os.path.basename(p)[:-5] for p in glob.glob(os.path.join(ZE.ROOT, "maps_json", "*.json")))[:nmaps]
+    maps = OR.all_map_names()[:nmaps]
     for mp in maps:
         try:
             fm = OR.load_faithful(mp)

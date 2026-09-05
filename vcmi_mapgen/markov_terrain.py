@@ -5,11 +5,9 @@ in raster order with back-off. This reproduces the real LOCAL texture (patch siz
 coastlines, how terrains border each other) instead of arbitrary noise blobs.
 """
 
-import json, glob, random, collections, os
+import random, collections
 
-from vcmi_mapgen.kit.paths import project_root
-
-ROOT = project_root()
+from vcmi_mapgen.kit import objects as OR
 
 
 def learn(level_index):
@@ -18,8 +16,8 @@ def learn(level_index):
     pair = collections.defaultdict(collections.Counter)  # (l,u)->center
     one = collections.defaultdict(collections.Counter)  # (l,)->center
     marg = collections.Counter()
-    for f in sorted(glob.glob(f"{ROOT}/maps_json/*.json")):
-        m = json.load(open(f))
+    for name in OR.all_map_names():
+        m = OR.load_faithful(name)
         if level_index >= len(m["terrain"]):
             continue
         g = m["terrain"][level_index]
@@ -86,8 +84,8 @@ def learn4(level_index):
     )  # frozenset-ish (sorted 2 of nbrs) backoff via opposite pairs
     horiz = collections.defaultdict(collections.Counter)  # (l,r)->c
     vert = collections.defaultdict(collections.Counter)  # (u,d)->c
-    for f in sorted(glob.glob(f"{ROOT}/maps_json/*.json")):
-        m = json.load(open(f))
+    for name in OR.all_map_names():
+        m = OR.load_faithful(name)
         if level_index >= len(m["terrain"]):
             continue
         g = m["terrain"][level_index]

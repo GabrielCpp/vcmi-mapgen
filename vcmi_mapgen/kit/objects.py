@@ -2,15 +2,18 @@
 
 Two sources of truth, both already byte-exact:
 
-  * ``maps_json/<name>.json``  — every corpus object carries its EXACT
-    ``type, subtype, animation, mask`` (built from the real .h3m template). Use
-    :func:`exact_identity` to reproduce a corpus object identically.
+  * ``maps_vmap/<name>.vmap``  — every corpus object carries its EXACT
+    ``type, subtype, animation`` (built from the real .h3m template) plus a footprint
+    ``mask`` re-derived from the ontology by animation (see :func:`load_faithful` --
+    a real .vmap's own ``template.mask`` can't distinguish a blocked-entrance 'X' cell
+    from a walk-on 'A' one, so it is never trusted directly). Use :func:`exact_identity`
+    to reproduce a corpus object identically.
   * ``data/objlib.json`` — ``purpose -> terrain_id -> [ {type, subtype, animation,
     mask, weight}, ... ]`` — the catalog of interchangeable concrete objects per
     purpose+terrain, harvested from the corpus.
 
 The terrain cells in a faithful map ({t,view,rt,rd,ot,od,m}) are already what
-``faithful.to_vmap`` / ``kit.vmap_format.tile_string`` expect, so a generated map can pass
+``faithful.to_vmap`` / ``kit.vmap.terrain.tile_string`` expect, so a generated map can pass
 faithful terrain straight through.
 """
 from __future__ import annotations
@@ -19,7 +22,9 @@ import json
 import os
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.kit.vmap.terrain import decode_tile_string
 
 ROOT = project_root()
 _OBJLIB = json.load(open(str(ROOT / "data" / "objlib.json")))
@@ -33,51 +38,62 @@ _IDENT_KEYS = ("type", "subtype", "animation", "mask")
 # ---------------------------------------------------------------------------
 
 def faithful_path(name: str) -> str:
-    return str(ROOT / "maps_json" / f"{name}.json")
+    return str(ROOT / "maps_vmap" / f"{name}.vmap")
 
 
 def load_faithful(name: str) -> dict:
-    """Load a byte-exact faithful map: terrain (writer-ready) + objects (exact mask)."""
-    return json.load(open(faithful_path(name)))
+    """Load a byte-exact faithful map: terrain (writer-ready) + objects (exact mask).
+
+    Adapts the real .vmap this corpus map now lives as (via `kit.vmap.reader`) into the
+    plain-dict shape the rest of the engine expects. Each object's `mask` is re-derived
+    from the ontology by animation (`ontology.mask_of`), NOT read from the file's
+    `template.mask` -- see the module docstring and `kit.vmap.terrain.vcmi_mask` for why
+    that field is lossy for the 'X' vs 'A' distinction `is_blocking`/`mask_cells` depend on.
+    Objects the ontology has no data for at all (heroes -- their per-portrait animations
+    aren't in objects.txt's catalog) fall back to the file's own mask instead of the
+    ontology accessor's conservative all-blocking default; a hero's 1-tile mask has no
+    'B' cell to begin with, so the file's charset is unambiguous for it.
+    """
+    doc = VM.read(faithful_path(name))
+    terrain = [[[decode_tile_string(s) for s in row] for row in lvl] for lvl in doc.terrain]
+    objects = [
+        {
+            "x": o.x, "y": o.y, "l": o.l,
+            "type": o.type, "subtype": o.subtype,
+            "animation": o.animation,
+            "mask": ON.mask_of(o.animation) if ON.has_animation(o.animation) else o.mask,
+        }
+        for o in doc.objects
+    ]
+    return {
+        "name": doc.name, "width": doc.width, "height": doc.height,
+        "twoLevel": doc.two_level, "terrain": terrain, "objects": objects,
+    }
 
 
 def all_map_names() -> list[str]:
-    d = ROOT / "maps_json"
-    return [os.path.splitext(f)[0] for f in sorted(os.listdir(d)) if f.endswith(".json")]
+    d = ROOT / "maps_vmap"
+    return [os.path.splitext(f)[0] for f in sorted(os.listdir(d)) if f.endswith(".vmap")]
 
 
 # ---------------------------------------------------------------------------
 # Object classification & exact identity
 # ---------------------------------------------------------------------------
 
-def purpose_of(obj: dict) -> str:
-    """Purpose of a faithful (corpus) object — uses its raw cls/sub via the ontology.
-    Only corpus objects (loaded via load_faithful) carry cls/sub; a GENERATED map's
-    objects carry type/subtype/purpose instead (purpose is set directly at construction
-    time) — use :func:`type_to_purpose` for a type-keyed lookup that works on either."""
-    return ON.resolve(obj["cls"], obj["sub"]).get("purpose", "UNKNOWN")
-
-
 _TYPE2PURPOSE = {it["type"]: p for p, terr in _OBJLIB.items()
                  for items in terr.values() for it in items}
 
 
 def type_to_purpose(type_name: str) -> str | None:
-    """Purpose for an object TYPE alone (no cls/sub needed) — built from the same
-    objlib.json catalog as :func:`purpose_of`, and verified byte-equivalent to it across
-    the full corpus (every type's purpose_of() result agrees with this table). The only
-    lookup that works for a generated map's objects, which don't carry cls/sub."""
+    """Purpose for an object TYPE alone -- built from the same objlib.json catalog
+    harvested from the corpus. The only lookup a real .vmap object's type/subtype
+    supports (it carries no raw h3m cls/sub)."""
     return _TYPE2PURPOSE.get(type_name)
 
 
-def cluster_of(obj: dict) -> str:
-    """Macro-cluster of a faithful object (DECORATION / VISIBLE / GATE / QUEST_PAIR)."""
-    return ON.resolve(obj["cls"], obj["sub"]).get("cluster", "VISIBLE")
-
-
-def info_of(obj: dict) -> dict:
-    """Full ontology record (purpose, cluster, relational, terrain_coupled, ...)."""
-    return ON.resolve(obj["cls"], obj["sub"])
+def purpose_of(obj: dict) -> str:
+    """Purpose of a faithful (corpus) or generated object, keyed by its `type` alone."""
+    return type_to_purpose(obj.get("type")) or "UNKNOWN"
 
 
 def exact_identity(obj: dict) -> dict:
@@ -89,11 +105,6 @@ def is_blocking(mask: list[str]) -> bool:
     """True if the object's footprint blocks movement (mask has a 'B' or 'X' cell — 'X' is a
     blocked-and-visitable building action tile)."""
     return any(ch in "BX" for row in mask for ch in row)
-
-
-def is_relational(obj: dict) -> bool:
-    """True for portals/gates/quest links whose subtype must not be re-rolled."""
-    return ON.resolve(obj["cls"], obj["sub"]).get("relational", False)
 
 
 def mask_cells(mask: list[str], x: int, y: int):

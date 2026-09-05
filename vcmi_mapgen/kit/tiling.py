@@ -9,13 +9,8 @@ generated terrain reads as coherent regions rather than fragmenting into unplaya
 sliver-zones.
 """
 import collections
-import json
-import os
 
 from vcmi_mapgen.kit import terrain_segment as TS
-from vcmi_mapgen.kit.paths import project_root
-
-ROOT = project_root()
 
 # Per-terrain CLEAN interior tile views (corpus-derived: the views real maps use on
 # tiles whose 4 neighbours are the same terrain). Synthetic views 0-7 land on
@@ -58,12 +53,12 @@ def _learn_terrain_tiler():
     """(exact, four, clean) view/m tables learned from every corpus terrain tile."""
     if "v" in _TILER:
         return _TILER["v"]
-    import glob
+    from vcmi_mapgen.kit import objects as OR
     exact = collections.defaultdict(collections.Counter)   # (t, sig8)        -> (view,m)
     four = collections.defaultdict(collections.Counter)    # (t, N,W,E,S)     -> (view,m)
     clean = collections.defaultdict(collections.Counter)   # t (all-same nbrs)-> (view,m)
-    for f in sorted(glob.glob(os.path.join(ROOT, "maps_json", "*.json"))):
-        m = json.load(open(f))
+    for name in OR.all_map_names():
+        m = OR.load_faithful(name)
         for g in m["terrain"]:
             H = len(g)
             W = len(g[0])

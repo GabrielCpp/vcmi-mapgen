@@ -9,7 +9,7 @@ measurement: a single :func:`score_map` that combines
 where
   * **reach**   — playability, reusing :func:`traverse.traverse` (can a hero walk the map?),
   * **dist**    — distance of the map's *global* feature vector to the corpus mean (z-distance
-                  over `maps_json/`), the half nothing modelled before,
+                  over the corpus), the half nothing modelled before,
   * **balance** — town count / spacing, guard↔reward coupling, an outward value gradient, and
                   relational-pair completeness (no lone half of a portal/gate pair).
 
@@ -189,7 +189,7 @@ def _min_spacing(towns, W, H):
 # ---------------------------------------------------------------------------
 
 def _corpus_stats():
-    """(feature_names, mean[], std[]) over all maps_json/ maps; cached in memory + on disk."""
+    """(feature_names, mean[], std[]) over all corpus maps; cached in memory + on disk."""
     global _CORPUS
     if _CORPUS is not None:
         return _CORPUS
