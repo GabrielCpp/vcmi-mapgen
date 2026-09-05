@@ -2,7 +2,7 @@
 split out of vcmi_ids.py; adding a minimal one since the move already touches every caller.
 
 Requires a local VCMI install (config/objects, config/creatures, ... on disk); skipped
-otherwise, same gating pattern as render_editor_test.py's H3 sprite LOD check.
+otherwise, same gating pattern as sprites_test.py's H3 sprite LOD check.
 """
 import pytest
 

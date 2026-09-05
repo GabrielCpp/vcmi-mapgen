@@ -450,7 +450,7 @@ def render_markov_field(seed=3, W=72, H=72, scale=9, out=None, min_area=60,
 
 # terrain id -> (2-char tile code, full-ground view pool). The views are the corpus-observed
 # "interior" (all-neighbours-same-terrain) tile variants, so the ground reads as clean texture
-# rather than transition/edge tiles. See render_editor.TERR_DEF for the .def behind each code.
+# rather than transition/edge tiles. See renderers.sprites.TERR_DEF for the .def behind each code.
 _TERR_VIEWS = {
     0: ("dt", [21, 22, 23, 24, 26, 27]),   1: ("sa", [1, 2, 3, 4, 6, 7]),
     2: ("gr", [49, 50, 51, 52, 55, 56]),   3: ("sn", [49, 50, 52, 53, 54, 55]),
@@ -465,7 +465,7 @@ def render_markov_sprites(seed=3, W=72, H=72, out=None, min_area=60,
     """Same Markov terrain + per-zone open/blocked field as `render_markov_field`, but rendered with
     REAL VCMI sprites: every blocked tile is planted with a single-tile blocking DECORATION (trees,
     rocks, ...) drawn from the ontology's `decor_pool` for that terrain, and the whole thing is
-    composited by `render_editor` over real 32x32 terrain tiles. Open tiles stay bare ground -> the
+    composited by `renderers.sprites` over real 32x32 terrain tiles. Open tiles stay bare ground -> the
     navigable web reads as walkable land threading through real vegetation. The ontology is the sole
     source of object identity; we only choose WHERE (blocked tiles) and pick among its native pool."""
     import random
@@ -473,7 +473,7 @@ def render_markov_sprites(seed=3, W=72, H=72, out=None, min_area=60,
     from vcmi_mapgen import markov_terrain as MT
     from vcmi_mapgen import ontology as ON
     from vcmi_mapgen.kit import objects as _OR
-    from vcmi_mapgen import render_editor as RED
+    from vcmi_mapgen.renderers import sprites as RED
 
     name2id = {v: k for k, v in TNAME.items()}
 

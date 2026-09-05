@@ -2755,7 +2755,7 @@ def _def_tile_dims(animation):
     """(width, height) of an animation's sprite in 32px TILES, from the DEF file header in the
     H3 LOD (type u32, width u32, height u32). None when the DEF is absent."""
     import struct
-    from vcmi_mapgen import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
 
     data = RE.lod().read(animation + ".def")
     if not data or len(data) < 12:
@@ -2794,7 +2794,7 @@ def _decode_mask_full(passability, triggers, tile_dims):
 
 def _objects_txt_raw():
     """[(animation, passability48, triggers48), ...] straight from objects.txt (no decode)."""
-    from vcmi_mapgen import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
 
     raw = RE.lod().read("objects.txt")
     if raw is None:
@@ -2814,7 +2814,7 @@ def _objects_txt_raw():
 def _objects_txt_records():
     """[(animation, allowedMask, nativeMask, class, subclass, mask), ...] from the LOD's
     objects.txt. ``mask`` is the decoded B/A/V footprint (see :func:`_decode_mask`)."""
-    from vcmi_mapgen import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
 
     raw = RE.lod().read("objects.txt")
     if raw is None:

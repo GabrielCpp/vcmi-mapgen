@@ -7,7 +7,7 @@ from PIL import Image
 
 from vcmi_mapgen.pipeline import MapState
 
-TILE = 32  # pixels per tile — matches render_editor
+TILE = 32  # pixels per tile — matches renderers.sprites
 
 
 class MapOverlay(ABC):

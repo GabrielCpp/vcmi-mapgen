@@ -29,11 +29,12 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
   - `terrain_segment.py` — same-terrain flood-fill segmentation + interior-depth features.
   - `obj_resolve.py`, `ontology.py` — faithful-map loader, object identity, purpose.
   - `faithful.py`, `vmapwrite.py`, `traverse.py` — faithful map dict → editor `.vmap`.
-  - `render_editor.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt 0/1/2/3);
-    `render.py` — schematic PNGs.
+  - `renderers/sprites.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt
+    0/1/2/3); `renderers/png.py` — schematic PNGs; `renderers/vmap.py` — playable `.vmap`
+    export; `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...).
   - `markov_terrain.py` — the terrain generator (Markov chain learned from the corpus).
   - `h3m.py`, `vcmi_ids.py`, `extract_vmap.py` — `.h3m` → `.vmap` corpus-extraction pipeline.
-  - `render_editor_test.py` — rendering-engine reliability tests.
+  - `renderers/sprites_test.py` — rendering-engine reliability tests.
 - **`maps/`** — the `.h3m` corpus (159 maps), the source data.
 - **`maps_vmap/`** — one real `.vmap` per corpus map (the engine's input; regenerable from
   `maps/` via `extract_vmap.py`).
@@ -49,7 +50,7 @@ uv run python -m vcmi_mapgen.zone_engine run "All for One"      # full foundatio
 uv run python -m vcmi_mapgen.zone_engine rebuild "All for One" --identity --verify
 uv run python -m vcmi_mapgen.zone_engine reconstruct "All for One" --zone 7 --deform
 uv run python -m vcmi_mapgen.markov_terrain                     # learned terrain generator
-uv run python -m vcmi_mapgen.extract_faithful                  # regenerate maps_json/ from maps/
+uv run python -m vcmi_mapgen.extract_vmap                      # regenerate maps_vmap/ from maps/
 uv run pytest                                                  # rendering-engine reliability tests
 ```
 

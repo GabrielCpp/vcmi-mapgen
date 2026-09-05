@@ -20,7 +20,7 @@
   (`resolve(obj_class, obj_subid) → (type, subtype)`). Never guess subtypes. The reference
   C++ format sources are in `vcmi-h3m-format-reference/`.
 - A visitable object's template needs `visitableFrom` (the 3×3 approach grid) or the editor
-  warns "no visitable directions" — `faithful.to_vmap` sets it.
+  warns "no visitable directions" — `rebuild.engine.fm_to_document` sets it.
 - Footprints: `kit.objects.mask_cells(mask, x, y)` expands a mask anchored at its
   bottom-right cell; `'B'` = blocking, `'A'`/`'V'` = visitable/overlay, `' '` = empty.
 
@@ -56,11 +56,11 @@
 
 ## Rendering (editor-quality)
 
-- `render_editor.py` composites real 32px H3 sprites from the local LOD files. `_decode_frame`
+- `renderers/sprites.py` composites real 32px H3 sprites from the local LOD files. `_decode_frame`
   handles all four H3 DEF formats: 0 (raw), 1 (per-line RLE), 2 (per-line typed RLE),
   **3 (one uint16 offset per 32-px block, row-major)** — getting format 3 wrong mangles every
   mountain/town/monster, so it is the key thing the tests guard.
-- `vcmi_mapgen/render_editor_test.py` is the reliability suite: every DEF format decodes to its
+- `vcmi_mapgen/renderers/sprites_test.py` is the reliability suite: every DEF format decodes to its
   header dimensions and non-empty content, all terrain tiles decode, a corpus-wide sprite
   decode sweep, renderer determinism, and a golden **rebuilt == source** pixel-identical check.
   Run `uv run pytest`; tests skip when the H3 LOD files are absent.

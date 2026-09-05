@@ -1,4 +1,4 @@
-"""Reliability tests for the H3-sprite rendering engine (render_editor.py).
+"""Reliability tests for the H3-sprite rendering engine (renderers/sprites.py).
 
 These guard the parts that silently broke before: the DEF frame decoder across all
 four H3 sprite formats (the format-3 block decoder in particular), terrain-tile
@@ -9,7 +9,7 @@ the pixel level).
 They require the local H3 sprite LOD files; the whole module is skipped when those
 are absent (e.g. CI without a VCMI install).
 
-Run: `uv run pytest vcmi_mapgen/render_editor_test.py -q`
+Run: `uv run pytest vcmi_mapgen/renderers/sprites_test.py -q`
 """
 import os
 import struct
@@ -17,10 +17,11 @@ import collections
 
 import pytest
 
-import vcmi_mapgen.render_editor as RE
+import vcmi_mapgen.renderers.sprites as RE
 import vcmi_mapgen.kit.objects as OR
-import vcmi_mapgen.faithful as FA
 import vcmi_mapgen.zone_engine as ZE
+from vcmi_mapgen.kit import vmap as VM
+from vcmi_mapgen.rebuild.engine import fm_to_document
 from vcmi_mapgen.rebuild.render import _paint_sort
 
 TEST_MAP = "All for One"
@@ -175,8 +176,8 @@ def test_rebuilt_map_renders_pixel_identical_to_source(tmp_path):
 
     src_vmap = str(tmp_path / "source.vmap")
     reb_vmap = str(tmp_path / "rebuilt.vmap")
-    FA.to_vmap(src_fm, src_vmap, name="source")
-    FA.to_vmap(rebuilt_fm, reb_vmap, name="rebuilt")
+    VM.write(fm_to_document(src_fm, name="source"), src_vmap)
+    VM.write(fm_to_document(rebuilt_fm, name="rebuilt"), reb_vmap)
 
     ssurf, sobjs = RE.read_vmap(src_vmap)
     rsurf, robjs = RE.read_vmap(reb_vmap)

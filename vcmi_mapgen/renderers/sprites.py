@@ -1,19 +1,21 @@
-"""Render a .vmap (or real .h3m-derived map JSON) exactly as the VCMI map editor
-shows it: real 32x32 terrain tiles from the H3 sprite LOD, real object sprites
-composited at their anchor positions, objects drawn back-to-front (painter's order).
+"""Render a .vmap exactly as the VCMI map editor shows it: real 32x32 terrain tiles
+from the H3 sprite LOD, real object sprites composited at their anchor positions,
+objects drawn back-to-front (painter's order).
 
 This replaces the dot/blob renders that hid structural problems.
 
 Usage:
-  uv run python src/render_editor.py out/ZoneGraph-All_for_One-s0.vmap
-  uv run python src/render_editor.py out/ZoneGraph-All_for_One-s0.vmap --compare "All for One"
-    (side-by-side: generated left, real right re-rendered from the corpus JSON)
+  uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap
+  uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap --compare "All for One"
+    (side-by-side: generated left, real right re-rendered from the corpus .vmap)
 """
 
-import sys, os, struct, zlib, zipfile, re, json, argparse, collections
+import os, struct, zlib, argparse
 from PIL import Image
 
-from vcmi_mapgen.kit.paths import project_root, vcmi_home, vcmi_config_dirs
+from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit import vmap as VM
+from vcmi_mapgen.kit.paths import project_root, vcmi_home
 ROOT = project_root()
 
 LOD_DIR = os.path.join(vcmi_home(), "Data")
@@ -257,44 +259,25 @@ def terr_tile_img(tile_str):
 
 
 # --------------------------------------------------------------------------- vmap reader
-def _relaxed(t):
-    t = re.sub(r"//[^\n]*", "", t)
-    t = re.sub(r",(\s*[}\]])", r"\1", t)
-    return json.loads(t)
+def _adapt(doc):
+    """A VmapDocument -> the (surf, objs) shape render_map needs (surface terrain +
+    each object's l/x/y/type/animation/mask)."""
+    surf = doc.terrain[0]
+    objs = [
+        {"x": o.x, "y": o.y, "l": o.l, "type": o.type,
+         "template": {"animation": o.animation, "mask": o.mask}}
+        for o in doc.objects
+    ]
+    return surf, objs
 
 
 def read_vmap(path):
-    z = zipfile.ZipFile(path)
-    surf = _relaxed(z.read("surface_terrain.json").decode())
-    objs = _relaxed(z.read("objects.json").decode("utf-8", "replace"))
-    return surf, objs
+    return _adapt(VM.read(path))
 
 
 def read_real(name):
-    """Load from original .h3m file (full tile view/mirror data) + objects with animation."""
-    h3m_path = f"{ROOT}/maps/{name}.h3m"
-    from vcmi_mapgen import h3m as H3M
-    from vcmi_mapgen.kit import vmap_format as FA
-    hmap = H3M.parse_file(h3m_path)
-    # build tile strings from the parsed Tile objects (terrain, view, mirror)
-    surf = []
-    for row in hmap.terrain[0]:
-        surf.append([FA.tile_string({"t": t.terrain, "view": t.view, "m": t.mirror,
-                                      "rt": getattr(t, "river_type", 0),
-                                      "rd": getattr(t, "river_dir", 0),
-                                      "ot": getattr(t, "road_type", 0),
-                                      "od": getattr(t, "road_dir", 0)})
-                     for t in row])
-    objs = []
-    for mo in hmap.objects:
-        if getattr(mo, "level", 0) != 0:
-            continue
-        anim = getattr(mo, "animation", "") or ""
-        anim = anim.lower().replace(".def", "")
-        objs.append({"x": mo.x, "y": mo.y, "l": 0,
-                     "template": {"animation": anim, "mask": []},
-                     "type": ""})
-    return surf, objs
+    """Load the corpus map's own .vmap (full tile view/mirror data) + objects with animation."""
+    return _adapt(VM.read(OR.faithful_path(name)))
 
 
 # --------------------------------------------------------------------------- compositing

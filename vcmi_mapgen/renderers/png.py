@@ -32,14 +32,14 @@ class PngRenderer:
     def render(self, state: MapState, level: int = 0, title: str = ""):
         """Return a PIL Image for the given level, with overlays composited."""
         from PIL import Image
-        from vcmi_mapgen import render_editor as RED
+        from vcmi_mapgen.renderers import sprites as RED
         surfs = state.surfs.get(level)
         if surfs is None:
             raise ValueError(f"state.surfs has no level {level}")
         if level == 0:
             objs = [o for o in state.objs if o.get("l", 0) == 0]
         else:
-            # render_editor draws only l==0 objects; shift underground to l=0
+            # renderers.sprites draws only l==0 objects; shift underground to l=0
             objs = [dict(o, l=0) for o in state.objs if o.get("l", 0) == level]
         base = RED.render_map(surfs, objs, title=title)
         if not self._overlays:

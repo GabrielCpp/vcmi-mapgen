@@ -59,7 +59,7 @@ def render_segmentation(name: str, out_path: str):
 
 def _paint_sort(objs):
     """Canonical paint order so overlapping sprites stack identically across renders.
-    render_editor.render_map re-sorts stably by (l!=0, y, x), so this only fixes ties."""
+    renderers.sprites.render_map re-sorts stably by (l!=0, y, x), so this only fixes ties."""
     return sorted(objs, key=lambda o: (o["y"], o["x"], o.get("type", ""),
                                        o.get("subtype", ""),
                                        o.get("template", {}).get("animation", "")))
@@ -69,7 +69,7 @@ def editor_render(vmap_path: str, out_path: str, compare_vmap: str | None = None
                   labels=("SOURCE (faithful)", "REBUILT")):
     """Realistic editor-sprite render. With compare_vmap, render both via the SAME
     read_vmap path (surface, object-identical => visually identical)."""
-    from vcmi_mapgen import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
     from PIL import Image
     surf, objs = RE.read_vmap(vmap_path)
     gen = RE.render_map(surf, _paint_sort(objs), title=labels[1])
@@ -91,7 +91,7 @@ def editor_render(vmap_path: str, out_path: str, compare_vmap: str | None = None
 def _render_panel(pan, title=None):
     """Render ONE zone panel (cropped to the zone) with REAL H3 sprites at editor
     resolution (32px), only the zone's own tiles, transparent elsewhere. RGBA."""
-    from vcmi_mapgen import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
     from PIL import Image, ImageDraw
     T = RE.TILE  # 32
     terr, tiles, W, H = pan["terr"], pan["tiles"], pan["W"], pan["H"]

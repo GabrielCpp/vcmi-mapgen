@@ -21,7 +21,7 @@ Reuses (no existing file modified):
   terrain_segment.segment / compute_static_features   (zones + interior-depth feature)
   kit.objects.load_faithful / exact_identity / purpose_of / mask_cells
   kit.vmap.writer.write (via rebuild.engine.fm_to_document)   (artifacts)
-  render_editor.read_vmap / read_real / render_map     (realistic sprite render)
+  renderers.sprites.read_vmap / read_real / render_map     (realistic sprite render)
 """
 from __future__ import annotations
 
@@ -163,7 +163,7 @@ def _mask_overlay(full_sprite, grid, tile):
     tile.) Validated against art: pine `B` on the trunk, wood pile `A` on the logs, seer hut
     centred, town gate at the sprite centre. '.' grid cells are outside the footprint and not drawn.
     Cropped to the union of sprite content + footprint. (This sprite-canvas frame is distinct from
-    the map-placement bottom-RIGHT anchor in render_editor/kit.objects -- do not conflate them.)"""
+    the map-placement bottom-RIGHT anchor in renderers.sprites/kit.objects -- do not conflate them.)"""
     from PIL import Image, ImageDraw
 
     base = full_sprite.convert("RGBA")
@@ -218,7 +218,7 @@ def cmd_render_ontology(args):
     """
     import csv
     import shutil
-    from vcmi_mapgen import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
     import ontology as ON
 
     out_root = args.out or os.path.join(ROOT, "out", "ontology")

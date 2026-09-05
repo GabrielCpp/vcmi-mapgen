@@ -33,7 +33,7 @@ import json
 import os
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen import render_editor as RED
+from vcmi_mapgen.renderers import sprites as RED
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.kit.paths import project_root
 from PIL import Image, ImageDraw
