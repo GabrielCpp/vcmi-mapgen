@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import os
+from collections import defaultdict
 
 from vcmi_mapgen.pipeline import MapState
-from vcmi_mapgen import faithful as FA
+from vcmi_mapgen.rebuild.engine import fm_to_document
+from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root
 
 ROOT = project_root()
@@ -29,12 +31,13 @@ class VmapRenderer:
             path = os.path.join(self.out_dir, path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # build level list in level order (faithful writer expects [cells0, cells1?])
+        # build level list in level order (fm_to_document expects [cells0, cells1?])
         levels = [state.cells[lvl] for lvl in sorted(state.cells)]
+        height, width = len(levels[0]), len(levels[0][0]) if levels[0] else 0
 
         towns = [o for o in state.objs if o.get("purpose") == "TOWN"]
         fm = {
-            "name": name,
+            "name": name, "width": width, "height": height,
             "terrain": levels,
             "objects": [o for o in state.objs if o.get("type")],
             "main_town": (
@@ -43,12 +46,12 @@ class VmapRenderer:
                 if towns else None
             ),
         }
-        vp = FA.to_vmap(fm, path, name=name)
+        doc = fm_to_document(fm, name=name)
 
         if state.player_towns:
             teams = _parse_teams(teams_spec, len(state.player_towns))
-            _apply_playability(vp, state.player_towns, teams)
-        return vp
+            _apply_playability(doc, state.player_towns, teams)
+        return VM.write(doc, path)
 
 
 def _parse_teams(spec: str, n: int) -> list[int]:
@@ -66,8 +69,8 @@ def _parse_teams(spec: str, n: int) -> list[int]:
     return out
 
 
-def _apply_playability(vmap_path: str, player_towns: list, teams: list[int]) -> None:
-    """Deterministic playability overlay on an exported .vmap:
+def _apply_playability(doc, player_towns: list, teams: list[int]) -> None:
+    """Deterministic playability overlay on a VmapDocument (in place):
 
       1. exactly len(player_towns) playable slots, slot i wired to its designated town
          (any faction allowed — the towns are usually randomTown) — AND the town OBJECT
@@ -77,31 +80,20 @@ def _apply_playability(vmap_path: str, player_towns: list, teams: list[int]) -> 
       3. victory = DEFEAT ALL (the canonical standardWin triggered event; standardDefeat =
          7 days without town), any special victory conditions stripped.
     """
-    import json
-    import zipfile
-    from collections import defaultdict
-
-    with zipfile.ZipFile(vmap_path) as z:
-        files = {n: z.read(n) for n in z.namelist()}
-
-    h = json.loads(files["header.json"].decode())
-    vobjs = json.loads(files["objects.json"].decode())
-    pids = sorted(p for p, pl in h["players"].items() if isinstance(pl, dict))
-
-    for i, pid in enumerate(pids):
-        pl = h["players"][pid]
+    # doc.players is already sorted by color (fm_to_document's determinism guarantee).
+    for i, pl in enumerate(doc.players):
         if i < len(player_towns):
             t = player_towns[i]
-            pl["mainTown"] = {"generateHero": True, "l": t.get("l", 0),
-                              "x": t["x"] - 2, "y": t["y"] - 2}
-            pl["canPlay"] = "PlayerOrAI"
-            pl["team"] = int(teams[i])
+            pl.main_town = {"generateHero": True, "l": t.get("l", 0),
+                            "x": t["x"] - 2, "y": t["y"] - 2}
+            pl.can_play = "PlayerOrAI"
+            pl.team = int(teams[i])
             if t.get("type") == "town":
                 # concrete start town (spare-neutral top-up): the lobby must not offer
                 # factions the map cannot honour — restrict to the authored one, exactly
                 # like VCMI's own RMG maps do
-                pl["allowedFactions"] = {"anyOf": [f"core:{t['subtype']}"]}
-                pl.pop("randomFaction", None)
+                pl.allowed_factions = {"anyOf": [f"core:{t['subtype']}"]}
+                pl.random_faction = None
             else:
                 # randomTown start: any faction; VCMI resolves the OWNED random town to
                 # the lobby pick (CGTownInstance::randomizeFaction). PlayerInfo::defaultCastle()
@@ -109,32 +101,29 @@ def _apply_playability(vmap_path: str, player_towns: list, teams: list[int]) -> 
                 # allowedFactions alone still defaults the lobby dropdown to the first
                 # faction (Castle) sorted by id. Field name from MapFormatJson.cpp's
                 # serializePlayerInfo: handler.serializeBool("randomFaction", ...).
-                pl.pop("allowedFactions", None)
-                pl["randomFaction"] = True
-            for vo in vobjs:                         # ownership lives on the town object
-                if (vo["x"] == t["x"] and vo["y"] == t["y"]
-                        and vo.get("l", 0) == t.get("l", 0)
-                        and vo.get("type") in ("town", "randomTown")):
-                    vo.setdefault("options", {})["owner"] = pid
+                pl.allowed_factions = None
+                pl.random_faction = True
+            for vo in doc.objects:                   # ownership lives on the town object
+                if (vo.x == t["x"] and vo.y == t["y"] and vo.l == t.get("l", 0)
+                        and vo.type in ("town", "randomTown")):
+                    vo.options = dict(vo.options or {})
+                    vo.options["owner"] = pl.id
                     break
         else:
-            pl["mainTown"] = None
-            pl["canPlay"] = "false"
-            pl.pop("team", None)
+            pl.main_town = None
+            pl.can_play = "false"
+            pl.team = None
     # VCMI's lobby/map-select screen reads alliances from this top-level grouping —
     # not from each player's individual "team" int above — so it must be set for
     # the UI to show teams at all. Real VCMI RMG maps omit the key entirely for FFA.
     groups = defaultdict(list)
-    for i, pid in enumerate(pids[:len(player_towns)]):
-        groups[int(teams[i])].append(pid)
+    for i, pl in enumerate(doc.players[:len(player_towns)]):
+        groups[int(teams[i])].append(pl.id)
     allied = [members for members in groups.values() if len(members) > 1]
-    if allied:
-        h["teams"] = allied
-    else:
-        h.pop("teams", None)
-    files["objects.json"] = json.dumps(vobjs, indent=1).encode()
+    doc.teams = allied if allied else None
+
     MSG = {"exactStrings": None, "localStrings": None, "message": [2], "numbers": None}
-    h["triggeredEvents"] = {
+    doc.triggered_events = {
         "standardVictory": {
             "condition": ["standardWin", {"type": "", "value": -1}],
             "effect": {"messageToSend": {"exactStrings": None, "localStrings": None,
@@ -147,12 +136,7 @@ def _apply_playability(vmap_path: str, player_towns: list, teams: list[int]) -> 
                                          "message": None, "numbers": None,
                                          "stringsTextID": None}, "type": "defeat"},
             "message": dict(MSG, stringsTextID=["core.genrltxt.7"])}}
-    h["victoryIconIndex"] = 11                       # "defeat all enemies"
-    h["victoryMessage"] = dict(MSG, stringsTextID=["core.vcdesc.0"])
-    h["defeatIconIndex"] = 3
-    h["defeatMessage"] = dict(MSG, stringsTextID=["core.lcdesc.0"])
-    files["header.json"] = json.dumps(h, indent=1).encode()
-
-    with zipfile.ZipFile(vmap_path, "w", zipfile.ZIP_DEFLATED) as zo:
-        for name, data in files.items():
-            zo.writestr(name, data)
+    doc.victory_icon_index = 11                       # "defeat all enemies"
+    doc.victory_message = dict(MSG, stringsTextID=["core.vcdesc.0"])
+    doc.defeat_icon_index = 3
+    doc.defeat_message = dict(MSG, stringsTextID=["core.lcdesc.0"])
