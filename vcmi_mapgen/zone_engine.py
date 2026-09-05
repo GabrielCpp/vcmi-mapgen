@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import json
 import math
 import os
 import statistics
@@ -546,7 +545,6 @@ def cmd_generate(args):
         for line in state.log:
             print(f"  {line}")
 
-        levels = [state.cells[lvl] for lvl in sorted(state.cells)]
         objs = state.objs
         ptowns = state.player_towns
         veg_n = sum(1 for o in objs if not o.get("purpose"))
@@ -555,7 +553,6 @@ def cmd_generate(args):
               f"towns={len(state.player_zids)}")
 
         png_renderer = PngRenderer()
-        objs0 = [o for o in objs if o.get("l", 0) == 0]
         base_img = png_renderer.render(state, level=0)
         png = os.path.join(ROOT, "out", "render", "pp", f"ppmap_s{args.seed}.png")
         os.makedirs(os.path.dirname(png), exist_ok=True)
@@ -568,40 +565,17 @@ def cmd_generate(args):
                                     teams_spec=getattr(args, "teams", "ffa"))
         if ptowns:
             print(f"  playable: {len(ptowns)} players, victory=defeat-all")
-        from vcmi_mapgen import render_zone_overlay as RZO
-        from PIL import Image, ImageDraw
-        H0, W0 = len(levels[0]), len(levels[0][0])
-        zone_fill, zone_border, draw_labels, _zones, zone_label = \
-            RZO._zone_layers(base_img.size, levels[0])
-        bg_t, sb_t, sv_t, solo_t = RZO._classify_objects(objs0)
-        passable = RZO._compute_passable(levels[0], objs0)
-        passages = RZO._passage_tiles(zone_label, passable, H0, W0)
-        loot_tiles = RZO._loot_zone_tiles(_zones, zone_label, objs0, H0, W0)
-        passable_p = passable - sv_t - loot_tiles
-        magenta_layer, _np, _mouths = RZO._pocket_gradient_layer(
-            base_img.size, passable_p, objs0, W0, H0)
-        guard_tiles = [
-            (ax + dx, ay + dy)
-            for o in objs0 if o.get("purpose") == "GUARD"
-            for ax, ay in OR.mask_interactive_cells(o["mask"], o["x"], o["y"])
-            for dx, dy in [(0, 0)] + RZO._NB8
-            if 0 <= ax + dx < W0 and 0 <= ay + dy < H0
-        ]
-        ov = Image.alpha_composite(base_img.convert("RGBA"), zone_fill)
-        ov = Image.alpha_composite(ov, zone_border)
-        ov = Image.alpha_composite(ov, RZO._fill_layer(base_img.size, bg_t,      (130, 130, 130, 160)))
-        ov = Image.alpha_composite(ov, RZO._fill_layer(base_img.size, sb_t,      (  0, 200,  80, 160)))
-        ov = Image.alpha_composite(ov, RZO._fill_layer(base_img.size, sv_t,      (  0, 120,  40, 220)))
-        ov = Image.alpha_composite(ov, RZO._fill_layer(base_img.size, solo_t,    (  0, 155,  70, 220)))
-        ov = Image.alpha_composite(ov, RZO._fill_layer(base_img.size, passages,  ( 60, 140, 255, 200)))
-        ov = Image.alpha_composite(ov, magenta_layer)
-        ov = Image.alpha_composite(ov, RZO._fill_layer(base_img.size, guard_tiles, (220, 50, 50, 160)))
-        draw_labels(ImageDraw.Draw(ov))
+        from vcmi_mapgen.renderers.overlays import (
+            BlockingOverlay, GuardOverlay, PassageOverlay, PocketOverlay, ZoneOverlay,
+        )
+        overlay_renderer = PngRenderer(overlays=[
+            ZoneOverlay(), BlockingOverlay(tiers=True), PassageOverlay(),
+            PocketOverlay(exclude_loot_zones=True), GuardOverlay(),
+        ])
+        ov_img = overlay_renderer.render(state, level=0)
         ov_png = os.path.join(ROOT, "out", "render", "pp", f"ppmap_s{args.seed}_overlays.png")
-        ov.convert("RGB").save(ov_png)
-        _cache_path = os.path.join(ROOT, "out", "render", "pp", f"ppmap_s{args.seed}_cache.json")
-        with open(_cache_path, "w") as _cf:
-            json.dump({"level0": levels[0], "objs0": objs0}, _cf)
+        os.makedirs(os.path.dirname(ov_png), exist_ok=True)
+        ov_img.save(ov_png)
         print(f"  {png}\n  {ov_png}\n  {vmap}")
 
 

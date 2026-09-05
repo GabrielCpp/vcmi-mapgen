@@ -6,166 +6,131 @@ import colorsys
 
 from PIL import Image, ImageDraw
 
+from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.renderers.overlays import _tiles
+from vcmi_mapgen.renderers.overlays._tiles import NB8
 from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
 
-_POCKET_MIN = 2
-_POCKET_MAX = 16
-_WATER = 8
-_ROCK = 9
-_NB8 = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
+_MAX_SEALED = 14  # BFS cap per component; pocket grammar max size
 
 
 class PocketOverlay(MapOverlay):
-    """Highlight sealed pocket regions in a magenta depth gradient.
+    """Highlight, in a magenta depth gradient, every passable tile a hero cannot
+    reach without fighting a placed guard.
 
-    A pocket is a small (2–16 tile) passable region reachable through a unique
-    1- or 2-tile entrance — the exact definition used by the zone overlay tool.
-    Darker magenta = near the entrance, lighter = deep inside.
+    For each placed guard's 3x3 zone of control (ZoC), finds the bounded
+    8-connected passable region behind it (capped at 14 tiles -- larger means the
+    guard doesn't actually seal anything). Regions sealed by more than one guard
+    are merged. Darker magenta = near the ZoC entrance, lighter = deepest tile.
 
-    Reads ``state.objs`` for object footprints and ``state.surfs``/``state.cells``
-    for terrain.  Works with both pipeline-generated states and VmapReader output
-    (provided objects carry ``template.mask``).
+    Visit tiles of ordinary structures (state.zones aside) are always excluded
+    from the passable space this searches, since they're "owned" by the
+    structure rather than open pocket floor.
 
     Args:
-        min_tiles: minimum pocket size (default 2).
-        max_tiles: maximum pocket size (default 16).
+        exclude_loot_zones: also exclude tiles belonging to a loot zone (reached
+            via a gate/monolith access pair) -- a distinct access mechanic that
+            should never show a magenta seal. Needs `state.zones[level]`.
     """
 
-    def __init__(self, min_tiles: int = _POCKET_MIN, max_tiles: int = _POCKET_MAX) -> None:
-        self._min = min_tiles
-        self._max = max_tiles
+    def __init__(self, exclude_loot_zones: bool = False) -> None:
+        self._exclude_loot_zones = exclude_loot_zones
 
     def apply(self, state: MapState, level: int) -> Image.Image:
         surf = state.surfs.get(level) or state.cells.get(level)
         if not surf:
-            return Image.new("RGBA", (state.size * TILE, state.size * TILE), (0, 0, 0, 0))
+            return self._blank(*self._grid_size(state, level))
         W, H = len(surf[0]), len(surf)
+        objs = state.objs
 
-        passable = _passable_tiles(surf, state.objs, level, W, H)
-        pockets = _find_pockets(passable, self._min, self._max)
+        passable = _tiles.passable_tiles(surf, objs, level)
+        _bg, _sb, struct_visit, _solo = _tiles.classify_objects(objs, level)
+        passable -= struct_visit
+        if self._exclude_loot_zones:
+            zones = state.zones.get(level)
+            if zones:
+                passable -= _tiles.loot_zone_tiles(zones, objs, level)
 
         img = Image.new("RGBA", (W * TILE, H * TILE), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        for pocket, entrance in pockets:
-            dist = _bfs_distances(pocket, entrance)
+        for zoc, sealed in _sealed_regions(objs, level, passable, W, H):
+            dist = _bfs_distances(sealed, zoc)
             max_d = max(dist.values()) if dist else 0
-            for tile, d in dist.items():
-                tx, ty = tile
+            for (x, y), d in dist.items():
                 t = d / max_d if max_d else 0.0
-                color = _magenta_color(t)
                 draw.rectangle(
-                    [tx * TILE, ty * TILE, (tx + 1) * TILE - 1, (ty + 1) * TILE - 1],
-                    fill=color,
+                    [x * TILE, y * TILE, (x + 1) * TILE - 1, (y + 1) * TILE - 1],
+                    fill=_magenta_color(t),
                 )
         return img
 
 
 # ---------------------------------------------------------------------------
-# helpers
+# guard-centric sealed-region detection
 # ---------------------------------------------------------------------------
 
-def _passable_tiles(surf, objs, level: int, W: int, H: int) -> set:
-    """Land tiles not blocked by any object footprint."""
-    land = set()
-    for y, row in enumerate(surf):
-        for x, cell in enumerate(row):
-            t = cell.get("t", 0) if isinstance(cell, dict) else _prefix_to_code(cell[:2])
-            if t not in (_WATER, _ROCK):
-                land.add((x, y))
-
-    blocked = set()
+def _sealed_regions(objs, level, passable, W, H):
+    """(zoc, sealed_tiles) pairs, one per guard, with overlapping regions merged
+    (the same nook guarded by more than one guard)."""
+    regions = []
     for o in objs:
-        if o.get("l", 0) != level:
+        if o.get("l", 0) != level or o.get("purpose") != "GUARD":
             continue
-        mask = (o.get("template") or {}).get("mask")
+        mask = o.get("mask") or (o.get("template") or {}).get("mask")
         if not mask:
             continue
-        ox, oy = o.get("x", 0), o.get("y", 0)
-        hh = len(mask)
-        for r, row in enumerate(mask):
-            ww = len(row)
-            for c, ch in enumerate(row):
-                if ch in ("B", "X"):
-                    tx = ox - (ww - 1 - c)
-                    ty = oy - (hh - 1 - r)
-                    blocked.add((tx, ty))
-
-    return land - blocked
-
-
-def _find_pockets(passable: set, min_tiles: int, max_tiles: int) -> list:
-    """Find small sealed regions with a unique 1- or 2-tile entrance.
-
-    Returns list of (pocket_frozenset, entrance_frozenset).
-    """
-    wall_adjacent = {
-        t for t in passable
-        if any((t[0] + dx, t[1] + dy) not in passable for dx, dy in _NB8)
-    }
-
-    best: dict = {}
-
-    def _try_entrance(entrance):
-        remaining = passable - entrance
-        seeds = {
-            (gx + dx, gy + dy)
-            for gx, gy in entrance
-            for dx, dy in _NB8
-            if (gx + dx, gy + dy) in remaining
-        }
-        seen: set = set()
-        for seed in sorted(seeds):
-            if seed in seen:
-                continue
-            comp: set = {seed}
-            q = collections.deque([seed])
-            too_big = False
-            while q and not too_big:
-                cx, cy = q.popleft()
-                for dx, dy in _NB8:
-                    nb = (cx + dx, cy + dy)
-                    if nb in remaining and nb not in comp:
-                        comp.add(nb)
-                        if len(comp) > max_tiles:
-                            too_big = True
-                            break
-                        q.append(nb)
-            if too_big:
-                continue
-            seen |= comp
-            if len(comp) < min_tiles:
-                continue
-            has_exit = any(
-                (t[0] + dx, t[1] + dy) in passable
-                and (t[0] + dx, t[1] + dy) not in comp
-                and (t[0] + dx, t[1] + dy) not in entrance
-                for t in comp for dx, dy in _NB8
+        for ax, ay in OR.mask_interactive_cells(mask, o.get("x", 0), o.get("y", 0)):
+            zoc = frozenset(
+                (ax + dx, ay + dy)
+                for dx in range(-1, 2) for dy in range(-1, 2)
+                if 0 <= ax + dx < W and 0 <= ay + dy < H
             )
-            if has_exit:
-                continue
-            key = frozenset(comp)
-            if key not in best or len(entrance) < len(best[key]):
-                best[key] = frozenset(entrance)
+            passable_no_zoc = passable - zoc
+            sealed, seen = set(), set()
+            for tx, ty in sorted(zoc):
+                for dx, dy in NB8:
+                    nb = (tx + dx, ty + dy)
+                    if nb in zoc or nb in seen or nb not in passable_no_zoc:
+                        continue
+                    comp, q, leaked = {nb}, collections.deque([nb]), False
+                    while q and not leaked:
+                        cx, cy = q.popleft()
+                        for ddx, ddy in NB8:
+                            n2 = (cx + ddx, cy + ddy)
+                            if n2 in zoc or n2 in comp or n2 not in passable_no_zoc:
+                                continue
+                            comp.add(n2)
+                            if len(comp) > _MAX_SEALED:
+                                leaked = True
+                                break
+                            q.append(n2)
+                    if not leaked:
+                        seen |= comp
+                        sealed |= comp
+            if sealed:
+                regions.append([set(zoc), sealed])
 
-    for g in sorted(wall_adjacent):
-        _try_entrance(frozenset({g}))
-    for g1 in sorted(wall_adjacent):
-        g1x, g1y = g1
-        for dx, dy in _NB8:
-            g2 = (g1x + dx, g1y + dy)
-            if g2 in wall_adjacent and g2 > g1:
-                _try_entrance(frozenset({g1, g2}))
-
-    # dedup: reject pockets adjacent to larger accepted ones
-    accepted: list = []
-    accepted_tiles: set = set()
-    for pocket, entrance in sorted(best.items(), key=lambda kv: (-len(kv[0]), min(kv[0]))):
-        footprint = pocket | {(x + dx, y + dy) for x, y in pocket for dx, dy in _NB8}
-        if footprint.isdisjoint(accepted_tiles):
-            accepted.append((pocket, entrance))
-            accepted_tiles |= pocket
-    return accepted
+    merged = []
+    used = [False] * len(regions)
+    for i in range(len(regions)):
+        if used[i]:
+            continue
+        m_zoc, m_sealed = set(regions[i][0]), set(regions[i][1])
+        used[i] = True
+        changed = True
+        while changed:
+            changed = False
+            for j in range(len(regions)):
+                if used[j]:
+                    continue
+                if regions[j][1] & m_sealed:
+                    m_zoc |= regions[j][0]
+                    m_sealed |= regions[j][1]
+                    used[j] = True
+                    changed = True
+        merged.append((frozenset(m_zoc), m_sealed))
+    return merged
 
 
 def _bfs_distances(pocket: frozenset, entrance: frozenset) -> dict:
@@ -173,7 +138,7 @@ def _bfs_distances(pocket: frozenset, entrance: frozenset) -> dict:
     dist: dict = {}
     q = collections.deque()
     for gx, gy in entrance:
-        for dx, dy in _NB8:
+        for dx, dy in NB8:
             nb = (gx + dx, gy + dy)
             if nb in pocket and nb not in dist:
                 dist[nb] = 0
@@ -181,7 +146,7 @@ def _bfs_distances(pocket: frozenset, entrance: frozenset) -> dict:
     while q:
         t = q.popleft()
         tx, ty = t
-        for dx, dy in _NB8:
+        for dx, dy in NB8:
             nb = (tx + dx, ty + dy)
             if nb in pocket and nb not in dist:
                 dist[nb] = dist[t] + 1
@@ -190,17 +155,7 @@ def _bfs_distances(pocket: frozenset, entrance: frozenset) -> dict:
 
 
 def _magenta_color(t: float) -> tuple:
-    """t=0 (entrance, darkest) → t=1 (deepest, lightest). Returns RGBA."""
+    """t=0 (entrance, darkest) -> t=1 (deepest, lightest). Returns RGBA."""
     v = 0.30 + 0.70 * t
     r, g, b = colorsys.hsv_to_rgb(300 / 360, 0.90, v)
     return (int(r * 255), int(g * 255), int(b * 255), 130)
-
-
-_PREFIX_MAP = {
-    "dt": 0, "sa": 1, "gr": 2, "sn": 3, "sw": 4,
-    "rg": 5, "sb": 6, "lv": 7, "wt": 8, "ro": 9, "hl": 10, "wa": 11,
-}
-
-
-def _prefix_to_code(prefix: str) -> int:
-    return _PREFIX_MAP.get(prefix, 0)
