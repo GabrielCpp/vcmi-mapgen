@@ -3,6 +3,7 @@ same-shape replay (pure integer math — the identity guarantee), and warp adapt
 zone's objects onto a differently-shaped target (rigid gameplay, decoration models,
 feature-driven reconstruction)."""
 import collections
+import glob
 import hashlib
 import json
 import math
@@ -14,10 +15,12 @@ import numpy as np
 
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit import vmap as VM
+from vcmi_mapgen.kit import vmap_format as VF
 from vcmi_mapgen.kit.segmentation import _segment_level
 from vcmi_mapgen.kit.terrain_lookup import TNAME, EXCLUDE_DECOR_TYPES
 from vcmi_mapgen import ontology as ON
-from vcmi_mapgen.kit.paths import project_root, slug
+from vcmi_mapgen.kit.paths import project_root, slug, vcmi_home
 from vcmi_mapgen.kit.tiling import _cell, tile_terrain
 
 ROOT = project_root()
@@ -198,6 +201,92 @@ def rebuild_map(template: dict, target_terrain: list, identity: bool = False):
           "twoLevel": template.get("twoLevel", False), "players": template.get("players", 1),
           "terrain": target_terrain, "objects": objects}
     return fm, stats
+
+def _default_header() -> dict:
+    """A real RMG-produced .vmap header if a local VCMI install has one (richer fidelity
+    -- rumors, difficulty, description, ... -- preserved via VmapDocument.extra), else
+    the static template."""
+    rmg = glob.glob(os.path.join(vcmi_home(), "Maps", "RandomMaps", "*.vmap"))
+    if rmg:
+        header, _, _, _ = VF.read_raw(rmg[0])
+        return header
+    tpl = str(ROOT / "data" / "vmap_header_template.json")
+    return json.load(open(tpl))
+
+
+def fm_to_document(fm: dict, name: str | None = None):
+    """A rebuilt/generated faithful-shaped dict -> a full, writable VmapDocument.
+
+    Mirrors the retired faithful.to_vmap: builds each object's VCMI-charset mask/
+    visitableFrom, resolves `options["sameAsTown"]` markers ([x,y,l]) to the real
+    town's instanceName, and wires each player slot to its own starting town
+    (fm["main_town"] goes to player 0) so the map is actually playable.
+    """
+    terrain = [[[VM.tile_string(c) for c in row] for row in lvl] for lvl in fm["terrain"]]
+
+    objects = []
+    for o in fm["objects"]:
+        if not o.get("type"):
+            continue
+        mask = VM.export_mask(o)
+        vf = o.get("visitableFrom") or VM.visitable_from(o["mask"])
+        objects.append(VM.VmapObject(
+            instance_name="", type=o["type"], subtype=o["subtype"], l=o["l"],
+            x=o["x"], y=o["y"], animation=o["animation"], mask=mask,
+            visitable_from=vf, options=dict(o["options"]) if o.get("options") else None,
+        ))
+    for n, vo in enumerate(objects, 1):
+        vo.instance_name = f"{vo.type}_{n}"
+
+    # dwelling->town faction links: the generator marks `sameAsTown` with the town's
+    # [x, y, l] (instance names are minted only here, above); VCMI wants the town's
+    # instanceName. A marker whose town vanished is dropped (dwelling stays any-faction).
+    town_names = {(vo.x, vo.y, vo.l): vo.instance_name
+                  for vo in objects if vo.type in ("town", "randomTown")}
+    for vo in objects:
+        tag = (vo.options or {}).get("sameAsTown")
+        if isinstance(tag, list):
+            town_name = town_names.get(tuple(tag))
+            if town_name:
+                vo.options["sameAsTown"] = town_name
+            else:
+                del vo.options["sameAsTown"]
+                if not vo.options:
+                    vo.options = None
+
+    doc = VM.VmapDocument(
+        name=name or fm.get("name", "generated"),
+        width=fm["width"], height=fm["height"],
+        two_level=fm.get("twoLevel", len(fm["terrain"]) > 1),
+        terrain=terrain, objects=objects,
+        **VM.header_fields(_default_header()),
+    )
+    # Deterministic regardless of the header source's own key order (a real RMG header's
+    # dict order isn't guaranteed alphabetical; the template's happens to be, but replay
+    # must not depend on that coincidence -- see AGENTS.md's determinism rule).
+    doc.players.sort(key=lambda p: p.id)
+
+    # Wire EACH player slot to its own starting town so the map is actually playable.
+    # VCMI links a player to a town via mainTown = town_anchor - (2,2); the town object
+    # itself stays owner=None. Surface towns first, then put the start town
+    # (fm["main_town"]) on player 0.
+    towns = [o for o in fm["objects"] if OR.type_to_purpose(o.get("type")) == "TOWN"]
+    towns.sort(key=lambda o: (o.get("l", 0), o["y"], o["x"]))
+    mt = fm.get("main_town")
+    if mt is not None:  # start town first => player 0
+        towns.sort(key=lambda o: not (o.get("l", 0) == mt["l"]
+                                      and o["x"] - 2 == mt["x"] and o["y"] - 2 == mt["y"]))
+    for i, pl in enumerate(doc.players):
+        if i < len(towns):
+            t = towns[i]
+            pl.main_town = {"generateHero": True, "l": t.get("l", 0),
+                            "x": t["x"] - 2, "y": t["y"] - 2}
+            pl.can_play = "PlayerOrAI"
+        else:
+            pl.main_town = None
+            pl.can_play = "false"
+    return doc
+
 
 def rebuild_zone_warp(ztmpl: dict, target_zone: dict, target_canon: dict, level: int):
     """Rough different-shape warp of one template zone onto one target zone.

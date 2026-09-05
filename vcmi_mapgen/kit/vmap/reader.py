@@ -57,6 +57,28 @@ def _object(o):
     )
 
 
+def header_fields(header: dict) -> dict:
+    """A raw `header.json` dict -> the VmapDocument kwargs it carries (players, teams,
+    victory/defeat, `extra`). Reusable wherever a document is built from a bare header
+    dict rather than a whole `.vmap` file -- e.g. from a real RMG-produced header, or
+    the static `data/vmap_header_template.json` fallback (see `rebuild.engine.fm_to_document`).
+    """
+    return {
+        "players": [
+            _player_slot(color, pl)
+            for color, pl in header.get("players", {}).items()
+            if isinstance(pl, dict)
+        ],
+        "teams": header.get("teams"),
+        "victory_icon_index": header.get("victoryIconIndex"),
+        "victory_message": header.get("victoryMessage"),
+        "defeat_icon_index": header.get("defeatIconIndex"),
+        "defeat_message": header.get("defeatMessage"),
+        "triggered_events": header.get("triggeredEvents"),
+        "extra": {k: v for k, v in header.items() if k not in _HEADER_MODELED},
+    }
+
+
 def read(path: str) -> VmapDocument:
     z = zipfile.ZipFile(path)
     names = z.namelist()
@@ -78,11 +100,6 @@ def read(path: str) -> VmapDocument:
     two_level = "underground" in levels and under is not None
 
     terrain = [surf] + ([under] if two_level else [])
-    players = [
-        _player_slot(color, pl)
-        for color, pl in header.get("players", {}).items()
-        if isinstance(pl, dict)
-    ]
 
     return VmapDocument(
         name=name,
@@ -91,12 +108,5 @@ def read(path: str) -> VmapDocument:
         two_level=two_level,
         terrain=terrain,
         objects=[_object(o) for o in raw_objs],
-        players=players,
-        teams=header.get("teams"),
-        victory_icon_index=header.get("victoryIconIndex"),
-        victory_message=header.get("victoryMessage"),
-        defeat_icon_index=header.get("defeatIconIndex"),
-        defeat_message=header.get("defeatMessage"),
-        triggered_events=header.get("triggeredEvents"),
-        extra={k: v for k, v in header.items() if k not in _HEADER_MODELED},
+        **header_fields(header),
     )

@@ -7,7 +7,7 @@ The hard contract: rebuilding on the SAME shape reproduces the EXACT same object
 Pipeline, all in this module:
   extract  -> segment a map into same-terrain zones, label them, dump a template JSON
   inspect  -> zone-tint + label segmentation PNG (per level)
-  rebuild  -> template + target terrain -> faithful map (.json + editor .vmap)
+  rebuild  -> template + target terrain -> editor .vmap
               --identity [--verify]   exact reconstruction on the source terrain
               --zone N --deform       rough warp of one zone onto a deformed shape
   run      -> extract -> segmentation -> identity rebuild+verify -> realistic editor
@@ -20,7 +20,7 @@ montage) live in vcmi_mapgen.rebuild.render. This module is the thin CLI on top 
 Reuses (no existing file modified):
   terrain_segment.segment / compute_static_features   (zones + interior-depth feature)
   kit.objects.load_faithful / exact_identity / purpose_of / mask_cells
-  faithful.save / faithful.to_vmap                     (artifacts)
+  kit.vmap.writer.write (via rebuild.engine.fm_to_document)   (artifacts)
   render_editor.read_vmap / read_real / render_map     (realistic sprite render)
 """
 from __future__ import annotations
@@ -35,15 +35,16 @@ import sys
 
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.segmentation import _segment_level
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen import ontology as ON
-from vcmi_mapgen import faithful as FA
 from vcmi_mapgen.kit.paths import project_root, slug
 from vcmi_mapgen.rebuild.engine import (
     _prio, _stretch_gameplay, deco_binned, deco_quilt, deco_split, deform_terrain_level,
-    extract_template, label_zone, markov_terrain_level, rebuild_map, rebuild_zone_warp,
-    transform_zone, verify_identity, write_features, write_template, zone_features,
+    extract_template, fm_to_document, label_zone, markov_terrain_level, rebuild_map,
+    rebuild_zone_warp, transform_zone, verify_identity, write_features, write_template,
+    zone_features,
 )
 from vcmi_mapgen.rebuild.render import editor_render, render_segmentation, render_zone_compare
 
@@ -446,9 +447,8 @@ def cmd_rebuild(args):
         if args.verify:
             _report_verify(args.name, fm)
 
-    FA.save(fm, stem + ".json")
-    FA.to_vmap(fm, stem + ".vmap", name=os.path.basename(stem))
-    print(f"wrote {stem}.json and {stem}.vmap")
+    VM.write(fm_to_document(fm, name=os.path.basename(stem)), stem + ".vmap")
+    print(f"wrote {stem}.vmap")
 
 
 def _report_verify(name, fm):
@@ -499,8 +499,7 @@ def cmd_run(args):
     stem = os.path.join(ROOT, "out", f"Rebuilt-{name.replace(' ', '_')}")
     src = OR.load_faithful(name)
     fm, stats = rebuild_map(template, src["terrain"], identity=True)
-    FA.save(fm, stem + ".json")
-    FA.to_vmap(fm, stem + ".vmap", name=os.path.basename(stem))
+    VM.write(fm_to_document(fm, name=os.path.basename(stem)), stem + ".vmap")
     print(f"[3/4] identity rebuild ({stats['identity']} zones, {stats['missing']} missing) "
           f"-> {stem}.vmap")
     ok = _report_verify(name, fm)
@@ -508,7 +507,7 @@ def cmd_run(args):
     # Honest visual: render REBUILT against the SOURCE faithful via the SAME path
     # (the .h3m read path over-draws underground sprites onto the surface).
     src_vmap = os.path.join(ROOT, "out", f"_Source-{name.replace(' ', '_')}.vmap")
-    FA.to_vmap(src, src_vmap, name=f"Source-{name}")
+    VM.write(fm_to_document(src, name=f"Source-{name}"), src_vmap)
     edit = os.path.join(ROOT, "out", "render", f"{slug(name)}_identity_editor.png")
     editor_render(stem + ".vmap", edit, compare_vmap=src_vmap)
     print(f"[4/4] realistic editor render (SOURCE | REBUILT, surface) -> {edit}")
