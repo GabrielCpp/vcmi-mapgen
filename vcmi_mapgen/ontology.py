@@ -16,9 +16,12 @@ are canonical H3 orderings, verified against the corpus subclass distributions.
 import json
 import os
 
+from vcmi_mapgen.kit.paths import project_root
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 CLASS_NAMES = {
-    int(k): v for k, v in json.load(open(os.path.join(_HERE, "objclass_names.json"))).items()
+    int(k): v for k, v in
+    json.load(open(project_root() / "data" / "objclass_names.json")).items()
 }
 
 # ---- canonical subtype tables (verified vs corpus subclass distributions) ----
@@ -385,7 +388,7 @@ def resolve(cid, subclass):
 # The hand-authored layers above (cluster, purpose) are the irreducible ontology; the lower layers
 # (type -> terrain -> concrete sprite) complete the tree, every parent->child edge down to the leaf
 # sprite. The full tree is HARDCODED below as TAXONOMY -- it is the single source of truth for the
-# catalog renderer (zone_engine render-ontology). It is the ABSOLUTE object list the VCMI/H3 map
+# catalog renderer (cli.py render-ontology). It is the ABSOLUTE object list the VCMI/H3 map
 # editor can place: derived from the authoritative object-template table (objects.txt in the H3 LOD),
 # NOT from the corpus. Regenerate in place with `python -m vcmi_mapgen.ontology --regen`.
 #
@@ -1096,7 +1099,7 @@ TAXONOMY = {
 
 # Per-animation placement metadata (footprint mask + class/subclass) so the ontology is
 # self-sufficient for tile placement and `.vmap` writing — no corpus needed. Keyed by the
-# (lowercase) animation DEF; mask is the B/A/V row-strings (obj_resolve.mask_cells semantics),
+# (lowercase) animation DEF; mask is the B/A/V row-strings (kit.objects.mask_cells semantics),
 # decoded from the authoritative objects.txt passability/triggers bitfields. Regenerate with
 # `python -m vcmi_mapgen.ontology --regen`.
 # === BEGIN GENERATED LEAF_META ===
@@ -2436,7 +2439,7 @@ def iter_leaves(tree=None):
 # Placement / category accessors — the ontology as the SINGLE SOURCE OF TRUTH for object
 # identity, footprint mask, terrain coupling and decoration category. The whole generation
 # pipeline (tile placement -> .vmap -> rendering) draws from these instead of the corpus.
-# `type`/`subtype` in a placement identity come from `vcmi_ids` (same as the corpus path),
+# `type`/`subtype` in a placement identity come from `kit.vcmi_config` (same as the corpus path),
 # so an ontology identity is a drop-in for the old objlib identity.
 # ---------------------------------------------------------------------------
 
@@ -2451,9 +2454,7 @@ _GAMEPLAY_BY_TP = None   # (terrain name, purpose) -> sorted [anim, ...] of non-
 def _vid():
     global _VID
     if _VID is None:
-        import sys
-        sys.path.insert(0, _HERE)
-        import vcmi_ids
+        from vcmi_mapgen.kit import vcmi_config as vcmi_ids
         _VID = vcmi_ids
     return _VID
 
@@ -2487,7 +2488,7 @@ def has_animation(animation):
 
 
 def mask_of(animation):
-    """B/A/V footprint rows for an animation (`obj_resolve.mask_cells` semantics: rows are
+    """B/A/V footprint rows for an animation (`kit.objects.mask_cells` semantics: rows are
     stored LEFT-TO-RIGHT, sprite-aligned, so column 0 is the LEFTMOST tile and the anchor is
     the last column, `tx = ax - (ww - 1 - c)`; case-insensitive), V-padded to the sprite's full
     tile extent (see :func:`_decode_mask_full`) — the same extent AND column order `.vmap`
@@ -2590,7 +2591,7 @@ def gameplay_pool(terrain, purpose):
 
 def mines_by_resource(terrain):
     """``{resource: [identity]}`` for MINE objects placeable on a terrain — the resource bucket (wood,
-    ore, gold, …) is the ontology-resolved subtype (``vcmi_ids`` -> :data:`MINE_RES`). Lets a town
+    ore, gold, …) is the ontology-resolved subtype (``kit.vcmi_config`` -> :data:`MINE_RES`). Lets a town
     economy guarantee a wood + ore mine without touching the corpus."""
     out = {}
     for ident in gameplay_pool(terrain, "MINE"):
@@ -2667,14 +2668,14 @@ def category_terrain_matrix():
 
 def _decode_mask(passability, triggers):
     """Decode the objects.txt passability(48)+triggers(48) bitfields into the B/A/V footprint
-    mask rows (`obj_resolve.mask_cells` semantics: B=blocking, A=visitable anchor, V=visible
-    overlay). This reproduces `h3m2vmap.build_mask` (the corpus mask source) bit-for-bit: the
+    mask rows (`kit.objects.mask_cells` semantics: B=blocking, A=visitable anchor, V=visible
+    overlay). This reproduces `kit.vmap.mask.build_mask_from_h3m` (the corpus mask source) bit-for-bit: the
     6x8 grid defaults to 'V', a cell is 'A' if its trigger bit is set else 'B' if its
     passability bit is clear (H3: clear=blocked); rows/cols that are all-'V' are trimmed. The
     grid is anchored bottom-right and stored rotated 180° (rows bottom-to-top AND columns
     right-to-left), so BOTH are reversed to sprite-align it — reversing rows only leaves every
     asymmetric footprint horizontally mirrored vs the art (the v5.2 sawmill-entrance bug; see
-    :func:`_decode_mask_grid`). Kept bit-for-bit in sync with `h3m2vmap.build_mask` (the
+    :func:`_decode_mask_grid`). Kept bit-for-bit in sync with `kit.vmap.mask.build_mask_from_h3m` (the
     corpus mask source)."""
     def rows(bits):
         return [bits[r * 8:(r + 1) * 8] for r in range(6)]
@@ -2757,10 +2758,7 @@ def _def_tile_dims(animation):
     """(width, height) of an animation's sprite in 32px TILES, from the DEF file header in the
     H3 LOD (type u32, width u32, height u32). None when the DEF is absent."""
     import struct
-    import sys
-
-    sys.path.insert(0, _HERE)
-    import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
 
     data = RE.lod().read(animation + ".def")
     if not data or len(data) < 12:
@@ -2781,8 +2779,8 @@ def _decode_mask_full(passability, triggers, tile_dims):
     are visually part of the sprite (the v5.3 sawmill-guard-hidden-behind-trees bug). Real RMG
     .vmaps V-fill to the sprite extent, so this is the ground truth for :func:`mask_of` as well
     as :func:`vmap_mask_of` — both in the same LEFT-TO-RIGHT column order as this function's
-    output and the corpus's `h3m2vmap.build_mask` masks (col 0 = leftmost tile, anchor is the
-    last column: `tx = ax - (ww - 1 - c)`, see `obj_resolve.mask_cells`'s docstring); no column
+    output and the corpus's `kit.vmap.mask.build_mask_from_h3m` masks (col 0 = leftmost tile, anchor is the
+    last column: `tx = ax - (ww - 1 - c)`, see `kit.objects.mask_cells`'s docstring); no column
     reversal is needed anywhere in this decode chain — the v5.4 sawmill-guard-wrong-side bug
     turned out to be in the CONSUMER (`mask_cells`/`_cells` treating col 0 as the anchor instead
     of the leftmost tile), not in this decode chain."""
@@ -2799,10 +2797,7 @@ def _decode_mask_full(passability, triggers, tile_dims):
 
 def _objects_txt_raw():
     """[(animation, passability48, triggers48), ...] straight from objects.txt (no decode)."""
-    import sys
-
-    sys.path.insert(0, _HERE)
-    import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
 
     raw = RE.lod().read("objects.txt")
     if raw is None:
@@ -2822,10 +2817,7 @@ def _objects_txt_raw():
 def _objects_txt_records():
     """[(animation, allowedMask, nativeMask, class, subclass, mask), ...] from the LOD's
     objects.txt. ``mask`` is the decoded B/A/V footprint (see :func:`_decode_mask`)."""
-    import sys
-
-    sys.path.insert(0, _HERE)
-    import render_editor as RE
+    from vcmi_mapgen.renderers import sprites as RE
 
     raw = RE.lod().read("objects.txt")
     if raw is None:

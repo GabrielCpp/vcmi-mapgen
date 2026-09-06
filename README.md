@@ -8,8 +8,8 @@ treasure, vegetation — that you can open in the VCMI editor and play right awa
 ![Generated 72×72 island map](docs/img/pp-map-islands-s7.png)
 
 *A 72×72 two-player island map generated from a single seed
-(`pp_map --seed 7 --size 72 --water-mode islands --players 2`) and rendered with
-the real H3 sprites, exactly as the VCMI editor shows it.*
+(`cli.py generate --seed 7 --size 72 --water-mode islands --players 2`)
+and rendered with the real H3 sprites, exactly as the VCMI editor shows it.*
 
 The colored discs are the editor's genuine **random-object** sprites (random
 monster / artifact / resource / town, by level band) — VCMI rolls them when the
@@ -51,25 +51,20 @@ Everything is **learned from real maps** (`maps/`, 159 classic `.h3m` maps) and
 ## Generate maps
 
 ```bash
-# One 72x72 two-player island map -> PNG render in out/render/pp/
-uv run python -m vcmi_mapgen.pp_map --seed 7 --size 72 --water-mode islands --players 2
-
-# Also export a playable .vmap (out/vmap/), and install it into VCMI's Maps/pp-gen/
-uv run python -m vcmi_mapgen.pp_map --seed 7 --size 72 --players 2 --vmap --install
-
-# A batch of 10 maps (seeds 1..10, water modes cycle for diversity; implies --vmap)
-uv run python -m vcmi_mapgen.pp_map --seed 1 --batch 10 --size 72
+# One 72x72 two-player island map -> PNG render in out/render/pp/, playable
+# .vmap in out/vmap/ (each player slot is wired to its own starting town, so
+# the map is playable immediately — victory: defeat all)
+uv run python -m vcmi_mapgen.cli generate \
+    --seed 7 --size 72 --water-mode islands --players 2
 
 # Two levels: surface + underground, linked by subterranean gates
-uv run python -m vcmi_mapgen.pp_map --seed 3 --size 72 --subterrain --vmap
+uv run python -m vcmi_mapgen.cli generate \
+    --seed 3 --size 72 --subterrain
 
 # 4 players in two teams
-uv run python -m vcmi_mapgen.pp_map --seed 5 --size 108 --players 4 --teams 2v2 --vmap
+uv run python -m vcmi_mapgen.cli generate \
+    --seed 5 --size 108 --players 4 --teams 2v2
 ```
-
-`--install` copies the `.vmap` into `<VCMI_HOME>/Maps/pp-gen/` so it shows up in
-the VCMI map selector; each player slot is wired to its own starting town, so
-the maps are playable immediately (victory: defeat all).
 
 ## The zone-rebuilding engine
 
@@ -85,29 +80,43 @@ frame, and *replay* it onto a target shape.
   scale while footprints don't — no illegal overlaps, gameplay stays reachable.
 
 ```bash
-uv run python -m vcmi_mapgen.zone_engine run "All for One"        # extract -> rebuild -> verify -> render
-uv run python -m vcmi_mapgen.zone_engine rebuild "All for One" --identity --verify
-uv run python -m vcmi_mapgen.zone_engine reconstruct "All for One" --zone 7 --deform
-uv run python -m vcmi_mapgen.markov_terrain                       # learned terrain generator
+uv run python -m vcmi_mapgen.cli run "All for One"        # extract -> rebuild -> verify -> render
+uv run python -m vcmi_mapgen.cli rebuild "All for One" --identity --verify
+uv run python -m vcmi_mapgen.cli rebuild "All for One" --zone 7 --deform
+uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72   # procedural generator
 ```
 
 ## Layout
 
 ```
 vcmi_mapgen/        the Python package (generator + engine + renderer + data pipeline)
-  pp_map.py           map generator CLI (terrain + gameplay + vegetation + pickups)
-  macro_topo.py       macro zone layout: capacity-constrained growth, water, borders
-  pp_gameplay.py      towns/mines/dwellings placement (corpus densities)
-  pp_sample.py        vegetation: corpus-fitted Gibbs marked point process
-  pp_pickup.py        loot: guarded caches + unguarded scatter
-  pp_stats.py         mines the corpus statistics the generator samples from
-  zone_engine.py      zone-rebuild CLI: extract / inspect / reconstruct / rebuild / run
+  cli.py              the CLI: extract / inspect / features / rebuild / run / generate /
+                      render-ontology, a thin layer over pipeline_builder.py
+  pipeline.py         MapState (render-only) / PipelineStep / PlacementWorkspace
+  pipeline_builder.py PipelineBuilder — hand-wires each subcommand's fixed step sequence
+  steps/              one subpackage per step — each a folder with its own step.py +
+                      private logic modules + *_test.py:
+    terrain_gen/        macro zone layout: capacity-constrained growth, water, borders
+    tile/               corpus-learned autotiling (despeckle + H3-correct transition views)
+    segment/            same-terrain flood-fill zone segmentation
+    gate/               Subterranean Gate pairs (--subterrain)
+    gameplay/           towns/mines/dwellings placement (corpus densities) + water bodies
+    vegetation/         corpus-fitted Gibbs marked point process (trees, rocks, lakes)
+    pickup/             loot: unguarded scatter + the loot-zone access mechanic
+    repair/             G2 repair, island fill, portal rescue, pocket caches, border seal
+    extract_template/   map -> shape-relative zone template (identity-rebuild)
+    rebuild_map/        template + target terrain -> replayed objects
+    verify/             bit-exact identity check
+    fm_document/        faithful-shaped dict -> writable VmapDocument
+    deform_warp/        rough different-shape warp of one zone (rebuild --zone N --deform)
+  renderers/          PngRenderer (H3 sprites) / VmapRenderer (playable .vmap export) /
+                      ontology_render.py (render-ontology catalog dump)
+  readers/            VmapReader (read back a generated/authored .vmap)
   terrain_segment.py  same-terrain flood-fill segmentation + interior-depth features
   ontology.py         object identity, footprints, terrain coupling (single source of truth)
   obj_resolve.py      faithful-map loader, footprint mask expansion
   faithful.py         faithful map dict -> editor-valid .vmap
   render_editor.py    editor-quality 32px H3 sprite rendering (decodes DEF fmt 0/1/2/3)
-  markov_terrain.py   terrain generator: Markov chain learned from the corpus
   h3m.py, vcmi_ids.py, h3m2vmap.py, extract_faithful.py   .h3m -> faithful JSON pipeline
   vmapwrite.py, traverse.py                                .vmap writer + reachability
   vcmi_paths.py       locates the VCMI data dir per-OS (override: VCMI_HOME)

@@ -1,11 +1,12 @@
 ---
 name: vcmi-mapgen
-description: "VCMI map-generator repo root — what the project is, uv tooling, the package layout, and how to run the zone engine / terrain generator / tests. Load first for any work in this repo."
+description: "VCMI map-generator repo root — what the project is, uv tooling, the package layout, and how to run the CLI / pipelines / tests. Load first for any work in this repo."
 metadata:
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
+  tags: [python, backend, standards, entrypoint]
 ---
 
 # VCMI map-generator — repository root
@@ -22,6 +23,8 @@ object pattern in a shape-relative frame, then *replays* it onto a target shape:
   scaling was tried and rejected — it violates the fixed-size constraint.)
 
 Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering).
+Load `vcmi-mapgen-pipeline` before adding/changing a pipeline step or a `cli.py`
+subcommand (the step contract, `MapState`, `PipelineBuilder`).
 
 ## Tooling — this is a `uv` Python project
 
@@ -34,19 +37,38 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
 ## Where things are
 
 - **`vcmi_mapgen/`** — the package (run modules with `python -m vcmi_mapgen.<name>`):
-  - `zone_engine.py` — the CLI (`extract` / `inspect` / `features` / `reconstruct` /
-    `rebuild` / `run`).
+  - `cli.py` — the CLI (`extract` / `inspect` / `features` / `rebuild` / `run` / `generate` /
+    `render-ontology`), a thin layer over `pipeline_builder.py`.
+  - `pipeline.py` — `MapState` (the narrow, render-only view of a finished map),
+    the Gameplay/Vegetation/Pickup/Repair collaboration workspaces, and the `PipelineStep`
+    base contract every step (both the procedural generator and the identity-rebuild
+    engine) is built from. `pipeline_builder.py` — `PipelineBuilder`, which hand-wires each
+    subcommand's step sequence (constructor args for compile-time-known config, `inject()`
+    for values an earlier step produced). See `vcmi-mapgen-pipeline` for the contract itself.
+  - `steps/` — one subpackage per step: `terrain_gen/tile/segment/gate/gameplay/
+    vegetation/pickup/repair` (procedural generation) and `extract_template/rebuild_map/
+    verify/fm_document/deform_warp` (identity-rebuild).
   - `terrain_segment.py` — same-terrain flood-fill segmentation + interior-depth features.
-  - `obj_resolve.py`, `ontology.py` — faithful-map loader, object identity, purpose.
-  - `faithful.py`, `vmapwrite.py`, `traverse.py` — faithful map dict → editor `.vmap`.
-  - `render_editor.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt 0/1/2/3);
-    `render.py` — schematic PNGs.
-  - `markov_terrain.py` — the terrain generator (Markov chain learned from the corpus).
-  - `h3m.py`, `vcmi_ids.py`, `h3m2vmap.py`, `extract_faithful.py` — `.h3m` → faithful pipeline.
-  - `test_render_editor.py` — rendering-engine reliability tests.
+  - `kit/objects.py`, `ontology.py` — corpus loader, object identity, purpose.
+  - `kit/vmap/{reader,writer}.py`, `rebuild/engine.py` (`fm_to_document`) — the full
+    `.vmap` reader/writer and the faithful-shaped-dict → `VmapDocument` bridge.
+  - `renderers/sprites.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt
+    0/1/2/3); `renderers/png.py` — schematic PNGs; `renderers/vmap.py` — playable `.vmap`
+    export; `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...), only
+    `generate` selects these from the CLI; `renderers/ontology_render.py` — the
+    `render-ontology` catalog dump (a documentation tool, not part of any pipeline).
+  - `steps/terrain_gen/markov.py` — the terrain generator (Markov chain learned from
+    the corpus), consumed by `steps/terrain_gen/macro_topo.py`.
+  - `h3m.py`, `vcmi_ids.py`, `extract_vmap.py` — `.h3m` → `.vmap` corpus-extraction pipeline.
+  - `renderers/sprites_test.py` — rendering-engine reliability tests.
 - **`maps/`** — the `.h3m` corpus (159 maps), the source data.
-- **`maps_json/`** — faithful JSON per map (the engine's input; regenerable from `maps/`).
-- **`data/`** — corpus-derived priors (`objlib.json`).
+- **`maps_vmap/`** — one real `.vmap` per corpus map (the engine's input; regenerable from
+  `maps/` via `extract_vmap.py`).
+- **`data/`** — corpus-derived priors (`objlib.json`, `pp/*.json` — macro/gameplay/vegetation
+  statistics) and static VCMI-derived reference tables (`objclass_names.json` — the raw
+  MapObjectID enum, feeding `ontology.py --regen`; `vmap_header_template.json`). Static
+  VCMI/corpus-derived JSON lives here, never loose beside the `.py` sources — if you add a
+  reference table, it goes in `data/`.
 - **`out/`** — transient outputs (templates, features, renders); **gitignored**.
 - **`vcmi-h3m-format-reference/`** — verbatim VCMI C++ sources documenting the `.h3m` format
   (see `docs/vcmi-h3m-format-reference.md`).
@@ -54,11 +76,11 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
 ## How to run
 
 ```bash
-uv run python -m vcmi_mapgen.zone_engine run "All for One"      # full foundation pipeline
-uv run python -m vcmi_mapgen.zone_engine rebuild "All for One" --identity --verify
-uv run python -m vcmi_mapgen.zone_engine reconstruct "All for One" --zone 7 --deform
-uv run python -m vcmi_mapgen.markov_terrain                     # learned terrain generator
-uv run python -m vcmi_mapgen.extract_faithful                  # regenerate maps_json/ from maps/
+uv run python -m vcmi_mapgen.cli run "All for One"              # full foundation pipeline
+uv run python -m vcmi_mapgen.cli rebuild "All for One" --identity --verify
+uv run python -m vcmi_mapgen.cli rebuild "All for One" --zone 7 --deform
+uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72    # procedural generator
+uv run python -m vcmi_mapgen.extract_vmap                      # regenerate maps_vmap/ from maps/
 uv run pytest                                                  # rendering-engine reliability tests
 ```
 
