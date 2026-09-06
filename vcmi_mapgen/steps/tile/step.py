@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from vcmi_mapgen.pipeline import MapState, PipelineStep
 from vcmi_mapgen.kit import tiling as TL
-from vcmi_mapgen.kit import vmap_format as FA
+from vcmi_mapgen.kit import vmap as VM
 
 
 class TileStep(PipelineStep):
@@ -23,6 +23,6 @@ class TileStep(PipelineStep):
             kw = {"protect": protect} if level == 1 else {}
             cells = TL.tile_terrain(grid, W, H, **kw)
             state.cells[level] = cells
-            state.surfs[level] = [[FA.tile_string(c) for c in row] for row in cells]
+            state.surfs[level] = [[VM.tile_string(c) for c in row] for row in cells]
             # update grid with post-despeckle terrain codes
             state.grids[level] = [[c["t"] for c in row] for row in cells]

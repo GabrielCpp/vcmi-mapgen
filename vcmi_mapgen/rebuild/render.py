@@ -4,7 +4,7 @@ import os
 
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit import vmap_format as VF
+from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.render_palette import TERRAIN_RGB as _TERRAIN_RGB
 from vcmi_mapgen.rebuild.engine import _bucket_objects, label_zone
 
@@ -116,7 +116,7 @@ def _render_panel(pan, title=None):
     for y in range(y0, y1):
         for x in range(x0, x1):
             if (x, y) in tiles:
-                img.paste(RE.terr_tile_img(VF.tile_string(terr[y][x])),
+                img.paste(RE.terr_tile_img(VM.tile_string(terr[y][x])),
                           ((x - x0) * T, (y - y0) * T))
     for (ox, oy, sp) in draw:
         img.paste(sp, ((ox - x0 + 1) * T - sp.size[0], (oy - y0 + 1) * T - sp.size[1]), sp)

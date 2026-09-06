@@ -174,5 +174,5 @@ def traverse(fm, em=None):
     }
 
 
-# traverse() is imported as a library by faithful.to_vmap (visitableFrom wiring).
+# traverse() is imported as a library by research/mapeval.py (map-quality scoring).
 # The former __main__ self-test depended on the removed deps_realize experiment.

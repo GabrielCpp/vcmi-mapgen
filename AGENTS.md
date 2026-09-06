@@ -27,8 +27,9 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
   - `zone_engine.py` — the CLI (`extract` / `inspect` / `features` / `reconstruct` /
     `rebuild` / `run`).
   - `terrain_segment.py` — same-terrain flood-fill segmentation + interior-depth features.
-  - `obj_resolve.py`, `ontology.py` — faithful-map loader, object identity, purpose.
-  - `faithful.py`, `vmapwrite.py`, `traverse.py` — faithful map dict → editor `.vmap`.
+  - `kit/objects.py`, `ontology.py` — corpus loader, object identity, purpose.
+  - `kit/vmap/{reader,writer}.py`, `rebuild/engine.py` (`fm_to_document`) — the full
+    `.vmap` reader/writer and the faithful-shaped-dict → `VmapDocument` bridge.
   - `renderers/sprites.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt
     0/1/2/3); `renderers/png.py` — schematic PNGs; `renderers/vmap.py` — playable `.vmap`
     export; `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...).

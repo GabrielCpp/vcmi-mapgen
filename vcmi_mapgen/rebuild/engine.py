@@ -16,7 +16,6 @@ import numpy as np
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import vmap as VM
-from vcmi_mapgen.kit import vmap_format as VF
 from vcmi_mapgen.kit.segmentation import _segment_level
 from vcmi_mapgen.kit.terrain_lookup import TNAME, EXCLUDE_DECOR_TYPES
 from vcmi_mapgen import ontology as ON
@@ -208,8 +207,7 @@ def _default_header() -> dict:
     the static template."""
     rmg = glob.glob(os.path.join(vcmi_home(), "Maps", "RandomMaps", "*.vmap"))
     if rmg:
-        header, _, _, _ = VF.read_raw(rmg[0])
-        return header
+        return VM.read_header(rmg[0])
     tpl = str(ROOT / "data" / "vmap_header_template.json")
     return json.load(open(tpl))
 

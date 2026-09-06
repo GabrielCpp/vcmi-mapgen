@@ -13,8 +13,8 @@ Two sources of truth, both already byte-exact:
     purpose+terrain, harvested from the corpus.
 
 The terrain cells in a faithful map ({t,view,rt,rd,ot,od,m}) are already what
-``faithful.to_vmap`` / ``kit.vmap.terrain.tile_string`` expect, so a generated map can pass
-faithful terrain straight through.
+``rebuild.engine.fm_to_document`` / ``kit.vmap.terrain.tile_string`` expect, so a generated
+map can pass faithful terrain straight through.
 """
 from __future__ import annotations
 

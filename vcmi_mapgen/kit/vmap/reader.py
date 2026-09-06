@@ -79,6 +79,14 @@ def header_fields(header: dict) -> dict:
     }
 
 
+def read_header(path: str) -> dict:
+    """Just the raw `header.json` dict of a `.vmap` file -- for a caller that wants
+    a template header (e.g. a real local RMG-produced map) to build a fresh
+    `VmapDocument` from via `header_fields`, without reading the whole file."""
+    with zipfile.ZipFile(path) as z:
+        return _relaxed(z.read("header.json").decode("utf-8", "replace"))
+
+
 def read(path: str) -> VmapDocument:
     z = zipfile.ZipFile(path)
     names = z.namelist()
