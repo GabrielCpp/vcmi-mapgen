@@ -19,12 +19,14 @@ import collections
 import os
 
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen import zone_engine as ZE
+from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.terrain_lookup import TNAME, EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.kit.segmentation import _segment_level
 from vcmi_mapgen.kit.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.kit.topology import SPACING, _zone_gates, _farthest_points, _geodesic_path
 from vcmi_mapgen.research import zone_skeleton as SK
+
+ROOT = project_root()
 
 R = 8          # cap on run-length feature
 NB4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
@@ -395,7 +397,7 @@ def render_markov_field(seed=3, W=72, H=72, scale=9, out=None, min_area=60,
     as plain terrain. Returns the output path."""
     import random
     from PIL import Image
-    import markov_terrain as MT
+    from vcmi_mapgen.steps.terrain_gen import markov as MT
     from PIL import Image
     from vcmi_mapgen.kit.render_palette import TERRAIN_RGB as _TRGB, TERRAIN_TILE_PX as _TILE
 
@@ -441,7 +443,7 @@ def render_markov_field(seed=3, W=72, H=72, scale=9, out=None, min_area=60,
                 for dx in range(_TILE):
                     px[x * _TILE + dx, y * _TILE + dy] = col
     if out is None:
-        out = os.path.join(ZE.ROOT, "out", "render", "field", f"markov_field_s{seed}.png")
+        out = os.path.join(ROOT, "out", "render", "field", f"markov_field_s{seed}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     img.save(out)
     print(f"markov terrain {W}x{H}, {len(zones)} zones, {nfields} open/block fields painted -> {out}")
@@ -470,7 +472,7 @@ def render_markov_sprites(seed=3, W=72, H=72, out=None, min_area=60,
     source of object identity; we only choose WHERE (blocked tiles) and pick among its native pool."""
     import random
     import collections as _C
-    from vcmi_mapgen import markov_terrain as MT
+    from vcmi_mapgen.steps.terrain_gen import markov as MT
     from vcmi_mapgen import ontology as ON
     from vcmi_mapgen.kit import objects as _OR
     from vcmi_mapgen.renderers import sprites as RED
@@ -571,7 +573,7 @@ def render_markov_sprites(seed=3, W=72, H=72, out=None, min_area=60,
 
     img = RED.render_map(surf, objs, title=f"markov+veg s{seed}")
     if out is None:
-        out = os.path.join(ZE.ROOT, "out", "render", "field", f"markov_sprites_s{seed}.png")
+        out = os.path.join(ROOT, "out", "render", "field", f"markov_sprites_s{seed}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     img.save(out)
     print(f"markov terrain {W}x{H}, {nfields} fields, {len(objs)} vegetation sprites -> {out}")
@@ -624,7 +626,7 @@ def main():
         ts, O_gen, seedt = generate_spanning(fm, args.zone, zones, model, bias=args.bias,
                                              spacing=args.spacing, edge_w=args.edge_w)
 
-    rdir = os.path.join(ZE.ROOT, "out", "render", "field")
+    rdir = os.path.join(ROOT, "out", "render", "field")
     os.makedirs(rdir, exist_ok=True)
     base = f"{args.map.replace(' ', '_')}_z{args.zone}"
     render_rw(ts_real, O_real, os.path.join(rdir, base + "_real.png"))

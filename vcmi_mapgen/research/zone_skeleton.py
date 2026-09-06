@@ -14,9 +14,12 @@ import collections
 import os
 
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen import zone_engine as ZE
+from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.research import clustering as CL
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.segmentation import _segment_level
+
+ROOT = project_root()
 
 WATER, ROCK = 8, 9
 NB4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
@@ -77,7 +80,7 @@ def distance_transform(openset):
 
 def _seed_tile(o, openset):
     """Where a cluster's anchor seeds its room: its 'A' visit tile if open, else nearest open tile."""
-    for t in ZE._mask_anchor_cells(o["mask"], o["x"], o["y"]):
+    for t in CL._mask_anchor_cells(o["mask"], o["x"], o["y"]):
         if t in openset:
             return t
     best, bd = None, 1e9
@@ -124,8 +127,8 @@ def skeleton(fm, zid, zones, zl):
 
     # --- room nuclei: Part C gameplay clusters with an eligible anchor, + a hub per open component
     seeds = []   # (tile, role, anchor_purpose, cluster)
-    for cl in ZE._cluster_objects(gameplay):
-        a = ZE._group_anchor(cl)
+    for cl in CL._cluster_objects(gameplay):
+        a = CL._group_anchor(cl)
         if a is None:
             continue
         st = _seed_tile(a, O)
@@ -304,7 +307,7 @@ def main():
     ap.add_argument("--zone", type=int, default=None)
     ap.add_argument("--verdict", type=int, default=0, help="run over N maps, print structure stats")
     args = ap.parse_args()
-    rdir = os.path.join(ZE.ROOT, "out", "render", "skeleton")
+    rdir = os.path.join(ROOT, "out", "render", "skeleton")
     os.makedirs(rdir, exist_ok=True)
 
     if args.verdict:

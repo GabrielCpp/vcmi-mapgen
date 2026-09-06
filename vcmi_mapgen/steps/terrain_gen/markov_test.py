@@ -1,4 +1,4 @@
-"""Reliability tests for markov_terrain (corpus-learned terrain Markov chain)."""
+"""Reliability tests for steps.terrain_gen.markov (corpus-learned terrain Markov chain)."""
 
 
 def test_learn_is_independent_of_listdir_order(monkeypatch):
@@ -11,7 +11,7 @@ def test_learn_is_independent_of_listdir_order(monkeypatch):
     fixed by sorting the corpus file list (formerly glob.glob(), now os.listdir())."""
     import os as os_module
 
-    from vcmi_mapgen import markov_terrain as MT
+    from vcmi_mapgen.steps.terrain_gen import markov as MT
 
     real_listdir = os_module.listdir
 
@@ -38,7 +38,7 @@ def test_learn_is_independent_of_listdir_order(monkeypatch):
 def test_learn4_is_independent_of_listdir_order(monkeypatch):
     import os as os_module
 
-    from vcmi_mapgen import markov_terrain as MT
+    from vcmi_mapgen.steps.terrain_gen import markov as MT
 
     real_listdir = os_module.listdir
 

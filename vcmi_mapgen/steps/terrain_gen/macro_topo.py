@@ -1,6 +1,6 @@
 """Macro terrain model (L0) — capacity-constrained zone growth + boundary texturing (spec §4).
 
-The causal 3-tile Markov chain (`markov_terrain`) reproduces border texture but its patch sizes
+The causal 3-tile Markov chain (`markov`) reproduces border texture but its patch sizes
 decay geometrically — generated maps segment into many small fragments, while corpus maps hold a
 handful of LARGE designed regions. This module plans the macro structure first:
 
@@ -308,11 +308,11 @@ def _texture_boundaries(grid, rng, sweeps=3, level=0, protect=frozenset()):
     tiles within BAND (Chebyshev) of a terrain change; everything else is clamped, so the
     interiors keep their planned terrain and only the borders gain corpus transition texture.
     `level` selects which terrain level's corpus transitions to learn from (0 or 1);
-    `markov_terrain.learn`/`learn4` already filter to maps that have that level. `protect`
+    `markov.learn`/`learn4` already filter to maps that have that level. `protect`
     cells (e.g. underground tunnel corridors, which are thin enough to sit entirely inside
     the band on both sides) are excluded from resampling so a rock-heavy corpus conditional
     can't erode a load-bearing connection back into barrier."""
-    from vcmi_mapgen import markov_terrain as MT
+    from vcmi_mapgen.steps.terrain_gen import markov as MT
     H = len(grid); W = len(grid[0])
     M4 = MT.learn4(level)
     M = MT.learn(level)

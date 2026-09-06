@@ -1,10 +1,9 @@
-"""Rendering for the identity-rebuild engine: the zone-tint segmentation PNG, the realistic
-editor-sprite side-by-side (original vs rebuilt), and the reconstruct-panel montage."""
+"""Rendering for the identity-rebuild engine: the zone-tint segmentation PNG and the
+realistic editor-sprite side-by-side (original vs rebuilt)."""
 import os
 
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.render_palette import TERRAIN_RGB as _TERRAIN_RGB
 from vcmi_mapgen.rebuild.engine import _bucket_objects, label_zone
 
@@ -86,81 +85,3 @@ def editor_render(vmap_path: str, out_path: str, compare_vmap: str | None = None
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out.save(out_path)
     return out_path
-
-
-def _render_panel(pan, title=None):
-    """Render ONE zone panel (cropped to the zone) with REAL H3 sprites at editor
-    resolution (32px), only the zone's own tiles, transparent elsewhere. RGBA."""
-    from vcmi_mapgen.renderers import sprites as RE
-    from PIL import Image, ImageDraw
-    T = RE.TILE  # 32
-    terr, tiles, W, H = pan["terr"], pan["tiles"], pan["W"], pan["H"]
-    xs = [x for x, y in tiles]
-    ys = [y for x, y in tiles]
-    # pre-pass: largest sprite -> crop margin wide enough that bottom-right-anchored
-    # sprites (extend up & left) aren't clipped.
-    draw = []
-    max_sw = max_sh = T
-    for o in sorted(pan["objs"], key=lambda o: (_paint_layer(o), o["y"], o["x"])):
-        anim = o.get("animation", "")
-        groups = RE.get_def(anim) if anim else None
-        if not groups or not groups[0]:
-            continue
-        sp = groups[0][0]
-        draw.append((o["x"], o["y"], sp))
-        max_sw, max_sh = max(max_sw, sp.size[0]), max(max_sh, sp.size[1])
-    ml, mt = -(-max_sw // T), -(-max_sh // T)
-    x0, x1 = max(min(xs) - ml, 0), min(max(xs) + 2, W)
-    y0, y1 = max(min(ys) - mt, 0), min(max(ys) + 2, H)
-    img = Image.new("RGBA", ((x1 - x0) * T, (y1 - y0) * T), (0, 0, 0, 0))
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            if (x, y) in tiles:
-                img.paste(RE.terr_tile_img(VM.tile_string(terr[y][x])),
-                          ((x - x0) * T, (y - y0) * T))
-    for (ox, oy, sp) in draw:
-        img.paste(sp, ((ox - x0 + 1) * T - sp.size[0], (oy - y0 + 1) * T - sp.size[1]), sp)
-    t = title if title is not None else pan.get("title")
-    if t:
-        ImageDraw.Draw(img).text((4, 4), t, fill=(255, 255, 255, 255))
-    return img
-
-
-def _compose_panels(imgs, out_path, gap=14):
-    from PIL import Image
-    Wt = sum(i.width for i in imgs) + gap * (len(imgs) - 1)
-    Ht = max(i.height for i in imgs)
-    canvas = Image.new("RGBA", (Wt, Ht), (0, 0, 0, 0))  # transparent background
-    x = 0
-    for i in imgs:
-        canvas.paste(i, (x, 0), i)
-        x += i.width + gap
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    canvas.save(out_path)
-    return out_path
-
-
-def render_zone_compare(panels, out_path):
-    """Side-by-side zone panels (real H3 sprites, zone-only, transparent elsewhere)."""
-    return _compose_panels([_render_panel(p) for p in panels], out_path)
-
-
-# ---------------------------------------------------------------------------
-# Patch inspection — render every stored patch in ISOLATION (its own shape +
-# objects, no placement/stretch) so the patch CONTENT can be eyeballed apart
-# from how generation lays it down. Mirrors the library tree for traceability.
-# ---------------------------------------------------------------------------
-
-PATCH_BG = (28, 28, 32)
-
-
-def _paint_layer(o):
-    """Paint band so stacked objects (multiple per tile) don't hide each other: flat
-    terrain overlays (cursed ground / magic plains / rocklands, AVX*) at the bottom,
-    scenery decoration above, gameplay on top. Within a band, normal (y,x) back-to-front."""
-    p = o.get("_purpose")
-    if p == "TERRAIN_MODIFIER":
-        return 0
-    if p == "DECORATION":
-        return 1
-    return 2
