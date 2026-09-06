@@ -16,25 +16,25 @@ def _warn_sliver_zones(zones, level, protect=frozenset()):
 class SegmentStep(PipelineStep):
     """Segment each active level's tile grid into same-terrain zones.
 
-    inject(cells, tunnel_protect): ``cells`` (TileStep's output) and
-    ``tunnel_protect`` (TerrainGenStep's output).
+    Reads ``map_state.cells`` (TileStep's output) directly in run().
+    inject(ctx): ``tunnel_protect`` (TerrainGenStep's ctx output).
 
-    Produces: ``zones``.
+    Produces: ``zones``, written directly onto MapState.
     """
 
     def __init__(self) -> None:
         self.zones: dict = {}
-        self._cells: dict = {}
         self._tunnel_protect: frozenset = frozenset()
 
-    def inject(self, *, cells: dict, tunnel_protect) -> None:
-        self._cells = cells
-        self._tunnel_protect = frozenset(tunnel_protect)
+    def inject(self, ctx: dict) -> None:
+        self._tunnel_protect = frozenset(
+            self._require(ctx, "tunnel_protect", (set, frozenset)))
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         protect = self._tunnel_protect
-        for level, cells in self._cells.items():
+        for level, cells in map_state.cells.items():
             zones, _zl, _ = _segment_level(cells)
             _warn_sliver_zones(zones, level,
                                protect=protect if level == 1 else frozenset())
             self.zones[level] = zones
+        map_state.zones = self.zones

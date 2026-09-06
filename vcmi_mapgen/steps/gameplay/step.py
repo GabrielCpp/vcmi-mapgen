@@ -28,7 +28,7 @@ def _rim8(zones):
 
 
 def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, seed,
-                        has_subterrain, gate_occ=frozenset(), gate_blk=frozenset(),
+                        has_subterrain, ontology, gate_occ=frozenset(), gate_blk=frozenset(),
                         gate_appr=(), tunnel_protect=frozenset()):
     """Gameplay-only half of the map-generation pass: water-body population (surface only),
     per-zone ``mines.place_zone`` + protected web, and the seaport guarantee. Originally
@@ -146,7 +146,7 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     # approach tile is added to targets, and their footprint is excluded from
     # scatter open sets.  Placed here so the veg pass below can forbid their cells.
     if level == 0:
-        ship_objs = WT._ensure_water_seaports(W, H, grid, zones, objs, seed)
+        ship_objs = WT._ensure_water_seaports(W, H, grid, zones, objs, seed, ontology)
         if ship_objs:
             objs.extend(ship_objs)
             print(f"  L{level} seaport guarantee: {len(ship_objs)} shipyard(s) added")
@@ -175,57 +175,56 @@ class GameplayStep(PipelineStep):
         players     Number of player zones to designate (0 = neutral map).
         size        Map side length in tiles (square).
         subterrain  Whether a second underground level is active.
-        workspace   Shared ``PlacementWorkspace``, written here for Vegetation/Pickup/Repair.
 
-    inject(grids, zones, tunnel_protect, gate_objs, gate_occ, gate_blk, gate_appr):
-    ``grids`` (TileStep's post-despeckle output), ``zones`` (SegmentStep's output),
-    ``tunnel_protect`` (TerrainGenStep's output); the four ``gate_*`` values (GateStep's
-    output) default to empty when there is no GateStep (``subterrain`` is False).
+    Reads ``map_state.zones`` (SegmentStep) and ``map_state.gate_blk`` (GateStep, empty
+    when there is no GateStep) directly in run(). inject(ctx): ``grids`` (TileStep's
+    post-despeckle output), ``tunnel_protect`` (TerrainGenStep's output); the three
+    ``gate_*`` ctx values (GateStep's output) default to empty when there is no GateStep.
 
-    Produces: ``objs`` (all levels, underground tagged ``l=1``), ``targets``,
-    ``zone_records`` (empty per level — populated by VegetationStep/PickupStep),
-    ``player_zids``, ``player_towns``, ``ledger``, and ``self.workspace.levels[level]``
-    (a ``LevelWorkspace`` with a ``ZoneWorkspace`` per zone, ``ridge``, and
+    Produces: ``objs``, ``player_towns`` — written directly onto MapState (all levels,
+    underground tagged ``l=1``). Into ctx: ``targets``, ``zone_records`` (empty per
+    level — populated by VegetationStep/PickupStep), ``player_zids``, ``ledger``, the
+    folded-in ``workspace`` (a ``PlacementWorkspace``, created here — the first of the
+    four steps that share it), and ``self.workspace.levels[level]`` (a
+    ``LevelWorkspace`` with a ``ZoneWorkspace`` per zone, ``ridge``, and
     ``town_of_zone`` for RepairStep — ``guard_tiles``/``seal_avoid``/``hard_avoid`` come
     from later steps' own border-seal pass, not from here).
     """
 
     def __init__(self, seed: int = 3, players: int = 0, size: int = 72,
-                 subterrain: bool = False,
-                 workspace: PlacementWorkspace | None = None) -> None:
+                 subterrain: bool = False) -> None:
         self.seed = seed
         self.players = players
         self.size = size
         self.subterrain = subterrain
-        self.workspace = workspace
         self.objs: list = []
         self.targets: dict = {}
         self.zone_records: dict = {}
         self.player_zids: list = []
         self.player_towns: list = []
         self.ledger: dict = {}
+        self._ctx: dict = {}
         self._grids: dict = {}
-        self._zones: dict = {}
         self._tunnel_protect: frozenset = frozenset()
         self._gate_objs: list = []
         self._gate_occ: dict = {}
-        self._gate_blk: dict = {}
         self._gate_appr: dict = {}
 
-    def inject(self, *, grids: dict, zones: dict, tunnel_protect,
-               gate_objs=(), gate_occ=None, gate_blk=None, gate_appr=None) -> None:
-        self._grids = grids
-        self._zones = zones
-        self._tunnel_protect = frozenset(tunnel_protect)
-        self._gate_objs = list(gate_objs)
-        self._gate_occ = gate_occ or {}
-        self._gate_blk = gate_blk or {}
-        self._gate_appr = gate_appr or {}
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._grids = self._require(ctx, "grids", dict)
+        self._tunnel_protect = frozenset(
+            self._require(ctx, "tunnel_protect", (set, frozenset)))
+        self._gate_objs = list(ctx.get("gate_objs", ()))
+        self._gate_occ = ctx.get("gate_occ") or {}
+        self._gate_appr = ctx.get("gate_appr") or {}
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         W = H = self.size
+        zones_by_level = map_state.zones
+        gate_blk_by_level = map_state.gate_blk
 
-        player_zids = MN.select_player_zones(self._zones, self.players)
+        player_zids = MN.select_player_zones(zones_by_level, self.players)
         if self.players and len(player_zids) < self.players:
             print(f"  WARNING: only {len(player_zids)} zones can host a player town "
                   f"(requested {self.players})")
@@ -240,24 +239,26 @@ class GameplayStep(PipelineStep):
             "gold": 0,
         }
 
+        workspace = self._ctx.setdefault("workspace", PlacementWorkspace())
+
         all_town_of_zone: dict = {}
         all_ridge: dict = {}
         all_objs: list = []
 
         for level in sorted(self._grids):
             grid = self._grids[level]
-            zones = self._zones[level]
+            zones = zones_by_level[level]
             gstats = MN.mine_gameplay(level=level)
 
             gate_occ = self._gate_occ.get(level, frozenset())
-            gate_blk = self._gate_blk.get(level, frozenset())
+            gate_blk = gate_blk_by_level.get(level, frozenset())
             gate_appr = self._gate_appr.get(level, ())
             tunnel_protect = self._tunnel_protect if level == 1 else frozenset()
 
             (objs, zone_cache, entrance_plan, _has_water, town_of_zone, ridge,
              seaport_blk, seaport_appr, water_tiles) = _run_level_gameplay(
                 level, W, H, grid, zones, zids_by_level[level],
-                ledger, gstats, self.seed, self.subterrain,
+                ledger, gstats, self.seed, self.subterrain, ontology,
                 gate_occ=gate_occ, gate_blk=gate_blk, gate_appr=gate_appr,
                 tunnel_protect=tunnel_protect,
             )
@@ -276,24 +277,23 @@ class GameplayStep(PipelineStep):
             all_town_of_zone[level] = town_of_zone
             all_ridge[level] = ridge
 
-            if self.workspace is not None:
-                zone_workspaces = {
-                    zid: ZoneWorkspace(
-                        terrain=c["terrain"], ts=frozenset(c["ts"]),
-                        ts_full=frozenset(c["ts_full"]), gobjs=c["gobjs"],
-                        occupied=frozenset(c["occupied"]),
-                        gblocked=frozenset(c["gblocked"]),
-                        approaches=tuple(c["approaches"]), entrances=c["z_entr"],
-                        prot=frozenset(c["prot"]), rim8=frozenset(c["rim8"]),
-                        ent_bands=frozenset(c["ent_bands"]),
-                    )
-                    for zid, c in zone_cache.items()
-                }
-                self.workspace.levels[level] = LevelWorkspace(
-                    zones=zone_workspaces, entrance_plan=entrance_plan, ridge=ridge,
-                    seaport_blk=seaport_blk, seaport_appr=seaport_appr,
-                    water_tiles=water_tiles, town_of_zone=town_of_zone,
+            zone_workspaces = {
+                zid: ZoneWorkspace(
+                    terrain=c["terrain"], ts=frozenset(c["ts"]),
+                    ts_full=frozenset(c["ts_full"]), gobjs=c["gobjs"],
+                    occupied=frozenset(c["occupied"]),
+                    gblocked=frozenset(c["gblocked"]),
+                    approaches=tuple(c["approaches"]), entrances=c["z_entr"],
+                    prot=frozenset(c["prot"]), rim8=frozenset(c["rim8"]),
+                    ent_bands=frozenset(c["ent_bands"]),
                 )
+                for zid, c in zone_cache.items()
+            }
+            workspace.levels[level] = LevelWorkspace(
+                zones=zone_workspaces, entrance_plan=entrance_plan, ridge=ridge,
+                seaport_blk=seaport_blk, seaport_appr=seaport_appr,
+                water_tiles=water_tiles, town_of_zone=town_of_zone,
+            )
 
         self.objs = all_objs
         self.targets = {level: [] for level in self._grids}
@@ -318,3 +318,10 @@ class GameplayStep(PipelineStep):
         if ledger["missing"]:
             print(f"  WARNING: mine coverage incomplete — missing "
                   f"{sorted(ledger['missing'])}")
+
+        map_state.objs = self.objs
+        map_state.player_towns = self.player_towns
+        self._ctx["targets"] = self.targets
+        self._ctx["zone_records"] = self.zone_records
+        self._ctx["player_zids"] = self.player_zids
+        self._ctx["ledger"] = self.ledger

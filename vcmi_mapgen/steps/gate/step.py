@@ -1,7 +1,7 @@
 """GateStep — place Subterranean Gate pairs between surface and underground.
 
-Only constructed/run by the builder when ``subterrain`` is requested; there is no
-internal no-op branch here since the only caller already gates that."""
+Only added to the pipeline when ``subterrain`` is requested; there is no internal no-op
+branch here since the only caller already gates that."""
 from __future__ import annotations
 
 from vcmi_mapgen.pipeline import PipelineStep
@@ -47,13 +47,12 @@ class GateStep(PipelineStep):
     Config:
         seed  RNG seed (should match the seed used for terrain generation).
 
-    inject(zones): both levels' ``zones`` (SegmentStep's output).
+    Reads ``map_state.zones`` (SegmentStep's output) directly in run().
 
     Produces:
-      - ``gate_objs``   — pre-placed gate objects for both levels
-      - ``gate_occ``    — occupied tile sets per level
-      - ``gate_blk``    — blocked tile sets per level
-      - ``gate_appr``   — approach tile tuples per level
+      - ``gate_blk``    — blocked tile sets per level, written directly onto MapState.
+      - ``gate_objs``, ``gate_occ``, ``gate_appr`` — written into ctx (GameplayStep's
+        input; each defaults to empty when no GateStep ran).
     """
 
     def __init__(self, seed: int = 3) -> None:
@@ -62,14 +61,14 @@ class GateStep(PipelineStep):
         self.gate_occ: dict = {}
         self.gate_blk: dict = {}
         self.gate_appr: dict = {}
-        self._zones: dict = {}
+        self._ctx: dict = {}
 
-    def inject(self, *, zones: dict) -> None:
-        self._zones = zones
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
 
-    def run(self) -> None:
-        zones0 = self._zones[0]
-        zones1 = self._zones[1]
+    def run(self, ontology, map_state) -> None:
+        zones0 = map_state.zones[0]
+        zones1 = map_state.zones[1]
         ts0 = _land_tiles(zones0)
         ts1 = _land_tiles(zones1)
 
@@ -85,3 +84,8 @@ class GateStep(PipelineStep):
         self.gate_occ = {0: gate_occ0, 1: gate_occ1}
         self.gate_blk = {0: gate_blk0, 1: gate_blk1}
         self.gate_appr = {0: gate_appr0, 1: gate_appr1}
+
+        map_state.gate_blk = self.gate_blk
+        self._ctx["gate_objs"] = self.gate_objs
+        self._ctx["gate_occ"] = self.gate_occ
+        self._ctx["gate_appr"] = self.gate_appr

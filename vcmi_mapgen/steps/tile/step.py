@@ -12,13 +12,12 @@ class TileStep(PipelineStep):
     Config:
         size  Map side length in tiles (square) — matches TerrainGenStep's.
 
-    inject(grids, tunnel_protect): ``grids`` (TerrainGenStep's output) and
-    ``tunnel_protect`` (TerrainGenStep's output).
+    inject(ctx): ``grids``, ``tunnel_protect`` (TerrainGenStep's ctx output).
 
     Produces:
-      - ``cells``  — 2-D tile-dict grids (t, view, rt, …)
-      - ``surfs``  — 2-D tile-string grids (e.g. "gr2_")
-      - ``grids``  — post-despeckle terrain-code grids (consumed by GameplayStep/RepairStep)
+      - ``cells``, ``surfs``  — written directly onto MapState.
+      - ``grids``  — post-despeckle terrain-code grids, written back into ctx
+        (consumed by GameplayStep/RepairStep — supersedes TerrainGenStep's raw grids).
     """
 
     def __init__(self, size: int = 72) -> None:
@@ -26,14 +25,17 @@ class TileStep(PipelineStep):
         self.cells: dict = {}
         self.surfs: dict = {}
         self.grids: dict = {}
+        self._ctx: dict = {}
         self._input_grids: dict = {}
         self._tunnel_protect: frozenset = frozenset()
 
-    def inject(self, *, grids: dict, tunnel_protect) -> None:
-        self._input_grids = grids
-        self._tunnel_protect = frozenset(tunnel_protect)
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._input_grids = self._require(ctx, "grids", dict)
+        self._tunnel_protect = frozenset(
+            self._require(ctx, "tunnel_protect", (set, frozenset)))
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         W = H = self.size
         protect = self._tunnel_protect
 
@@ -44,3 +46,7 @@ class TileStep(PipelineStep):
             self.surfs[level] = [[VM.tile_string(c) for c in row] for row in cells]
             # post-despeckle terrain codes, for steps that need the terrain grid itself
             self.grids[level] = [[c["t"] for c in row] for row in cells]
+
+        map_state.cells = self.cells
+        map_state.surfs = self.surfs
+        self._ctx["grids"] = self.grids

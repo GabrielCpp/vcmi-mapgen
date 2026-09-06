@@ -15,8 +15,6 @@ from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.gameplay.mines import RND_ART, RND_RES, WATER_PURPOSES, mine_gameplay
 
-_SEAPORT_ANIM = "avxshyd0"
-_SEAPORT_MASK = ["VVV", "VVV", "BXB"]
 _WATER_BODY_MIN = 30   # minimum water body size to require seaports
 
 
@@ -107,7 +105,7 @@ def place_water(ts, zones, zid, seed=1):
     return objs
 
 
-def _ensure_water_seaports(W, H, grid, zones, objs, seed):
+def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
     """Guarantee ≥1 shipyard per land zone bordering a water body ≥ _WATER_BODY_MIN tiles,
     and ≥1 shipyard per island land zone ≥ _WATER_BODY_MIN tiles.
 
@@ -115,8 +113,13 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
     a seaport — typically 1 zone = 1 seaport.  For 'open water' touching map borders, each
     zone on opposite shores gets its own seaport (≥2 total).
 
-    Placement uses any anchor in the zone where the 3×3 shipyard fits with all 9 cells and
-    the approach tile in the zone, and no blocking-cell conflict with existing objects.
+    Placement uses any anchor in the zone where the shipyard's footprint fits with all its
+    cells and the approach tile in the zone, and no blocking-cell conflict with existing
+    objects. The shipyard identity (type/subtype/animation/mask) comes from `ontology` --
+    resolved per target zone's terrain, like every other placed object in this file --
+    not a hardcoded animation/mask (the ontology's shipyard entry happens to be identical
+    across all land terrains, but sourcing it this way is what keeps it that way on
+    purpose rather than by accident).
 
     Returns list of new shipyard objects to append to `objs`."""
     import random as _rnd
@@ -154,10 +157,10 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
     # Anchor positions of seaports already in objs (for 20-tile spacing constraint)
     placed_anchors = [(o["x"], o["y"]) for o in objs if o.get("type") == "shipyard"]
 
-    def _seaport_footprint(ax, ay):
+    def _seaport_footprint(ax, ay, mask):
         allc, blk, approach = [], [], None
-        hh = len(_SEAPORT_MASK)
-        for r, row in enumerate(_SEAPORT_MASK):
+        hh = len(mask)
+        for r, row in enumerate(mask):
             ww = len(row)
             for ci, ch in enumerate(row):
                 tx = ax - (ww - 1 - ci)
@@ -171,10 +174,11 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
 
     _SEAPORT_SPACING_SQ = 20 * 20  # minimum squared Euclidean distance between seaports
 
-    def _try_place(ts_set, cand_tiles, label, force=True):
-        """Try to place a shipyard. cand_tiles = anchor candidates (coastal tiles first).
-        Prefers positions ≥20 tiles from existing seaports; when force=True (required
-        placement) falls back to any valid position if no spaced candidate exists."""
+    def _try_place(ts_set, cand_tiles, label, ident, force=True):
+        """Try to place a shipyard with the given ontology identity. cand_tiles =
+        anchor candidates (coastal tiles first). Prefers positions ≥20 tiles from
+        existing seaports; when force=True (required placement) falls back to any
+        valid position if no spaced candidate exists."""
         # NOTE: Python's built-in hash() is salted per-process for str (PYTHONHASHSEED),
         # so seeding from hash(label) would make this non-reproducible across runs even
         # for the identical seed — crc32 is a plain, stable string->int hash.
@@ -184,7 +188,7 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
         cap = shuffled[:300]
 
         def _candidate_ok(ax, ay, check_spacing):
-            allc, blk, approach = _seaport_footprint(ax, ay)
+            allc, blk, approach = _seaport_footprint(ax, ay, ident["mask"])
             if any(c not in ts_set for c in allc):
                 return False
             if approach not in ts_set:
@@ -206,16 +210,16 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
             return True
 
         def _do_place(ax, ay):
-            _, blk, _ = _seaport_footprint(ax, ay)
+            _, blk, _ = _seaport_footprint(ax, ay, ident["mask"])
             existing_blk.update(blk)
             placed_anchors.append((ax, ay))
             o = {
                 "x": ax, "y": ay, "l": 0, "purpose": "WATER_TRANSPORT",
-                "type": "shipyard", "subtype": "object",
-                "animation": _SEAPORT_ANIM, "mask": _SEAPORT_MASK,
+                "type": ident.get("type"), "subtype": ident.get("subtype"),
+                "animation": ident["animation"], "mask": ident["mask"],
                 "template": {
-                    "animation": _SEAPORT_ANIM, "editorAnimation": "",
-                    "mask": _SEAPORT_MASK,
+                    "animation": ident["animation"], "editorAnimation": "",
+                    "mask": ident["mask"],
                     "visitableFrom": ["+++", "+-+", "+++"],
                 },
             }
@@ -247,13 +251,20 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
         ts_set = set(z["tiles_set"])
         if _zone_has_seaport(zid, ts_set):
             return True
+        terrain = TNAME.get(z["terrain_type"])
+        ident = next((i for i in ontology.gameplay_pool(terrain, "WATER_TRANSPORT")
+                     if i.get("type") == "shipyard"), None)
+        if ident is None:
+            print(f"  WARNING: no seaport placed on zone {zid} "
+                  f"({terrain}, {z['area']} tiles) — no shipyard identity for this terrain")
+            return False
         # Coastal = zone tiles adjacent to water
         coastal_set = {t for t in ts_set if any(
             0 <= t[0]+dx < W and 0 <= t[1]+dy < H and grid[t[1]+dy][t[0]+dx] == WATER
             for dx, dy in NB4)}
         if not coastal_set:
             return False
-        # Expand 1 hop inland so the 3×3 footprint can anchor with its BXB bottom
+        # Expand 1 hop inland so the footprint can anchor with its blocking bottom
         # row immediately adjacent to the water edge — keeps seaports ≤1 tile
         # from the shoreline.
         near_coastal = set(coastal_set)
@@ -263,10 +274,10 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed):
                     nb = (t[0]+dx, t[1]+dy)
                     if nb in ts_set:
                         near_coastal.add(nb)
-        o = _try_place(ts_set, list(near_coastal), label)
+        o = _try_place(ts_set, list(near_coastal), label, ident)
         if not o:
             print(f"  WARNING: no seaport placed on zone {zid} "
-                  f"({TNAME.get(z['terrain_type'])}, {z['area']} tiles) — "
+                  f"({terrain}, {z['area']} tiles) — "
                   f"no valid near-coastal anchor found")
             return False
         return True

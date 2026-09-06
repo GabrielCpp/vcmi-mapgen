@@ -1,16 +1,22 @@
 """Map-generation/rebuild primitives: the render-only MapState, the Gameplay/Vegetation/
-Pickup/Repair collaboration workspaces, and the PipelineStep base contract.
+Pickup/Repair collaboration workspaces, the PipelineStep contract, and the generic
+Pipeline engine that runs an ordered list of steps against a shared context.
 
 A step owns its data as instance properties. Dependencies known when a pipeline is
-assembled (seed, size, ...) go through the constructor; values produced by an earlier
-step are delivered through ``inject()``, whose keyword parameters ARE the step's
-declared manifest of what it needs. ``run()`` takes nothing. A ``PipelineBuilder``
-(see ``pipeline_builder.py``) wires steps together by hand: run a step, read back
-whichever of its properties a later step needs, call that step's ``inject()``, run it.
+assembled (seed, size, ...) go through the constructor. ``inject(ctx)`` is self-service:
+a step pulls exactly the keys it needs out of the shared context dict, type-checks each
+one, and stores them on itself — raising ``MissingContextKeyError`` when a key is absent
+or the wrong type, since that means the steps were arranged incorrectly (one was
+omitted, or added out of order). ``run(ontology, map_state)`` is passed the shared
+ontology and the ``MapState`` being assembled on EVERY call, whether or not a given step
+uses them; a step that produces a ``MapState`` field writes it there directly, and a
+step that produces anything else a later step needs writes it directly into the same
+context dict it read from — never a separate merge step.
 
-``MapState`` is assembled by the builder, once a run finishes, purely for the render
-phase (``PngRenderer`` / ``MapOverlay`` / ``VmapRenderer``) — no step holds or mutates
-one, so adding a step never touches this schema.
+``Pipeline`` (see below) replaces the old hand-wired ``PipelineBuilder``: composing a
+new step sequence is just a different list of ``add_step()`` calls, never a new wiring
+method, because a step declares what it needs by reading the context itself instead of
+the caller pushing named values sourced from specific upstream attributes.
 """
 from __future__ import annotations
 
@@ -85,23 +91,71 @@ class PlacementWorkspace:
         self.levels: dict = {}   # level -> LevelWorkspace
 
 
+class MissingContextKeyError(LookupError):
+    """A step's inject() needed a context key that isn't there yet, or the value under
+    it isn't the type the step expected. This means the pipeline's steps were arranged
+    incorrectly — one was omitted, or added out of order — not a recoverable condition:
+    it is always raised, never worked around."""
+
+
 class PipelineStep:
     """Base class for all map-generation/rebuild steps.
 
-    Subclasses store constructor-known config as their own attributes, override
-    ``inject()`` to accept named, typed values produced by earlier steps (the
-    parameter names are the step's declared manifest), and implement ``run()`` to
-    compute their own output properties from those two sources.
+    Subclasses store constructor-known config as their own attributes (never a value
+    another step produced). ``inject(ctx)`` is self-service: pull exactly the keys this
+    step needs out of the shared context dict via ``self._require(ctx, key, type)``,
+    storing them on self; the base implementation needs nothing and is a no-op.
+    ``run(ontology, map_state)`` does the step's work — ``ontology`` and ``map_state``
+    are ALWAYS passed, whether or not this particular step uses them.
     """
 
-    def inject(self, **kwargs) -> None:
-        """Accept values produced by earlier steps. The base implementation accepts
-        none; a step that needs upstream values overrides this with named, typed
-        keyword parameters."""
-        if kwargs:
-            raise TypeError(
-                f"{type(self).__name__} does not accept injected values: {sorted(kwargs)}"
-            )
+    def inject(self, ctx: dict) -> None:
+        pass
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")
+
+    def _require(self, ctx: dict, key: str, expected_type):
+        """Fetch ``ctx[key]``, raising MissingContextKeyError if it's absent or not an
+        instance of ``expected_type`` (a class, or a tuple of classes)."""
+        if key not in ctx:
+            raise MissingContextKeyError(
+                f"{type(self).__name__}.inject(): ctx has no {key!r}")
+        value = ctx[key]
+        if not isinstance(value, expected_type):
+            type_name = getattr(expected_type, "__name__", expected_type)
+            raise MissingContextKeyError(
+                f"{type(self).__name__}.inject(): ctx[{key!r}] is "
+                f"{type(value).__name__}, expected {type_name}")
+        return value
+
+
+class Pipeline:
+    """Runs an ordered list of PipelineStep instances against a shared context dict.
+
+    ``ontology`` (the real vcmi_mapgen.ontology module — the abstraction layer between
+    game data and the pipeline) and ``map_state`` are known before any step runs, so
+    every step's run() receives them directly. Everything else that flows from one step
+    to a later one lives in ``ctx``, written directly by the producing step — Pipeline
+    itself never inspects or merges a step's output; it only sequences inject()/run().
+
+    ``run()`` returns only ``map_state``; anything else a caller needs (log,
+    player_zids, template, fm, stats, document, verify, ...) is read afterward from
+    ``pipeline.ctx``.
+    """
+
+    def __init__(self, ontology) -> None:
+        self.ontology = ontology
+        self.map_state = MapState()
+        self.ctx: dict = {}
+        self._steps: list[PipelineStep] = []
+
+    def add_step(self, step: PipelineStep) -> "Pipeline":
+        self._steps.append(step)
+        return self
+
+    def run(self) -> MapState:
+        for step in self._steps:
+            step.inject(self.ctx)
+            step.run(self.ontology, self.map_state)
+        return self.map_state

@@ -18,8 +18,10 @@ Subcommands:
   render-ontology -> render one sprite (+ passability mask overlay) per documented
                      ontology item — a documentation/debug tool, not part of any pipeline.
 
-Each subcommand is a fixed, PipelineBuilder-assembled step sequence except `generate`,
-which additionally accepts --overlays/--renderers/--stop-after.
+Each subcommand builds and runs its own ``Pipeline`` (see ``pipeline.py``) except
+`extract`/`inspect`/`features`/`render-ontology`, which call the rebuild engine's
+functions directly and never go through a pipeline at all; `generate` additionally
+accepts --overlays/--renderers/--stop-after.
 """
 from __future__ import annotations
 
@@ -31,7 +33,8 @@ import sys
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root, slug
-from vcmi_mapgen.pipeline_builder import GENERATE_STOP_POINTS, PipelineBuilder
+from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.pipeline import Pipeline
 from vcmi_mapgen.rebuild import report as REPORT
 from vcmi_mapgen.rebuild.engine import _prio, fm_to_document, write_features, write_template
 from vcmi_mapgen.rebuild.render import editor_render, render_segmentation
@@ -40,8 +43,18 @@ from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.renderers.overlays import (
     BlockingOverlay, GuardOverlay, PassageOverlay, PocketOverlay, TileTypeOverlay, ZoneOverlay,
 )
+from vcmi_mapgen.steps import (
+    DeformWarpStep, ExtractTemplateStep, FmDocumentStep, GameplayStep, GateStep,
+    PickupStep, RebuildMapStep, RepairStep, SegmentStep, TerrainGenStep, TileStep,
+    VegetationStep, VerifyStep,
+)
 
 ROOT = project_root()
+ONTOLOGY = Ontology()
+
+GENERATE_STOP_POINTS = (
+    "terrain_gen", "tile", "segment", "gate", "gameplay", "vegetation", "pickup",
+)
 
 _OVERLAY_FACTORIES = {
     "zone": lambda: ZoneOverlay(),
@@ -110,22 +123,49 @@ def cmd_features(args):
     print(f"\nfeatures -> {out}")
 
 
+def _run_identity_rebuild(name: str, out_name: str, verify: bool = False) -> Pipeline:
+    """extract -> rebuild (identity) -> [verify] -> fm_document. Returns the Pipeline;
+    read ``template``/``fm``/``stats``/``verify``/``document`` off ``pipeline.ctx``."""
+    src = OR.load_faithful(name)
+    pipeline = Pipeline(ONTOLOGY)
+    pipeline.ctx["target_terrain"] = src["terrain"]
+    pipeline.add_step(ExtractTemplateStep(name))
+    pipeline.add_step(RebuildMapStep(identity=True))
+    if verify:
+        pipeline.add_step(VerifyStep(name))
+    pipeline.add_step(FmDocumentStep(out_name))
+    pipeline.run()
+    return pipeline
+
+
+def _run_deform_rebuild(name: str, zone_id: int, out_name: str) -> Pipeline:
+    """extract -> deform_warp -> fm_document. Returns the Pipeline; read ``template``/
+    ``fm``/``document`` off ``pipeline.ctx``."""
+    pipeline = Pipeline(ONTOLOGY)
+    pipeline.add_step(ExtractTemplateStep(name))
+    pipeline.add_step(DeformWarpStep(name, zone_id))
+    pipeline.add_step(FmDocumentStep(out_name))
+    pipeline.run()
+    return pipeline
+
+
 def cmd_rebuild(args):
     stem = args.out or os.path.join(ROOT, "out", f"Rebuilt-{args.name.replace(' ', '_')}")
-    builder = PipelineBuilder()
     if args.deform:
         if args.zone is None:
             sys.exit("--deform requires --zone N")
-        result = builder.run_deform_rebuild(args.name, args.zone, os.path.basename(stem))
+        pipeline = _run_deform_rebuild(args.name, args.zone, os.path.basename(stem))
     else:
-        result = builder.run_identity_rebuild(args.name, os.path.basename(stem),
-                                              verify=args.verify)
-        print(f"identity rebuild: {result.stats['identity']} zones matched, "
-              f"{result.stats['missing']} missing, {len(result.fm['objects'])} objects")
-        if result.verify is not None:
-            REPORT.report_verify(*result.verify)
+        pipeline = _run_identity_rebuild(args.name, os.path.basename(stem),
+                                         verify=args.verify)
+        stats, fm = pipeline.ctx["stats"], pipeline.ctx["fm"]
+        print(f"identity rebuild: {stats['identity']} zones matched, "
+              f"{stats['missing']} missing, {len(fm['objects'])} objects")
+        verify_result = pipeline.ctx.get("verify")
+        if verify_result is not None:
+            REPORT.report_verify(*verify_result)
 
-    VM.write(result.document, stem + ".vmap")
+    VM.write(pipeline.ctx["document"], stem + ".vmap")
     print(f"wrote {stem}.vmap")
 
 
@@ -133,13 +173,15 @@ def cmd_run(args):
     name = args.name
     print(f"=== run: {name} ===")
 
-    builder = PipelineBuilder()
-    result = builder.run_identity_rebuild(
-        name, f"Rebuilt-{name.replace(' ', '_')}", verify=True)
+    pipeline = _run_identity_rebuild(name, f"Rebuilt-{name.replace(' ', '_')}", verify=True)
+    template = pipeline.ctx["template"]
+    stats = pipeline.ctx["stats"]
+    document = pipeline.ctx["document"]
+    verify_result = pipeline.ctx["verify"]
 
     tpath = os.path.join(ROOT, "out", f"zone_template-{slug(name)}.json")
     os.makedirs(os.path.dirname(tpath), exist_ok=True)
-    json.dump(result.template, open(tpath, "w"))
+    json.dump(template, open(tpath, "w"))
     print(f"[1/4] extracted template -> {tpath}")
 
     seg = os.path.join(ROOT, "out", "render", f"{slug(name)}_segmentation.png")
@@ -148,10 +190,10 @@ def cmd_run(args):
     print(f"[2/4] segmentation -> {seg}")
 
     stem = os.path.join(ROOT, "out", f"Rebuilt-{name.replace(' ', '_')}")
-    VM.write(result.document, stem + ".vmap")
-    print(f"[3/4] identity rebuild ({result.stats['identity']} zones, "
-          f"{result.stats['missing']} missing) -> {stem}.vmap")
-    ok = REPORT.report_verify(*result.verify)
+    VM.write(document, stem + ".vmap")
+    print(f"[3/4] identity rebuild ({stats['identity']} zones, "
+          f"{stats['missing']} missing) -> {stem}.vmap")
+    ok = REPORT.report_verify(*verify_result)
 
     # Honest visual: render REBUILT against the SOURCE faithful via the SAME path
     # (the .h3m read path over-draws underground sprites onto the surface).
@@ -169,23 +211,48 @@ def cmd_run(args):
     print("  underground objects are covered by --verify but not by the surface render.")
 
 
+def _generate_steps(args, water_mode):
+    """(name, step) pairs in run order. `name` matches GENERATE_STOP_POINTS so the CLI
+    can truncate the list at the requested --stop-after point; Pipeline itself has no
+    concept of a stop point."""
+    steps = [
+        ("terrain_gen", TerrainGenStep(size=args.size, seed=args.seed,
+                                       water_mode=water_mode, subterrain=args.subterrain)),
+        ("tile", TileStep(size=args.size)),
+        ("segment", SegmentStep()),
+    ]
+    if args.subterrain:
+        steps.append(("gate", GateStep(seed=args.seed)))
+    steps.append(("gameplay", GameplayStep(seed=args.seed, players=args.players,
+                                           size=args.size, subterrain=args.subterrain)))
+    steps.append(("vegetation", VegetationStep(seed=args.seed)))
+    steps.append(("pickup", PickupStep(seed=args.seed, size=args.size)))
+    steps.append(("repair", RepairStep(seed=args.seed, size=args.size,
+                                       subterrain=args.subterrain)))
+    return steps
+
+
 def cmd_generate(args):
     if args.stop_after == "gate" and not args.subterrain:
         sys.exit("--stop-after gate requires --subterrain (no GateStep otherwise)")
     wmode = args.water_mode or ("none" if args.no_water else "normal")
 
-    result = PipelineBuilder().run_generate(
-        seed=args.seed, size=args.size, water_mode=wmode, subterrain=args.subterrain,
-        players=args.players, stop_after=args.stop_after,
-    )
-    for line in result.log:
+    pipeline = Pipeline(ONTOLOGY)
+    for point_name, step in _generate_steps(args, wmode):
+        pipeline.add_step(step)
+        if point_name == args.stop_after:
+            break
+    map_state = pipeline.run()
+
+    for line in pipeline.ctx.get("log", []):
         print(f"  {line}")
 
-    objs = result.state.objs
+    objs = map_state.objs
     veg_n = sum(1 for o in objs if not o.get("purpose"))
+    player_zids = pipeline.ctx.get("player_zids", [])
     print(f"generate s{args.seed} {args.size}x{args.size}: "
           f"{len(objs) - veg_n} gameplay+pickups, {veg_n} vegetation objects, "
-          f"towns={len(result.player_zids)}")
+          f"towns={len(player_zids)}")
 
     renderers = _parse_renderers(args.renderers)
 
@@ -193,16 +260,16 @@ def cmd_generate(args):
         png_renderer = PngRenderer()
         png = os.path.join(ROOT, "out", "render", "pp", f"ppmap_s{args.seed}.png")
         os.makedirs(os.path.dirname(png), exist_ok=True)
-        png_renderer.render(result.state, level=0).save(png)
+        png_renderer.render(map_state, level=0).save(png)
         print(f"  {png}")
-        if args.subterrain and 1 in result.state.cells:
-            png1 = png_renderer.save(result.state, f"ppmap_s{args.seed}_L1.png", level=1)
+        if args.subterrain and 1 in map_state.cells:
+            png1 = png_renderer.save(map_state, f"ppmap_s{args.seed}_L1.png", level=1)
             print(f"  {png1}")
 
         overlays = _parse_overlays(args.overlays)
         if overlays:
             overlay_renderer = PngRenderer(overlays=overlays)
-            ov_img = overlay_renderer.render(result.state, level=0)
+            ov_img = overlay_renderer.render(map_state, level=0)
             ov_png = os.path.join(ROOT, "out", "render", "pp", f"ppmap_s{args.seed}_overlays.png")
             os.makedirs(os.path.dirname(ov_png), exist_ok=True)
             ov_img.save(ov_png)
@@ -210,10 +277,10 @@ def cmd_generate(args):
 
     if "vmap" in renderers:
         vmap_renderer = VmapRenderer()
-        vmap = vmap_renderer.render(result.state, f"ppmap_s{args.seed}.vmap",
+        vmap = vmap_renderer.render(map_state, f"ppmap_s{args.seed}.vmap",
                                     name=f"pp-map s{args.seed}", teams_spec=args.teams)
-        if result.state.player_towns:
-            print(f"  playable: {len(result.state.player_towns)} players, victory=defeat-all")
+        if map_state.player_towns:
+            print(f"  playable: {len(map_state.player_towns)} players, victory=defeat-all")
         print(f"  {vmap}")
 
 

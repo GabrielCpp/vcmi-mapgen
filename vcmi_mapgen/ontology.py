@@ -2955,6 +2955,82 @@ def regenerate():
     return tree
 
 
+class Ontology:
+    """Object-facts facade: the abstraction layer between raw game data and the
+    pipeline. Every ``PipelineStep``'s ``run(ontology, map_state)`` receives ONE shared
+    instance of this class (see ``pipeline.py``) so a step never needs to hardcode an
+    object's identity/mask/terrain coupling — it asks the ontology instead. Each method
+    just delegates to this module's own top-level accessor of the same name; the class
+    exists so the pipeline holds and passes a single object, not the bare module."""
+
+    def cluster_of(self, purpose, name=None, type_=None):
+        return cluster_of(purpose, name=name, type_=type_)
+
+    def name_of(self, cid):
+        return name_of(cid)
+
+    def resolve(self, cid, subclass):
+        return resolve(cid, subclass)
+
+    def build_tree(self):
+        return build_tree()
+
+    def iter_leaves(self, tree=None):
+        return iter_leaves(tree)
+
+    def has_animation(self, animation):
+        return has_animation(animation)
+
+    def mask_of(self, animation):
+        return mask_of(animation)
+
+    def vmap_mask_of(self, animation):
+        return vmap_mask_of(animation)
+
+    def cls_sub_of(self, animation):
+        return cls_sub_of(animation)
+
+    def is_blocking(self, animation):
+        return is_blocking(animation)
+
+    def footprint_size(self, animation):
+        return footprint_size(animation)
+
+    def identity_of(self, animation):
+        return identity_of(animation)
+
+    def terrains_of(self, animation):
+        return terrains_of(animation)
+
+    def decor_pool(self, terrain, *, blocking=None, max_cells=None, exclude_types=()):
+        return decor_pool(terrain, blocking=blocking, max_cells=max_cells,
+                          exclude_types=exclude_types)
+
+    def gameplay_pool(self, terrain, purpose):
+        return gameplay_pool(terrain, purpose)
+
+    def mines_by_resource(self, terrain):
+        return mines_by_resource(terrain)
+
+    def visitable_purposes(self):
+        return visitable_purposes()
+
+    def veg_categories(self):
+        return veg_categories()
+
+    def category_of(self, animation):
+        return category_of(animation)
+
+    def decode_identity(self, category, terrain, rng=None):
+        return decode_identity(category, terrain, rng=rng)
+
+    def category_terrain_matrix(self):
+        return category_terrain_matrix()
+
+    def full_mask_of(self, animation):
+        return full_mask_of(animation)
+
+
 if __name__ == "__main__":
     import sys
 

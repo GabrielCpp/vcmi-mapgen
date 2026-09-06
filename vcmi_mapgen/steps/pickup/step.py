@@ -15,52 +15,49 @@ class PickupStep(PipelineStep):
     Config:
         seed       RNG seed.
         size       Map side length in tiles (square).
-        workspace  Shared ``PlacementWorkspace``; reads each zone's ``blocked``/``open_set``/
-                   ``passable`` (written by VegetationStep) plus the gameplay fields
-                   GameplayStep wrote, and writes ``reach``/``used`` back per zone and
-                   ``seal_avoid``/``hard_avoid`` per level for RepairStep.
 
-    inject(objs, zones, gate_objs): ``objs`` (GameplayStep's + VegetationStep's objects,
-    merged by the builder), ``zones`` (SegmentStep's output), ``gate_objs`` (GateStep's
-    output, defaults to empty when there is no GateStep).
+    Reads ``map_state.objs`` (Gameplay's + Vegetation's, already merged) and
+    ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx): the
+    folded-in ``workspace`` (reads each zone's ``blocked``/``open_set``/``passable``
+    written by VegetationStep plus the gameplay fields GameplayStep wrote, and writes
+    ``reach``/``used`` back per zone and ``seal_avoid``/``hard_avoid`` per level for
+    RepairStep), ``gate_objs`` (GateStep's ctx output, defaults to empty when there is
+    no GateStep).
 
-    Produces: ``objs`` (the full, repartitioned scatter + loot-zone list, underground
-    tagged ``l=1`` — this REPLACES the input list, it doesn't just append to it),
-    ``targets``, ``zone_records`` (the list-of-dicts shape RepairStep expects).
+    Produces: replaces ``map_state.objs`` (the full, repartitioned scatter +
+    loot-zone list, underground tagged ``l=1`` — this REPLACES the prior value, it
+    doesn't just append to it). Into ctx: ``targets``, ``zone_records`` (the
+    list-of-dicts shape RepairStep expects).
     """
 
-    def __init__(self, seed: int = 3, size: int = 72,
-                 workspace: PlacementWorkspace | None = None) -> None:
+    def __init__(self, seed: int = 3, size: int = 72) -> None:
         self.seed = seed
         self.size = size
-        self.workspace = workspace
         self.objs: list = []
         self.targets: dict = {}
         self.zone_records: dict = {}
-        self._objs_in: list = []
-        self._zones: dict = {}
+        self._ctx: dict = {}
+        self._workspace: PlacementWorkspace | None = None
         self._gate_objs: list = []
 
-    def inject(self, *, objs: list, zones: dict, gate_objs=()) -> None:
-        self._objs_in = objs
-        self._zones = zones
-        self._gate_objs = list(gate_objs)
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._workspace = self._require(ctx, "workspace", PlacementWorkspace)
+        self._gate_objs = list(ctx.get("gate_objs", ()))
 
-    def run(self) -> None:
-        if self.workspace is None:
-            return
+    def run(self, ontology, map_state) -> None:
         W = H = self.size
 
         # partition the flat objs list by level — place_loot_zones mutates its
         # objs_existing list in place (clearing vegetation/scatter under a sealed
         # loot zone), so each level needs its own real (not concatenated-copy) list.
-        objs_by_level: dict = {level: [] for level in self.workspace.levels}
-        for o in self._objs_in:
+        objs_by_level: dict = {level: [] for level in self._workspace.levels}
+        for o in map_state.objs:
             lvl = o.get("l", 0)
             if lvl in objs_by_level:
                 objs_by_level[lvl].append(o)
 
-        for level, lvl_ws in self.workspace.levels.items():
+        for level, lvl_ws in self._workspace.levels.items():
             level_objs = objs_by_level[level]
             targets: list = []
             zone_records: list = []
@@ -74,7 +71,7 @@ class PickupStep(PipelineStep):
                 # scatter loot never sits on the rim: a pickup there is a walkable,
                 # unsealable hole
                 sobjs, sused, reach = SC.place_scatter(
-                    zw.ts, self._zones[level], zid, zw.terrain,
+                    zw.ts, map_state.zones[level], zid, zw.terrain,
                     zw.open_set - (zw.rim8 - zw.ent_bands), zw.prot, seed=self.seed,
                     bounds=(W, H), entrances=zw.entrances)
                 if level == 1:   # place_scatter always tags l=0; retag the underground level
@@ -160,3 +157,6 @@ class PickupStep(PipelineStep):
             self.zone_records[level] = zone_records
 
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
+        map_state.objs = self.objs
+        self._ctx["targets"] = self.targets
+        self._ctx["zone_records"] = self.zone_records

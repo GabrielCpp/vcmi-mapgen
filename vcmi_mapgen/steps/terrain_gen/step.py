@@ -77,6 +77,8 @@ class TerrainGenStep(PipelineStep):
         water       Explicit water fraction override (None = corpus-drawn).
         water_mode  'none' | 'normal' | 'islands'
         subterrain  Whether to generate a second underground level.
+
+    Produces (into ctx — neither is a MapState field): ``grids``, ``tunnel_protect``.
     """
 
     def __init__(
@@ -94,8 +96,12 @@ class TerrainGenStep(PipelineStep):
         self.subterrain = subterrain
         self.grids: dict = {}
         self.tunnel_protect: set = set()
+        self._ctx: dict = {}
 
-    def run(self) -> None:
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+
+    def run(self, ontology, map_state) -> None:
         W = H = self.size
 
         grid0 = MTOPO.generate(
@@ -119,3 +125,5 @@ class TerrainGenStep(PipelineStep):
         if grid1 is not None:
             self.grids[1] = grid1
         self.tunnel_protect = tunnel_protect
+        self._ctx["grids"] = self.grids
+        self._ctx["tunnel_protect"] = self.tunnel_protect

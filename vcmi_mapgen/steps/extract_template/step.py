@@ -12,12 +12,17 @@ class ExtractTemplateStep(PipelineStep):
     Config:
         name  Source map name (loaded from the corpus via kit.objects.load_faithful).
 
-    Produces: ``template`` (dict).
+    Produces: ``template`` (dict), written into ctx.
     """
 
     def __init__(self, name: str) -> None:
         self.name = name
         self.template: dict = {}
+        self._ctx: dict = {}
 
-    def run(self) -> None:
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+
+    def run(self, ontology, map_state) -> None:
         self.template = extract_template(self.name)
+        self._ctx["template"] = self.template

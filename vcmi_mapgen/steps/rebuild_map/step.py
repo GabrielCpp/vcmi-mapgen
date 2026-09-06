@@ -13,24 +13,30 @@ class RebuildMapStep(PipelineStep):
         identity  Whether the target terrain is the source's own (enables the
                    bit-exact integer replay path).
 
-    inject(template, target_terrain): ``template`` (ExtractTemplateStep's output),
-    ``target_terrain`` (the target map's terrain grids — the source faithful map's own
-    for an identity rebuild).
+    inject(ctx): ``template`` (ExtractTemplateStep's output), ``target_terrain`` (the
+    target map's terrain grids — the source faithful map's own for an identity
+    rebuild; seeded into ctx by the caller before running, since it isn't any step's
+    own output).
 
-    Produces: ``fm`` (the rebuilt faithful-shaped dict), ``stats`` (zones matched/missing).
+    Produces: ``fm`` (the rebuilt faithful-shaped dict), ``stats`` (zones matched/
+    missing) — both written into ctx.
     """
 
     def __init__(self, identity: bool = True) -> None:
         self.identity = identity
         self.fm: dict = {}
         self.stats: dict = {}
+        self._ctx: dict = {}
         self._template: dict = {}
         self._target_terrain: list = []
 
-    def inject(self, *, template: dict, target_terrain: list) -> None:
-        self._template = template
-        self._target_terrain = target_terrain
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._template = self._require(ctx, "template", dict)
+        self._target_terrain = self._require(ctx, "target_terrain", list)
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         self.fm, self.stats = rebuild_map(self._template, self._target_terrain,
                                           identity=self.identity)
+        self._ctx["fm"] = self.fm
+        self._ctx["stats"] = self.stats

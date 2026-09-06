@@ -18,22 +18,24 @@ class DeformWarpStep(PipelineStep):
         name     Source map name (loaded from the corpus for its terrain/zone shape).
         zone_id  The template zone to warp.
 
-    inject(template): ``template`` (ExtractTemplateStep's output).
+    inject(ctx): ``template`` (ExtractTemplateStep's output).
 
     Produces: ``fm`` (a single-level faithful-shaped dict: the deformed terrain +
-    the warped zone's objects).
+    the warped zone's objects), written into ctx.
     """
 
     def __init__(self, name: str, zone_id: int) -> None:
         self.name = name
         self.zone_id = zone_id
         self.fm: dict = {}
+        self._ctx: dict = {}
         self._template: dict = {}
 
-    def inject(self, *, template: dict) -> None:
-        self._template = template
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._template = self._require(ctx, "template", dict)
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         src = OR.load_faithful(self.name)
         W, H = src["width"], src["height"]
         zones0, _label0 = TS.segment(src["terrain"][0])
@@ -51,3 +53,4 @@ class DeformWarpStep(PipelineStep):
               f"placed={info['placed']} dropped={info['dropped']}")
         self.fm = {"name": f"Deform-{self.name}", "width": W, "height": H,
                    "twoLevel": False, "players": 1, "terrain": [grid], "objects": placed}
+        self._ctx["fm"] = self.fm

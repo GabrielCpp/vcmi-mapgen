@@ -12,10 +12,9 @@ class VerifyStep(PipelineStep):
     Config:
         name  Source map name (loaded from the corpus for comparison).
 
-    inject(fm): ``fm`` (RebuildMapStep's output).
+    inject(ctx): ``fm`` (RebuildMapStep's output).
 
-    Produces: ``ok`` (bool), ``total``, ``matched`` (int), ``missing``, ``extra``
-    (Counters of the objects that didn't match).
+    Produces (into ctx): ``verify`` — the ``(ok, total, matched, missing, extra)`` tuple.
     """
 
     def __init__(self, name: str) -> None:
@@ -25,11 +24,14 @@ class VerifyStep(PipelineStep):
         self.matched: int = 0
         self.missing = None
         self.extra = None
+        self._ctx: dict = {}
         self._fm: dict = {}
 
-    def inject(self, *, fm: dict) -> None:
-        self._fm = fm
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._fm = self._require(ctx, "fm", dict)
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         self.ok, self.total, self.matched, self.missing, self.extra = verify_identity(
             self.name, self._fm)
+        self._ctx["verify"] = (self.ok, self.total, self.matched, self.missing, self.extra)

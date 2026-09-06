@@ -10,39 +10,34 @@ class VegetationStep(PipelineStep):
     """Corpus-fitted Gibbs marked-point-process vegetation, per zone.
 
     Config:
-        seed       RNG seed.
-        workspace  Shared ``PlacementWorkspace`` written by GameplayStep; each zone's
-                   ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/
-                   ``approaches``/``gobjs``/``rim8``/``ent_bands``, and this step writes
-                   ``blocked``/``open_set``/``passable`` back into the same object for
-                   PickupStep/RepairStep.
+        seed  RNG seed.
 
-    inject(zones): ``zones`` (SegmentStep's output; the full per-level zone dict, not
-    just this workspace's own zones).
+    Reads ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx):
+    the folded-in ``workspace`` (a ``PlacementWorkspace``, written by GameplayStep);
+    each zone's ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/
+    ``approaches``/``gobjs``/``rim8``/``ent_bands``, and this step writes
+    ``blocked``/``open_set``/``passable`` back into the same object for
+    PickupStep/RepairStep.
 
-    Produces: ``objs`` — this step's own new vegetation objects (the builder
-    concatenates them onto GameplayStep's before handing the merged list to PickupStep).
+    Produces: extends ``map_state.objs`` with this step's own new vegetation objects
+    (``self.objs`` keeps just the new ones, for callers that want that distinction).
     """
 
-    def __init__(self, seed: int = 3, workspace: PlacementWorkspace | None = None) -> None:
+    def __init__(self, seed: int = 3) -> None:
         self.seed = seed
-        self.workspace = workspace
         self.objs: list = []
-        self._zones: dict = {}
+        self._workspace: PlacementWorkspace | None = None
 
-    def inject(self, *, zones: dict) -> None:
-        self._zones = zones
+    def inject(self, ctx: dict) -> None:
+        self._workspace = self._require(ctx, "workspace", PlacementWorkspace)
 
-    def run(self) -> None:
-        if self.workspace is None:
-            return
-
+    def run(self, ontology, map_state) -> None:
         models: dict = {}
         new_objs: list = []
 
-        for level, lvl_ws in self.workspace.levels.items():
+        for level, lvl_ws in self._workspace.levels.items():
             for zid, zw in lvl_ws.zones.items():
-                zones = self._zones[level]
+                zones = map_state.zones[level]
                 terrain = zw.terrain
                 ts = zw.ts
                 ts_full = zw.ts_full
@@ -88,3 +83,4 @@ class VegetationStep(PipelineStep):
                 zw.passable = frozenset(passable)
 
         self.objs = new_objs
+        map_state.objs = map_state.objs + new_objs

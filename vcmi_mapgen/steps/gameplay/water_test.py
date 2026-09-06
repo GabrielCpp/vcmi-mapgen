@@ -38,8 +38,10 @@ def _water_and_land_zone():
 
 
 def test_ensure_water_seaports_places_at_least_one():
+    from vcmi_mapgen.ontology import Ontology
+
     WT, W, H, grid, zones = _water_and_land_zone()
-    objs = WT._ensure_water_seaports(W, H, grid, zones, [], seed=2)
+    objs = WT._ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
     assert objs, "a land zone bordering a >= _WATER_BODY_MIN water body must get a seaport"
 
 
@@ -53,6 +55,7 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch):
     map happens to pick), this wraps the real zlib.crc32 and random.Random to observe what
     the code actually feeds each, and cross-checks the two — robust to geometry, and it
     fails immediately if the code reverts to hash(label) (crc32 would simply never fire)."""
+    from vcmi_mapgen.ontology import Ontology
     from vcmi_mapgen.steps.gameplay import water as WT
 
     WT_module = WT.__name__  # "vcmi_mapgen.steps.gameplay.water"
@@ -82,7 +85,7 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch):
     monkeypatch.setattr(random, "Random", RecordingRandom)
 
     map_seed = 2
-    WT_obj._ensure_water_seaports(W, H, grid, zones, [], seed=map_seed)
+    WT_obj._ensure_water_seaports(W, H, grid, zones, [], seed=map_seed, ontology=Ontology())
 
     assert crc_calls, (
         "_ensure_water_seaports never called zlib.crc32 — did the seaport RNG regress "

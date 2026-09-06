@@ -196,64 +196,61 @@ class RepairStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
         subterrain  Whether a second underground level is active.
-        workspace   Shared ``PlacementWorkspace``; reads ``ridge``/``town_of_zone`` (from
-                    GameplayStep) and ``entrance_plan``/``seal_avoid``/``hard_avoid`` (from
-                    PickupStep) per level, and performs its own border-seal pass here (the
-                    tail that used to run inside legacy ``_run_level``, before Vegetation/
-                    Pickup/Repair were split into their own steps).
 
-    inject(objs, targets, zone_records, grids, zones, player_zids, gate_objs,
-    tunnel_protect): ``objs``/``targets``/``zone_records`` (PickupStep's output — targets
-    and zone_records are mutated further in place), ``grids`` (TileStep's post-despeckle
-    output), ``zones`` (SegmentStep's output), ``player_zids``/``gate_objs``
-    (GameplayStep's/GateStep's output; ``gate_objs`` defaults to empty when there is no
-    GateStep), ``tunnel_protect`` (TerrainGenStep's output).
+    Reads ``map_state.objs``/``map_state.zones`` (PickupStep's/SegmentStep's output)
+    directly in run(), and performs its own border-seal pass over the folded-in
+    ``workspace`` here (the tail that used to run inside legacy ``_run_level``, before
+    Vegetation/Pickup/Repair were split into their own steps) — ``ridge``/``town_of_zone``
+    come from GameplayStep, ``entrance_plan``/``seal_avoid``/``hard_avoid`` from PickupStep,
+    all via that same shared object.
 
-    Produces: ``objs`` (final repaired flat list), ``log`` (diagnostic lines for the
-    CLI to print).
+    inject(ctx): ``targets``, ``zone_records`` (PickupStep's output — mutated further
+    in place), ``grids`` (TileStep's post-despeckle output), ``player_zids``
+    (GameplayStep's output), ``tunnel_protect`` (TerrainGenStep's output), the folded-in
+    ``workspace``; ``gate_objs`` (GateStep's output) defaults to empty when there is no
+    GateStep.
+
+    Produces: replaces ``map_state.objs`` (final repaired flat list). ``log``
+    (diagnostic lines for the CLI to print) written into ctx.
     """
 
-    def __init__(self, seed: int = 3, size: int = 72, subterrain: bool = False,
-                 workspace: PlacementWorkspace | None = None) -> None:
+    def __init__(self, seed: int = 3, size: int = 72, subterrain: bool = False) -> None:
         self.seed = seed
         self.size = size
         self.subterrain = subterrain
-        self.workspace = workspace
         self.objs: list = []
         self.log: list = []
-        self._objs_in: list = []
+        self._ctx: dict = {}
         self._targets: dict = {}
         self._zone_records: dict = {}
         self._grids: dict = {}
-        self._zones: dict = {}
+        self._workspace: PlacementWorkspace | None = None
         self._player_zids: list = []
         self._gate_objs: list = []
         self._tunnel_protect: frozenset = frozenset()
 
-    def inject(self, *, objs: list, targets: dict, zone_records: dict, grids: dict,
-               zones: dict, player_zids: list, tunnel_protect, gate_objs=()) -> None:
-        self._objs_in = objs
-        self._targets = targets
-        self._zone_records = zone_records
-        self._grids = grids
-        self._zones = zones
-        self._player_zids = player_zids
-        self._gate_objs = list(gate_objs)
-        self._tunnel_protect = frozenset(tunnel_protect)
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._targets = self._require(ctx, "targets", dict)
+        self._zone_records = self._require(ctx, "zone_records", dict)
+        self._grids = self._require(ctx, "grids", dict)
+        self._workspace = self._require(ctx, "workspace", PlacementWorkspace)
+        self._player_zids = self._require(ctx, "player_zids", list)
+        self._gate_objs = list(ctx.get("gate_objs", ()))
+        self._tunnel_protect = frozenset(
+            self._require(ctx, "tunnel_protect", (set, frozenset)))
 
-    def run(self) -> None:
-        if self.workspace is None:
-            return
+    def run(self, ontology, map_state) -> None:
         W = H = self.size
         size = self.size
         grids = self._grids
-        zones_by_level = self._zones
+        zones_by_level = map_state.zones
         targets_by_level = self._targets
         zone_records_by_level = self._zone_records
 
         # partition flat objs list by level for per-level repair
         objs_by_level: dict = {lvl: [] for lvl in grids}
-        for o in self._objs_in:
+        for o in map_state.objs:
             lvl = o.get("l", 0)
             if lvl in objs_by_level:
                 objs_by_level[lvl].append(o)
@@ -262,7 +259,7 @@ class RepairStep(PipelineStep):
         # per level, right after that level's own vegetation+scatter finished) ───────────
         border_guards_by_level: dict = {}
         for level in sorted(grids):
-            lvl_ws = self.workspace.levels[level]
+            lvl_ws = self._workspace.levels[level]
             zone_records = zone_records_by_level[level]
             loot_ts = set()
             for zr in zone_records:
@@ -286,7 +283,7 @@ class RepairStep(PipelineStep):
             border_guards_by_level[level] = guard_tiles
 
         gate_xy = {(o["x"], o["y"]) for o in self._gate_objs if o.get("l", 0) == 0}
-        start = _find_start(self._player_zids, zones_by_level, self.workspace)
+        start = _find_start(self._player_zids, zones_by_level, self._workspace)
 
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
@@ -300,7 +297,7 @@ class RepairStep(PipelineStep):
             objs = objs_by_level[level]
             targets = targets_by_level[level]
             zone_records = zone_records_by_level[level]
-            lvl_ridge = self.workspace.levels[level].ridge
+            lvl_ridge = self._workspace.levels[level].ridge
             lvl_border_guards = border_guards_by_level.get(level, frozenset())
             boat_ok = (level == 0)
 
@@ -326,3 +323,5 @@ class RepairStep(PipelineStep):
         # flatten into self.objs
         self.objs = [o for lvl in sorted(objs_by_level)
                      for o in objs_by_level[lvl]]
+        map_state.objs = self.objs
+        self._ctx["log"] = self.log

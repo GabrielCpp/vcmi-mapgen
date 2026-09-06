@@ -4,14 +4,23 @@ import io
 
 
 def _run_gameplay(seed, size=48, players=2, subterrain=True):
-    from vcmi_mapgen.pipeline_builder import PipelineBuilder
+    from vcmi_mapgen.ontology import Ontology
+    from vcmi_mapgen.pipeline import Pipeline
+    from vcmi_mapgen.steps import GameplayStep, GateStep, SegmentStep, TerrainGenStep, TileStep
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        result = PipelineBuilder().run_generate(
-            seed=seed, size=size, water_mode="normal", subterrain=subterrain,
-            players=players, stop_after="gameplay")
-    return result.state
+        pipeline = Pipeline(Ontology())
+        pipeline.add_step(TerrainGenStep(size=size, seed=seed, water_mode="normal",
+                                         subterrain=subterrain))
+        pipeline.add_step(TileStep(size=size))
+        pipeline.add_step(SegmentStep())
+        if subterrain:
+            pipeline.add_step(GateStep(seed=seed))
+        pipeline.add_step(GameplayStep(seed=seed, players=players, size=size,
+                                       subterrain=subterrain))
+        map_state = pipeline.run()
+    return map_state
 
 
 def test_player_towns_top_up_from_spare_when_a_forced_placement_fails():

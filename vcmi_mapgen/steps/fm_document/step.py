@@ -11,18 +11,22 @@ class FmDocumentStep(PipelineStep):
     Config:
         name  The document's map name.
 
-    inject(fm): ``fm`` (RebuildMapStep's or DeformWarpStep's output).
+    inject(ctx): ``fm`` (RebuildMapStep's or DeformWarpStep's output).
 
-    Produces: ``document`` (a VmapDocument, ready for kit.vmap.writer.write).
+    Produces: ``document`` (a VmapDocument, ready for kit.vmap.writer.write), written
+    into ctx.
     """
 
     def __init__(self, name: str) -> None:
         self.name = name
         self.document = None
+        self._ctx: dict = {}
         self._fm: dict = {}
 
-    def inject(self, *, fm: dict) -> None:
-        self._fm = fm
+    def inject(self, ctx: dict) -> None:
+        self._ctx = ctx
+        self._fm = self._require(ctx, "fm", dict)
 
-    def run(self) -> None:
+    def run(self, ontology, map_state) -> None:
         self.document = fm_to_document(self._fm, name=self.name)
+        self._ctx["document"] = self.document
