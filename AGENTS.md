@@ -51,7 +51,9 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
 - **`maps/`** — the `.h3m` corpus (159 maps), the source data.
 - **`maps_vmap/`** — one real `.vmap` per corpus map (the engine's input; regenerable from
   `maps/` via `extract_vmap.py`).
-- **`data/`** — corpus-derived priors (`objlib.json`).
+- **`data/`** — corpus-derived priors (`objlib.json`, `pp/*.json` — macro/gameplay/vegetation
+  statistics) and static VCMI-derived reference tables (`objclass_names.json` — the raw
+  MapObjectID enum, feeding `ontology.py --regen`; `vmap_header_template.json`).
 - **`out/`** — transient outputs (templates, features, renders); **gitignored**.
 - **`vcmi-h3m-format-reference/`** — verbatim VCMI C++ sources documenting the `.h3m` format
   (see `docs/vcmi-h3m-format-reference.md`).

@@ -16,9 +16,12 @@ are canonical H3 orderings, verified against the corpus subclass distributions.
 import json
 import os
 
+from vcmi_mapgen.kit.paths import project_root
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 CLASS_NAMES = {
-    int(k): v for k, v in json.load(open(os.path.join(_HERE, "objclass_names.json"))).items()
+    int(k): v for k, v in
+    json.load(open(project_root() / "data" / "objclass_names.json")).items()
 }
 
 # ---- canonical subtype tables (verified vs corpus subclass distributions) ----
