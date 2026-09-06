@@ -36,7 +36,7 @@ def test_tiers_true_separates_structure_body_from_visit_tile():
     assert body_color != visit_color, "body and visit tiles must use different tiers"
 
 
-def test_tiers_true_gives_solo_visit_its_own_tier():
+def test_tiers_true_shares_the_visit_color_with_a_solo_visitable():
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
     shrine = {"x": 2, "y": 2, "l": 0, "purpose": "INFO", "mask": ["A"]}
     town = {"x": 4, "y": 4, "l": 0, "purpose": "TOWN", "mask": ["BB", "BA"]}
@@ -46,4 +46,5 @@ def test_tiers_true_gives_solo_visit_its_own_tier():
     solo_color = _color_at(img, 2, 2)
     struct_visit_color = _color_at(img, 4, 4)
     assert solo_color[3] > 0
-    assert solo_color != struct_visit_color
+    assert solo_color == struct_visit_color, \
+        "a bodyless solo-visitable shares the struct-visit tier, not its own"

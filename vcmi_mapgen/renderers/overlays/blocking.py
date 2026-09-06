@@ -10,12 +10,12 @@ from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
 _COLOR = (220, 50, 50, 100)   # red, ~40 % opaque
 _GATE_COLOR = (255, 160, 0, 120)  # amber for gate-blocked tiles
 
-# tiers=True palette: background clutter / a structure's blocked body / its visit
-# tile / a bodyless single-tile visitable (shrine, sign, event).
+# tiers=True palette: background clutter / a structure's blocked body / its
+# visit tile (a bodyless single-tile visitable -- shrine, sign, event -- shares
+# the visit-tile color; it has no body of its own to distinguish).
 _BACKGROUND_COLOR = (130, 130, 130, 160)
 _STRUCT_BODY_COLOR = (0, 200, 80, 160)
 _STRUCT_VISIT_COLOR = (0, 120, 40, 220)
-_SOLO_VISIT_COLOR = (0, 155, 70, 220)
 
 
 class BlockingOverlay(MapOverlay):
@@ -29,11 +29,11 @@ class BlockingOverlay(MapOverlay):
     produced by VmapReader.
 
     Args:
-        tiers: split the blocked-tile tint into four finer categories --
+        tiers: split the blocked-tile tint into three finer categories --
             background clutter (grey), a visitable structure's blocked body
-            (green), its visit tile (dark green), and a bodyless single-tile
-            visitable like a shrine or sign (christmas green) -- instead of one
-            flat red tint (default False).
+            (light green), and its visit tile (dark green, also used for a
+            bodyless single-tile visitable like a shrine or sign) -- instead
+            of one flat red tint (default False).
     """
 
     def __init__(self, tiers: bool = False) -> None:
@@ -52,8 +52,7 @@ class BlockingOverlay(MapOverlay):
             for tiles, color in (
                 (background, _BACKGROUND_COLOR),
                 (struct_body, _STRUCT_BODY_COLOR),
-                (struct_visit, _STRUCT_VISIT_COLOR),
-                (solo_visit, _SOLO_VISIT_COLOR),
+                (struct_visit | solo_visit, _STRUCT_VISIT_COLOR),
             ):
                 for tx, ty in tiles:
                     if 0 <= tx < W and 0 <= ty < H:

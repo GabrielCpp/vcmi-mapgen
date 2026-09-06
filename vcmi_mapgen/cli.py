@@ -51,7 +51,7 @@ _OVERLAY_FACTORIES = {
     "guard": lambda: GuardOverlay(),
     "tile_type": lambda: TileTypeOverlay(),
 }
-_DEFAULT_OVERLAYS = "zone,blocking,passage,pocket,guard"
+_DEFAULT_OVERLAYS = "zone,blocking,passage,guard,pocket"
 _RENDERER_CHOICES = ("png", "vmap")
 _DEFAULT_RENDERERS = "png,vmap"
 

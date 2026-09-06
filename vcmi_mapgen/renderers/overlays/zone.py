@@ -1,4 +1,4 @@
-"""ZoneOverlay — colored zone fills and borders drawn over the base map."""
+"""ZoneOverlay — flat per-zone colored fill drawn over the base map."""
 from __future__ import annotations
 
 import colorsys
@@ -9,8 +9,9 @@ from vcmi_mapgen.pipeline import MapState
 from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
 
 _FILL_ALPHA = 55     # zone fill opacity
-_BORDER_ALPHA = 160  # zone border opacity
-_LABEL_ALPHA = 220   # zone-id label opacity
+_LABEL_ALPHA = 255   # zone-id label opacity
+_LABEL_FONT_SIZE = 26  # px — legible at the 32px tile scale
+_LABEL_STROKE_WIDTH = 2  # px — black outline so the label reads over any zone tint
 
 
 def _zone_color(zid: int, n_zones: int) -> tuple[int, int, int]:
@@ -20,7 +21,7 @@ def _zone_color(zid: int, n_zones: int) -> tuple[int, int, int]:
 
 
 class ZoneOverlay(MapOverlay):
-    """Draw per-zone colored fills and 1-tile-wide borders.
+    """Draw a flat per-zone colored fill, full coverage, one hue per zone.
 
     Reads ``state.zones[level]`` which must be populated by ``SegmentStep``.
     If zones are absent (e.g. the state came from VmapReader) the overlay is
@@ -29,18 +30,16 @@ class ZoneOverlay(MapOverlay):
     Args:
         labels: whether to draw zone-id labels (default True).
         fill_alpha: zone fill opacity 0–255 (default 55).
-        border_alpha: border opacity 0–255 (default 160).
     """
 
     def __init__(
         self,
         labels: bool = True,
         fill_alpha: int = _FILL_ALPHA,
-        border_alpha: int = _BORDER_ALPHA,
     ) -> None:
         self._labels = labels
         self._fill_alpha = fill_alpha
-        self._border_alpha = border_alpha
+        self._font = ImageFont.load_default(size=_LABEL_FONT_SIZE)
 
     def apply(self, state: MapState, level: int) -> Image.Image:
         zones = state.zones.get(level)
@@ -58,30 +57,15 @@ class ZoneOverlay(MapOverlay):
         draw = ImageDraw.Draw(img)
         n_zones = len(zones)
 
-        # build a fast tile→zid lookup for border detection
-        tile_zone: dict[tuple[int, int], int] = {}
-        for zid, z in zones.items():
-            for tx, ty in z.get("tiles_set", ()):
-                tile_zone[(tx, ty)] = zid
-
-        _DIRS = [(1, 0), (-1, 0), (0, 1), (0, -1)]
-
         for zid, z in zones.items():
             r, g, b = _zone_color(zid, n_zones)
             fill_c = (r, g, b, self._fill_alpha)
-            border_c = (r, g, b, self._border_alpha)
 
             for tx, ty in z.get("tiles_set", ()):
                 if not (0 <= tx < W and 0 <= ty < H):
                     continue
-                # border: at least one neighbour belongs to a different zone
-                on_border = any(
-                    tile_zone.get((tx + dx, ty + dy), -1) != zid
-                    for dx, dy in _DIRS
-                )
-                color = border_c if on_border else fill_c
                 x0, y0 = tx * TILE, ty * TILE
-                draw.rectangle([x0, y0, x0 + TILE - 1, y0 + TILE - 1], fill=color)
+                draw.rectangle([x0, y0, x0 + TILE - 1, y0 + TILE - 1], fill=fill_c)
 
             if self._labels:
                 centroid = z.get("centroid")
@@ -89,6 +73,8 @@ class ZoneOverlay(MapOverlay):
                     px = int(centroid[0]) * TILE + TILE // 2
                     py = int(centroid[1]) * TILE + TILE // 2
                     draw.text((px, py), str(zid), fill=(255, 255, 255, _LABEL_ALPHA),
-                               anchor="mm")
+                               anchor="mm", font=self._font,
+                               stroke_width=_LABEL_STROKE_WIDTH,
+                               stroke_fill=(0, 0, 0, _LABEL_ALPHA))
 
         return img
