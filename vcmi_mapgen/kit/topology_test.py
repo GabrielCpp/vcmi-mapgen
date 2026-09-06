@@ -60,3 +60,30 @@ def test_plan_entrances_aligned_and_few():
     (ra, _, _), (rb, _, _) = plan2[1]
     assert max(abs(ra[0] - rb[0]), abs(ra[1] - rb[1])) >= ZF.MIN_ENTRANCE_SEP, \
         "the two entrances of one pair must not crowd each other"
+
+
+def test_pocket_depths_increase_from_mouth_to_deepest_tile():
+    """A straight 4-tile corridor pocket: depth must increase monotonically away from
+    the mouth, and every pocket tile must get a depth (none left unreached)."""
+    pocket = frozenset({(1, 0), (2, 0), (3, 0), (4, 0)})
+    mouth = frozenset({(0, 0)})  # just outside the pocket, 8-adjacent to (1, 0)
+    depths = ZF.pocket_depths(pocket, mouth)
+    assert set(depths) == pocket
+    assert depths[(1, 0)] == 0
+    assert depths[(2, 0)] == 1
+    assert depths[(3, 0)] == 2
+    assert depths[(4, 0)] == 3
+
+
+def test_pocket_depths_takes_the_shortest_path_when_the_pocket_branches():
+    """(2, 0) is reachable from the mouth via BOTH (1, 0) and (1, 1) at the same
+    distance, and (3, 0) is one step deeper than either -- every tile gets its
+    shortest 8-connected distance from the mouth, regardless of how many
+    predecessors it has."""
+    pocket = frozenset({(1, 0), (1, 1), (2, 0), (3, 0)})
+    mouth = frozenset({(0, 0)})
+    depths = ZF.pocket_depths(pocket, mouth)
+    assert depths[(1, 0)] == 0   # 8-adjacent to mouth
+    assert depths[(1, 1)] == 0   # also 8-adjacent to mouth
+    assert depths[(2, 0)] == 1   # one step from either (1,0) or (1,1)
+    assert depths[(3, 0)] == 2   # one step deeper still

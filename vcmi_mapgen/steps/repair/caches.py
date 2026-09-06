@@ -6,7 +6,7 @@ import collections
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit.geometry import NB8
-from vcmi_mapgen.kit.topology import find_pockets, mouth_key
+from vcmi_mapgen.kit.topology import find_pockets, mouth_key, pocket_depths
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
 from vcmi_mapgen.steps.pickup.loot_zones import _FILL_EXCL_ANIMS, _solo_visit_pool
@@ -190,7 +190,11 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     commitment (guard precheck, every cache tile) gates on `global_place = global_reach8 &
     global_open`: truly reachable AND placement-eligible.
 
-    Returns (objs, n_pockets)."""
+    Returns (objs, n_pockets, pocket_depth_by_tile). ``pocket_depth_by_tile`` maps every
+    tile of every ACCEPTED pocket (one that passed the size/guardability gates below) to
+    its normalized depth (0 = at the mouth, 1 = deepest tile) -- the one piece of pocket
+    geometry a renderer needs, computed once here so nothing downstream (the debug
+    overlay) has to re-derive pocket membership from placed guard objects to draw it."""
     import random
     zone_of = {}
     terrain_of = {}
@@ -198,6 +202,7 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     global_true = set()
     global_reach = set()
     used = set()
+    pocket_depth_by_tile: dict = {}
     _sep_sq = (bounds[0] / 5.0) ** 2 if bounds else 0.0
     _spaced = {}  # type -> [(x, y)] of placed instances in _POCKET_SPACED_TYPES
 
@@ -273,7 +278,7 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     for candidates in blobs:
         # Find the best guardable candidate (guard fits at the ZoC-centre position
         # whose ZoC seals the pocket and both mouth tiles are within it).
-        guard_tile = pocket = zid = None
+        guard_tile = pocket = zid = mouth = None
         ref_g = None  # ZoC-centre (reference for sorting / unguarded fallback)
         for cand_g, cand_pocket, cand_mouth_fs in candidates:
             cand_zid = zone_of.get(cand_g)
@@ -285,7 +290,7 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
             if cand_zid is None:
                 continue
             if ref_g is None:
-                ref_g, pocket, zid = cand_g, cand_pocket, cand_zid
+                ref_g, pocket, zid, mouth = cand_g, cand_pocket, cand_zid, cand_mouth_fs
             if cand_g in used:
                 continue
             if not all(c in global_place and c not in used
@@ -297,7 +302,7 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
                 if any(not (0 <= tx < bw and 0 <= ty < bh) for tx, ty in gcells):
                     continue
             guard_tile = cand_g
-            pocket, zid, ref_g = cand_pocket, cand_zid, cand_g
+            pocket, zid, ref_g, mouth = cand_pocket, cand_zid, cand_g, cand_mouth_fs
             break
 
         if pocket is None:
@@ -313,6 +318,13 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
             if ref_g not in border_guards:
                 continue
             # border guard already seals this pocket — fill without placing a new guard
+
+        # This pocket is accepted -- record its full geometric extent + depth gradient
+        # for the debug overlay (rendering only; it never re-derives this from objects).
+        depths = pocket_depths(pocket, mouth)
+        max_d = max(depths.values()) if depths else 0
+        for t, d in depths.items():
+            pocket_depth_by_tile[t] = d / max_d if max_d else 0.0
 
         # Reference point for distance-sorting (guard tile or ZoC-centre).
         ref = guard_tile if guard_tile is not None else ref_g
@@ -377,7 +389,7 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
                            t[0], t[1], ident=ON.identity_of(anim), cache=True, bounds=bounds,
                            interactive_only=True)
 
-    return objs, len(blobs)
+    return objs, len(blobs), pocket_depth_by_tile
 
 
 SEERHUT_ZONE_RATIO = 4    # ~1 seer-hut quest per 4 eligible zones -- zone_engine.py's own
@@ -511,5 +523,5 @@ def place_pickups(ts, zones, zid, terrain, open_set, prot, seed=1, bounds=None):
                                         bounds=bounds)
     zone_records = [{"zid": zid, "terrain": terrain, "ts": ts, "passable": set(open_set),
                      "open_set": open_set, "reach": reach, "used": sused}]
-    cobjs, _n = place_pocket_caches(zone_records, seed=seed, bounds=bounds)
+    cobjs, _n, _depths = place_pocket_caches(zone_records, seed=seed, bounds=bounds)
     return sobjs + cobjs

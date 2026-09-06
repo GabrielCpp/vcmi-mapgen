@@ -5,7 +5,7 @@ import colorsys
 
 from PIL import Image, ImageDraw, ImageFont
 
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
 
 _FILL_ALPHA = 55     # zone fill opacity

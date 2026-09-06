@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PIL import Image
 
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
 from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
 

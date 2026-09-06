@@ -5,7 +5,7 @@ import json
 import re
 import zipfile
 
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 
 
 def _relaxed(text: str):

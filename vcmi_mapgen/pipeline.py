@@ -1,6 +1,8 @@
-"""Map-generation/rebuild primitives: the render-only MapState, the Gameplay/Vegetation/
-Pickup/Repair collaboration workspaces, the PipelineStep contract, and the generic
-Pipeline engine that runs an ordered list of steps against a shared context.
+"""Map-generation/rebuild primitives: the Gameplay/Vegetation/Pickup/Repair collaboration
+workspaces, the PipelineStep contract, and the generic Pipeline engine that runs an
+ordered list of steps against a shared context. ``MapState`` itself lives in
+``vcmi_mapgen.models`` (see that package's AGENTS.md) — it is a plain data model, not a
+pipeline primitive.
 
 A step owns its data as instance properties. Dependencies known when a pipeline is
 assembled (seed, size, ...) go through the constructor. ``inject(ctx)`` is self-service:
@@ -10,8 +12,10 @@ or the wrong type, since that means the steps were arranged incorrectly (one was
 omitted, or added out of order). ``run(ontology, map_state)`` is passed the shared
 ontology and the ``MapState`` being assembled on EVERY call, whether or not a given step
 uses them; a step that produces a ``MapState`` field writes it there directly, and a
-step that produces anything else a later step needs writes it directly into the same
-context dict it read from — never a separate merge step.
+step that produces anything else a later step (or a renderer) needs writes it directly
+into the same context dict it read from — never onto ``MapState``, and never a separate
+merge step. See ``vcmi_mapgen/models/AGENTS.md`` for exactly which data belongs on
+``MapState`` and which belongs in ``ctx``.
 
 ``Pipeline`` (see below) replaces the old hand-wired ``PipelineBuilder``: composing a
 new step sequence is just a different list of ``add_step()`` calls, never a new wiring
@@ -22,25 +26,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from vcmi_mapgen.models import MapState
 
-@dataclass
-class MapState:
-    """The narrow, render-only view of a finished map: exactly what PngRenderer,
-    MapOverlay and VmapRenderer read, and nothing else."""
-
-    size: int = 72
-    # level -> 2-D list of tile-string objects (e.g. "gr2_")
-    surfs: dict = field(default_factory=dict)
-    # level -> 2-D list of tile-dict objects ({"t":…, "view":…, …})
-    cells: dict = field(default_factory=dict)
-    # level -> zone dict {zid: {tiles_set, terrain_type, area, centroid, …}}
-    zones: dict = field(default_factory=dict)
-    # level -> frozenset of blocked tiles from gates (BlockingOverlay)
-    gate_blk: dict = field(default_factory=dict)
-    # all placed objects across all levels
-    objs: list = field(default_factory=list)
-    # town objects in player order (VmapRenderer playability wiring)
-    player_towns: list = field(default_factory=list)
+__all__ = ["MapState", "ZoneWorkspace", "LevelWorkspace", "PlacementWorkspace",
+           "MissingContextKeyError", "PipelineStep", "Pipeline"]
 
 
 @dataclass

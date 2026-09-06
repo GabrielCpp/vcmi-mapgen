@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 from vcmi_mapgen.renderers.overlays import _tiles
 from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
 

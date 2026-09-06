@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from collections import defaultdict
 
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 from vcmi_mapgen.rebuild.engine import fm_to_document
 from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root

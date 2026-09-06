@@ -7,7 +7,7 @@ import zipfile
 import pytest
 
 from vcmi_mapgen.kit import paths as vcmi_paths
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 from vcmi_mapgen.renderers.vmap import VmapRenderer, _parse_teams
 
 RANDOMMAPS_GLOB = os.path.join(vcmi_paths.vcmi_home(), "Maps", "RandomMaps", "*.vmap")

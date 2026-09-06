@@ -56,27 +56,31 @@ GENERATE_STOP_POINTS = (
     "terrain_gen", "tile", "segment", "gate", "gameplay", "vegetation", "pickup",
 )
 
+# Every factory takes `pockets` (RepairStep's ctx["pockets"]) uniformly, even though
+# only PocketOverlay uses it -- it's disposable analysis, not a MapState fact (see
+# vcmi_mapgen/models/AGENTS.md), so it must reach the overlay through its own
+# constructor rather than the overlay reading/recomputing it off MapState.
 _OVERLAY_FACTORIES = {
-    "zone": lambda: ZoneOverlay(),
-    "blocking": lambda: BlockingOverlay(tiers=True),
-    "passage": lambda: PassageOverlay(),
-    "pocket": lambda: PocketOverlay(exclude_loot_zones=True),
-    "guard": lambda: GuardOverlay(),
-    "tile_type": lambda: TileTypeOverlay(),
+    "zone": lambda pockets: ZoneOverlay(),
+    "blocking": lambda pockets: BlockingOverlay(tiers=True),
+    "passage": lambda pockets: PassageOverlay(),
+    "pocket": lambda pockets: PocketOverlay(pockets),
+    "guard": lambda pockets: GuardOverlay(),
+    "tile_type": lambda pockets: TileTypeOverlay(),
 }
 _DEFAULT_OVERLAYS = "zone,blocking,passage,guard,pocket"
 _RENDERER_CHOICES = ("png", "vmap")
 _DEFAULT_RENDERERS = "png,vmap"
 
 
-def _parse_overlays(spec: str):
+def _parse_overlays(spec: str, pockets: dict):
     spec = spec.strip().lower()
     names = [] if spec in ("", "none") else [s.strip() for s in spec.split(",")]
     unknown = [n for n in names if n not in _OVERLAY_FACTORIES]
     if unknown:
         sys.exit(f"unknown overlay(s): {', '.join(unknown)} "
                  f"(choices: {', '.join(_OVERLAY_FACTORIES)}, or 'none')")
-    return [_OVERLAY_FACTORIES[n]() for n in names]
+    return [_OVERLAY_FACTORIES[n](pockets) for n in names]
 
 
 def _parse_renderers(spec: str):
@@ -266,7 +270,7 @@ def cmd_generate(args):
             png1 = png_renderer.save(map_state, f"ppmap_s{args.seed}_L1.png", level=1)
             print(f"  {png1}")
 
-        overlays = _parse_overlays(args.overlays)
+        overlays = _parse_overlays(args.overlays, pipeline.ctx.get("pockets", {}))
         if overlays:
             overlay_renderer = PngRenderer(overlays=overlays)
             ov_img = overlay_renderer.render(map_state, level=0)

@@ -304,6 +304,32 @@ def find_pockets(reach, max_dim=POCKET_MAX_DIM, max_tiles=POCKET_MAX_TILES):
     return {g: (comp, mouth_fs) for comp, (_k, g, mouth_fs) in best.items()}
 
 
+def pocket_depths(pocket: frozenset, mouth: frozenset) -> dict:
+    """8-connected BFS distance from `mouth` into `pocket` -- 0 at the tiles nearest the
+    entrance, increasing toward the deepest tile. The one piece of pocket geometry
+    downstream consumers (the pocket-cache placer, the debug overlay) need beyond
+    `find_pockets`' own (pocket, mouth) pair; kept here, next to the search that defines
+    what a pocket even is, so nothing downstream has to re-derive pocket membership to
+    get it -- a consumer renders/uses this dict, it never recomputes it."""
+    dist: dict = {}
+    q = collections.deque()
+    for gx, gy in mouth:
+        for dx, dy in NB8:
+            nb = (gx + dx, gy + dy)
+            if nb in pocket and nb not in dist:
+                dist[nb] = 0
+                q.append(nb)
+    while q:
+        t = q.popleft()
+        tx, ty = t
+        for dx, dy in NB8:
+            nb = (tx + dx, ty + dy)
+            if nb in pocket and nb not in dist:
+                dist[nb] = dist[t] + 1
+                q.append(nb)
+    return dist
+
+
 def _zone_gates(ts, zones, zid):
     """Passages (gates) through the rim belt -- the user's 'input and exit must correspond' rule.
 

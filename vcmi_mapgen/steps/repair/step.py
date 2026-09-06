@@ -46,7 +46,7 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     still being placed).
     `boat_ok` is forwarded to `fill_open_islands` — False for the underground level, which has
     no boat mechanic to excuse a stranded-target component (see that function's docstring).
-    Returns (objs, ncarved, nreconn, nfilled, n_pockets, ndrop)."""
+    Returns (objs, ncarved, nreconn, nfilled, n_pockets, ndrop, pocket_depth_by_tile)."""
     objs_before_g2 = list(objs)
     objs, ncarved = GEO.g2_repair(size, grid, objs, targets, costly=ridge)
     removed_g2 = [o for o in objs_before_g2
@@ -120,9 +120,9 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     # reachable field now that every zone's terrain/vegetation/scatter AND the map-level
     # repair passes above are finalized (user-mandated 2026-07-04 — see
     # steps.repair.caches.place_pocket_caches docstring for the rationale).
-    cobjs, n_pockets = CA.place_pocket_caches(zone_records, seed=seed, bounds=(size, size),
-                                              border_guards=border_guards,
-                                              precomputed_pockets=_raw_pkt)
+    cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
+        zone_records, seed=seed, bounds=(size, size),
+        border_guards=border_guards, precomputed_pockets=_raw_pkt)
     objs.extend(cobjs)
     targets.extend((o["x"], o["y"]) for o in cobjs)
     ck = collections.Counter(o["purpose"] for o in cobjs)
@@ -131,7 +131,7 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
 
     objs, ndrop = _dedup_nearby_guards(objs)
 
-    return objs, ncarved, nreconn, nfilled, n_pockets, ndrop
+    return objs, ncarved, nreconn, nfilled, n_pockets, ndrop, pocket_depth_by_tile
 
 
 def _dedup_nearby_guards(objs):
@@ -210,8 +210,13 @@ class RepairStep(PipelineStep):
     ``workspace``; ``gate_objs`` (GateStep's output) defaults to empty when there is no
     GateStep.
 
-    Produces: replaces ``map_state.objs`` (final repaired flat list). ``log``
-    (diagnostic lines for the CLI to print) written into ctx.
+    Produces: replaces ``map_state.objs`` (final repaired flat list). Into ctx: ``log``
+    (diagnostic lines for the CLI to print), and ``pockets`` (level -> {tile: normalized
+    depth 0..1}, every ACCEPTED pocket's full geometric extent + depth gradient, straight
+    from ``steps.repair.caches.place_pocket_caches`` — this is disposable analysis, not a
+    map fact, so it is NOT a MapState field, see ``vcmi_mapgen/models/AGENTS.md``; a
+    renderer that wants it receives it through its own constructor, not by reading
+    MapState).
     """
 
     def __init__(self, seed: int = 3, size: int = 72, subterrain: bool = False) -> None:
@@ -293,6 +298,7 @@ class RepairStep(PipelineStep):
                 self.log.append(f"RepairStep: {n_portals} portal rescue(s) added")
 
         seerhut_artifacts: set = set()
+        pockets_by_level: dict = {}
         for level in sorted(grids):
             objs = objs_by_level[level]
             targets = targets_by_level[level]
@@ -302,13 +308,14 @@ class RepairStep(PipelineStep):
             boat_ok = (level == 0)
 
             (repaired, ncarved, nreconn, nfilled,
-             npockets, ndrop) = _repair_one_level(
+             npockets, ndrop, pocket_depth_by_tile) = _repair_one_level(
                 level, size, grids[level], objs, targets, zone_records, self.seed,
                 boat_ok=boat_ok, ridge=lvl_ridge,
                 seerhut_artifacts=seerhut_artifacts,
                 border_guards=lvl_border_guards,
             )
             objs_by_level[level] = repaired
+            pockets_by_level[level] = pocket_depth_by_tile
 
             self.log.append(
                 f"L{level} repair: carved={ncarved} reconnected={nreconn} "
@@ -325,3 +332,4 @@ class RepairStep(PipelineStep):
                      for o in objs_by_level[lvl]]
         map_state.objs = self.objs
         self._ctx["log"] = self.log
+        self._ctx["pockets"] = pockets_by_level

@@ -1,4 +1,4 @@
-from vcmi_mapgen.pipeline import MapState
+from vcmi_mapgen.models import MapState
 from vcmi_mapgen.renderers.overlays.guard import GuardOverlay
 
 TILE = 32
