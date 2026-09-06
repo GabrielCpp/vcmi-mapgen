@@ -337,6 +337,26 @@ _PRIORITY = {"TOWN": 0, "BANK": 1, "DWELLING": 2, "QUEST_GATE": 3, "MINE": 4,
 def _prio(p):
     return _PRIORITY.get(p, 50)
 
+def _obj_canon(o, canon_zone, tiles_set):
+    """Shape-intrinsic (depth, sweep) for an object: the RIM-MOST zone tile its
+    footprint overlaps (min depth). A boundary object may be anchored OUTSIDE the
+    zone (on neighbour/rock tiles) — e.g. a rim mountain gathered by footprint
+    overlap in `_bucket_objects` — so anchor-canon alone would miss it; overlap-canon
+    classifies it as the rim (depth~0) instead. Falls back to the anchor tile's own
+    canon, then (0.0, 0.0), for an object with no footprint tile in the zone at all."""
+    best = None
+    for tx, ty, _ in OR.mask_cells(o["mask"], o["x"], o["y"]):
+        if (tx, ty) in tiles_set:
+            d, s = canon_zone[(tx, ty)]
+            if best is None or d < best[0]:
+                best = (d, s)
+    if best is not None:
+        return best
+    if (o["x"], o["y"]) in canon_zone:
+        return canon_zone[(o["x"], o["y"])]
+    return (0.0, 0.0)
+
+
 def zone_features(zone, objs, canon_zone):
     """Summarize ONE zone into a feature profile (the 'understanding').
 
@@ -344,9 +364,10 @@ def zone_features(zone, objs, canon_zone):
     depth = where in the shape it sits), typical within-purpose spacing, and the
     concrete object identities it uses (so a rebuild reuses the same kinds)."""
     area = zone["area"]
+    tiles_set = zone["tiles_set"]
     by_p = collections.defaultdict(list)
     for o in objs:
-        d, s = canon_zone[(o["x"], o["y"])]
+        d, s = _obj_canon(o, canon_zone, tiles_set)
         by_p[OR.purpose_of(o)].append((o, d, s))
 
     purposes = {}

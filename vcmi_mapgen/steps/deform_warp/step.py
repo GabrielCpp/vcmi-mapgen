@@ -41,7 +41,7 @@ class DeformWarpStep(PipelineStep):
             sys.exit(f"zone {self.zone_id} not on level 0 (have {sorted(zones0)})")
         ztmpl = next(z for z in self._template["levels"][0]["zones"]
                      if z["zone_id"] == self.zone_id)
-        grid = deform_terrain_level(zones0[self.zone_id], W, H)
+        grid = deform_terrain_level(src["terrain"][0], zones0[self.zone_id], W, H)
         zones_d, _label_d, canon_d = _segment_level(grid)
         if not zones_d:
             sys.exit("deformed terrain produced no zone")
