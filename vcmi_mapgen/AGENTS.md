@@ -34,14 +34,20 @@
 ## The zone template + identity guarantee
 
 - `rebuild.engine.extract_template(name)` (wrapped by `steps.extract_template.ExtractTemplateStep`)
-  records, per zone, `bbox / centroid /
-  mask_rel(sorted) / shape_hash / label` and per object `{purpose, identity, anchor_off,
-  canon(depth,sweep)}`. Barrier-anchored objects go to a per-level absolute bucket.
-- `rebuild_map(template, target_terrain, identity=True)` matches each template zone to the
-  target zone with the same `(mask_rel, bbox)` and replays objects at `bbox_min + anchor_off`
+  records, per zone, `bbox / centroid / mask_rel(sorted) / shape_hash / label` and per
+  object `{purpose, identity, anchor_off, canon(depth,sweep)}`. Barrier-anchored objects go
+  to a per-level absolute bucket.
+- `rebuild_map(template, target_terrain, identity=True)` (wrapped by
+  `steps.rebuild_map.RebuildMapStep`) matches each template zone to the target zone with
+  the same `(mask_rel, bbox)` and replays objects at `bbox_min + anchor_off`
   — **pure integer ⇒ bit-exact when the shape is unchanged.** `rebuild --identity --verify`
-  multiset-compares all levels and prints `IDENTITY OK: N/N`. Identity is **never re-rolled**
-  (no `pick_variant`) so relational portals survive.
+  multiset-compares all levels (via `steps.verify.VerifyStep`) and prints `IDENTITY OK: N/N`.
+  Identity is **never re-rolled** (no `pick_variant`) so relational portals survive.
+- `zone_features(zone, objs, canon_zone)` indexes each object's canonical (depth, sweep)
+  via `_obj_canon` — a boundary object (e.g. a rim mountain) can be anchored OFF the zone
+  entirely (gathered in by footprint overlap, see `_bucket_objects`), so canon must be read
+  from the rim-most footprint tile that IS in the zone, not the raw anchor tile. Don't
+  index `canon_zone[(o["x"], o["y"])]` directly for an object that may be a boundary object.
 
 ## Stretch (different shape)
 
@@ -51,7 +57,10 @@
   its relative spot, may overlap decoration but must NOT bury gameplay or sit on a barrier; a
   VCMI-invalid (untraversable) result is rejected. Zone objects are gathered by **footprint
   overlap** (so the edge rim of mountains and edge mines come with the zone). `rebuild
-  "<name>" --zone N --deform` warps that one zone's pattern onto a deformed target shape.
+  "<name>" --zone N --deform` (wrapped by `steps.deform_warp.DeformWarpStep`) warps that one
+  zone's pattern onto a deformed target shape — `deform_terrain_level(src_terr, zone, W, H,
+  ...)` takes the FULL source terrain grid as `src_terr`, not the zone dict; passing the
+  zone dict where the grid belongs is a `TypeError` that's easy to reintroduce.
 - Do NOT redo the rejected attempts: image-warp/pixel-resize (violates fixed-size),
   wall-fill (adds foreign objects), coverage-stretch (does not look the same).
 
@@ -65,3 +74,6 @@
   header dimensions and non-empty content, all terrain tiles decode, a corpus-wide sprite
   decode sweep, renderer determinism, and a golden **rebuilt == source** pixel-identical check.
   Run `uv run pytest`; tests skip when the H3 LOD files are absent.
+
+Load `vcmi-mapgen-pipeline` for how these pieces are wired into steps and a CLI —
+this skill is the domain facts each step implements, not the wiring itself.

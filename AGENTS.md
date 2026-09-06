@@ -12,6 +12,8 @@ object pattern in a shape-relative frame, then *replays* it onto a target shape:
   scaling was tried and rejected — it violates the fixed-size constraint.)
 
 Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering).
+Load `vcmi-mapgen-pipeline` before adding/changing a pipeline step or a `cli.py`
+subcommand (the step contract, `MapState`, `PipelineBuilder`).
 
 ## Tooling — this is a `uv` Python project
 
@@ -31,7 +33,7 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
     base contract every step (both the procedural generator and the identity-rebuild
     engine) is built from. `pipeline_builder.py` — `PipelineBuilder`, which hand-wires each
     subcommand's step sequence (constructor args for compile-time-known config, `inject()`
-    for values an earlier step produced).
+    for values an earlier step produced). See `vcmi-mapgen-pipeline` for the contract itself.
   - `steps/` — one subpackage per step: `terrain_gen/tile/segment/gate/gameplay/
     vegetation/pickup/repair` (procedural generation) and `extract_template/rebuild_map/
     verify/fm_document/deform_warp` (identity-rebuild).
@@ -53,7 +55,9 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
   `maps/` via `extract_vmap.py`).
 - **`data/`** — corpus-derived priors (`objlib.json`, `pp/*.json` — macro/gameplay/vegetation
   statistics) and static VCMI-derived reference tables (`objclass_names.json` — the raw
-  MapObjectID enum, feeding `ontology.py --regen`; `vmap_header_template.json`).
+  MapObjectID enum, feeding `ontology.py --regen`; `vmap_header_template.json`). Static
+  VCMI/corpus-derived JSON lives here, never loose beside the `.py` sources — if you add a
+  reference table, it goes in `data/`.
 - **`out/`** — transient outputs (templates, features, renders); **gitignored**.
 - **`vcmi-h3m-format-reference/`** — verbatim VCMI C++ sources documenting the `.h3m` format
   (see `docs/vcmi-h3m-format-reference.md`).
