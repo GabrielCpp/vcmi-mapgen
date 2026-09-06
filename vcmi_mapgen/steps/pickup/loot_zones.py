@@ -25,7 +25,7 @@ _LOOT_COLORS = [                # (border_gate_anim, keymaster_anim); index == V
     ("avxbgt60", "avxkey60"),   # 6 white
     ("avxbgt70", "avxkey70"),   # 7 black
 ]
-_LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarand": 45}
+_LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 _LOOT_EXCL_DECOR = frozenset({"LAKE", "FROZEN_LAKE", "RIVER_DELTA", "KELP", "REEF", "LAKE_2"})
 # Visitable structures excluded from BOTH pocket caches and loot zone fill.
 _FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})  # Fountain of Fortune, Idol of Fortune
@@ -35,6 +35,13 @@ _LOOT_SHRINE_MIN_LEVEL = 3
 _LOOT_VIS_EXCL_ANIMS = frozenset({"avxwelg0", "avxwelr0", "avxwlsn0"})  # Magic Well
 # REWARD_PICKUP types excluded from loot zone art/chest fill (pool_art + pool_chest).
 _LOOT_ART_EXCL_TYPES = frozenset({"leanTo", "wagon", "warriorTomb", "denOfThieves"})
+# chest-type fill is an explicit allow-list, not "everything but an artifact": scholar,
+# corpse and a spell scroll are REWARD_PICKUP too but are not a chest and were never meant
+# to be loot-zone content.
+_LOOT_CHEST_TYPES = frozenset({"treasureChest", "campfire", "pandoraBox"})
+# Rare resources allowed in a loot zone: mercury, sulfur, crystal, gems, gold -- no wood/ore
+# (colloquially "stone") and no unrestricted randomResource (could resolve to either).
+_LOOT_RARE_RESOURCE_SUBTYPES = frozenset({"mercury", "sulfur", "crystal", "gems", "gold"})
 # Two-way monolith pairs for sealed teleport loot zones (ci > 0).
 # Both ends of each pair use the SAME animation → same subtype → they teleport to each other.
 # Subtypes monolith1-4 (simple 1-4 cell, no blocking body) suit small pockets best.
@@ -112,13 +119,33 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
     for _zr in zone_records:
         _all_ts |= _zr["ts"]
 
+    # Tiles blocked by an already-placed object (gameplay + the vegetation step's
+    # border-densifying walls, both already committed to objs_existing by the time
+    # this runs) -- needed so the single-entrance check below measures ACTUAL
+    # passable connectivity, not raw zone-terrain adjacency. Mirrors
+    # renderers.overlays._tiles.passable_tiles's blocking half (no terrain grid
+    # needed here: zone/ext tile sets are already land-only).
+    _blocked_ts = set()
+    for _o in objs_existing:
+        if _o.get("l", 0) != 0:
+            continue
+        _mask = _o.get("mask") or (_o.get("template") or {}).get("mask")
+        if not _mask:
+            continue
+        for _tx, _ty, _blk in OR.mask_cells(_mask, _o.get("x", 0), _o.get("y", 0)):
+            if _blk:
+                _blocked_ts.add((_tx, _ty))
+
     def _passage_components(zr):
-        """Count 8-connected clusters of zone tiles that border any tile of another
-        zone (terrain-tile adjacency, independent of placed vegetation).  This is the
-        topological single-entrance check: 1 cluster = 1 direction of connectivity.
-        Returns (n_clusters, frozenset_of_boundary_tiles)."""
-        ts = zr["ts"]
-        ext_ts = _all_ts - ts
+        """Count 8-connected clusters of ACTUALLY PASSABLE zone tiles that border an
+        actually-passable tile of another zone -- object-blocking aware (the same
+        notion PassageOverlay's 'blue' renders), not just raw zone-terrain adjacency,
+        which would merge separate real gaps whenever the vegetation step's border
+        walls still leave the zone's raw perimeter one contiguous terrain-adjacency
+        strip. This is the topological single-entrance check: 1 cluster = 1 direction
+        of connectivity. Returns (n_clusters, frozenset_of_boundary_tiles)."""
+        ts = zr["ts"] - _blocked_ts
+        ext_ts = (_all_ts - zr["ts"]) - _blocked_ts
         boundary = {t for t in ts
                     if any((t[0] + dx, t[1] + dy) in ext_ts
                            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1),
@@ -279,14 +306,12 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         pool_art = [i for i in ON.gameplay_pool(terrain, "REWARD_PICKUP")
                     if i.get("type") not in _LOOT_ART_EXCL_TYPES]
         pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
-        # chest-type pickups: treasure chests, campfires — 'ava*' is the artifact namespace.
-        # chest-type only: treasure chests, campfires — explicitly exclude artifacts so
-        # named artifacts with non-'ava' animations (e.g. 'avssword0') can't slip in here.
-        pool_chest = [i for i in pool_art if i.get("type") != "artifact"]
-        # High-tier artifacts only (major + relic).
-        arts_high = [(a, _LOOT_ART_W[a]) for a in ("avarnd3", "avarand") if a in _LOOT_ART_W]
-        # Rare resources: mercury(1), sulfur(3), crystal(4), gems(5), gold(6) — no wood(0)/ore(2).
-        pool_rare = [i for i in pool_res if i.get("subtype") not in {0, 2}]
+        # chest-type only: treasure chests, campfires, pandora's box.
+        pool_chest = [i for i in pool_art if i.get("type") in _LOOT_CHEST_TYPES]
+        # High-tier artifacts only (major + relic, i.e. level >= 3).
+        arts_high = [(a, _LOOT_ART_W[a]) for a in ("avarnd3", "avarnd4") if a in _LOOT_ART_W]
+        # Rare resources: mercury, sulfur, crystal, gems, gold — no wood/ore/randomResource.
+        pool_rare = [i for i in pool_res if i.get("subtype") in _LOOT_RARE_RESOURCE_SUBTYPES]
 
         free = sorted(reach - used)
         rng.shuffle(free)
@@ -323,7 +348,7 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                                t[0], t[1], ident=ai, cache=True, bounds=bounds,
                                interactive_only=True)
             else:
-                ri = rng.choice(pool_rare) if pool_rare else (rng.choice(pool_res) if pool_res else None)
+                ri = rng.choice(pool_rare) if pool_rare else None
                 if ri:
                     _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
                                t[0], t[1], ident=ri, cache=True, bounds=bounds,

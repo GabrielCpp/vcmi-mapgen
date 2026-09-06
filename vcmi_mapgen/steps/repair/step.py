@@ -129,23 +129,41 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     print(f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "
           f"art={ck.get('REWARD_PICKUP', 0)} guard={ck.get('GUARD', 0)}")
 
-    # both sides of one corridor may have guarded the same gate — keep only the stronger
-    # of any two GUARDs within Chebyshev 2 (deterministic scan order). A mine's own guard
-    # must never be dropped this way (mines are user-mandated to always be guarded) — it
-    # sits Chebyshev 1 from the mine's footprint, so protect any guard that close to one.
-    # Dedup is per-LEVEL only: two guards that happen to share (x, y) on different levels
-    # are not physically near each other.
+    objs, ndrop = _dedup_nearby_guards(objs)
+
+    return objs, ncarved, nreconn, nfilled, n_pockets, ndrop
+
+
+def _dedup_nearby_guards(objs):
+    """Both sides of one corridor may have guarded the same gate — keep only the
+    stronger of any two GUARDs within Chebyshev 2 (deterministic scan order). A
+    mine's own guard must never be dropped this way (mines are user-mandated to
+    always be guarded) — it sits Chebyshev 1 from the mine's footprint, so protect
+    any guard that close to one. A loot-zone gate/monolith's own guard is just as
+    load-bearing: it is the ONLY thing forcing a fight before the access object can
+    be used, so it must survive even when an unrelated protected guard (e.g. a
+    border-seal back-path guard) happens to land within Chebyshev 2 of it --
+    protect any guard Chebyshev <=1 from a QUEST_GATE (border gate / keymaster
+    tent) or TRANSPORT (monolith)'s own cells the same way.
+
+    Per-LEVEL only: two guards that happen to share (x, y) on different levels are
+    not physically near each other. Returns (deduped_objs, n_dropped)."""
     drop = set()
     guards = [(i, o) for i, o in enumerate(objs) if o.get("purpose") == "GUARD"]
     mine_cells = [
         (mx, my) for o in objs if o.get("purpose") == "MINE"
         for mx, my, _ in OR.mask_cells(o["mask"], o["x"], o["y"])
     ]
+    access_cells = [
+        (ax, ay) for o in objs if o.get("purpose") in ("QUEST_GATE", "TRANSPORT")
+        for ax, ay, _ in OR.mask_cells(o["mask"], o["x"], o["y"])
+    ]
     protected = {
         ia for ia, oa in guards
         if oa.get("seal")                            # a border back-path guard IS the border:
         # dropping it re-opens an unsealable crossing (see seal_zone_borders)
         or any(max(abs(oa["x"] - mx), abs(oa["y"] - my)) <= 1 for mx, my in mine_cells)
+        or any(max(abs(oa["x"] - ax), abs(oa["y"] - ay)) <= 1 for ax, ay in access_cells)
     }
     for a in range(len(guards)):
         ia, oa = guards[a]
@@ -167,8 +185,7 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
                     drop.add(ib if str(oa.get("type")) >= str(ob.get("type")) else ia)
     if drop:
         objs = [o for i, o in enumerate(objs) if i not in drop]
-
-    return objs, ncarved, nreconn, nfilled, n_pockets, len(drop)
+    return objs, len(drop)
 
 
 class RepairStep(PipelineStep):
