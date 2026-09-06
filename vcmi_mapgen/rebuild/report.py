@@ -3,7 +3,6 @@
 Steps compute and expose results as properties; printing/formatting stays here, called
 from ``cli.py`` after a step has finished, never from step-internal code.
 """
-from vcmi_mapgen.rebuild.engine import verify_identity
 
 
 def print_zone_tables(tables) -> None:
@@ -13,8 +12,8 @@ def print_zone_tables(tables) -> None:
             print(f"    zone {zid:>2}  {lab:<22} area={area:<4} objs={nobj}")
 
 
-def report_verify(name: str, fm: dict) -> bool:
-    ok, total, matched, missing, extra = verify_identity(name, fm)
+def report_verify(ok: bool, total: int, matched: int, missing, extra) -> bool:
+    """Print a VerifyStep result. ``missing``/``extra`` are the Counters it produced."""
     if ok:
         print(f"IDENTITY OK: {matched}/{total} objects match, 0 mismatches")
     else:

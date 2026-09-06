@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import collections
 
-from vcmi_mapgen.pipeline import MapState, PipelineStep, PlacementWorkspace
+from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
 from vcmi_mapgen.steps.pickup import loot_zones as LZ
 from vcmi_mapgen.steps.pickup import scatter as SC
 
@@ -14,30 +14,48 @@ class PickupStep(PipelineStep):
 
     Config:
         seed       RNG seed.
+        size       Map side length in tiles (square).
         workspace  Shared ``PlacementWorkspace``; reads each zone's ``blocked``/``open_set``/
                    ``passable`` (written by VegetationStep) plus the gameplay fields
                    GameplayStep wrote, and writes ``reach``/``used`` back per zone and
                    ``seal_avoid``/``hard_avoid`` per level for RepairStep.
 
-    Writes: ``state.objs`` (scatter + loot-zone objects appended, underground tagged
-            ``l=1``), ``state.targets``, ``state.zone_records`` (the legacy list-of-dicts
-            shape RepairStep still expects).
+    inject(objs, zones, gate_objs): ``objs`` (GameplayStep's + VegetationStep's objects,
+    merged by the builder), ``zones`` (SegmentStep's output), ``gate_objs`` (GateStep's
+    output, defaults to empty when there is no GateStep).
+
+    Produces: ``objs`` (the full, repartitioned scatter + loot-zone list, underground
+    tagged ``l=1`` — this REPLACES the input list, it doesn't just append to it),
+    ``targets``, ``zone_records`` (the list-of-dicts shape RepairStep expects).
     """
 
-    def __init__(self, seed: int = 3, workspace: PlacementWorkspace | None = None) -> None:
+    def __init__(self, seed: int = 3, size: int = 72,
+                 workspace: PlacementWorkspace | None = None) -> None:
         self.seed = seed
+        self.size = size
         self.workspace = workspace
+        self.objs: list = []
+        self.targets: dict = {}
+        self.zone_records: dict = {}
+        self._objs_in: list = []
+        self._zones: dict = {}
+        self._gate_objs: list = []
 
-    def run(self, state: MapState, ontology) -> None:
+    def inject(self, *, objs: list, zones: dict, gate_objs=()) -> None:
+        self._objs_in = objs
+        self._zones = zones
+        self._gate_objs = list(gate_objs)
+
+    def run(self) -> None:
         if self.workspace is None:
             return
-        W = H = state.size
+        W = H = self.size
 
         # partition the flat objs list by level — place_loot_zones mutates its
         # objs_existing list in place (clearing vegetation/scatter under a sealed
         # loot zone), so each level needs its own real (not concatenated-copy) list.
         objs_by_level: dict = {level: [] for level in self.workspace.levels}
-        for o in state.objs:
+        for o in self._objs_in:
             lvl = o.get("l", 0)
             if lvl in objs_by_level:
                 objs_by_level[lvl].append(o)
@@ -56,7 +74,7 @@ class PickupStep(PipelineStep):
                 # scatter loot never sits on the rim: a pickup there is a walkable,
                 # unsealable hole
                 sobjs, sused, reach = SC.place_scatter(
-                    zw.ts, state.zones[level], zid, zw.terrain,
+                    zw.ts, self._zones[level], zid, zw.terrain,
                     zw.open_set - (zw.rim8 - zw.ent_bands), zw.prot, seed=self.seed,
                     bounds=(W, H), entrances=zw.entrances)
                 if level == 1:   # place_scatter always tags l=0; retag the underground level
@@ -95,7 +113,7 @@ class PickupStep(PipelineStep):
             # they were physically absent here and immune; this pipeline merges them in
             # earlier (GameplayStep, so downstream forbid/occupied sets see them), so we
             # must shield them from the sweep by pulling them out and restoring them.
-            gate_ids = {id(o) for o in state.gate_objs if o.get("l", 0) == level}
+            gate_ids = {id(o) for o in self._gate_objs if o.get("l", 0) == level}
             shielded = [o for o in level_objs if id(o) in gate_ids]
             level_objs[:] = [o for o in level_objs if id(o) not in gate_ids]
 
@@ -138,7 +156,7 @@ class PickupStep(PipelineStep):
 
             lvl_ws.seal_avoid = seal_avoid
             lvl_ws.hard_avoid = hard_avoid
-            state.targets[level] = targets
-            state.zone_records[level] = zone_records
+            self.targets[level] = targets
+            self.zone_records[level] = zone_records
 
-        state.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
+        self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]

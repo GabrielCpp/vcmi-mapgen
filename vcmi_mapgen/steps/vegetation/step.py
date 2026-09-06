@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.pipeline import MapState, PipelineStep, PlacementWorkspace
+from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
 from vcmi_mapgen.steps.vegetation import sample as PP
 
 
@@ -17,14 +17,23 @@ class VegetationStep(PipelineStep):
                    ``blocked``/``open_set``/``passable`` back into the same object for
                    PickupStep/RepairStep.
 
-    Writes: ``state.objs`` (vegetation objects appended, all levels).
+    inject(zones): ``zones`` (SegmentStep's output; the full per-level zone dict, not
+    just this workspace's own zones).
+
+    Produces: ``objs`` — this step's own new vegetation objects (the builder
+    concatenates them onto GameplayStep's before handing the merged list to PickupStep).
     """
 
     def __init__(self, seed: int = 3, workspace: PlacementWorkspace | None = None) -> None:
         self.seed = seed
         self.workspace = workspace
+        self.objs: list = []
+        self._zones: dict = {}
 
-    def run(self, state: MapState, ontology) -> None:
+    def inject(self, *, zones: dict) -> None:
+        self._zones = zones
+
+    def run(self) -> None:
         if self.workspace is None:
             return
 
@@ -33,7 +42,7 @@ class VegetationStep(PipelineStep):
 
         for level, lvl_ws in self.workspace.levels.items():
             for zid, zw in lvl_ws.zones.items():
-                zones = state.zones[level]
+                zones = self._zones[level]
                 terrain = zw.terrain
                 ts = zw.ts
                 ts_full = zw.ts_full
@@ -78,4 +87,4 @@ class VegetationStep(PipelineStep):
                 zw.open_set = frozenset(open_set)
                 zw.passable = frozenset(passable)
 
-        state.objs.extend(new_objs)
+        self.objs = new_objs

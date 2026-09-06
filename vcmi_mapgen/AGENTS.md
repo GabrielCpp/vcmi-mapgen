@@ -33,7 +33,8 @@
 
 ## The zone template + identity guarantee
 
-- `zone_engine.extract_template(name)` records, per zone, `bbox / centroid /
+- `rebuild.engine.extract_template(name)` (wrapped by `steps.extract_template.ExtractTemplateStep`)
+  records, per zone, `bbox / centroid /
   mask_rel(sorted) / shape_hash / label` and per object `{purpose, identity, anchor_off,
   canon(depth,sweep)}`. Barrier-anchored objects go to a per-level absolute bucket.
 - `rebuild_map(template, target_terrain, identity=True)` matches each template zone to the
@@ -49,8 +50,8 @@
   do NOT. Rigid gameplay = one tile, no overlap (snap to a free zone tile); decoration keeps
   its relative spot, may overlap decoration but must NOT bury gameplay or sit on a barrier; a
   VCMI-invalid (untraversable) result is rejected. Zone objects are gathered by **footprint
-  overlap** (so the edge rim of mountains and edge mines come with the zone). `reconstruct
-  "<name>" --zone N --deform [--fx --fy]` renders ORIGINAL | same-shape | stretched.
+  overlap** (so the edge rim of mountains and edge mines come with the zone). `rebuild
+  "<name>" --zone N --deform` warps that one zone's pattern onto a deformed target shape.
 - Do NOT redo the rejected attempts: image-warp/pixel-resize (violates fixed-size),
   wall-fill (adds foreign objects), coverage-stretch (does not look the same).
 

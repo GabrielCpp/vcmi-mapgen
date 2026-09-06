@@ -1,7 +1,10 @@
-"""GateStep — place Subterranean Gate pairs between surface and underground."""
+"""GateStep — place Subterranean Gate pairs between surface and underground.
+
+Only constructed/run by the builder when ``subterrain`` is requested; there is no
+internal no-op branch here since the only caller already gates that."""
 from __future__ import annotations
 
-from vcmi_mapgen.pipeline import MapState, PipelineStep
+from vcmi_mapgen.pipeline import PipelineStep
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.steps.gate import gates as PG
 
@@ -39,27 +42,34 @@ def _rim8(zones):
 
 
 class GateStep(PipelineStep):
-    """Place Subterranean Gate pairs (no-op when ``state.subterrain`` is False).
+    """Place Subterranean Gate pairs.
 
     Config:
         seed  RNG seed (should match the seed used for terrain generation).
 
-    Reads ``state.zones`` and writes:
-      - ``state.gate_objs``   — pre-placed gate objects for both levels
-      - ``state.gate_occ``    — occupied tile sets per level
-      - ``state.gate_blk``    — blocked tile sets per level
-      - ``state.gate_appr``   — approach tile tuples per level
+    inject(zones): both levels' ``zones`` (SegmentStep's output).
+
+    Produces:
+      - ``gate_objs``   — pre-placed gate objects for both levels
+      - ``gate_occ``    — occupied tile sets per level
+      - ``gate_blk``    — blocked tile sets per level
+      - ``gate_appr``   — approach tile tuples per level
     """
 
     def __init__(self, seed: int = 3) -> None:
         self.seed = seed
+        self.gate_objs: list = []
+        self.gate_occ: dict = {}
+        self.gate_blk: dict = {}
+        self.gate_appr: dict = {}
+        self._zones: dict = {}
 
-    def run(self, state: MapState, ontology) -> None:
-        if not state.subterrain:
-            return
+    def inject(self, *, zones: dict) -> None:
+        self._zones = zones
 
-        zones0 = state.zones[0]
-        zones1 = state.zones[1]
+    def run(self) -> None:
+        zones0 = self._zones[0]
+        zones1 = self._zones[1]
         ts0 = _land_tiles(zones0)
         ts1 = _land_tiles(zones1)
 
@@ -71,10 +81,7 @@ class GateStep(PipelineStep):
         )
         print(f"  gates: {len(gobjs0)} Subterranean Gate pair(s) placed")
 
-        state.gate_objs = gobjs0 + gobjs1
-        state.gate_occ[0] = gate_occ0
-        state.gate_occ[1] = gate_occ1
-        state.gate_blk[0] = gate_blk0
-        state.gate_blk[1] = gate_blk1
-        state.gate_appr[0] = gate_appr0
-        state.gate_appr[1] = gate_appr1
+        self.gate_objs = gobjs0 + gobjs1
+        self.gate_occ = {0: gate_occ0, 1: gate_occ1}
+        self.gate_blk = {0: gate_blk0, 1: gate_blk1}
+        self.gate_appr = {0: gate_appr0, 1: gate_appr1}

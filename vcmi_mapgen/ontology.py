@@ -385,7 +385,7 @@ def resolve(cid, subclass):
 # The hand-authored layers above (cluster, purpose) are the irreducible ontology; the lower layers
 # (type -> terrain -> concrete sprite) complete the tree, every parent->child edge down to the leaf
 # sprite. The full tree is HARDCODED below as TAXONOMY -- it is the single source of truth for the
-# catalog renderer (zone_engine render-ontology). It is the ABSOLUTE object list the VCMI/H3 map
+# catalog renderer (cli.py render-ontology). It is the ABSOLUTE object list the VCMI/H3 map
 # editor can place: derived from the authoritative object-template table (objects.txt in the H3 LOD),
 # NOT from the corpus. Regenerate in place with `python -m vcmi_mapgen.ontology --regen`.
 #

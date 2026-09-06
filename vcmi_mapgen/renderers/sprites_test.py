@@ -19,9 +19,8 @@ import pytest
 
 import vcmi_mapgen.renderers.sprites as RE
 import vcmi_mapgen.kit.objects as OR
-import vcmi_mapgen.zone_engine as ZE
 from vcmi_mapgen.kit import vmap as VM
-from vcmi_mapgen.rebuild.engine import fm_to_document
+from vcmi_mapgen.rebuild.engine import extract_template, fm_to_document, rebuild_map
 from vcmi_mapgen.rebuild.render import _paint_sort
 
 TEST_MAP = "All for One"
@@ -170,8 +169,8 @@ def test_rebuilt_map_renders_pixel_identical_to_source(tmp_path):
     if not _randommaps:
         pytest.skip("VCMI template .vmap not available (no RandomMaps/*.vmap)")
     src_fm = OR.load_faithful(TEST_MAP)
-    template = ZE.extract_template(TEST_MAP)
-    rebuilt_fm, stats = ZE.rebuild_map(template, src_fm["terrain"], identity=True)
+    template = extract_template(TEST_MAP)
+    rebuilt_fm, stats = rebuild_map(template, src_fm["terrain"], identity=True)
     assert stats["missing"] == 0, f"identity rebuild dropped zones: {stats}"
 
     src_vmap = str(tmp_path / "source.vmap")

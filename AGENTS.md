@@ -24,16 +24,28 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
 ## Where things are
 
 - **`vcmi_mapgen/`** — the package (run modules with `python -m vcmi_mapgen.<name>`):
-  - `zone_engine.py` — the CLI (`extract` / `inspect` / `features` / `reconstruct` /
-    `rebuild` / `run`).
+  - `cli.py` — the CLI (`extract` / `inspect` / `features` / `rebuild` / `run` / `generate` /
+    `render-ontology`), a thin layer over `pipeline_builder.py`.
+  - `pipeline.py` — `MapState` (the narrow, render-only view of a finished map),
+    the Gameplay/Vegetation/Pickup/Repair collaboration workspaces, and the `PipelineStep`
+    base contract every step (both the procedural generator and the identity-rebuild
+    engine) is built from. `pipeline_builder.py` — `PipelineBuilder`, which hand-wires each
+    subcommand's step sequence (constructor args for compile-time-known config, `inject()`
+    for values an earlier step produced).
+  - `steps/` — one subpackage per step: `terrain_gen/tile/segment/gate/gameplay/
+    vegetation/pickup/repair` (procedural generation) and `extract_template/rebuild_map/
+    verify/fm_document/deform_warp` (identity-rebuild).
   - `terrain_segment.py` — same-terrain flood-fill segmentation + interior-depth features.
   - `kit/objects.py`, `ontology.py` — corpus loader, object identity, purpose.
   - `kit/vmap/{reader,writer}.py`, `rebuild/engine.py` (`fm_to_document`) — the full
     `.vmap` reader/writer and the faithful-shaped-dict → `VmapDocument` bridge.
   - `renderers/sprites.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt
     0/1/2/3); `renderers/png.py` — schematic PNGs; `renderers/vmap.py` — playable `.vmap`
-    export; `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...).
-  - `markov_terrain.py` — the terrain generator (Markov chain learned from the corpus).
+    export; `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...), only
+    `generate` selects these from the CLI; `renderers/ontology_render.py` — the
+    `render-ontology` catalog dump (a documentation tool, not part of any pipeline).
+  - `steps/terrain_gen/markov.py` — the terrain generator (Markov chain learned from
+    the corpus), consumed by `steps/terrain_gen/macro_topo.py`.
   - `h3m.py`, `vcmi_ids.py`, `extract_vmap.py` — `.h3m` → `.vmap` corpus-extraction pipeline.
   - `renderers/sprites_test.py` — rendering-engine reliability tests.
 - **`maps/`** — the `.h3m` corpus (159 maps), the source data.
@@ -47,10 +59,10 @@ Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering
 ## How to run
 
 ```bash
-uv run python -m vcmi_mapgen.zone_engine run "All for One"      # full foundation pipeline
-uv run python -m vcmi_mapgen.zone_engine rebuild "All for One" --identity --verify
-uv run python -m vcmi_mapgen.zone_engine reconstruct "All for One" --zone 7 --deform
-uv run python -m vcmi_mapgen.markov_terrain                     # learned terrain generator
+uv run python -m vcmi_mapgen.cli run "All for One"              # full foundation pipeline
+uv run python -m vcmi_mapgen.cli rebuild "All for One" --identity --verify
+uv run python -m vcmi_mapgen.cli rebuild "All for One" --zone 7 --deform
+uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72    # procedural generator
 uv run python -m vcmi_mapgen.extract_vmap                      # regenerate maps_vmap/ from maps/
 uv run pytest                                                  # rendering-engine reliability tests
 ```

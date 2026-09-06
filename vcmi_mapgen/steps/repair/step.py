@@ -6,22 +6,22 @@ import collections
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import find_pockets
-from vcmi_mapgen.pipeline import MapState, PipelineStep, PlacementWorkspace
+from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
 from vcmi_mapgen.steps.repair import border_seal as BS
 from vcmi_mapgen.steps.repair import caches as CA
 from vcmi_mapgen.steps.repair import geometry as GEO
 
 
-def _find_start(state: MapState, workspace: PlacementWorkspace):
+def _find_start(player_zids, zones_by_level: dict, workspace: PlacementWorkspace):
     """Return (level, (x, y)) for the first player town, or centroid of the
     largest surface land zone when there are no players."""
-    for lvl, zid in state.player_zids:
+    for lvl, zid in player_zids:
         lvl_ws = workspace.levels.get(lvl)
         t = lvl_ws.town_of_zone.get(zid) if lvl_ws is not None else None
         if t is not None:
             return (lvl, (t["x"], t["y"]))
     # No players — use nearest-to-centroid tile of the largest surface land zone
-    zones0 = state.zones.get(0, {})
+    zones0 = zones_by_level.get(0, {})
     big = max(
         (z for z in zones0.values()
          if TNAME.get(z["terrain_type"]) not in (None, "water", "rock")),
@@ -176,39 +176,67 @@ class RepairStep(PipelineStep):
     repairs, island fill, guarded pocket caches, and seerhut deduplication.
 
     Config:
-        seed       RNG seed.
-        workspace  Shared ``PlacementWorkspace``; reads ``ridge``/``town_of_zone`` (from
-                   GameplayStep) and ``entrance_plan``/``seal_avoid``/``hard_avoid`` (from
-                   PickupStep) per level, and performs its own border-seal pass here (the
-                   tail that used to run inside legacy ``_run_level``, before Vegetation/
-                   Pickup/Repair were split into their own steps).
+        seed        RNG seed.
+        size        Map side length in tiles (square).
+        subterrain  Whether a second underground level is active.
+        workspace   Shared ``PlacementWorkspace``; reads ``ridge``/``town_of_zone`` (from
+                    GameplayStep) and ``entrance_plan``/``seal_avoid``/``hard_avoid`` (from
+                    PickupStep) per level, and performs its own border-seal pass here (the
+                    tail that used to run inside legacy ``_run_level``, before Vegetation/
+                    Pickup/Repair were split into their own steps).
 
-    Reads: ``state.objs`` (partitioned by ``o.get("l", 0)``), ``state.targets``,
-           ``state.zone_records``, ``state.grids``, ``state.zones``,
-           ``state.player_zids``, ``state.player_towns``, ``state.gate_objs``,
-           ``state.subterrain``, ``state.tunnel_protect``, ``state.size``.
+    inject(objs, targets, zone_records, grids, zones, player_zids, gate_objs,
+    tunnel_protect): ``objs``/``targets``/``zone_records`` (PickupStep's output — targets
+    and zone_records are mutated further in place), ``grids`` (TileStep's post-despeckle
+    output), ``zones`` (SegmentStep's output), ``player_zids``/``gate_objs``
+    (GameplayStep's/GateStep's output; ``gate_objs`` defaults to empty when there is no
+    GateStep), ``tunnel_protect`` (TerrainGenStep's output).
 
-    Writes: ``state.objs`` (repaired flat list). Mutates ``state.targets`` and
-            ``state.zone_records`` in place. Appends to ``state.log``.
+    Produces: ``objs`` (final repaired flat list), ``log`` (diagnostic lines for the
+    CLI to print).
     """
 
-    def __init__(self, seed: int = 3, workspace: PlacementWorkspace | None = None) -> None:
+    def __init__(self, seed: int = 3, size: int = 72, subterrain: bool = False,
+                 workspace: PlacementWorkspace | None = None) -> None:
         self.seed = seed
+        self.size = size
+        self.subterrain = subterrain
         self.workspace = workspace
+        self.objs: list = []
+        self.log: list = []
+        self._objs_in: list = []
+        self._targets: dict = {}
+        self._zone_records: dict = {}
+        self._grids: dict = {}
+        self._zones: dict = {}
+        self._player_zids: list = []
+        self._gate_objs: list = []
+        self._tunnel_protect: frozenset = frozenset()
 
-    def run(self, state: MapState, ontology) -> None:
+    def inject(self, *, objs: list, targets: dict, zone_records: dict, grids: dict,
+               zones: dict, player_zids: list, tunnel_protect, gate_objs=()) -> None:
+        self._objs_in = objs
+        self._targets = targets
+        self._zone_records = zone_records
+        self._grids = grids
+        self._zones = zones
+        self._player_zids = player_zids
+        self._gate_objs = list(gate_objs)
+        self._tunnel_protect = frozenset(tunnel_protect)
+
+    def run(self) -> None:
         if self.workspace is None:
             return
-        W = H = state.size
-        size = state.size
-        grids = state.grids
-        zones_by_level = state.zones
-        targets_by_level = state.targets
-        zone_records_by_level = state.zone_records
+        W = H = self.size
+        size = self.size
+        grids = self._grids
+        zones_by_level = self._zones
+        targets_by_level = self._targets
+        zone_records_by_level = self._zone_records
 
         # partition flat objs list by level for per-level repair
         objs_by_level: dict = {lvl: [] for lvl in grids}
-        for o in state.objs:
+        for o in self._objs_in:
             lvl = o.get("l", 0)
             if lvl in objs_by_level:
                 objs_by_level[lvl].append(o)
@@ -223,14 +251,14 @@ class RepairStep(PipelineStep):
             for zr in zone_records:
                 if zr.get("loot_zone"):
                     loot_ts |= zr["ts"]
-            tunnel_protect = frozenset(state.tunnel_protect) if level == 1 else frozenset()
+            tunnel_protect = self._tunnel_protect if level == 1 else frozenset()
             sobjs_seal, sealed, guard_tiles, n_open = BS.seal_zone_borders(
                 W, H, grids[level], zones_by_level[level], lvl_ws.entrance_plan,
                 objs_by_level[level], lvl_ws.seal_avoid | tunnel_protect,
                 lvl_ws.hard_avoid, self.seed, level, skip_tiles=loot_ts)
             objs_by_level[level].extend(sobjs_seal)
             if sealed or guard_tiles or n_open:
-                state.log.append(
+                self.log.append(
                     f"L{level} border seal: {len(sealed)} cells closed, "
                     f"{len(guard_tiles)} back-path guards"
                     + (f", {n_open} crossings left free (unguardable)" if n_open else ""))
@@ -240,15 +268,15 @@ class RepairStep(PipelineStep):
             lvl_ws.guard_tiles = frozenset(guard_tiles)
             border_guards_by_level[level] = guard_tiles
 
-        gate_xy = {(o["x"], o["y"]) for o in state.gate_objs if o.get("l", 0) == 0}
-        start = _find_start(state, self.workspace)
+        gate_xy = {(o["x"], o["y"]) for o in self._gate_objs if o.get("l", 0) == 0}
+        start = _find_start(self._player_zids, zones_by_level, self.workspace)
 
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
                 size, grids, zones_by_level, objs_by_level, targets_by_level,
                 zone_records_by_level, start, gate_xy, self.seed)
             if n_portals:
-                state.log.append(f"RepairStep: {n_portals} portal rescue(s) added")
+                self.log.append(f"RepairStep: {n_portals} portal rescue(s) added")
 
         seerhut_artifacts: set = set()
         for level in sorted(grids):
@@ -268,16 +296,16 @@ class RepairStep(PipelineStep):
             )
             objs_by_level[level] = repaired
 
-            state.log.append(
+            self.log.append(
                 f"L{level} repair: carved={ncarved} reconnected={nreconn} "
                 f"filled={nfilled} pockets={npockets} dup_drops={ndrop}"
             )
 
         # retag all underground objects with l=1
-        if state.subterrain and 1 in objs_by_level:
+        if self.subterrain and 1 in objs_by_level:
             for o in objs_by_level[1]:
                 o["l"] = 1
 
-        # flatten into state.objs
-        state.objs = [o for lvl in sorted(objs_by_level)
-                      for o in objs_by_level[lvl]]
+        # flatten into self.objs
+        self.objs = [o for lvl in sorted(objs_by_level)
+                     for o in objs_by_level[lvl]]

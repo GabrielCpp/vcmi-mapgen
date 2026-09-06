@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import collections
 
-from vcmi_mapgen.pipeline import MapState, PipelineStep
+from vcmi_mapgen.pipeline import PipelineStep
 from vcmi_mapgen.steps.terrain_gen import macro_topo as MTOPO
 from vcmi_mapgen.kit import terrain_segment as TSG
 
@@ -92,13 +92,11 @@ class TerrainGenStep(PipelineStep):
         self.water = water
         self.water_mode = water_mode
         self.subterrain = subterrain
+        self.grids: dict = {}
+        self.tunnel_protect: set = set()
 
-    def run(self, state: MapState, ontology) -> None:
+    def run(self) -> None:
         W = H = self.size
-        state.seed = self.seed
-        state.size = self.size
-        state.subterrain = self.subterrain
-        state.water_mode = self.water_mode
 
         grid0 = MTOPO.generate(
             W, H, seed=self.seed, water=self.water,
@@ -117,7 +115,7 @@ class TerrainGenStep(PipelineStep):
                 grid0, grid1, W, H, gate_anchors, self.seed
             )
 
-        state.grids[0] = grid0
+        self.grids[0] = grid0
         if grid1 is not None:
-            state.grids[1] = grid1
-        state.tunnel_protect = tunnel_protect
+            self.grids[1] = grid1
+        self.tunnel_protect = tunnel_protect
