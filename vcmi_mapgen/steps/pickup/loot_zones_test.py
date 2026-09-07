@@ -77,16 +77,32 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories():
     assert violations == []
 
 
-def test_a_zone_whose_far_side_borders_open_water_is_disqualified():
-    """The water-adjacency check must scan the WHOLE zone, not just its entrance/passage
-    tiles -- a zone whose entrance is on solid land but whose far side borders open sea
-    must not become a loot zone either (e.g. z3 in seed 9's generated map)."""
-    zone_records, objs_existing = _zone_records(blocked_at=None)
-    # zone 0 occupies x0-7,y0-7; its single entrance is the bottom row (y=7) bordering
-    # zone 1. Put water just north of its TOP row (y=-1), far from that entrance.
-    water_tiles = {(x, -1) for x in range(8)}
-    objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
-                                               seed=1, bounds=_BOUNDS,
-                                               water_tiles=water_tiles)
-    assert n_placed == 0
-    assert zids == set()
+def test_loot_zone_fill_claims_every_non_access_tile():
+    """Every tile of a sealed loot zone ends up occupied except the access object's own
+    interactive cell -- an unfilled interior tile bordering water would let a boat-borne
+    hero dock directly onto it, bypassing the gate/monolith entirely (user-mandated)."""
+    from vcmi_mapgen.kit import objects as OR
+
+    ts0 = _zone_records()[0][0]["ts"]
+    ran_at_least_once = False
+    for seed in range(1, 8):
+        zone_records, objs_existing = _zone_records(blocked_at=None)
+        objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
+                                                   seed=seed, bounds=_BOUNDS)
+        if n_placed != 1:
+            continue
+        ran_at_least_once = True
+        claimed = set()
+        access_interactive = set()
+        for o in objs:
+            if (o["x"], o["y"]) not in ts0 and not any(
+                    (cx, cy) in ts0 for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"])):
+                continue
+            for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"]):
+                if (cx, cy) in ts0:
+                    claimed.add((cx, cy))
+            if o.get("purpose") in ("QUEST_GATE", "TRANSPORT"):
+                access_interactive |= set(OR.mask_interactive_cells(o["mask"], o["x"], o["y"])) & ts0
+        gap = ts0 - claimed - access_interactive
+        assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
+    assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"

@@ -85,14 +85,15 @@ def _solo_visit_pool(terrain, exclude_anims=frozenset(), min_shrine_level=None):
     return pool
 
 
-def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=None,
-                     water_tiles=None):
+def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=None):
     """Loot-zone access mechanic for small single-entrance zones.
 
     A 'loot zone' has ≤ LOOT_ZONE_MAX_TILES tiles, exactly one 8-connected cluster of
     'blue' passage tiles at its boundary (physical single-entrance check), and no town.
     Dense fill (hero-strengthening structures, major/relic artifacts, resource piles) is
-    placed in every qualifying zone.  Access mechanic is chosen 50/50 per zone:
+    placed in EVERY tile of every qualifying zone -- including one bordering open water,
+    since every non-access tile ends up occupied (see `_fill_loot`), leaving nothing a
+    boat could dock a hero onto. Access mechanic is chosen 50/50 per zone:
 
       gate   (50 %): BORDER_GATE placed at the entrance + matching-colour KEYMASTER in a
                non-loot zone far from castles and far from other exterior partners.  The
@@ -113,8 +114,6 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
     town_tiles = {(o["x"], o["y"]) for o in objs_existing if o.get("purpose") == "TOWN"}
 
     # Pre-compute full tile set of all zones for boundary detection.
-    # water_tiles comes from the caller (grid-level water, never in zone_records).
-    water_ts = set(water_tiles) if water_tiles else set()
     _all_ts = set()
     for _zr in zone_records:
         _all_ts |= _zr["ts"]
@@ -177,16 +176,6 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             continue
         n_clusters, passage_tiles = _passage_components(zr)
         if n_clusters != 1:
-            continue
-        # No water adjacency: no tile ANYWHERE in the zone may be 8-adjacent to a water
-        # tile -- checking only the entrance/passage cluster missed a zone whose far side
-        # borders open sea (its entrance can be perfectly landlocked while another edge
-        # of the same zone still fronts the water).
-        if water_ts and any(
-            (t[0]+dx, t[1]+dy) in water_ts
-            for t in zr["ts"]
-            for dx, dy in _DIRS8
-        ):
             continue
         loot_zrs.append((zr, passage_tiles))
 
@@ -286,7 +275,12 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         Pass 0 (bg): non-blocking terrain decor on interior tiles (under gameplay objects).
         Pass 1 (30 %): solo-visitable hero-strengthening structures.
         Pass 2: 30 % major/relic artifact, 30 % chest/campfire, 40 % rare resource pile
-                (mercury, sulfur, crystal, gems, gold — no wood/ore)."""
+                (mercury, sulfur, crystal, gems, gold — no wood/ore) -- and EVERY tile
+                Pass 1 left free must end up occupied by something (falling back through
+                a plain resource pile if its rolled pick doesn't fit): a sealed loot zone
+                with even one unclaimed interior tile is a tile a boat could dock a hero
+                onto directly, walking straight in without ever touching the gate/monolith
+                (user-mandated)."""
         # Pass 0: background — non-blocking terrain decor on interior (non-boundary) tiles.
         ext_ts_inner = _all_ts - reach
         interior = {t for t in reach
@@ -332,30 +326,34 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                           interactive_only=True):
                 vis_placed += 1
 
-        # Pass 2: 30 % major/relic artifact | 30 % chest/campfire | 40 % rare resource
+        # Pass 2: 30 % major/relic artifact | 30 % chest/campfire | 40 % rare resource --
+        # falls back through plain resources so every tile ends up claimed (see docstring).
         for t in sorted(reach - used):
             roll = rng.random()
-            if roll < 0.3:
-                if arts_high:
-                    ai = ON.identity_of(rng.choices(
-                        [a for a, _ in arts_high],
-                        weights=[w for _, w in arts_high], k=1)[0])
-                    if ai:
-                        _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                                   t[0], t[1], ident=ai, cache=True, bounds=bounds,
-                                   interactive_only=True)
-            elif roll < 0.6:
-                ai = rng.choice(pool_chest) if pool_chest else None
+            placed = False
+            if roll < 0.3 and arts_high:
+                ai = ON.identity_of(rng.choices(
+                    [a for a, _ in arts_high],
+                    weights=[w for _, w in arts_high], k=1)[0])
                 if ai:
-                    _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                               t[0], t[1], ident=ai, cache=True, bounds=bounds,
-                               interactive_only=True)
-            else:
-                ri = rng.choice(pool_rare) if pool_rare else None
-                if ri:
-                    _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
-                               t[0], t[1], ident=ri, cache=True, bounds=bounds,
-                               interactive_only=True)
+                    placed = _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
+                                        t[0], t[1], ident=ai, cache=True, bounds=bounds,
+                                        interactive_only=True)
+            elif roll < 0.6 and pool_chest:
+                placed = _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
+                                    t[0], t[1], ident=rng.choice(pool_chest), cache=True,
+                                    bounds=bounds, interactive_only=True)
+            if not placed and pool_rare:
+                placed = _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
+                                    t[0], t[1], ident=rng.choice(pool_rare), cache=True,
+                                    bounds=bounds, interactive_only=True)
+            if not placed and pool_res:
+                placed = _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
+                                    t[0], t[1], cache=True, bounds=bounds,
+                                    interactive_only=True)
+            if not placed:
+                print(f"  WARNING: loot zone fill left tile {t} unclaimed "
+                      f"(no fitting identity for terrain {terrain!r})")
 
     objs, n_placed = [], 0
     processed_loot_zids = set()   # zones whose entrance was actually sealed this run

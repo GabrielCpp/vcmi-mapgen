@@ -128,7 +128,7 @@ class PickupStep(PipelineStep):
 
             loot_objs, n_loot, loot_zids = LZ.place_loot_zones(
                 zone_records, lvl_ws.entrance_plan, level_objs, seed=self.seed,
-                bounds=(W, H), water_tiles=lvl_ws.water_tiles)
+                bounds=(W, H))
             if level == 1:   # place_loot_zones always tags l=0; retag the underground level
                 for o in loot_objs:
                     o["l"] = 1

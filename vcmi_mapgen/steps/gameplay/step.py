@@ -50,8 +50,8 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     ``GameplayStep.run()`` is its only caller now that path is gone.
 
     Returns (objs, zone_cache, entrance_plan, has_water, town_of_zone, ridge, seaport_blk,
-    seaport_appr, water_tiles): ``zone_cache`` is ``{zid: {...}}`` with the same keys
-    `_run_level`'s Pass 2 (vegetation/pickup, still legacy for now) already expects."""
+    seaport_appr): ``zone_cache`` is ``{zid: {...}}`` with the same keys `_run_level`'s
+    Pass 2 (vegetation/pickup, still legacy for now) already expects."""
     objs = []
     town_of_zone = {}
 
@@ -177,7 +177,7 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
             seaport_appr.add((_so["x"] - 1, _so["y"] + 1))
 
     return (objs, zone_cache, entrance_plan, has_water, town_of_zone, frozenset(ridge),
-            frozenset(seaport_blk), frozenset(seaport_appr), frozenset(water_tiles))
+            frozenset(seaport_blk), frozenset(seaport_appr))
 
 
 class GameplayStep(PipelineStep):
@@ -269,7 +269,7 @@ class GameplayStep(PipelineStep):
             tunnel_protect = self._tunnel_protect if level == 1 else frozenset()
 
             (objs, zone_cache, entrance_plan, _has_water, town_of_zone, ridge,
-             seaport_blk, seaport_appr, water_tiles) = _run_level_gameplay(
+             seaport_blk, seaport_appr) = _run_level_gameplay(
                 level, W, H, grid, zones, zids_by_level[level],
                 ledger, gstats, self.seed, self.subterrain, ontology,
                 gate_occ=gate_occ, gate_blk=gate_blk, gate_appr=gate_appr,
@@ -305,7 +305,7 @@ class GameplayStep(PipelineStep):
             workspace.levels[level] = LevelWorkspace(
                 zones=zone_workspaces, entrance_plan=entrance_plan, ridge=ridge,
                 seaport_blk=seaport_blk, seaport_appr=seaport_appr,
-                water_tiles=water_tiles, town_of_zone=town_of_zone,
+                town_of_zone=town_of_zone,
             )
 
         self.objs = all_objs
