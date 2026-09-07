@@ -75,3 +75,18 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories():
             if o.get("subtype") not in _ALLOWED_RESOURCE_SUBTYPES:
                 violations.append(o)
     assert violations == []
+
+
+def test_a_zone_whose_far_side_borders_open_water_is_disqualified():
+    """The water-adjacency check must scan the WHOLE zone, not just its entrance/passage
+    tiles -- a zone whose entrance is on solid land but whose far side borders open sea
+    must not become a loot zone either (e.g. z3 in seed 9's generated map)."""
+    zone_records, objs_existing = _zone_records(blocked_at=None)
+    # zone 0 occupies x0-7,y0-7; its single entrance is the bottom row (y=7) bordering
+    # zone 1. Put water just north of its TOP row (y=-1), far from that entrance.
+    water_tiles = {(x, -1) for x in range(8)}
+    objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
+                                               seed=1, bounds=_BOUNDS,
+                                               water_tiles=water_tiles)
+    assert n_placed == 0
+    assert zids == set()

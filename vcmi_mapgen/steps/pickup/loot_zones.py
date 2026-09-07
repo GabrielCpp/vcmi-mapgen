@@ -178,10 +178,13 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         n_clusters, passage_tiles = _passage_components(zr)
         if n_clusters != 1:
             continue
-        # No water adjacency: no boundary tile may be 8-adjacent to a water tile.
+        # No water adjacency: no tile ANYWHERE in the zone may be 8-adjacent to a water
+        # tile -- checking only the entrance/passage cluster missed a zone whose far side
+        # borders open sea (its entrance can be perfectly landlocked while another edge
+        # of the same zone still fronts the water).
         if water_ts and any(
             (t[0]+dx, t[1]+dy) in water_ts
-            for t in passage_tiles
+            for t in zr["ts"]
             for dx, dy in _DIRS8
         ):
             continue

@@ -46,7 +46,8 @@ WATER_PURPOSES = (
     "INFO",
     "BANK",
     "WATER_TRANSPORT",
-    "GUARD",
+    # no "GUARD" -- a monster only ever gates a mine, a loot-zone/portal-rescue access
+    # object, or a pocket mouth (user-mandated placement order); water bodies get none.
 )
 ALL_PURPOSES = (
     ("TOWN", "MINE", "DWELLING", "WATER_TRANSPORT", "TRANSPORT", "BANK")

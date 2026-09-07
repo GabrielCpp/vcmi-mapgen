@@ -49,11 +49,16 @@ def _field(w, h, walls):
 
 
 def test_find_pockets_drawn_shapes():
-    """Regression fixture from the user's own drawings (2026-07-05). A pocket's neck is a
-    guard's 3x3 zone of control, NOT a single walkable tile: with H3 diagonal movement a
-    1-2 tile nook in a FLAT wall face has three entrance tiles, so the old single-tile
-    test could never detect it (it only worked when the flanking walls happened to
-    protrude past the face and block the diagonals)."""
+    """Regression fixture from the user's own drawings, updated 2026-09 for the 2-tile
+    doorway model (a pocket's mouth is exactly two 4-connected tiles, replacing the
+    single-guard-3x3-zone-of-control model this superseded). A flat 1-2 tile nook whose
+    flanking walls do NOT protrude past its front (open diagonals on both sides) is no
+    longer detectable: H3 diagonal movement gives it THREE independent entrances (front
+    + both diagonals), and only 2 tiles can never block all three at once -- this is a
+    real, accepted narrowing from the previous model, not a bug (see kit.topology.
+    find_pockets' docstring). A nook whose flanking walls DO protrude (blocking the
+    diagonals) still has only one real approach and remains detectable as a 2-tile
+    doorway (entrance tile + the tile behind it, in the approach direction)."""
     from vcmi_mapgen.steps.repair import caches as CA
     from vcmi_mapgen.kit.topology import find_pockets
 
@@ -61,38 +66,35 @@ def test_find_pockets_drawn_shapes():
         """canonical (deduped, ranked) mouth candidates whose pocket covers the nook"""
         raw = {g: c for g, c in find_pockets(reach).items()
                if set(pocket_tiles) <= c[0]}
-        return [(cands[0][0], cands[0][1]) for cands in CA._dedupe_pockets(raw, reach)]
+        return [cands[0][2] for cands in CA._dedupe_pockets(raw, reach)]
 
-    # Pocket 1: 1-tile nook in a flat wall face, open field above. The canonical guard
-    # must stand directly in front (orthogonal), not on a diagonal or a tile out.
+    # Flat 1-tile nook, open diagonals on both sides -- no longer sealable by 2 tiles.
     #     . . .
     #     X o X
     #     X X X
     reach = _field(12, 12, {(4, 5), (6, 5), (4, 6), (5, 6), (6, 6)})
-    (mouth, pocket), = best_mouths(reach, {(5, 5)})
-    assert (mouth, set(pocket)) == ((5, 4), {(5, 5)})
+    assert best_mouths(reach, {(5, 5)}) == []
 
-    # 2-tile flat-face nook ("1 or 2 tiles fully surrounded")
+    # Flat 2-tile nook, open diagonals -- same reason, no longer sealable.
     reach = _field(12, 12, {(3, 5), (6, 5), (3, 6), (4, 6), (5, 6), (6, 6)})
-    (mouth, pocket), = best_mouths(reach, {(4, 5), (5, 5)})
-    assert set(pocket) == {(4, 5), (5, 5)} and mouth in ((4, 4), (5, 4))
+    assert best_mouths(reach, {(4, 5), (5, 5)}) == []
 
-    # protruding-corner nook: the one flat-face variant the OLD test also caught --
-    # must keep detecting it
+    # Protruding-corner nook: flanking walls block both diagonals, leaving exactly one
+    # approach -- still detectable, mouth = the entrance tile + the tile behind it.
     reach = _field(12, 12, {(4, 4), (6, 4), (4, 5), (6, 5), (4, 6), (5, 6), (6, 6)})
-    (mouth, pocket), = best_mouths(reach, {(5, 5)})
-    assert (mouth, set(pocket)) == ((5, 4), {(5, 5)})
+    (mouth_fs,) = best_mouths(reach, {(5, 5)})
+    assert mouth_fs == frozenset({(5, 3), (5, 4)})
 
-    # Pocket 2: dead-end corridor -- guard at the corridor entrance, treasures behind
+    # Dead-end corridor -- 2-tile doorway at the corridor entrance, treasures behind.
     #     X X X X X X
     #     X . . . . .
     #     X X X X X X
     walls = ({(x, 5) for x in range(2, 8)} | {(2, 6)} | {(x, 7) for x in range(2, 8)})
-    (mouth, pocket), = best_mouths(_field(14, 14, walls),
-                                   {(3, 6), (4, 6), (5, 6), (6, 6)})
-    assert (mouth, set(pocket)) == ((7, 6), {(3, 6), (4, 6), (5, 6), (6, 6)})
+    (mouth_fs,) = best_mouths(_field(14, 14, walls),
+                              {(3, 6), (4, 6), (5, 6), (6, 6)})
+    assert mouth_fs == frozenset({(7, 6), (8, 6)})
 
-    # Pocket 3: bent corridor, user's `O` = guard opening, `P` = treasure tiles
+    # Bent corridor, user's `O` = guard opening, `P` = treasure tiles
     #       X X X X X X
     #     X X X P P P P O
     #     X P P P X X X X
@@ -100,16 +102,13 @@ def test_find_pockets_drawn_shapes():
     walls = ({(x, 5) for x in range(5, 11)} | {(x, 6) for x in range(3, 6)} |
              {(3, 7)} | {(x, 7) for x in range(7, 11)} | {(x, 8) for x in range(3, 8)})
     P = {(6, 6), (7, 6), (8, 6), (9, 6), (4, 7), (5, 7), (6, 7)}
-    (mouth, pocket), = best_mouths(_field(20, 20, walls), P)
-    assert (mouth, set(pocket)) == ((10, 6), P)
+    (mouth_fs,) = best_mouths(_field(20, 20, walls), P)
+    assert mouth_fs == frozenset({(10, 6), (11, 6)})
 
-    # control: a lone straight wall through an open field must yield no pocket anywhere
-    # along its run (its two END corners against the map edge are genuine 1-tile corner
-    # nooks and MAY be flagged -- that is accepted semantics, thinned by POCKET_MIN_SEP)
+    # control: a lone straight wall through an open field must yield no pocket anywhere,
+    # including its two ends against the map edge (no 2-tile doorway sealing them either).
     reach = _field(12, 12, {(x, 6) for x in range(12)})
-    for m, (pocket, _mouth_fs) in find_pockets(reach).items():
-        assert all(t[0] in (0, 11) for t in pocket), \
-            f"mid-wall false positive {m}->{sorted(pocket)}"
+    assert find_pockets(reach) == {}
 
 
 @needs_stats
@@ -137,3 +136,57 @@ def test_scatter_rewards_are_mostly_loot():
         "treasure chests must appear as unguarded loot"
     assert len(loot) >= len(scatter_rewards) * 0.5, \
         f"scatter must be mostly fixed loot, got {len(loot)}/{len(scatter_rewards)}"
+
+
+def _field_with_room(room, mouth, field_w=15, field_h=4):
+    field = {(x, y) for x in range(field_w) for y in range(field_h)}
+    ts = field | set(mouth) | set(room)
+    return {"zid": 0, "terrain": "grass", "ts": ts, "open_set": set(ts),
+            "passable": set(ts), "reach": set(ts), "used": set()}
+
+
+@needs_stats
+def test_pocket_guard_level_matches_artifact_tier_exactly():
+    """Level of the guard monster == level of the artifact at the deep end (user-mandated
+    2026-09) -- no random +1 bump on the guard, unlike the pre-redefinition behavior."""
+    import re
+    from vcmi_mapgen.steps.gameplay import mines as PG
+    from vcmi_mapgen.steps.repair import caches as CA
+    if not os.path.exists(PG.STATS_PATH):
+        pytest.skip("gameplay stats not mined")
+
+    room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}   # 6-tile cavity
+    zr = _field_with_room(room, {(5, 4), (6, 4)})
+    objs, n_pockets, _depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
+    assert n_pockets == 1, "fixture assumption broke: expected exactly one pocket"
+    guard = next(o for o in objs if o.get("purpose") == "GUARD")
+    art = next(o for o in objs if o.get("purpose") == "REWARD_PICKUP"
+              and "artifact" in str(o.get("type", "")).lower())
+    glvl = int(re.match(r"randomMonsterLevel(\d)", guard["type"]).group(1))
+    assert art["animation"].lower() == CA._ART_BY_LVL[glvl - 1], (
+        f"guard is level {glvl} but artifact animation {art['animation']!r} doesn't "
+        f"match that tier ({CA._ART_BY_LVL[glvl - 1]!r})")
+
+
+@needs_stats
+def test_pocket_chest_fill_uses_only_the_allowed_types():
+    """The cavity's non-artifact/non-resource fill is entirely chests/pandora's box
+    (treasureChest, campfire, pandoraBox) -- never scholar/corpse/spellScroll/leanTo/
+    wagon/warriorTomb/denOfThieves, which "everything but an artifact" used to allow."""
+    from vcmi_mapgen.steps.gameplay import mines as PG
+    from vcmi_mapgen.steps.repair import caches as CA
+    if not os.path.exists(PG.STATS_PATH):
+        pytest.skip("gameplay stats not mined")
+
+    allowed = {"treasureChest", "campfire", "pandoraBox"}
+    violations = []
+    for seed in range(1, 15):
+        room = {(x, y) for x in range(5, 7) for y in range(5, 10)}   # 10-tile cavity
+        zr = _field_with_room(room, {(5, 4), (6, 4)})
+        objs, n_pockets, _depth = CA.place_pocket_caches([zr], seed=seed, bounds=(20, 20))
+        for o in objs:
+            if (o.get("purpose") == "REWARD_PICKUP"
+                    and "artifact" not in str(o.get("type", "")).lower()):
+                if o.get("type") not in allowed:
+                    violations.append(o)
+    assert violations == []

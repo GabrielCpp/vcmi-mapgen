@@ -6,10 +6,12 @@ import collections
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit.geometry import NB8
-from vcmi_mapgen.kit.topology import find_pockets, mouth_key, pocket_depths
+from vcmi_mapgen.kit.topology import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
-from vcmi_mapgen.steps.pickup.loot_zones import _FILL_EXCL_ANIMS, _solo_visit_pool
+from vcmi_mapgen.steps.pickup.loot_zones import (
+    _FILL_EXCL_ANIMS, _LOOT_CHEST_TYPES, _solo_visit_pool,
+)
 from vcmi_mapgen.steps.pickup.scatter import (
     PANDORA_CREATURES, _RW_LIMITER, _RW_REWARD, _RW_TEXT, _place_one, place_scatter,
 )
@@ -308,16 +310,17 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         if pocket is None:
             continue
 
-        # Size gate: 2–14 tiles only.
-        if len(pocket) < 2 or len(pocket) > 14:
+        # Size gate: this is already find_pockets' own cap (POCKET_MAX_TILES) on the
+        # upper end -- redundant in practice, but explicit here since it's this
+        # function's actual contract with the fill logic below.
+        if not (1 <= len(pocket) <= POCKET_MAX_TILES):
             continue
 
-        # 3+ tile pockets require a guard — skip if none could be placed, unless the
-        # pocket mouth is already sealed by a border guard (which isn't in global_place).
-        if len(pocket) > 2 and guard_tile is None:
-            if ref_g not in border_guards:
-                continue
-            # border guard already seals this pocket — fill without placing a new guard
+        # Every pocket requires a guard — skip if none could be placed, unless the
+        # pocket mouth is already sealed by a border guard (which isn't in global_place;
+        # in that case fill proceeds without placing a new guard).
+        if guard_tile is None and ref_g not in border_guards:
+            continue
 
         # This pocket is accepted -- record its full geometric extent + depth gradient
         # for the debug overlay (rendering only; it never re-derives this from objects).
@@ -345,49 +348,51 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         # Sort nearest-to-ref (index 0) → deepest (index -1).
         cache_spots.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
 
-        # Chest pool: non-artifact REWARD_PICKUP (treasure chests, campfires).
-        pool_chest = [i for i in pool_art if i.get("type") != "artifact"]
+        # Chest pool: the same explicit allow-list as loot zones (treasure chest,
+        # campfire, pandora's box) -- "entirely filled with chests, pandora boxes,
+        # resources, and one-tile hero-strengthening structures" (user-mandated), not
+        # "everything but an artifact" (which would let scholar/corpse/spell-scroll/
+        # leanTo/wagon/warriorTomb/denOfThieves leak in too).
+        pool_chest = [i for i in pool_art if i.get("type") in _LOOT_CHEST_TYPES]
         pool_vis = _solo_visit_pool(terrain, exclude_anims=_FILL_EXCL_ANIMS)
 
-        if len(pocket) == 2:
-            # 2-tile pocket: no guard, no artifact — resources + structures only.
-            # Use global_place (not global_reach8) so caches never land on already-placed
-            # gameplay footprints or their approach tiles.
-            _pocket_fill(cache_spots, pool_res, pool_art, pool_chest, pool_vis, rng, st,
-                         ref, terrain, reach=global_place)
-        else:
-            # 3-14 tile pocket: guard at mouth tile + one artifact at deepest.
-            n_fill = len(cache_spots) - 1  # one slot reserved for artifact
-            est_val = int(n_fill * 2.25) + 5
-            lvl = min(6, 1 + (est_val >= 4) + (est_val >= 7) + (est_val >= 10) + (est_val >= 13))
-            anim = _ART_BY_LVL[lvl - 1]
+        # Every pocket (1-10 tiles): guard at the mouth + one artifact at the deepest
+        # tile, tier matching the guard's level exactly (user-mandated) -- the rest
+        # (if any) filled with chests/resources/hero structures.
+        n_fill = len(cache_spots) - 1  # one slot reserved for the artifact
+        est_val = int(n_fill * 2.25) + 5
+        lvl = min(6, 1 + (est_val >= 4) + (est_val >= 7) + (est_val >= 10) + (est_val >= 13))
+        anim = _ART_BY_LVL[lvl - 1]
 
-            if guard_tile is not None:
-                # Place a new guard at the pocket mouth.
-                gident = rnd_monster(lvl + (1 if rng.random() < 0.25 else 0))
-                if not _place_one(objs, used, global_place, rng, st, "GUARD", None,
-                                  guard_tile[0], guard_tile[1], ident=gident, bounds=bounds):
-                    continue
-                placed_mouths.append(guard_tile)
-
-            # Re-derive available spots after guard V cells enter `used`.
-            avail = [t for t in cache_spots if t not in used]
-            avail.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
-            if not avail:
+        if guard_tile is not None:
+            # Place a new guard at the pocket mouth.
+            gident = rnd_monster(lvl)
+            if not _place_one(objs, used, global_place, rng, st, "GUARD", None,
+                              guard_tile[0], guard_tile[1], ident=gident, bounds=bounds):
                 continue
-            art_spot   = avail[-1:]  # deepest tile gets the artifact
-            fill_spots = avail[:-1]
+            # _place_one always appends -- objs[-1] is the guard just placed.
+            # Tag it for steps.repair.step._dedup_nearby_guards's priority tiers.
+            objs[-1]["pocket_guard"] = True
+            placed_mouths.append(guard_tile)
 
-            # Use global_place so fill and artifact never stack on top of gameplay objects.
-            _pocket_fill(fill_spots, pool_res, pool_art, pool_chest, pool_vis, rng, st,
-                         ref, terrain, reach=global_place)
+        # Re-derive available spots after guard V cells enter `used`.
+        avail = [t for t in cache_spots if t not in used]
+        avail.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
+        if not avail:
+            continue
+        art_spot   = avail[-1:]  # deepest tile gets the artifact
+        fill_spots = avail[:-1]
 
-            # Artifact at the deepest tile — tier matches guard level.
-            if art_spot:
-                t = art_spot[0]
-                _place_one(objs, used, global_place, rng, st, "REWARD_PICKUP", pool_art,
-                           t[0], t[1], ident=ON.identity_of(anim), cache=True, bounds=bounds,
-                           interactive_only=True)
+        # Use global_place so fill and artifact never stack on top of gameplay objects.
+        _pocket_fill(fill_spots, pool_res, pool_art, pool_chest, pool_vis, rng, st,
+                     ref, terrain, reach=global_place)
+
+        # Artifact at the deepest tile — tier matches guard level.
+        if art_spot:
+            t = art_spot[0]
+            _place_one(objs, used, global_place, rng, st, "REWARD_PICKUP", pool_art,
+                       t[0], t[1], ident=ON.identity_of(anim), cache=True, bounds=bounds,
+                       interactive_only=True)
 
     return objs, len(blobs), pocket_depth_by_tile
 

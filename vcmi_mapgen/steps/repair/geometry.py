@@ -8,7 +8,7 @@ from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit.terrain_lookup import TNAME, EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.steps.gate.gates import GAP, _fits, rnd_monster
-from vcmi_mapgen.steps.gameplay.mines import RND_ART, mine_gameplay
+from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
 from vcmi_mapgen.steps.pickup.scatter import _place_one
 
 MIN_AREA = 25          # matches GameplayStep's own zone floor
@@ -234,20 +234,17 @@ def fill_open_islands(size, grid, objs, targets, seed=1, boat_ok=True, costly=fr
     return objs, len(removed), n_filled
 
 
-REWARD_ZONE_ART_W = {"avarnd1": 20, "avarnd2": 40, "avarnd3": 30, "avarand": 10}
-#                    ^ portal reward zones skew toward minor/major artifacts — the fight to
-#                      get in (guarded portal) must pay better than open scatter (RND_ART
-#                      is treasure-heavy: 50/30/15/5).
-
-
 def place_reward_zone(zr, entry, seed=1, bounds=None):
     """SPECIAL REWARD upgrade for a zone rescued by a guarded two-way monolith (pp_map's
     unreachable-zone pass): the pocket-cache grammar scaled to the whole zone — dense
-    resource piles + artifact pickups (major-skewed, all `cache`-tagged) reachable from the
-    portal's `entry` tile, plus one interior guard whose strength tracks the accumulated
-    value (the cache ladder + 1). Works both for fully-populated zones (extra richness) and
-    for bare sub-MIN_AREA slivers the level pass skipped (their only content). Claims its
-    cells in `zr["used"]` so the later pocket-cache pass never double-stacks. Returns objs."""
+    resource piles (all `cache`-tagged) reachable from the portal's `entry` tile, plus one
+    interior guard whose strength tracks the accumulated value (the cache ladder + 1).
+    Resources only — an artifact pickup used to be part of this hoard, but artifacts are
+    pocket/loot-zone only now (a portal-rescued zone is neither), so those slots are
+    additional resource piles instead; same total item count, same guard mechanic. Works
+    both for fully-populated zones (extra richness) and for bare sub-MIN_AREA slivers the
+    level pass skipped (their only content). Claims its cells in `zr["used"]` so the later
+    pocket-cache pass never double-stacks. Returns objs."""
     import random
 
     terrain = zr["terrain"]
@@ -270,10 +267,8 @@ def place_reward_zone(zr, entry, seed=1, bounds=None):
     if not reach:
         return []
 
-    n_res = max(4, area // 10)
-    n_art = max(2, area // 25)
+    n_res = max(4, area // 10) + max(2, area // 25)
     pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
-    pool_art = ON.gameplay_pool(terrain, "REWARD_PICKUP")
     objs = []
     val = 0
 
@@ -286,18 +281,6 @@ def place_reward_zone(zr, entry, seed=1, bounds=None):
                       t[0], t[1], cache=True, bounds=bounds):
             n_res -= 1
             val += 2
-    arts = [a for a in RND_ART]
-    for t in spots:
-        if n_art <= 0:
-            break
-        if t in used:
-            continue
-        anim, _w, av = rng.choices(arts, weights=[REWARD_ZONE_ART_W[a] for a, _w2, _v in arts],
-                                   k=1)[0]
-        if _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                      t[0], t[1], ident=ON.identity_of(anim), cache=True, bounds=bounds):
-            n_art -= 1
-            val += av
 
     if objs:
         # one interior guard near the zone's own centre: the portal guard gates entry, this

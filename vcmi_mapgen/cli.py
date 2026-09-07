@@ -41,15 +41,20 @@ GENERATE_STOP_POINTS = (
 # though only PocketOverlay uses it -- it's disposable analysis, not a MapState fact
 # (see vcmi_mapgen/models/AGENTS.md), so it must reach the overlay through its own
 # constructor rather than the overlay reading/recomputing it off MapState.
+#
+# "zone" is fill-only here -- PngRenderer composites overlays in list order, so a
+# zone-id label drawn at its normal stack position gets painted over by whatever
+# overlay follows it. _parse_overlays appends a second, label-only ZoneOverlay last
+# whenever "zone" is requested, so the label always survives on top of the stack.
 _OVERLAY_FACTORIES = {
-    "zone": lambda pockets: ZoneOverlay(),
+    "zone": lambda pockets: ZoneOverlay(labels=False),
     "blocking": lambda pockets: BlockingOverlay(tiers=True),
     "passage": lambda pockets: PassageOverlay(),
     "pocket": lambda pockets: PocketOverlay(pockets),
     "guard": lambda pockets: GuardOverlay(),
     "tile_type": lambda pockets: TileTypeOverlay(),
 }
-_DEFAULT_OVERLAYS = "zone,blocking,passage,guard,pocket"
+_DEFAULT_OVERLAYS = "zone,blocking,guard,pocket"
 _RENDERER_CHOICES = ("png", "vmap")
 _DEFAULT_RENDERERS = "png,vmap"
 
@@ -61,7 +66,10 @@ def _parse_overlays(spec: str, pockets: dict):
     if unknown:
         sys.exit(f"unknown overlay(s): {', '.join(unknown)} "
                  f"(choices: {', '.join(_OVERLAY_FACTORIES)}, or 'none')")
-    return [_OVERLAY_FACTORIES[n](pockets) for n in names]
+    overlays = [_OVERLAY_FACTORIES[n](pockets) for n in names]
+    if "zone" in names:
+        overlays.append(ZoneOverlay(fill=False))
+    return overlays
 
 
 def _parse_renderers(spec: str):

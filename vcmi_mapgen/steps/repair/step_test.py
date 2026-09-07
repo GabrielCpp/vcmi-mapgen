@@ -15,10 +15,14 @@ def _access(purpose, x, y):
     return {"x": x, "y": y, "l": 0, "purpose": purpose, "mask": ["A"]}
 
 
-def test_a_loot_zone_access_object_guard_survives_a_nearby_protected_guard():
-    """A guard gating a QUEST_GATE/TRANSPORT access object is just as load-bearing
-    as a mine's guard: it must never be dropped just because an unrelated
-    protected guard (e.g. a border-seal 'seal' guard) lands within Chebyshev 2."""
+def test_a_loot_zone_access_object_guard_survives_a_nearby_seal_guard():
+    """A guard gating a QUEST_GATE/TRANSPORT access object is just as load-bearing as a
+    mine's guard, and both outrank a border-seal back-path guard (user-mandated
+    placement order: loot-zone access / mines / pockets get their guard first; a border
+    crossing is only ever guarded as a last resort, after those three have already
+    claimed theirs). The access guard must survive a conflict with a seal guard, and the
+    seal guard is the one dropped -- not "both survive," which was the old, now-wrong
+    behavior when seal guards were unconditionally protected."""
     gate = _access("TRANSPORT", 14, 4)
     access_guard = _guard(13, 5, lvl="randomMonsterLevel7")   # Chebyshev 1 from the gate
     seal_guard = _guard(11, 6, lvl="randomMonsterLevel4", seal=True)  # Chebyshev 2 from access_guard
@@ -26,9 +30,47 @@ def test_a_loot_zone_access_object_guard_survives_a_nearby_protected_guard():
 
     deduped, ndrop = _dedup_nearby_guards(objs)
 
-    assert ndrop == 0, "both the access-object guard and the seal guard are protected"
+    assert ndrop == 1
     assert access_guard in deduped
-    assert seal_guard in deduped
+    assert seal_guard not in deduped
+
+
+def test_a_pocket_guard_survives_a_nearby_seal_guard():
+    """Pockets rank above a border-seal guard too (third in the mandated order, but
+    still above "no priority at all")."""
+    pocket_guard = _guard(20, 20, lvl="randomMonsterLevel3", pocket_guard=True)
+    seal_guard = _guard(21, 21, lvl="randomMonsterLevel6", seal=True)   # Chebyshev 1
+
+    deduped, ndrop = _dedup_nearby_guards([pocket_guard, seal_guard])
+
+    assert ndrop == 1
+    assert pocket_guard in deduped
+    assert seal_guard not in deduped
+
+
+def test_a_mine_guard_survives_a_nearby_seal_guard():
+    mine_guard = _guard(30, 30, lvl="randomMonsterLevel2")
+    mine = _mine(30, 29)   # Chebyshev 1 from mine_guard, makes it tier-0
+    seal_guard = _guard(31, 31, lvl="randomMonsterLevel7", seal=True)   # Chebyshev 1 from mine_guard
+
+    deduped, ndrop = _dedup_nearby_guards([mine, mine_guard, seal_guard])
+
+    assert ndrop == 1
+    assert mine_guard in deduped
+    assert seal_guard not in deduped
+
+
+def test_two_nearby_seal_guards_keep_only_the_stronger():
+    """Two lowest-tier guards conflicting with EACH OTHER still fall back to the
+    stronger-monster tiebreak -- the tier system only changes cross-tier conflicts."""
+    weak = _guard(40, 40, lvl="randomMonsterLevel1", seal=True)
+    strong = _guard(41, 41, lvl="randomMonsterLevel7", seal=True)
+
+    deduped, ndrop = _dedup_nearby_guards([weak, strong])
+
+    assert ndrop == 1
+    assert strong in deduped
+    assert weak not in deduped
 
 
 def test_two_unprotected_nearby_guards_keep_only_the_stronger():

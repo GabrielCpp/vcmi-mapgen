@@ -33,8 +33,104 @@ def _water_and_land_zone():
                 stack.append(n)
     zones = {0: {"terrain_type": 2, "tiles_set": zone_tiles, "area": len(zone_tiles),
                  "centroid": (W / 2, H / 2)}}
-    assert len(water_tiles) >= WT._WATER_BODY_MIN and len(zone_tiles) >= WT._WATER_BODY_MIN
+    assert len(water_tiles) >= WT._SEA_ZONE_MIN_AREA and len(zone_tiles) >= WT._SEA_ZONE_MIN_AREA
     return WT, W, H, grid, zones
+
+
+def _synthetic_sea_and_land(sea_tiles: int):
+    """A precisely-sized square lake (`sea_tiles`) surrounded by a much bigger land mass
+    -- used where the exact water-body tile count must straddle a threshold (real
+    generation can't be sized precisely). A straight-line coastline (two adjacent bands)
+    has NO valid shipyard anchor anywhere, regardless of area: the mask ('VVV'/'VVV'/
+    'BXB', anchored at its bottom-right 'B') needs its dock row adjacent to water while
+    its approach tile (one south of the dock) stays on land, which a straight shore can't
+    satisfy in either orientation. A small lake fully enclosed by land gives the search a
+    shoreline with real corners, the same way a solid rectangular island (surrounded by
+    water on every side) already does for the island tests below."""
+    from vcmi_mapgen.steps.gameplay import water as WT
+
+    WATER, LAND = 8, 2
+    lake_w = 1
+    while lake_w * lake_w < sea_tiles:
+        lake_w += 1
+    margin = 6
+    W = H = lake_w + margin * 2
+    grid = [[LAND for _ in range(W)] for _ in range(H)]
+    placed = 0
+    for y in range(margin, margin + lake_w):
+        for x in range(margin, margin + lake_w):
+            if placed >= sea_tiles:
+                break
+            grid[y][x] = WATER
+            placed += 1
+    # Leave the outermost 1-tile ring OUT of the zone (still land, just unassigned) --
+    # otherwise every non-zone neighbour anywhere is the lake (water), which trivially
+    # satisfies `_ensure_water_seaports`'s is_island check (an "island" is a zone whose
+    # every non-member neighbour is water/rock) and the land mass gets placed via the
+    # ISLAND branch regardless of the lake's own size, testing the wrong rule.
+    zone_tiles = {(x, y) for y in range(1, H - 1) for x in range(1, W - 1)
+                  if grid[y][x] == LAND}
+    zones = {0: {"terrain_type": 2, "tiles_set": zone_tiles, "area": len(zone_tiles),
+                 "centroid": (W / 2, H / 2)}}
+    return WT, W, H, grid, zones
+
+
+def test_sea_zone_below_50_tiles_gets_no_seaport():
+    from vcmi_mapgen.ontology import Ontology
+
+    WT, W, H, grid, zones = _synthetic_sea_and_land(sea_tiles=40)
+    objs = WT._ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    assert not objs, "a water body under 50 tiles must not get a seaport"
+
+
+def test_sea_zone_50_or_more_gets_a_seaport():
+    from vcmi_mapgen.ontology import Ontology
+
+    WT, W, H, grid, zones = _synthetic_sea_and_land(sea_tiles=55)
+    objs = WT._ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    assert objs, "a water body of 55 tiles must get a seaport"
+
+
+def test_island_below_50_tiles_gets_no_seaport():
+    """A tight 1-tile water margin around the island (not a wide open sea) -- otherwise
+    the surrounding water body is itself >= _SEA_ZONE_MIN_AREA and the water-body
+    guarantee (rule 1) places a seaport regardless of the island's own size, which would
+    test the wrong rule."""
+    from vcmi_mapgen.ontology import Ontology
+    from vcmi_mapgen.steps.gameplay import water as WT
+
+    WATER = 8
+    W, H = 10, 7   # 40-tile island (5x8) + a 1-tile water ring = 30 water tiles, both < 50
+    grid = [[WATER for _ in range(W)] for _ in range(H)]
+    zone_tiles = {(x, y) for y in range(1, 6) for x in range(1, 9)}   # 40 tiles
+    for x, y in zone_tiles:
+        grid[y][x] = 2
+    zones = {0: {"terrain_type": 2, "tiles_set": zone_tiles, "area": len(zone_tiles),
+                 "centroid": (5, 3)}}
+    objs = WT._ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    assert not objs, "a 40-tile island must not get a seaport (threshold is 50)"
+
+
+def test_island_50_or_more_tiles_gets_a_seaport():
+    from vcmi_mapgen.ontology import Ontology
+    from vcmi_mapgen.steps.gameplay import water as WT
+
+    WATER = 8
+    W = H = 14
+    grid = [[WATER for _ in range(W)] for _ in range(H)]
+    zone_tiles = {(x, y) for y in range(6) for x in range(9)}   # 54 tiles
+    for x, y in zone_tiles:
+        grid[y][x] = 2
+    zones = {0: {"terrain_type": 2, "tiles_set": zone_tiles, "area": len(zone_tiles),
+                 "centroid": (4, 3)}}
+    objs = WT._ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    assert objs, "a 54-tile island must get a seaport"
+
+
+def test_seaport_spacing_is_30_tiles():
+    from vcmi_mapgen.steps.gameplay import water as WT
+    assert WT._SEAPORT_SPACING_SQ == 30 * 30, (
+        f"seaports must be spaced >= 30 tiles apart, got sqrt({WT._SEAPORT_SPACING_SQ})")
 
 
 def test_ensure_water_seaports_places_at_least_one():
@@ -96,3 +192,26 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch):
         f"none of the crc32-derived seeds {derived_seeds} were actually used to seed a "
         f"random.Random() (saw {seeds_seen}) — crc32 is computed but not wired into the RNG"
     )
+
+
+def test_place_water_never_places_a_guard():
+    """Sea/water bodies get no monster of their own -- a GUARD only ever gates a mine, a
+    loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
+    order: outside those three, no monster). Sampled across many seeds since GUARD is a
+    probabilistic pick among WATER_PURPOSES, not a guaranteed-every-call roll."""
+    import os
+    import pytest
+    from vcmi_mapgen.steps.gameplay import mines as PG
+    from vcmi_mapgen.steps.gameplay import water as WT
+
+    if not os.path.exists(PG.STATS_PATH):
+        pytest.skip("gameplay stats not mined")
+    ts = {(x, y) for x in range(30) for y in range(24)}
+    zones = {1: {"tiles_set": sorted(ts), "centroid": (14.5, 11.5), "area": len(ts),
+                 "terrain_type": 8}}
+    objs = []
+    for seed in range(1, 30):
+        objs += WT.place_water(ts, zones, 1, seed=seed)
+    assert objs, "fixture assumption broke: expected some water objects across 30 seeds"
+    assert not any(o.get("purpose") == "GUARD" for o in objs), (
+        "place_water must never place a GUARD-purpose object")

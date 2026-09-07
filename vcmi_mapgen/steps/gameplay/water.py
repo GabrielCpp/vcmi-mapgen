@@ -12,10 +12,12 @@ import zlib
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.gameplay.mines import RND_ART, RND_RES, WATER_PURPOSES, mine_gameplay
 
-_WATER_BODY_MIN = 30   # minimum water body size to require seaports
+_SEA_ZONE_MIN_AREA = 50    # minimum water-body size to require a seaport per shore
+_ISLAND_MIN_AREA = 50      # minimum island-zone size to require a seaport
+_BORDER_ZONE_MIN_AREA = 30  # skip a seaport on a bordering land zone too small to bother
+_SEAPORT_SPACING_SQ = 30 * 30  # minimum squared Euclidean distance between seaports
 
 
 def _pick(pool, purpose, st_t, rng, allow_random=True, art_share=0.45):
@@ -64,8 +66,10 @@ def _legal(ident, x, y, open_set, used, bounds=None, interactive_only=False):
 def place_water(ts, zones, zid, seed=1):
     """Populate a WATER zone (spec point: water must not be empty): flotsam/sea chests
     (pickups), buoys/mermaids/sirens (bonus), boats + whirlpools (navigability), shipwrecks/
-    derelicts (banks), ocean bottles, and random sea guards. Densities and animation mix come
-    from the corpus water pass; identities from the ontology's water pools."""
+    derelicts (banks), ocean bottles. No monster: a GUARD only ever gates a mine, a
+    loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
+    order) -- water bodies get none. Densities and animation mix come from the corpus
+    water pass; identities from the ontology's water pools."""
     import random
     st = mine_gameplay().get("water")
     if not st or not st.get("tiles"):
@@ -86,8 +90,7 @@ def place_water(ts, zones, zid, seed=1):
                 break
             if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < 4 for q in placed):
                 continue
-            ident = (rnd_monster(rng.choices((2, 3, 4, 5), (30, 30, 25, 15))[0])
-                     if p == "GUARD" else _pick(pool, p, st, rng, allow_random=False))
+            ident = _pick(pool, p, st, rng, allow_random=False)
             if ident is None:
                 break
             cells = _legal(ident, t[0], t[1], ts, used)
@@ -98,16 +101,14 @@ def place_water(ts, zones, zid, seed=1):
                  "type": ident.get("type"), "subtype": ident.get("subtype"),
                  "animation": ident["animation"], "mask": ident["mask"],
                  "template": {"animation": ident["animation"], "mask": ident["mask"]}}
-            if p == "GUARD":
-                o["options"] = {"character": "hostile"}
             objs.append(o)
             placed.append(t)
     return objs
 
 
 def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
-    """Guarantee ≥1 shipyard per land zone bordering a water body ≥ _WATER_BODY_MIN tiles,
-    and ≥1 shipyard per island land zone ≥ _WATER_BODY_MIN tiles.
+    """Guarantee ≥1 shipyard per land zone bordering a water body ≥ _SEA_ZONE_MIN_AREA
+    tiles, and ≥1 shipyard per island land zone ≥ _ISLAND_MIN_AREA tiles.
 
     For a 'lake' (water body not touching map borders) this ensures each bordering zone has
     a seaport — typically 1 zone = 1 seaport.  For 'open water' touching map borders, each
@@ -171,8 +172,6 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
                 if ch == "X":
                     approach = (tx, ty + 1)
         return allc, blk, approach
-
-    _SEAPORT_SPACING_SQ = 20 * 20  # minimum squared Euclidean distance between seaports
 
     def _try_place(ts_set, cand_tiles, label, ident, force=True):
         """Try to place a shipyard with the given ontology identity. cand_tiles =
@@ -296,7 +295,7 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
                     comp.add(n)
                     q.append(n)
         seen_w |= comp
-        if len(comp) < _WATER_BODY_MIN:
+        if len(comp) < _SEA_ZONE_MIN_AREA:
             continue
 
         # Find unique zones bordering this water body (by shore tile zone membership)
@@ -310,14 +309,14 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
 
         for zid in sorted(bordering_zids):
             z = zones[zid]
-            if z["area"] < _WATER_BODY_MIN:
+            if z["area"] < _BORDER_ZONE_MIN_AREA:
                 continue   # tiny border sliver — skip
             _place_for_zone(zid, z, f"wb_{t0}_{zid}")
 
     # ── 2. Island guarantee ───────────────────────────────────────────────────
     for zid, z in sorted(zones.items()):
         terrain = TNAME.get(z["terrain_type"])
-        if terrain in (None, "water", "rock") or z["area"] < _WATER_BODY_MIN:
+        if terrain in (None, "water", "rock") or z["area"] < _ISLAND_MIN_AREA:
             continue
         ts_set = set(z["tiles_set"])
         is_island = all(

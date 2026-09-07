@@ -150,15 +150,26 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
 
 def _dedup_nearby_guards(objs):
     """Both sides of one corridor may have guarded the same gate — keep only the
-    stronger of any two GUARDs within Chebyshev 2 (deterministic scan order). A
-    mine's own guard must never be dropped this way (mines are user-mandated to
-    always be guarded) — it sits Chebyshev 1 from the mine's footprint, so protect
-    any guard that close to one. A loot-zone gate/monolith's own guard is just as
-    load-bearing: it is the ONLY thing forcing a fight before the access object can
-    be used, so it must survive even when an unrelated protected guard (e.g. a
-    border-seal back-path guard) happens to land within Chebyshev 2 of it --
-    protect any guard Chebyshev <=1 from a QUEST_GATE (border gate / keymaster
-    tent) or TRANSPORT (monolith)'s own cells the same way.
+    stronger of any two GUARDs within Chebyshev 2 (deterministic scan order).
+
+    Guards rank by WHAT they gate (user-mandated placement order: loot-zone access,
+    then mines, then pockets; a border crossing is guarded only as a last resort,
+    after those three have already claimed theirs — see steps/AGENTS.md-adjacent
+    docs on guard placement). Rank 0 (highest): a mine's own guard, or a loot-zone
+    gate/monolith/portal-rescue guard — Chebyshev <=1 from a MINE footprint or a
+    QUEST_GATE/TRANSPORT access object's cells; these are load-bearing (a mine must
+    always be guarded, an access object needs a fight before it can be used) and
+    never lose to a lower rank. Rank 1: a pocket-mouth guard (`pocket_guard`,
+    tagged by steps.repair.caches.place_pocket_caches). Rank 2 (lowest): everything
+    else, including a border-seal back-path guard (`seal`, tagged by
+    seal_zone_borders) — dropping ITS conflict partner is fine (that partner is
+    rank 0/1 and already gates something more load-bearing); dropping the seal
+    guard itself just means that one crossing goes unguarded by this rule, the
+    correct outcome once a higher-ranked guard has already claimed the spot.
+
+    A higher rank always survives a conflict with a lower one. Within the SAME
+    rank, two mutual rank-0 guards both survive (never drop either); any other
+    same-rank conflict falls back to the stronger-monster tiebreak.
 
     Per-LEVEL only: two guards that happen to share (x, y) on different levels are
     not physically near each other. Returns (deduped_objs, n_dropped)."""
@@ -172,13 +183,16 @@ def _dedup_nearby_guards(objs):
         (ax, ay) for o in objs if o.get("purpose") in ("QUEST_GATE", "TRANSPORT")
         for ax, ay, _ in OR.mask_cells(o["mask"], o["x"], o["y"])
     ]
-    protected = {
-        ia for ia, oa in guards
-        if oa.get("seal")                            # a border back-path guard IS the border:
-        # dropping it re-opens an unsealable crossing (see seal_zone_borders)
-        or any(max(abs(oa["x"] - mx), abs(oa["y"] - my)) <= 1 for mx, my in mine_cells)
-        or any(max(abs(oa["x"] - ax), abs(oa["y"] - ay)) <= 1 for ax, ay in access_cells)
-    }
+
+    def _rank(o):
+        if (any(max(abs(o["x"] - mx), abs(o["y"] - my)) <= 1 for mx, my in mine_cells)
+                or any(max(abs(o["x"] - ax), abs(o["y"] - ay)) <= 1 for ax, ay in access_cells)):
+            return 0
+        if o.get("pocket_guard"):
+            return 1
+        return 2
+
+    ranks = {ia: _rank(oa) for ia, oa in guards}
     for a in range(len(guards)):
         ia, oa = guards[a]
         if ia in drop:
@@ -188,12 +202,13 @@ def _dedup_nearby_guards(objs):
             if ib in drop:
                 continue
             if max(abs(oa["x"] - ob["x"]), abs(oa["y"] - ob["y"])) <= 2:
-                if ia in protected and ib in protected:
-                    continue  # both gate a real mine — never drop either
-                if ia in protected:
+                ra, rb = ranks[ia], ranks[ib]
+                if ra < rb:
                     drop.add(ib)
-                elif ib in protected:
+                elif rb < ra:
                     drop.add(ia)
+                elif ra == 0:
+                    continue  # both gate a mine/access object — never drop either
                 else:
                     # randomMonsterLevelN sorts by N lexically (levels 1..7)
                     drop.add(ib if str(oa.get("type")) >= str(ob.get("type")) else ia)

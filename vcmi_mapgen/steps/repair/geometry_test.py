@@ -96,3 +96,41 @@ def test_portal_reward_zone():
     # fill_open_islands: the enclave now carries targets -> no decoration fill
     _objs3, _nrec, nfill = GEO.fill_open_islands(S, grid, list(objs), list(targets), seed=3)
     assert nfill == 0, f"rescued zone must not be decoration-filled, filled {nfill} tiles"
+
+
+def test_portal_reward_zone_never_places_an_artifact():
+    """Artifacts (and pandora's box / chests) are pocket/loot-zone only now -- the
+    portal-rescue reward hoard must be resource piles alone, never a REWARD_PICKUP
+    (which used to draw from RND_ART)."""
+    from vcmi_mapgen.steps.repair import geometry as GEO
+
+    S = 40
+    GRASS, ROCK = 2, 9
+    grid = [[GRASS] * S for _ in range(S)]
+    inner = {(x, y) for x in range(31, 37) for y in range(31, 37)}
+    for y in range(28, 40):
+        for x in range(28, 40):
+            if (x, y) not in inner:
+                grid[y][x] = ROCK
+    ts1 = {(x, y) for x in range(S) for y in range(S) if grid[y][x] == GRASS} - inner
+    zones = {1: {"tiles_set": sorted(ts1), "area": len(ts1), "terrain_type": GRASS,
+                 "centroid": (sum(x for x, _ in ts1) / len(ts1),
+                              sum(y for _, y in ts1) / len(ts1))},
+             2: {"tiles_set": sorted(inner), "area": len(inner), "terrain_type": GRASS,
+                 "centroid": (33.5, 33.5)}}
+
+    def mk(typ, x, y, purpose, mask=("A",)):
+        return {"type": typ, "subtype": "s", "animation": "X", "mask": list(mask),
+                "x": x, "y": y, "l": 0, "purpose": purpose,
+                "template": {"animation": "X", "mask": list(mask)}}
+
+    objs = {0: [mk("town", 5, 5, "TOWN"), mk("mine", 31, 31, "MINE")]}
+    targets = {0: [(5, 6)]}
+    GEO.rescue_unreachable_zones(
+        S, {0: grid}, {0: zones}, objs, targets, {0: []},
+        start=(0, (5, 5)), gate_xy=set(), seed=3)
+
+    loot = [o for o in objs[0] if o.get("cache")]
+    assert len(loot) >= 6, "fixture assumption broke: expected a dense reward hoard"
+    assert not any(o.get("purpose") == "REWARD_PICKUP" for o in loot), (
+        "a portal-rescued zone's hoard must be resources only, never an artifact")

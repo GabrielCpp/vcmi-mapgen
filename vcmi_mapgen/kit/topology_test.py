@@ -87,3 +87,78 @@ def test_pocket_depths_takes_the_shortest_path_when_the_pocket_branches():
     assert depths[(1, 1)] == 0   # also 8-adjacent to mouth
     assert depths[(2, 0)] == 1   # one step from either (1,0) or (1,1)
     assert depths[(3, 0)] == 2   # one step deeper still
+
+
+def _open_field_with_room(room_tiles, mouth=((5, 4), (6, 4)), field_w=15, field_h=4):
+    """A big open field (rows 0..field_h-1) connected to `room_tiles` ONLY through the
+    two 4-connected `mouth` tiles -- everything else around the room is a wall (simply
+    absent from `reach`)."""
+    from vcmi_mapgen.kit import topology as TP
+    field = {(x, y) for x in range(field_w) for y in range(field_h)}
+    reach = field | set(mouth) | set(room_tiles)
+    return TP, reach
+
+
+def _top_pocket(TP, reach):
+    """find_pockets alone can return several overlapping raw candidates for the SAME
+    physical nook (e.g. the true outer doorway, and an inner partition of the room that
+    is technically also a valid-but-smaller 2-tile doorway) -- `steps.repair.caches.
+    _dedupe_pockets` blob-merges those and keeps the best one, exactly as the real
+    pipeline always calls it. Asserts exactly one physical nook was found and returns
+    its (guard_tile, pocket, mouth_fs)."""
+    from vcmi_mapgen.steps.repair.caches import _dedupe_pockets
+    raw = TP.find_pockets(reach)
+    blobs = _dedupe_pockets(raw, reach)
+    assert len(blobs) == 1, f"expected exactly one physical nook, got {len(blobs)}"
+    return blobs[0][0]   # best candidate in the blob
+
+
+def test_find_pockets_detects_the_two_tile_doorway_cavity():
+    """A 4-tile room behind an EXACT 2-tile, 4-connected doorway is found, with the
+    mouth being exactly those two doorway tiles."""
+    room = {(5, 5), (6, 5), (5, 6), (6, 6)}
+    TP, reach = _open_field_with_room(room)
+    _guard_tile, pocket, mouth_fs = _top_pocket(TP, reach)
+    assert pocket == frozenset(room)
+    assert mouth_fs == frozenset({(5, 4), (6, 4)})
+
+
+def test_find_pockets_mouth_is_always_exactly_two_tiles():
+    room = {(5, 5), (6, 5)}
+    TP, reach = _open_field_with_room(room)
+    _guard_tile, _pocket, mouth_fs = _top_pocket(TP, reach)
+    assert len(mouth_fs) == 2
+    m1, m2 = sorted(mouth_fs)
+    assert max(abs(m1[0] - m2[0]), abs(m1[1] - m2[1])) == 1
+    assert m1[0] == m2[0] or m1[1] == m2[1]   # 4-connected, not diagonal
+
+
+def test_find_pockets_rejects_a_cavity_over_ten_tiles():
+    """A room of 11 tiles behind a 2-tile doorway must NOT be reported -- the cavity
+    exceeds the user-mandated 1..10 tile window. (Small inner-partition candidates may
+    still be found -- see _top_pocket -- but none may reach the full 11-tile room.)"""
+    room = {(x, y) for x in range(5, 9) for y in range(5, 8)}   # 4x3 = 12 tiles
+    room = set(list(room)[:11])   # trim to exactly 11 for an unambiguous over-the-line case
+    TP, reach = _open_field_with_room(room)
+    pockets = TP.find_pockets(reach)
+    assert all(len(pocket) < 11 for pocket, _mouth in pockets.values())
+
+
+def test_find_pockets_accepts_exactly_ten_tiles():
+    room = {(x, y) for x in range(5, 7) for y in range(5, 10)}   # 2x5 = 10 tiles
+    TP, reach = _open_field_with_room(room, mouth=((5, 4), (6, 4)))
+    _guard_tile, pocket, _mouth = _top_pocket(TP, reach)
+    assert len(pocket) == 10
+
+
+def test_find_pockets_guard_tile_is_one_of_the_mouth_tiles():
+    """Both mouth tiles sit within Chebyshev 1 of the reported guard_tile -- a single
+    guard standing there has both inside its 3x3 zone of control (the "same monster
+    zoc" requirement is automatic for any 4-connected pair, since they're always
+    Chebyshev-1 apart)."""
+    room = {(5, 5), (6, 5), (5, 6), (6, 6)}
+    TP, reach = _open_field_with_room(room)
+    guard_tile, _pocket, mouth_fs = _top_pocket(TP, reach)
+    assert guard_tile in mouth_fs
+    for m in mouth_fs:
+        assert max(abs(guard_tile[0] - m[0]), abs(guard_tile[1] - m[1])) <= 1

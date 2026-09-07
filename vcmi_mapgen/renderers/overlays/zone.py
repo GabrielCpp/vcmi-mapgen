@@ -27,17 +27,26 @@ class ZoneOverlay(MapOverlay):
     If zones are absent (e.g. the state came from VmapReader) the overlay is
     a no-op.  Optionally renders zone-id text labels at each zone's centroid.
 
+    ``fill`` and ``labels`` are independent so a caller can composite the fill
+    early in an overlay stack and a second, ``fill=False`` label-only instance
+    last — the label must survive on top of every other overlay, which a
+    single fill+label pass can't guarantee once a later overlay paints over it
+    (see ``cli._parse_overlays``).
+
     Args:
         labels: whether to draw zone-id labels (default True).
+        fill: whether to draw the per-zone colored fill (default True).
         fill_alpha: zone fill opacity 0–255 (default 55).
     """
 
     def __init__(
         self,
         labels: bool = True,
+        fill: bool = True,
         fill_alpha: int = _FILL_ALPHA,
     ) -> None:
         self._labels = labels
+        self._fill = fill
         self._fill_alpha = fill_alpha
         self._font = ImageFont.load_default(size=_LABEL_FONT_SIZE)
 
@@ -58,14 +67,15 @@ class ZoneOverlay(MapOverlay):
         n_zones = len(zones)
 
         for zid, z in zones.items():
-            r, g, b = _zone_color(zid, n_zones)
-            fill_c = (r, g, b, self._fill_alpha)
+            if self._fill:
+                r, g, b = _zone_color(zid, n_zones)
+                fill_c = (r, g, b, self._fill_alpha)
 
-            for tx, ty in z.get("tiles_set", ()):
-                if not (0 <= tx < W and 0 <= ty < H):
-                    continue
-                x0, y0 = tx * TILE, ty * TILE
-                draw.rectangle([x0, y0, x0 + TILE - 1, y0 + TILE - 1], fill=fill_c)
+                for tx, ty in z.get("tiles_set", ()):
+                    if not (0 <= tx < W and 0 <= ty < H):
+                        continue
+                    x0, y0 = tx * TILE, ty * TILE
+                    draw.rectangle([x0, y0, x0 + TILE - 1, y0 + TILE - 1], fill=fill_c)
 
             if self._labels:
                 centroid = z.get("centroid")

@@ -12,13 +12,14 @@ LONG_FRONT = 20      # a zone-pair front at least this long earns a second entra
 MAX_ENTRANCES = 2    # "a few" — hard cap on planned crossings per zone pair
 MIN_ENTRANCE_SEP = 12  # Chebyshev floor between two entrances of the same pair
 
-POCKET_MAX_DIM = 16              # user's own definition: "a pocket is a zone of 16x16 or
-                                 # less with only one entrance neck" — see find_pockets()
-POCKET_MAX_TILES = 16           # tightened 2026-07-04: 16x16(=256) let pockets swallow most
-                                 # of a small zone's reach, including whole zone-boundary
-                                 # fronts; capping total tiles at 16 keeps a pocket a nook
-POCKET_NOOK_BLOCKED = 4         # a ZoC tile counts as pocket interior when >=4 of its 8
-                                 # neighbours are blocking (walled nook, not open ground)
+POCKET_MAX_DIM = 10              # generous bounding-box cap; POCKET_MAX_TILES always binds
+                                 # first for any compact shape, so this rarely matters on
+                                 # its own -- see find_pockets()
+POCKET_MAX_TILES = 10           # user-mandated 2026-09: "a closed cavity of 1 to 10 other
+                                 # tiles" (previously 16, from the single-guard-ZoC model
+                                 # this replaced)
+POCKET_NOOK_BLOCKED = 4         # mouth_key's "in a neck" tiebreak: a mouth tile counts as
+                                 # IN the neck when >=4 of its 8 neighbours are blocking
 
 
 def _geodesic_path(a, b, ts):
@@ -225,82 +226,75 @@ def mouth_key(reach, mouth, pocket):
             0 if orth else 1, -adj8, mouth)
 
 
+def _blocked_neighbours(t, reach):
+    return sum(1 for dx, dy in NB8 if (t[0] + dx, t[1] + dy) not in reach)
+
+
 def find_pockets(reach, max_dim=POCKET_MAX_DIM, max_tiles=POCKET_MAX_TILES):
     """Geometric pocket detection: small treasure nooks sealable by ONE guard.
 
-    The neck is a guard's ZONE OF CONTROL, not a single tile (fixed 2026-07-05). H3
-    wandering monsters threaten their own tile plus all 8 neighbours, so one guard seals
-    everything a hero cannot reach — or stand on — without entering that 3x3 ZoC. The
-    previous definition ("one walkable tile whose removal seals the pocket") could NEVER
-    detect the most common nook of all, a 1-2 tile recess in a FLAT wall face: with
-    diagonal movement such a nook has three entrance tiles (front + both diagonals), so
-    no single tile seals it; it was only found when the flanking walls happened to
-    protrude past the face. Tiles absent from `reach` — vegetation, other zones, or the
-    true map edge — are all blocking alike.
+    A pocket's mouth is exactly TWO 4-connected tiles — a doorway (user-mandated
+    2026-09, replacing the previous single-guard-zone-of-control model). The cavity
+    behind a candidate doorway (m1, m2) is the union of 8-connected bounded components
+    of `reach - {m1, m2}` seeded next to the doorway (H3 heroes move diagonally, so an
+    orthogonal-only block is not a real seal — see `_bounded_fill`); a bounded
+    component that stays within `max_tiles` (1..10) counts as part of the cavity, one
+    that leaks into the wider map does not (that's simply the "outside" side of the
+    doorway, not a rejection of the whole candidate).
 
-    For every candidate guard tile `g`, its pocket is the union of:
-      - bounded components of `reach - ZoC(g)` seeded next to the ZoC (the region BEHIND
-        the guard — the old test generalized from a 1-tile to a 3x3 neck, which keeps
-        dead-end corridors detected exactly as before), and
-      - walkable ZoC tiles with >= POCKET_NOOK_BLOCKED blocked neighbours (the flat-face
-        nook itself: it sits INSIDE the guard's ZoC, so grabbing its loot forces the
-        fight even though a hero can path to it).
+    EVERY 4-connected pair in `reach` is tried as a candidate doorway — "try to enlarge
+    the cavity by moving the two entrance tiles until it stops being sealed or exceeds
+    max_tiles" is achieved by this exhaustive search itself: every alternative doorway
+    position for the same physical nook is tried anyway, and `steps.repair.caches.
+    _dedupe_pockets` + `mouth_key` (unchanged) keep the best (largest, most-in-neck)
+    candidate among the overlapping ones.
 
-    Returns {guard_tile: (frozenset(pocket_tiles), frozenset(mouth_tiles))} where the
-    guard_tile is the canonical ZoC-centre that seals the pocket, mouth_tiles is the
-    ≤2-tile entry cluster (ZoC-interior nook tiles ∪ first outside-ZoC layer adjacent
-    to the ZoC), and the dict is deduped so each distinct pocket keeps a single
-    canonical entry (best `mouth_key`). Distinct-but-overlapping candidates for the
-    same physical nook still come out as separate entries — `steps.repair.caches.
-    _dedupe_pockets` blob-merges those."""
+    Both mouth tiles are always within Chebyshev 1 of each other (4-connected), so a
+    guard standing on either one has BOTH inside its own 3x3 zone of control — "the two
+    tiles' mouth in the same monster zoc" is automatic, never a filter.
+
+    Returns {guard_tile: (frozenset(pocket_tiles), frozenset(mouth_tiles))} exactly as
+    before: mouth_tiles is now always the 2-tile doorway; guard_tile is whichever of
+    the two sits more IN the neck (more blocked neighbours — `mouth_key`'s own
+    preference, applied here just to pick which one the guard stands on), tied broken
+    by tile order."""
     best = {}
-    for g in sorted(reach):
-        # a guard in fully open ground seals nothing and touches no nook: without a
-        # blocking tile within Chebyshev distance 2 (the ZoC plus its rim), neither a
-        # bounded component nor a >=4-blocked ZoC tile can exist. Cheap skip for the
-        # bulk of any open field.
-        if all((g[0] + dx, g[1] + dy) in reach
-               for dx in range(-2, 3) for dy in range(-2, 3)):
-            continue
-        zoc = {g} | {(g[0] + dx, g[1] + dy) for dx, dy in NB8}
-        pocket = set()
-        seen = set()
-        for z in sorted(zoc):
-            for dx, dy in NB8:
-                s = (z[0] + dx, z[1] + dy)
-                if s in zoc or s in seen or s not in reach:
-                    continue
-                comp = _bounded_fill(reach, zoc, s, max_dim, max_tiles)
-                if comp is None:        # leaked: open world, not sealed by this guard
-                    seen.add(s)
-                    continue
-                seen |= comp
-                pocket |= comp
-        for z in sorted(zoc - {g}):
-            if z not in reach:
+    for x, y in sorted(reach):
+        for dx, dy in NB4:
+            m1, m2 = (x, y), (x + dx, y + dy)
+            if m2 <= m1 or m2 not in reach:
+                continue   # each unordered pair considered once
+            # Cheap skip for the bulk of any open field: with no blocking tile within
+            # Chebyshev 2 of EITHER doorway tile, no bounded component can exist.
+            if (all((m1[0] + ddx, m1[1] + ddy) in reach
+                    for ddx in range(-2, 3) for ddy in range(-2, 3))
+                    and all((m2[0] + ddx, m2[1] + ddy) in reach
+                            for ddx in range(-2, 3) for ddy in range(-2, 3))):
                 continue
-            blocked = sum(1 for dx, dy in NB8 if (z[0] + dx, z[1] + dy) not in reach)
-            if blocked >= POCKET_NOOK_BLOCKED:
-                pocket.add(z)
-        if not pocket or len(pocket) > max_tiles:
-            continue
-        if (max(x for x, _ in pocket) - min(x for x, _ in pocket) >= max_dim or
-                max(y for _, y in pocket) - min(y for _, y in pocket) >= max_dim):
-            continue
-        # Mouth size: 8-connected cluster of pocket tiles at the entry point.
-        # Two layers: ZoC-interior nook tiles (≥4 blocked neighbours, already in pocket)
-        # and the first outside-ZoC layer adjacent to the ZoC. Together they form the
-        # physical opening. Zone-boundary entrances are typically 3+ tiles wide here;
-        # genuine vegetation nooks/corridors are 1-2.
-        mouth = ((pocket & zoc) |
-                 {p for p in pocket if p not in zoc
-                  and any((p[0] + dx, p[1] + dy) in zoc for dx, dy in NB8)})
-        if len(mouth) > 2:
-            continue
-        comp = frozenset(pocket)
-        key = mouth_key(reach, g, comp)
-        if comp not in best or key < best[comp][0]:
-            best[comp] = (key, g, frozenset(mouth))
+            exclude = {m1, m2}
+            pocket, seen = set(), set(exclude)
+            for src in (m1, m2):
+                for ddx, ddy in NB8:
+                    s = (src[0] + ddx, src[1] + ddy)
+                    if s in seen or s not in reach:
+                        continue
+                    comp = _bounded_fill(reach, exclude, s, max_dim, max_tiles)
+                    if comp is None:    # leaked: the open-field side of the doorway
+                        seen.add(s)
+                        continue
+                    seen |= comp
+                    pocket |= comp
+            if not pocket or len(pocket) > max_tiles:
+                continue
+            if (max(px for px, _ in pocket) - min(px for px, _ in pocket) >= max_dim or
+                    max(py for _, py in pocket) - min(py for _, py in pocket) >= max_dim):
+                continue
+            b1, b2 = _blocked_neighbours(m1, reach), _blocked_neighbours(m2, reach)
+            guard_tile = m1 if b1 >= b2 else m2
+            comp = frozenset(pocket)
+            key = mouth_key(reach, guard_tile, comp)
+            if comp not in best or key < best[comp][0]:
+                best[comp] = (key, guard_tile, frozenset(exclude))
     return {g: (comp, mouth_fs) for comp, (_k, g, mouth_fs) in best.items()}
 
 
