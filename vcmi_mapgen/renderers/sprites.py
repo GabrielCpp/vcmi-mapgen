@@ -281,6 +281,14 @@ def read_real(name):
 
 
 # --------------------------------------------------------------------------- compositing
+def paint_sort(objs):
+    """Canonical paint order so overlapping sprites stack identically across renders.
+    ``render_map`` re-sorts stably by (l!=0, y, x), so this only fixes ties."""
+    return sorted(objs, key=lambda o: (o["y"], o["x"], o.get("type", ""),
+                                       o.get("subtype", ""),
+                                       o.get("template", {}).get("animation", "")))
+
+
 def render_map(surf, objs, title=""):
     H, W = len(surf), len(surf[0])
     canvas = Image.new("RGB", (W * TILE, H * TILE), (0, 0, 0))

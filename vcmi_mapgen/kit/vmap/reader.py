@@ -61,7 +61,8 @@ def header_fields(header: dict) -> dict:
     """A raw `header.json` dict -> the VmapDocument kwargs it carries (players, teams,
     victory/defeat, `extra`). Reusable wherever a document is built from a bare header
     dict rather than a whole `.vmap` file -- e.g. from a real RMG-produced header, or
-    the static `data/vmap_header_template.json` fallback (see `rebuild.engine.fm_to_document`).
+    the static `data/vmap_header_template.json` fallback (see
+    `renderers.vmap.VmapRenderer._build_document`).
     """
     return {
         "players": [

@@ -1,7 +1,7 @@
 [project]
 name = "vcmi-mapgen"
 version = "0.1.0"
-description = "Shape-driven VCMI zone-rebuilding engine + learned terrain generator"
+description = "Learned procedural map generator for VCMI"
 requires-python = ">=3.10"
 dependencies = [
     "pillow>=10",  # editor-quality H3 sprite rendering (vcmi_mapgen/render_editor.py)

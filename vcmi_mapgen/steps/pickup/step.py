@@ -2,10 +2,22 @@
 from __future__ import annotations
 
 import collections
+from dataclasses import dataclass, field
 
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
+from vcmi_mapgen.steps.gate.step import GateResult
 from vcmi_mapgen.steps.pickup import loot_zones as LZ
 from vcmi_mapgen.steps.pickup import scatter as SC
+
+
+@dataclass
+class PickupIndex:
+    """Per-level repair targets + zone records — RepairStep's input (and mutated
+    further in place by it: this is the same object PickupStep computed, not a fresh
+    snapshot each demand)."""
+
+    targets: dict = field(default_factory=dict)
+    zone_records: dict = field(default_factory=dict)
 
 
 class PickupStep(PipelineStep):
@@ -18,15 +30,15 @@ class PickupStep(PipelineStep):
 
     Reads ``map_state.objs`` (Gameplay's + Vegetation's, already merged) and
     ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx): the
-    folded-in ``workspace`` (reads each zone's ``blocked``/``open_set``/``passable``
-    written by VegetationStep plus the gameplay fields GameplayStep wrote, and writes
-    ``reach``/``used`` back per zone and ``seal_avoid``/``hard_avoid`` per level for
-    RepairStep), ``gate_objs`` (GateStep's ctx output, defaults to empty when there is
-    no GateStep).
+    folded-in ``PlacementWorkspace`` (reads each zone's ``blocked``/``open_set``/
+    ``passable`` written by VegetationStep plus the gameplay fields GameplayStep wrote,
+    and writes ``reach``/``used`` back per zone and ``seal_avoid``/``hard_avoid`` per
+    level for RepairStep), ``GateResult`` (GateStep's output, defaults to empty when
+    there is no GateStep).
 
     Produces: replaces ``map_state.objs`` (the full, repartitioned scatter +
     loot-zone list, underground tagged ``l=1`` — this REPLACES the prior value, it
-    doesn't just append to it). Into ctx: ``targets``, ``zone_records`` (the
+    doesn't just append to it). Into ctx: ``PickupIndex`` (targets/zone_records, the
     list-of-dicts shape RepairStep expects).
     """
 
@@ -36,14 +48,14 @@ class PickupStep(PipelineStep):
         self.objs: list = []
         self.targets: dict = {}
         self.zone_records: dict = {}
-        self._ctx: dict = {}
+        self._ctx = None
         self._workspace: PlacementWorkspace | None = None
         self._gate_objs: list = []
 
-    def inject(self, ctx: dict) -> None:
+    def inject(self, ctx) -> None:
         self._ctx = ctx
-        self._workspace = self._require(ctx, "workspace", PlacementWorkspace)
-        self._gate_objs = list(ctx.get("gate_objs", ()))
+        self._workspace = ctx.require(PlacementWorkspace)
+        self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
 
     def run(self, ontology, map_state) -> None:
         W = H = self.size
@@ -158,5 +170,4 @@ class PickupStep(PipelineStep):
 
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
         map_state.objs = self.objs
-        self._ctx["targets"] = self.targets
-        self._ctx["zone_records"] = self.zone_records
+        self._ctx.provide(PickupIndex(targets=self.targets, zone_records=self.zone_records))

@@ -11,20 +11,17 @@ metadata:
 
 # VCMI map-generator — repository root
 
-A shape-driven **zone-rebuilding engine** for VCMI / Heroes 3 maps, plus a learned
-terrain generator. Given a real map it segments same-terrain zones, records each zone's
-object pattern in a shape-relative frame, then *replays* it onto a target shape:
-
-- **Same shape ⇒ bit-exact reproduction** (integer-only replay; verified 2027/2027
-  objects on *All for One*).
-- **Larger shape ⇒ the same objects at the same relative placement on a larger tile
-  grid** — VCMI objects are fixed-size tile objects, so the *grid/positions* scale, the
-  sprites do NOT. No illegal overlaps, gameplay stays reachable. (Image-warp/pixel
-  scaling was tried and rejected — it violates the fixed-size constraint.)
+A **learned procedural map generator** for VCMI / Heroes 3 maps: a corpus-fitted
+marked-point-process pipeline synthesizes terrain, zones, gameplay objects, vegetation,
+loot and repairs into a playable map (`cli.py generate`). Corpus statistics (`data/`,
+`maps_vmap/`) are learned once from 159 real `.h3m` maps via `extract_vmap.py` and read
+back by the generator's individual steps (mine/dwelling densities, vegetation
+point-process parameters, macro-terrain style) — there is no separate rebuild/replay
+engine; the corpus only ever informs *statistics*, never map content directly.
 
 Load `vcmi-mapgen-maps` for the domain details (formats, segmentation, rendering).
 Load `vcmi-mapgen-pipeline` before adding/changing a pipeline step or a `cli.py`
-subcommand (the step contract, `MapState`, `PipelineBuilder`).
+subcommand (the step contract, `MapState`, `ProviderRegistry`).
 
 ## Tooling — this is a `uv` Python project
 
@@ -37,26 +34,23 @@ subcommand (the step contract, `MapState`, `PipelineBuilder`).
 ## Where things are
 
 - **`vcmi_mapgen/`** — the package (run modules with `python -m vcmi_mapgen.<name>`):
-  - `cli.py` — the CLI (`extract` / `inspect` / `features` / `rebuild` / `run` / `generate` /
-    `render-ontology`), a thin layer over `pipeline_builder.py`.
+  - `cli.py` — the CLI (`generate` / `render-ontology`), a thin layer over `pipeline.py`.
   - `pipeline.py` — `MapState` (the narrow, render-only view of a finished map),
-    the Gameplay/Vegetation/Pickup/Repair collaboration workspaces, and the `PipelineStep`
-    base contract every step (both the procedural generator and the identity-rebuild
-    engine) is built from. `pipeline_builder.py` — `PipelineBuilder`, which hand-wires each
-    subcommand's step sequence (constructor args for compile-time-known config, `inject()`
-    for values an earlier step produced). See `vcmi-mapgen-pipeline` for the contract itself.
-  - `steps/` — one subpackage per step: `terrain_gen/tile/segment/gate/gameplay/
-    vegetation/pickup/repair` (procedural generation) and `extract_template/rebuild_map/
-    verify/fm_document/deform_warp` (identity-rebuild).
+    the Gameplay/Vegetation/Pickup/Repair collaboration workspaces, the `ProviderRegistry`
+    (typed, memoized cross-step values), and the `PipelineStep`/`Pipeline` contract every
+    step is built from. See `vcmi-mapgen-pipeline` for the contract itself and
+    `steps/AGENTS.md` for what a step must do.
+  - `steps/` — one subpackage per step: `terrain_gen/segment/gate/gameplay/vegetation/
+    pickup/repair`.
   - `terrain_segment.py` — same-terrain flood-fill segmentation + interior-depth features.
   - `kit/objects.py`, `ontology.py` — corpus loader, object identity, purpose.
-  - `kit/vmap/{reader,writer}.py`, `rebuild/engine.py` (`fm_to_document`) — the full
-    `.vmap` reader/writer and the faithful-shaped-dict → `VmapDocument` bridge.
+  - `kit/vmap/{reader,writer}.py` — the full `.vmap` reader/writer.
   - `renderers/sprites.py` — editor-quality 32px H3 sprite rendering (decodes DEF fmt
     0/1/2/3); `renderers/png.py` — schematic PNGs; `renderers/vmap.py` — playable `.vmap`
-    export; `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...), only
+    export (`VmapRenderer` builds the `VmapDocument` directly from a finished `MapState`);
+    `renderers/overlays/` — debug overlay layers (zone/blocking/pocket/...), only
     `generate` selects these from the CLI; `renderers/ontology_render.py` — the
-    `render-ontology` catalog dump (a documentation tool, not part of any pipeline).
+    `render-ontology` catalog dump (a documentation tool, not part of the pipeline).
   - `steps/terrain_gen/markov.py` — the terrain generator (Markov chain learned from
     the corpus), consumed by `steps/terrain_gen/macro_topo.py`.
   - `h3m.py`, `vcmi_ids.py`, `extract_vmap.py` — `.h3m` → `.vmap` corpus-extraction pipeline.
@@ -76,9 +70,6 @@ subcommand (the step contract, `MapState`, `PipelineBuilder`).
 ## How to run
 
 ```bash
-uv run python -m vcmi_mapgen.cli run "All for One"              # full foundation pipeline
-uv run python -m vcmi_mapgen.cli rebuild "All for One" --identity --verify
-uv run python -m vcmi_mapgen.cli rebuild "All for One" --zone 7 --deform
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72    # procedural generator
 uv run python -m vcmi_mapgen.extract_vmap                      # regenerate maps_vmap/ from maps/
 uv run pytest                                                  # rendering-engine reliability tests
@@ -99,11 +90,11 @@ Editor-quality rendering reads the H3 sprite LOD files from a local VCMI install
   do NOT reach into the corpus (`data/objlib.json` / `obj_resolve._OBJLIB`, faithful maps, or a
   `veg_data` corpus scan) for object identity/mask/category. The corpus may still inform spatial
   *statistics* (density/openness/frequency weights), never identity. `veg_data`'s category functions
-  are thin ontology adapters; the extract/`rebuild --identity` corpus-replay path is separate and
-  unaffected.
-- The **same-shape identity guarantee is bit-exact** — `rebuild --identity --verify` must
-  print `IDENTITY OK` and never re-roll object identity (no `pick_variant`), so relational
-  portals/quest links survive.
+  are thin ontology adapters.
+- **Every pipeline step must write onto `MapState`** — there are no ctx-only steps. Anything
+  else a step produces for a later step goes through the `ProviderRegistry` as a typed
+  dataclass, never a raw string-keyed dict entry. See `steps/AGENTS.md` for the full
+  contract.
 - Generated artifacts live in `out/` (gitignored). Do **NOT** copy them into the VCMI
   `Maps/` folder.
 - Treat `CLAUDE.md` and `.claude/` as generated adapter outputs — edit the canonical skill

@@ -4,9 +4,23 @@ Only added to the pipeline when ``subterrain`` is requested; there is no interna
 branch here since the only caller already gates that."""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from vcmi_mapgen.pipeline import PipelineStep
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.steps.gate import gates as PG
+
+
+@dataclass
+class GateResult:
+    """Gate objects/occupancy/approach cells — GameplayStep's/PickupStep's/RepairStep's
+    input. Read via ``ctx.get(GateResult, GateResult())`` (never ``require``): a map
+    without --subterrain has no GateStep, so its consumers must see the empty default,
+    not an error."""
+
+    gate_objs: list = field(default_factory=list)
+    gate_occ: dict = field(default_factory=dict)
+    gate_appr: dict = field(default_factory=dict)
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor — a gate must land on a tile a
 #                zone's own gameplay pass would actually consider (pipeline-refactor-v2-
@@ -51,8 +65,8 @@ class GateStep(PipelineStep):
 
     Produces:
       - ``gate_blk``    — blocked tile sets per level, written directly onto MapState.
-      - ``gate_objs``, ``gate_occ``, ``gate_appr`` — written into ctx (GameplayStep's
-        input; each defaults to empty when no GateStep ran).
+      - ``GateResult``  — gate_objs/gate_occ/gate_appr, published into ctx (GameplayStep's/
+        PickupStep's/RepairStep's input; each defaults to empty when no GateStep ran).
     """
 
     def __init__(self, seed: int = 3) -> None:
@@ -61,9 +75,9 @@ class GateStep(PipelineStep):
         self.gate_occ: dict = {}
         self.gate_blk: dict = {}
         self.gate_appr: dict = {}
-        self._ctx: dict = {}
+        self._ctx = None
 
-    def inject(self, ctx: dict) -> None:
+    def inject(self, ctx) -> None:
         self._ctx = ctx
 
     def run(self, ontology, map_state) -> None:
@@ -86,6 +100,5 @@ class GateStep(PipelineStep):
         self.gate_appr = {0: gate_appr0, 1: gate_appr1}
 
         map_state.gate_blk = self.gate_blk
-        self._ctx["gate_objs"] = self.gate_objs
-        self._ctx["gate_occ"] = self.gate_occ
-        self._ctx["gate_appr"] = self.gate_appr
+        self._ctx.provide(GateResult(gate_objs=self.gate_objs, gate_occ=self.gate_occ,
+                                     gate_appr=self.gate_appr))

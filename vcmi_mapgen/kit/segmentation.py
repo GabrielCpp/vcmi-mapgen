@@ -1,6 +1,6 @@
 """Zone segmentation + shape-intrinsic per-tile coordinates, composed for every caller that
-needs "what zone is this tile in, and where within it" (6 of 8 pipeline steps, the
-zone-template identity-rebuild engine, and the research tools)."""
+needs "what zone is this tile in, and where within it" (the pipeline's SegmentStep and
+the research tools)."""
 import math
 
 from vcmi_mapgen.kit import terrain_segment as TS

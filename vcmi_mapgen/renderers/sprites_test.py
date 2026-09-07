@@ -2,9 +2,8 @@
 
 These guard the parts that silently broke before: the DEF frame decoder across all
 four H3 sprite formats (the format-3 block decoder in particular), terrain-tile
-decoding, decode coverage over every sprite the engine actually composites, renderer
-determinism, and the bit-exact "rebuilt == source" render (the identity guarantee at
-the pixel level).
+decoding, decode coverage over every sprite the engine actually composites, and
+renderer determinism.
 
 They require the local H3 sprite LOD files; the whole module is skipped when those
 are absent (e.g. CI without a VCMI install).
@@ -19,9 +18,6 @@ import pytest
 
 import vcmi_mapgen.renderers.sprites as RE
 import vcmi_mapgen.kit.objects as OR
-from vcmi_mapgen.kit import vmap as VM
-from vcmi_mapgen.rebuild.engine import extract_template, fm_to_document, rebuild_map
-from vcmi_mapgen.rebuild.render import _paint_sort
 
 TEST_MAP = "All for One"
 
@@ -154,34 +150,7 @@ def test_render_is_deterministic():
         {"x": 4, "y": 4, "l": 0, "type": "", "template": {"animation": "AVLpntr7", "mask": []}},
         {"x": 2, "y": 5, "l": 0, "type": "", "template": {"animation": "AVLman30", "mask": []}},
     ]
-    a = RE.render_map(surf, _paint_sort(objs))
-    b = RE.render_map(surf, _paint_sort(objs))
+    a = RE.render_map(surf, RE.paint_sort(objs))
+    b = RE.render_map(surf, RE.paint_sort(objs))
     assert a.size == b.size
     assert a.tobytes() == b.tobytes(), "renderer is not deterministic"
-
-
-def test_rebuilt_map_renders_pixel_identical_to_source(tmp_path):
-    """The bit-exact guarantee at the pixel level: an identity rebuild of the test map
-    renders byte-for-byte identically to the source map through the same path."""
-    import glob as _glob
-    import vcmi_mapgen.kit.paths as _VP
-    _randommaps = _glob.glob(os.path.join(_VP.vcmi_home(), "Maps", "RandomMaps", "*.vmap"))
-    if not _randommaps:
-        pytest.skip("VCMI template .vmap not available (no RandomMaps/*.vmap)")
-    src_fm = OR.load_faithful(TEST_MAP)
-    template = extract_template(TEST_MAP)
-    rebuilt_fm, stats = rebuild_map(template, src_fm["terrain"], identity=True)
-    assert stats["missing"] == 0, f"identity rebuild dropped zones: {stats}"
-
-    src_vmap = str(tmp_path / "source.vmap")
-    reb_vmap = str(tmp_path / "rebuilt.vmap")
-    VM.write(fm_to_document(src_fm, name="source"), src_vmap)
-    VM.write(fm_to_document(rebuilt_fm, name="rebuilt"), reb_vmap)
-
-    ssurf, sobjs = RE.read_vmap(src_vmap)
-    rsurf, robjs = RE.read_vmap(reb_vmap)
-    src_img = RE.render_map(ssurf, _paint_sort(sobjs))
-    reb_img = RE.render_map(rsurf, _paint_sort(robjs))
-
-    assert src_img.size == reb_img.size
-    assert src_img.tobytes() == reb_img.tobytes(), "rebuilt render differs from source"

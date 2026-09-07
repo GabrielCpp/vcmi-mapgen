@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from vcmi_mapgen.pipeline import PipelineStep
 from vcmi_mapgen.kit.segmentation import _segment_level
+from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 
 
 def _warn_sliver_zones(zones, level, protect=frozenset()):
@@ -16,8 +17,8 @@ def _warn_sliver_zones(zones, level, protect=frozenset()):
 class SegmentStep(PipelineStep):
     """Segment each active level's tile grid into same-terrain zones.
 
-    Reads ``map_state.cells`` (TileStep's output) directly in run().
-    inject(ctx): ``tunnel_protect`` (TerrainGenStep's ctx output).
+    Reads ``map_state.cells`` (TerrainStep's output) directly in run().
+    inject(ctx): ``TerrainGrids`` (TerrainStep's output, for tunnel_protect).
 
     Produces: ``zones``, written directly onto MapState.
     """
@@ -26,9 +27,8 @@ class SegmentStep(PipelineStep):
         self.zones: dict = {}
         self._tunnel_protect: frozenset = frozenset()
 
-    def inject(self, ctx: dict) -> None:
-        self._tunnel_protect = frozenset(
-            self._require(ctx, "tunnel_protect", (set, frozenset)))
+    def inject(self, ctx) -> None:
+        self._tunnel_protect = ctx.require(TerrainGrids).tunnel_protect
 
     def run(self, ontology, map_state) -> None:
         protect = self._tunnel_protect

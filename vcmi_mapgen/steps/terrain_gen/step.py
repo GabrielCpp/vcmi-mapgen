@@ -1,11 +1,35 @@
-"""TerrainGenStep — macro terrain generation for surface and underground levels."""
+"""TerrainStep — macro terrain generation + corpus-learned autotiling for surface and
+underground levels, in one step.
+
+Merge of the former TerrainGenStep + TileStep: TileStep's autotiling was the sole
+consumer of TerrainGenStep's raw macro grid, run immediately next and superseding it —
+an artificial two-step handoff for what is really one step's job (see
+vcmi_mapgen/steps/AGENTS.md). The raw pre-tile grid is now a private intermediate that
+never leaves this step; only the post-despeckle terrain-code grids (needed downstream by
+SegmentStep/GameplayStep/RepairStep) and tunnel_protect are published, as one
+TerrainGrids value."""
 from __future__ import annotations
 
 import collections
+from dataclasses import dataclass, field
 
 from vcmi_mapgen.pipeline import PipelineStep
 from vcmi_mapgen.steps.terrain_gen import macro_topo as MTOPO
 from vcmi_mapgen.kit import terrain_segment as TSG
+from vcmi_mapgen.kit import tiling as TL
+from vcmi_mapgen.kit import vmap as VM
+
+
+@dataclass
+class TerrainGrids:
+    """Post-despeckle terrain-code grids + tunnel-corridor protect cells — disposable
+    analysis SegmentStep/GameplayStep/RepairStep need, never a MapState fact itself:
+    MapState's terrain fields are `cells`/`surfs` (the VCMI tile-string form TerrainStep
+    derives FROM these grids), not the raw terrain-code grid (see
+    vcmi_mapgen/models/AGENTS.md)."""
+
+    grids: dict = field(default_factory=dict)
+    tunnel_protect: frozenset = frozenset()
 
 
 def _gate_anchor_points(W, H, seed, n_sites=8, margin=8, pad=4):
@@ -68,8 +92,11 @@ def _carve_gate_sites(grid0, grid1, W, H, anchors, seed, pad=4):
     return protect1
 
 
-class TerrainGenStep(PipelineStep):
-    """Generate macro terrain grids for surface (level 0) and optionally underground (level 1).
+class TerrainStep(PipelineStep):
+    """Generate macro terrain, then apply corpus-learned autotiling — both passes owned
+    by one step so the raw pre-tile grid never has to leave it as its own cross-step
+    value (see the module docstring for why the old two-step split was an artificial
+    handoff).
 
     Config:
         size        Map side length in tiles (square).
@@ -78,7 +105,9 @@ class TerrainGenStep(PipelineStep):
         water_mode  'none' | 'normal' | 'islands'
         subterrain  Whether to generate a second underground level.
 
-    Produces (into ctx — neither is a MapState field): ``grids``, ``tunnel_protect``.
+    Produces: ``map_state.cells``/``surfs`` (the finished, VCMI-tile-string terrain);
+    ``TerrainGrids`` (post-despeckle terrain-code grids + tunnel_protect), for
+    SegmentStep/GameplayStep/RepairStep.
     """
 
     def __init__(
@@ -94,11 +123,13 @@ class TerrainGenStep(PipelineStep):
         self.water = water
         self.water_mode = water_mode
         self.subterrain = subterrain
+        self.cells: dict = {}
+        self.surfs: dict = {}
         self.grids: dict = {}
-        self.tunnel_protect: set = set()
-        self._ctx: dict = {}
+        self.tunnel_protect: frozenset = frozenset()
+        self._ctx = None
 
-    def inject(self, ctx: dict) -> None:
+    def inject(self, ctx) -> None:
         self._ctx = ctx
 
     def run(self, ontology, map_state) -> None:
@@ -120,10 +151,21 @@ class TerrainGenStep(PipelineStep):
             tunnel_protect |= _carve_gate_sites(
                 grid0, grid1, W, H, gate_anchors, self.seed
             )
+        tunnel_protect = frozenset(tunnel_protect)
 
-        self.grids[0] = grid0
+        raw_grids = {0: grid0}
         if grid1 is not None:
-            self.grids[1] = grid1
+            raw_grids[1] = grid1
+
+        for level, grid in raw_grids.items():
+            kw = {"protect": tunnel_protect} if level == 1 else {}
+            cells = TL.tile_terrain(grid, W, H, **kw)
+            self.cells[level] = cells
+            self.surfs[level] = [[VM.tile_string(c) for c in row] for row in cells]
+            # post-despeckle terrain codes, for steps that need the terrain grid itself
+            self.grids[level] = [[c["t"] for c in row] for row in cells]
+
         self.tunnel_protect = tunnel_protect
-        self._ctx["grids"] = self.grids
-        self._ctx["tunnel_protect"] = self.tunnel_protect
+        map_state.cells = self.cells
+        map_state.surfs = self.surfs
+        self._ctx.provide(TerrainGrids(grids=self.grids, tunnel_protect=self.tunnel_protect))

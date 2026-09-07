@@ -28,8 +28,8 @@ class VegetationStep(PipelineStep):
         self.objs: list = []
         self._workspace: PlacementWorkspace | None = None
 
-    def inject(self, ctx: dict) -> None:
-        self._workspace = self._require(ctx, "workspace", PlacementWorkspace)
+    def inject(self, ctx) -> None:
+        self._workspace = ctx.require(PlacementWorkspace)
 
     def run(self, ontology, map_state) -> None:
         models: dict = {}

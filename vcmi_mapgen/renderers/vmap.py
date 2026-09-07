@@ -1,15 +1,27 @@
 """VmapRenderer — export a MapState as a playable VCMI .vmap file."""
 from __future__ import annotations
 
+import glob
+import json
 import os
 from collections import defaultdict
 
 from vcmi_mapgen.models import MapState
-from vcmi_mapgen.rebuild.engine import fm_to_document
 from vcmi_mapgen.kit import vmap as VM
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.kit.paths import project_root, vcmi_home
 
 ROOT = project_root()
+
+
+def _default_header() -> dict:
+    """A real RMG-produced .vmap header if a local VCMI install has one (richer fidelity
+    -- rumors, difficulty, description, ... -- preserved via VmapDocument.extra), else
+    the static template."""
+    rmg = glob.glob(os.path.join(vcmi_home(), "Maps", "RandomMaps", "*.vmap"))
+    if rmg:
+        return VM.read_header(rmg[0])
+    tpl = str(ROOT / "data" / "vmap_header_template.json")
+    return json.load(open(tpl))
 
 
 class VmapRenderer:
@@ -31,27 +43,86 @@ class VmapRenderer:
             path = os.path.join(self.out_dir, path)
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # build level list in level order (fm_to_document expects [cells0, cells1?])
-        levels = [state.cells[lvl] for lvl in sorted(state.cells)]
-        height, width = len(levels[0]), len(levels[0][0]) if levels[0] else 0
-
-        towns = [o for o in state.objs if o.get("purpose") == "TOWN"]
-        fm = {
-            "name": name, "width": width, "height": height,
-            "terrain": levels,
-            "objects": [o for o in state.objs if o.get("type")],
-            "main_town": (
-                {"l": towns[0].get("l", 0), "x": towns[0]["x"] - 2,
-                 "y": towns[0]["y"] - 2}
-                if towns else None
-            ),
-        }
-        doc = fm_to_document(fm, name=name)
+        doc = self._build_document(state, name)
 
         if state.player_towns:
             teams = _parse_teams(teams_spec, len(state.player_towns))
             _apply_playability(doc, state.player_towns, teams)
         return VM.write(doc, path)
+
+    def _build_document(self, state: MapState, name: str):
+        """A finished MapState -> a full, writable VmapDocument: builds each object's
+        VCMI-charset mask/visitableFrom, resolves `options["sameAsTown"]` markers
+        ([x, y, l]) to the real town's instanceName, and gives every player slot a
+        starting town in reading order (surface first) so the map opens playable even
+        before `_apply_playability` runs its own, player-order-aware wiring.
+
+        This computes straight from MapState -- no intermediate faithful-shaped dict:
+        that shape existed for the (now-retired) identity-rebuild engine's corpus
+        comparisons, which this renderer never needed (see vcmi_mapgen/AGENTS.md)."""
+        levels = [state.cells[lvl] for lvl in sorted(state.cells)]
+        terrain = [[[VM.tile_string(c) for c in row] for row in lvl] for lvl in levels]
+        height, width = len(terrain[0]), len(terrain[0][0]) if terrain[0] else 0
+
+        real_objs = [o for o in state.objs if o.get("type")]
+        objects = []
+        for o in real_objs:
+            mask = VM.export_mask(o)
+            vf = o.get("visitableFrom") or VM.visitable_from(o["mask"])
+            objects.append(VM.VmapObject(
+                instance_name="", type=o["type"], subtype=o["subtype"], l=o["l"],
+                x=o["x"], y=o["y"], animation=o["animation"], mask=mask,
+                visitable_from=vf, options=dict(o["options"]) if o.get("options") else None,
+            ))
+        for n, vo in enumerate(objects, 1):
+            vo.instance_name = f"{vo.type}_{n}"
+
+        # dwelling->town faction links: the generator marks `sameAsTown` with the town's
+        # [x, y, l] (instance names are minted only here, above); VCMI wants the town's
+        # instanceName. A marker whose town vanished is dropped (dwelling stays any-faction).
+        town_names = {(vo.x, vo.y, vo.l): vo.instance_name
+                      for vo in objects if vo.type in ("town", "randomTown")}
+        for vo in objects:
+            tag = (vo.options or {}).get("sameAsTown")
+            if isinstance(tag, list):
+                town_name = town_names.get(tuple(tag))
+                if town_name:
+                    vo.options["sameAsTown"] = town_name
+                else:
+                    del vo.options["sameAsTown"]
+                    if not vo.options:
+                        vo.options = None
+
+        doc = VM.VmapDocument(
+            name=name, width=width, height=height,
+            two_level=len(terrain) > 1,
+            terrain=terrain, objects=objects,
+            **VM.header_fields(_default_header()),
+        )
+        # Deterministic regardless of the header source's own key order (a real RMG
+        # header's dict order isn't guaranteed alphabetical -- see AGENTS.md's
+        # determinism rule).
+        doc.players.sort(key=lambda p: p.id)
+
+        # Wire each player slot to its own starting town, surface towns first, then the
+        # FIRST town encountered in state.objs put first (a stand-in "main town" when
+        # `_apply_playability` doesn't run below, i.e. a neutral map with no
+        # `player_towns`).
+        town_objs = [o for o in real_objs if o.get("purpose") == "TOWN"]
+        main = town_objs[0] if town_objs else None
+        town_objs.sort(key=lambda o: (o.get("l", 0), o["y"], o["x"]))
+        if main is not None:
+            town_objs.sort(key=lambda o: o is not main)
+        for i, pl in enumerate(doc.players):
+            if i < len(town_objs):
+                t = town_objs[i]
+                pl.main_town = {"generateHero": True, "l": t.get("l", 0),
+                                "x": t["x"] - 2, "y": t["y"] - 2}
+                pl.can_play = "PlayerOrAI"
+            else:
+                pl.main_town = None
+                pl.can_play = "false"
+        return doc
 
 
 def _parse_teams(spec: str, n: int) -> list[int]:

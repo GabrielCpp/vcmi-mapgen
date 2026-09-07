@@ -810,8 +810,8 @@ def place_zone(ts, zones, zid, terrain, seed=1, coastal=frozenset(), force_town=
     # tie the zone's RANDOM dwellings to its town: VCMI's `sameAsTown` link makes the
     # dwelling resolve to the town's (lobby-picked) faction at game start, so the creatures
     # around a random town are its own. Instance names are minted only at export, so the
-    # marker carries the town's coordinates; `rebuild.engine.fm_to_document` (or
-    # renderers.vmap.VmapRenderer, via the same helper) swaps in the instanceName.
+    # marker carries the town's coordinates; `renderers.vmap.VmapRenderer._build_document`
+    # swaps in the instanceName.
     town = next((o for o in objs if o["purpose"] == "TOWN"), None)
     if town is not None:
         for o in objs:

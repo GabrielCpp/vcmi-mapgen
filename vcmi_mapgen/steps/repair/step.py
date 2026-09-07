@@ -2,14 +2,28 @@
 from __future__ import annotations
 
 import collections
+from dataclasses import dataclass, field
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import find_pockets
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
+from vcmi_mapgen.steps.gameplay.step import GameplayIndex
+from vcmi_mapgen.steps.gate.step import GateResult
+from vcmi_mapgen.steps.pickup.step import PickupIndex
 from vcmi_mapgen.steps.repair import border_seal as BS
 from vcmi_mapgen.steps.repair import caches as CA
 from vcmi_mapgen.steps.repair import geometry as GEO
+from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
+
+
+@dataclass
+class RepairResult:
+    """Diagnostic log lines + pocket geometry — the CLI's own input (printed / handed
+    to PocketOverlay), never consumed by another step."""
+
+    log: list = field(default_factory=list)
+    pockets: dict = field(default_factory=dict)
 
 
 def _find_start(player_zids, zones_by_level: dict, workspace: PlacementWorkspace):
@@ -199,24 +213,23 @@ class RepairStep(PipelineStep):
 
     Reads ``map_state.objs``/``map_state.zones`` (PickupStep's/SegmentStep's output)
     directly in run(), and performs its own border-seal pass over the folded-in
-    ``workspace`` here (the tail that used to run inside legacy ``_run_level``, before
-    Vegetation/Pickup/Repair were split into their own steps) — ``ridge``/``town_of_zone``
-    come from GameplayStep, ``entrance_plan``/``seal_avoid``/``hard_avoid`` from PickupStep,
-    all via that same shared object.
+    ``PlacementWorkspace`` here (the tail that used to run inside legacy ``_run_level``,
+    before Vegetation/Pickup/Repair were split into their own steps) —
+    ``ridge``/``town_of_zone`` come from GameplayStep, ``entrance_plan``/
+    ``seal_avoid``/``hard_avoid`` from PickupStep, all via that same shared object.
 
-    inject(ctx): ``targets``, ``zone_records`` (PickupStep's output — mutated further
-    in place), ``grids`` (TileStep's post-despeckle output), ``player_zids``
-    (GameplayStep's output), ``tunnel_protect`` (TerrainGenStep's output), the folded-in
-    ``workspace``; ``gate_objs`` (GateStep's output) defaults to empty when there is no
-    GateStep.
+    inject(ctx): ``PickupIndex`` (targets/zone_records — mutated further in place),
+    ``TerrainGrids`` (TerrainStep's output — grids/tunnel_protect), ``GameplayIndex``
+    (player_zids), the folded-in ``PlacementWorkspace``; ``GateResult`` (GateStep's
+    output) defaults to empty when there is no GateStep.
 
-    Produces: replaces ``map_state.objs`` (final repaired flat list). Into ctx: ``log``
-    (diagnostic lines for the CLI to print), and ``pockets`` (level -> {tile: normalized
-    depth 0..1}, every ACCEPTED pocket's full geometric extent + depth gradient, straight
-    from ``steps.repair.caches.place_pocket_caches`` — this is disposable analysis, not a
-    map fact, so it is NOT a MapState field, see ``vcmi_mapgen/models/AGENTS.md``; a
-    renderer that wants it receives it through its own constructor, not by reading
-    MapState).
+    Produces: replaces ``map_state.objs`` (final repaired flat list). Into ctx:
+    ``RepairResult`` (log: diagnostic lines for the CLI to print; pockets: level ->
+    {tile: normalized depth 0..1}, every ACCEPTED pocket's full geometric extent +
+    depth gradient, straight from ``steps.repair.caches.place_pocket_caches`` — this is
+    disposable analysis, not a map fact, so it is NOT a MapState field, see
+    ``vcmi_mapgen/models/AGENTS.md``; a renderer that wants it receives it through its
+    own constructor, not by reading MapState).
     """
 
     def __init__(self, seed: int = 3, size: int = 72, subterrain: bool = False) -> None:
@@ -225,7 +238,7 @@ class RepairStep(PipelineStep):
         self.subterrain = subterrain
         self.objs: list = []
         self.log: list = []
-        self._ctx: dict = {}
+        self._ctx = None
         self._targets: dict = {}
         self._zone_records: dict = {}
         self._grids: dict = {}
@@ -234,16 +247,17 @@ class RepairStep(PipelineStep):
         self._gate_objs: list = []
         self._tunnel_protect: frozenset = frozenset()
 
-    def inject(self, ctx: dict) -> None:
+    def inject(self, ctx) -> None:
         self._ctx = ctx
-        self._targets = self._require(ctx, "targets", dict)
-        self._zone_records = self._require(ctx, "zone_records", dict)
-        self._grids = self._require(ctx, "grids", dict)
-        self._workspace = self._require(ctx, "workspace", PlacementWorkspace)
-        self._player_zids = self._require(ctx, "player_zids", list)
-        self._gate_objs = list(ctx.get("gate_objs", ()))
-        self._tunnel_protect = frozenset(
-            self._require(ctx, "tunnel_protect", (set, frozenset)))
+        pickup = ctx.require(PickupIndex)
+        self._targets = pickup.targets
+        self._zone_records = pickup.zone_records
+        terrain = ctx.require(TerrainGrids)
+        self._grids = terrain.grids
+        self._tunnel_protect = terrain.tunnel_protect
+        self._workspace = ctx.require(PlacementWorkspace)
+        self._player_zids = ctx.require(GameplayIndex).player_zids
+        self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
 
     def run(self, ontology, map_state) -> None:
         W = H = self.size
@@ -331,5 +345,4 @@ class RepairStep(PipelineStep):
         self.objs = [o for lvl in sorted(objs_by_level)
                      for o in objs_by_level[lvl]]
         map_state.objs = self.objs
-        self._ctx["log"] = self.log
-        self._ctx["pockets"] = pockets_by_level
+        self._ctx.provide(RepairResult(log=self.log, pockets=pockets_by_level))

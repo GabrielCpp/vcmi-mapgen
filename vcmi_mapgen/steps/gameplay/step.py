@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import collections
+from dataclasses import dataclass, field
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.steps.vegetation import sample as PP  # protected_web
@@ -11,8 +12,20 @@ from vcmi_mapgen.kit.topology import plan_entrances
 from vcmi_mapgen.pipeline import LevelWorkspace, PipelineStep, PlacementWorkspace, ZoneWorkspace
 from vcmi_mapgen.steps.gameplay import mines as MN
 from vcmi_mapgen.steps.gameplay import water as WT
+from vcmi_mapgen.steps.gate.step import GateResult
+from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 
 MIN_AREA = 25          # vegetate even smallish zones (the stats floor stays 60 in vegetation)
+
+
+@dataclass
+class GameplayIndex:
+    """Which zones host a player town — RepairStep's (`_find_start`) and the CLI's
+    input. Read via ``ctx.require(GameplayIndex)`` (GameplayStep always runs when
+    generate does; a stopped-early --stop-after run reads it with ``ctx.get(...,
+    GameplayIndex())`` instead)."""
+
+    player_zids: list = field(default_factory=list)
 
 
 def _rim8(zones):
@@ -177,18 +190,19 @@ class GameplayStep(PipelineStep):
         subterrain  Whether a second underground level is active.
 
     Reads ``map_state.zones`` (SegmentStep) and ``map_state.gate_blk`` (GateStep, empty
-    when there is no GateStep) directly in run(). inject(ctx): ``grids`` (TileStep's
-    post-despeckle output), ``tunnel_protect`` (TerrainGenStep's output); the three
-    ``gate_*`` ctx values (GateStep's output) default to empty when there is no GateStep.
+    when there is no GateStep) directly in run(). inject(ctx): ``TerrainGrids``
+    (TerrainStep's output — grids/tunnel_protect); ``GateResult`` (GateStep's output,
+    defaulting to empty when there is no GateStep).
 
     Produces: ``objs``, ``player_towns`` — written directly onto MapState (all levels,
-    underground tagged ``l=1``). Into ctx: ``targets``, ``zone_records`` (empty per
-    level — populated by VegetationStep/PickupStep), ``player_zids``, ``ledger``, the
-    folded-in ``workspace`` (a ``PlacementWorkspace``, created here — the first of the
-    four steps that share it), and ``self.workspace.levels[level]`` (a
+    underground tagged ``l=1``). Into ctx: ``GameplayIndex`` (player_zids), the
+    folded-in ``PlacementWorkspace`` (created here via ``get_or_create`` — the first of
+    the four steps that share it), and ``self.workspace.levels[level]`` (a
     ``LevelWorkspace`` with a ``ZoneWorkspace`` per zone, ``ridge``, and
     ``town_of_zone`` for RepairStep — ``guard_tiles``/``seal_avoid``/``hard_avoid`` come
-    from later steps' own border-seal pass, not from here).
+    from later steps' own border-seal pass, not from here). ``ledger`` is purely
+    internal bookkeeping across this step's own zones, never read by anything else, so
+    it stays a local instance attribute, not a published value.
     """
 
     def __init__(self, seed: int = 3, players: int = 0, size: int = 72,
@@ -198,26 +212,25 @@ class GameplayStep(PipelineStep):
         self.size = size
         self.subterrain = subterrain
         self.objs: list = []
-        self.targets: dict = {}
-        self.zone_records: dict = {}
         self.player_zids: list = []
         self.player_towns: list = []
         self.ledger: dict = {}
-        self._ctx: dict = {}
+        self._ctx = None
         self._grids: dict = {}
         self._tunnel_protect: frozenset = frozenset()
         self._gate_objs: list = []
         self._gate_occ: dict = {}
         self._gate_appr: dict = {}
 
-    def inject(self, ctx: dict) -> None:
+    def inject(self, ctx) -> None:
         self._ctx = ctx
-        self._grids = self._require(ctx, "grids", dict)
-        self._tunnel_protect = frozenset(
-            self._require(ctx, "tunnel_protect", (set, frozenset)))
-        self._gate_objs = list(ctx.get("gate_objs", ()))
-        self._gate_occ = ctx.get("gate_occ") or {}
-        self._gate_appr = ctx.get("gate_appr") or {}
+        terrain = ctx.require(TerrainGrids)
+        self._grids = terrain.grids
+        self._tunnel_protect = terrain.tunnel_protect
+        gate = ctx.get(GateResult, GateResult())
+        self._gate_objs = gate.gate_objs
+        self._gate_occ = gate.gate_occ
+        self._gate_appr = gate.gate_appr
 
     def run(self, ontology, map_state) -> None:
         W = H = self.size
@@ -239,7 +252,7 @@ class GameplayStep(PipelineStep):
             "gold": 0,
         }
 
-        workspace = self._ctx.setdefault("workspace", PlacementWorkspace())
+        workspace = self._ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)
 
         all_town_of_zone: dict = {}
         all_ridge: dict = {}
@@ -296,8 +309,6 @@ class GameplayStep(PipelineStep):
             )
 
         self.objs = all_objs
-        self.targets = {level: [] for level in self._grids}
-        self.zone_records = {level: [] for level in self._grids}
         self.player_zids = player_zids
         self.ledger = ledger
 
@@ -321,7 +332,4 @@ class GameplayStep(PipelineStep):
 
         map_state.objs = self.objs
         map_state.player_towns = self.player_towns
-        self._ctx["targets"] = self.targets
-        self._ctx["zone_records"] = self.zone_records
-        self._ctx["player_zids"] = self.player_zids
-        self._ctx["ledger"] = self.ledger
+        self._ctx.provide(GameplayIndex(player_zids=self.player_zids))

@@ -66,49 +66,23 @@ uv run python -m vcmi_mapgen.cli generate \
     --seed 5 --size 108 --players 4 --teams 2v2
 ```
 
-## The zone-rebuilding engine
-
-The second half of the project: given a **real** map, segment it into
-same-terrain zones, record each zone's object pattern in a shape-relative
-frame, and *replay* it onto a target shape.
-
-- **Same shape ⇒ bit-exact reproduction** — integer-only replay, verified
-  2027/2027 objects on *All for One*; relational objects (portal pairs, quest
-  links) survive because identity is never re-rolled.
-- **Larger shape ⇒ the same objects at the same relative placement** on a
-  larger tile grid. VCMI objects are fixed-size tile objects, so positions
-  scale while footprints don't — no illegal overlaps, gameplay stays reachable.
-
-```bash
-uv run python -m vcmi_mapgen.cli run "All for One"        # extract -> rebuild -> verify -> render
-uv run python -m vcmi_mapgen.cli rebuild "All for One" --identity --verify
-uv run python -m vcmi_mapgen.cli rebuild "All for One" --zone 7 --deform
-uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72   # procedural generator
-```
-
 ## Layout
 
 ```
-vcmi_mapgen/        the Python package (generator + engine + renderer + data pipeline)
-  cli.py              the CLI: extract / inspect / features / rebuild / run / generate /
-                      render-ontology, a thin layer over pipeline_builder.py
-  pipeline.py         MapState (render-only) / PipelineStep / PlacementWorkspace
-  pipeline_builder.py PipelineBuilder — hand-wires each subcommand's fixed step sequence
+vcmi_mapgen/        the Python package (generator + renderer + data pipeline)
+  cli.py              the CLI: generate / render-ontology, a thin layer over pipeline.py
+  pipeline.py         MapState (render-only) / PipelineStep / Pipeline / ProviderRegistry /
+                      PlacementWorkspace
   steps/              one subpackage per step — each a folder with its own step.py +
                       private logic modules + *_test.py:
-    terrain_gen/        macro zone layout: capacity-constrained growth, water, borders
-    tile/               corpus-learned autotiling (despeckle + H3-correct transition views)
+    terrain_gen/        macro zone layout + corpus-learned autotiling (capacity-constrained
+                        growth, water, borders, despeckle + H3-correct transition views)
     segment/            same-terrain flood-fill zone segmentation
     gate/               Subterranean Gate pairs (--subterrain)
     gameplay/           towns/mines/dwellings placement (corpus densities) + water bodies
     vegetation/         corpus-fitted Gibbs marked point process (trees, rocks, lakes)
     pickup/             loot: unguarded scatter + the loot-zone access mechanic
     repair/             G2 repair, island fill, portal rescue, pocket caches, border seal
-    extract_template/   map -> shape-relative zone template (identity-rebuild)
-    rebuild_map/        template + target terrain -> replayed objects
-    verify/             bit-exact identity check
-    fm_document/        faithful-shaped dict -> writable VmapDocument
-    deform_warp/        rough different-shape warp of one zone (rebuild --zone N --deform)
   renderers/          PngRenderer (H3 sprites) / VmapRenderer (playable .vmap export) /
                       ontology_render.py (render-ontology catalog dump)
   readers/            VmapReader (read back a generated/authored .vmap)
@@ -134,7 +108,7 @@ out/                transient outputs (renders, .vmaps) — gitignored
 uv run pytest
 ```
 
-Covers the sprite renderer (all four H3 DEF formats, golden rebuilt==source
-pixel identity), the point-process sampler (determinism, protected-web
+Covers the sprite renderer (all four H3 DEF formats, decode coverage, renderer
+determinism), the point-process sampler (determinism, protected-web
 legality), gameplay placement rules, and `.vmap` export contracts. Tests that
 need the H3 data files skip when no VCMI install is present.
