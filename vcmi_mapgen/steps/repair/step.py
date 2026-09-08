@@ -51,7 +51,7 @@ def _find_start(player_zids, zones_by_level: dict, workspace: PlacementWorkspace
 
 def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
                       boat_ok=True, ridge=frozenset(), seerhut_artifacts=None,
-                      border_guards=frozenset()):
+                      border_guards=frozenset(), home_zids=frozenset()):
     """G2 map-level gate + island repair + guarded pocket caches + dup-guard cleanup for ONE
     already-fully-populated level (gates included, border already sealed). MUST run before
     pocket detection (user-mandated: "the pocket detection should run after the map is fully
@@ -136,7 +136,8 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     # steps.repair.caches.place_pocket_caches docstring for the rationale).
     cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
         zone_records, seed=seed, bounds=(size, size),
-        border_guards=border_guards, precomputed_pockets=_raw_pkt)
+        border_guards=border_guards, precomputed_pockets=_raw_pkt,
+        existing_objs=objs, home_zids=home_zids)
     objs.extend(cobjs)
     targets.extend((o["x"], o["y"]) for o in cobjs)
     ck = collections.Counter(o["purpose"] for o in cobjs)
@@ -336,12 +337,15 @@ class RepairStep(PipelineStep):
             lvl_border_guards = border_guards_by_level.get(level, frozenset())
             boat_ok = (level == 0)
 
+            lvl_home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
+
             (repaired, ncarved, nreconn, nfilled,
              npockets, ndrop, pocket_depth_by_tile) = _repair_one_level(
                 level, size, grids[level], objs, targets, zone_records, self.seed,
                 boat_ok=boat_ok, ridge=lvl_ridge,
                 seerhut_artifacts=seerhut_artifacts,
                 border_guards=lvl_border_guards,
+                home_zids=lvl_home_zids,
             )
             objs_by_level[level] = repaired
             pockets_by_level[level] = pocket_depth_by_tile

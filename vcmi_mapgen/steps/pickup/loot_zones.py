@@ -48,10 +48,14 @@ _LOOT_ZONE_CHEST_EXTRA_TYPES = frozenset({"scholar"})
 _LOOT_SCROLL_LEVELS = (4, 5)
 # Hero-strengthening structures allowed in loot-zone fill (Pass 1) -- an explicit
 # allow-list (user-mandated 2026-09), not "every solo-visitable object": these are all
-# STAT_PERMANENT, each placed at most once per zone (see _fill_loot's Pass 1).
+# STAT_PERMANENT. Exactly TWO of each type get placed per zone, apart from each other
+# (never adjacent) -- see _fill_loot's Pass 1.
 _LOOT_HERO_STRUCTURE_TYPES = frozenset({
-    "treeOfKnowledge", "schoolOfMagic", "learningStone", "gardenOfRevelation", "starAxis",
+    "learningStone", "gardenOfRevelation", "starAxis",
 })
+_LOOT_HERO_STRUCTURE_COUNT = 2   # instances of EACH whitelisted type placed per zone
+_LOOT_HERO_STRUCTURE_MIN_SEP = 2   # Chebyshev distance the two instances of one type
+                                  # must clear -- "separated... not adjacent" (user-mandated)
 # Rare resources allowed in a loot zone: mercury, sulfur, crystal, gems, gold -- no wood/ore
 # (colloquially "stone") and no unrestricted randomResource (could resolve to either).
 _LOOT_RARE_RESOURCE_SUBTYPES = frozenset({"mercury", "sulfur", "crystal", "gems", "gold"})
@@ -61,6 +65,89 @@ _LOOT_RARE_RESOURCE_SUBTYPES = frozenset({"mercury", "sulfur", "crystal", "gems"
 _LOOT_MONOLITHS = ["avxmn2g0", "avxmn2o0", "avxmn2p0", "avxmn4b0"]
 
 _SOLO_VIS_PURPOSES = ("BONUS_TEMP", "SPELL_SKILL", "MANA", "STAT_PERMANENT")
+
+_DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+
+
+def _find_entry_tile(interactive, footprint_cells, ts):
+    """The tile just beyond the access object that must stay forever passable and
+    unclaimed -- the doorway the hero actually steps onto once the gate opens or
+    the monolith is reached. A direct neighbour of the interactive cell usually
+    works, but the object's own footprint can span two rows (a gate's V-row), so
+    this walks outward through the object's own PASSABLE cells (never its blocking
+    ones) to find the first genuine, non-footprint zone tile reachable -- fixes
+    the s7-z4 defect (2026-09): the interior neighbor could be sealed shut by
+    _seal_all_passages (which seals the zone's full raw perimeter, not just the
+    entrance actually used) while a naive one-hop check missed it because it sat
+    two cells away, past the gate's own V-row."""
+    footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
+    passable_footprint = {(cx, cy) for cx, cy, blk in footprint_cells if not blk}
+    frontier = set(interactive)
+    visited = set(frontier)
+    for _ in range(len(footprint) + 1):
+        nxt = set()
+        for fx, fy in frontier:
+            for dx, dy in _DIRS8:
+                nb = (fx + dx, fy + dy)
+                if nb in visited:
+                    continue
+                if nb in ts and nb not in footprint:
+                    return nb
+                if nb in passable_footprint:
+                    visited.add(nb)
+                    nxt.add(nb)
+        frontier = nxt
+        if not frontier:
+            break
+    return None
+
+
+def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
+    """Every ts tile that must stay unsealed -- not just `entry_tile` itself -- to
+    keep the WHOLE zone connected to the gate/monolith once `_seal_all_passages`
+    closes off everything else. `entry_tile` alone only fixes a single-tile-deep
+    doorway; a loot zone's own interior shape can put a further boundary-classified
+    neck BEHIND that first tile (s7-z4 defect, 2026-09, second occurrence: a 1-tile
+    vestibule separated from the rest of the zone's room by a whole neck row that
+    also qualifies as 'boundary' -- adjacent to tiles outside `ts` -- and so got
+    fully sealed, leaving only the vestibule reachable from the gate).
+
+    Computes a BFS shortest-path tree from `entry_tile` over the FULL `ts` graph
+    (footprint cells excluded, sealing not yet applied), then unions the
+    root-to-tile path for every INTERIOR tile (`ts` minus the true outer boundary)
+    -- the minimal corridor needed to reach every tile `_fill_loot` will actually
+    try to use, while still sealing every boundary tile that ISN'T on that
+    corridor. `all_ts` is the union of every zone's own tiles (this zone's own
+    boundary is whatever of `ts` borders a tile OUTSIDE `ts` but still in
+    `all_ts`)."""
+    if entry_tile is None:
+        return set()
+    footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
+    ext_ts = all_ts - ts
+    boundary = {t for t in ts
+                if any((t[0] + dx, t[1] + dy) in ext_ts for dx, dy in _DIRS8)}
+    interior = ts - boundary
+    prev = {entry_tile: None}
+    q = collections.deque([entry_tile])
+    while q:
+        cx, cy = q.popleft()
+        for dx, dy in _DIRS8:
+            nb = (cx + dx, cy + dy)
+            if nb in ts and nb not in footprint and nb not in prev:
+                prev[nb] = (cx, cy)
+                q.append(nb)
+    corridor = {entry_tile}
+    for t in interior:
+        # Walk t's ancestors, stopping at entry_tile (the root) or at another
+        # interior tile (never sealed anyway, and ITS OWN loop iteration already
+        # covers everything further upstream of it) -- keeps `corridor` to just
+        # the boundary-classified neck tiles genuinely needed, never an interior
+        # treasure tile that doesn't need reserving.
+        node = prev.get(t)
+        while node is not None and node != entry_tile and node not in interior:
+            corridor.add(node)
+            node = prev.get(node)
+    return corridor
 
 
 def _shrine_spell_level(anim):
@@ -179,40 +266,6 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                         q.append(nb)
         return n, frozenset(boundary)
 
-    _DIRS8 = [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]
-
-    def _find_entry_tile(interactive, footprint_cells, ts):
-        """The tile just beyond the access object that must stay forever passable and
-        unclaimed -- the doorway the hero actually steps onto once the gate opens or
-        the monolith is reached. A direct neighbour of the interactive cell usually
-        works, but the object's own footprint can span two rows (a gate's V-row), so
-        this walks outward through the object's own PASSABLE cells (never its blocking
-        ones) to find the first genuine, non-footprint zone tile reachable -- fixes
-        the s7-z4 defect (2026-09): the interior neighbor could be sealed shut by
-        _seal_all_passages (which seals the zone's full raw perimeter, not just the
-        entrance actually used) while a naive one-hop check missed it because it sat
-        two cells away, past the gate's own V-row."""
-        footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
-        passable_footprint = {(cx, cy) for cx, cy, blk in footprint_cells if not blk}
-        frontier = set(interactive)
-        visited = set(frontier)
-        for _ in range(len(footprint) + 1):
-            nxt = set()
-            for fx, fy in frontier:
-                for dx, dy in _DIRS8:
-                    nb = (fx + dx, fy + dy)
-                    if nb in visited:
-                        continue
-                    if nb in ts and nb not in footprint:
-                        return nb
-                    if nb in passable_footprint:
-                        visited.add(nb)
-                        nxt.add(nb)
-            frontier = nxt
-            if not frontier:
-                break
-        return None
-
     loot_zrs = []   # list of (zone_record, passage_tile_frozenset)
     for zr in zone_records:
         if len(zr["ts"]) > LOOT_ZONE_MAX_TILES:
@@ -315,17 +368,20 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                                       "mask": iv["mask"]}})
 
     def _fill_loot(terrain, st, reach, used, rng):
-        """Three-pass loot fill: hero-strengthening structures → mixed rewards → background decor.
+        """Loot fill: background decor → hero-strengthening structures → mixed rewards.
 
         Pass 0 (bg): non-blocking terrain decor on interior tiles (under gameplay objects).
-        Pass 1 (30 %): solo-visitable hero-strengthening structures.
-        Pass 2: 30 % major/relic artifact, 30 % chest/campfire, 40 % rare resource pile
-                (mercury, sulfur, crystal, gems, gold — no wood/ore) -- and EVERY tile
-                Pass 1 left free must end up occupied by something (falling back through
-                a plain resource pile if its rolled pick doesn't fit): a sealed loot zone
-                with even one unclaimed interior tile is a tile a boat could dock a hero
-                onto directly, walking straight in without ever touching the gate/monolith
-                (user-mandated)."""
+        Pass 1: TWO of each whitelisted hero-strengthening structure, separated from
+                each other (never adjacent), tile availability permitting (user-mandated
+                2026-09).
+        Pass 2: a roll per still-free tile -- 20 % major/relic artifact, 40 % chest
+                (treasure chest / campfire / pandora's box / scholar / a fixed level 4-5
+                spell scroll), 40 % rare resource pile (mercury, sulfur, crystal, gems,
+                gold — no wood/ore) -- and EVERY tile Pass 1 left free must end up
+                occupied by something (falling back through a plain resource pile if its
+                rolled pick doesn't fit): a sealed loot zone with even one unclaimed
+                interior tile is a tile a boat could dock a hero onto directly, walking
+                straight in without ever touching the gate/monolith (user-mandated)."""
         # Pass 0: background — non-blocking terrain decor on interior (non-boundary) tiles.
         ext_ts_inner = _all_ts - reach
         interior = {t for t in reach
@@ -374,35 +430,37 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         free = sorted(reach - used)
         rng.shuffle(free)
 
-        # Pass 1: hero-strengthening structures — 30 % of available tiles, each
-        # whitelisted structure placed AT MOST ONCE per zone (user-mandated) -- once
-        # every distinct type in the pool has been used, this naturally stops even if
-        # n_vis isn't reached yet (there are only len(_LOOT_HERO_STRUCTURE_TYPES) of them).
-        n_vis = max(1, len(free) * 3 // 10)
-        vis_placed = 0
-        placed_vis_types: set = set()
-        for t in free:
-            if vis_placed >= n_vis:
-                break
-            candidates = [i for i in pool_vis if i.get("type") not in placed_vis_types]
+        # Pass 1: TWO of each whitelisted hero-strengthening structure, separated from
+        # each other by >= _LOOT_HERO_STRUCTURE_MIN_SEP (never adjacent/touching), tile
+        # availability permitting (user-mandated 2026-09).
+        for struct_type in sorted(_LOOT_HERO_STRUCTURE_TYPES):
+            candidates = [i for i in pool_vis if i.get("type") == struct_type]
             if not candidates:
-                break
+                continue
             iv = rng.choice(candidates)
-            if _place_one(objs, used, reach, rng, st,
-                          iv.get("purpose", "BONUS_TEMP"), None,
-                          t[0], t[1], ident=iv, cache=True, bounds=bounds,
-                          interactive_only=True):
-                vis_placed += 1
-                placed_vis_types.add(iv.get("type"))
+            placed_at = []
+            for t in free:
+                if len(placed_at) >= _LOOT_HERO_STRUCTURE_COUNT:
+                    break
+                if t in used:
+                    continue
+                if any(max(abs(t[0] - p[0]), abs(t[1] - p[1])) < _LOOT_HERO_STRUCTURE_MIN_SEP
+                       for p in placed_at):
+                    continue
+                if _place_one(objs, used, reach, rng, st,
+                              iv.get("purpose", "BONUS_TEMP"), None,
+                              t[0], t[1], ident=iv, cache=True, bounds=bounds,
+                              interactive_only=True):
+                    placed_at.append(t)
 
-        # Pass 2: a roll per tile -- 30 % major/relic artifact | 30 % chest (treasure
+        # Pass 2: a roll per tile -- 20 % major/relic artifact | 40 % chest (treasure
         # chest / campfire / pandora's box / scholar / a fixed level 4-5 spell scroll --
         # never corpse or any other REWARD_PICKUP type) | 40 % rare resource. A rolled
         # pick that doesn't fit just leaves the tile for Pass 3, no in-pass fallback.
         chest_kinds = [k for k, p in chest_kind_pools.items() if p]
         for t in sorted(reach - used):
             roll = rng.random()
-            if roll < 0.3 and arts_high:
+            if roll < 0.2 and arts_high:
                 ai = ON.identity_of(rng.choices(
                     [a for a, _ in arts_high],
                     weights=[w for _, w in arts_high], k=1)[0])
@@ -581,12 +639,25 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 used.difference_update(gate_cells)
                 continue
 
-            # Reserve the doorway tile: never vegetation-sealed, never claimed by
-            # loot fill -- otherwise the gate is a wall with no interior side.
+            # Excavate the full doorway corridor BEFORE the free-tile scan below: never
+            # vegetation-sealed -- otherwise the gate is a wall with no interior side,
+            # or (s7-z4 second occurrence, 2026-09) opens onto a 1-tile vestibule sealed
+            # off from the rest of the zone's own room by a further boundary-classified
+            # neck _find_entry_tile alone didn't reach. Once excavated the corridor is
+            # ordinary walkable floor like any other interior tile -- NOT reserved as an
+            # empty hallway (s7-z4 third occurrence, 2026-09: corridor tiles used to get
+            # `used.add`-ed right here, before `_fill_loot`'s own free-tile scan ever
+            # saw them, so 3-5 genuinely reachable tiles right behind the gate stayed
+            # unfilled forever). Loot fill uses `interactive_only` placement (a walk-on
+            # 'A' cell), so a resource pile or structure sitting in the corridor never
+            # blocks the hero's path through it.
+            corridor = _find_entry_corridor(
+                entry_tile,
+                list(OR.mask_cells(gate_ident["mask"], gate_tile[0], gate_tile[1])),
+                ts, _all_ts)
             _seal_all_passages(ts, open_set, used, terrain, rng,
-                               skip_cells=set(interactive) | {entry_tile})
+                               skip_cells=set(interactive) | corridor)
             processed_loot_zids.add(zid)
-            used.add(entry_tile)
             _fill_loot(terrain, st, open_set, used, rng)
 
             km_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)
@@ -655,10 +726,14 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                       int_t[0], int_t[1], ident=mono_ident, bounds=bounds)
             mono_interactive = set(OR.mask_interactive_cells(mono_ident["mask"],
                                                              int_t[0], int_t[1]))
+            # Reserve the full doorway corridor, not just entry_tile (s7-z4 second
+            # occurrence, 2026-09 -- see the gate branch's identical comment above).
+            # Excavate BEFORE the free-tile scan; the corridor is then ordinary floor,
+            # not a reserved empty hallway -- see the gate branch's identical comment.
+            corridor = _find_entry_corridor(entry_tile, mono_cells, ts, _all_ts)
             _seal_all_passages(ts, open_set, used, terrain, rng,
-                               skip_cells=mono_interactive | {entry_tile})
+                               skip_cells=mono_interactive | corridor)
             processed_loot_zids.add(zid)
-            used.add(entry_tile)
             _fill_loot(terrain, st, open_set, used, rng)
 
             ext_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)

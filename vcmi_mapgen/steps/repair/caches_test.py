@@ -169,6 +169,95 @@ def test_pocket_guard_level_matches_artifact_tier_exactly():
 
 
 @needs_stats
+def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_filled():
+    """Bug (2026-09, 'not all magenta pocket tiles are filled'): `pocket_depth_by_tile`
+    -- the map PocketOverlay renders straight from -- used to be written before the
+    late gates that can still `continue` out of a candidate (every pocket tile already
+    claimed by an earlier pass, so `cache_spots` ends up empty; or no guard fits). A
+    pocket that fails one of those gates got zero objects placed on it, yet every one
+    of its tiles was still recorded as pocket depth -- painted magenta with nothing
+    underneath. Fixture: pre-claim every room tile as already `used` (simulating an
+    earlier pass having spent it), so the accepted-candidate gates find no cache spots
+    left and the whole pocket must be dropped, both from `objs` and from `depth`."""
+    from vcmi_mapgen.steps.repair import caches as CA
+
+    room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}   # 6-tile cavity
+    zr = _field_with_room(room, {(5, 4), (6, 4)})
+    zr["used"] |= room
+    objs, n_pockets, depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
+    assert not any(o.get("purpose") == "GUARD" for o in objs)
+    assert not depth, f"pocket tiles marked magenta with nothing placed: {sorted(depth)}"
+
+
+@needs_stats
+def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_a_cache():
+    """Same class of bug as above, at single-tile granularity (real seed-7 repro,
+    2026-09: a pocket's deepest tile sat right against an existing STAT_PERMANENT
+    structure's approach cell). `cache_spots`/`avail` were selected against
+    `global_reach8` (physically walkable), but the actual placement calls gate on the
+    STRICTER `global_place` (`global_reach8 & global_open`) -- so a pocket tile that is
+    walkable but reserved as another object's approach cell (excluded from open_set)
+    was always destined to fail placement, yet still got recorded as pocket depth."""
+    from vcmi_mapgen.steps.repair import caches as CA
+    from vcmi_mapgen.kit import objects as OR
+
+    room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}   # 6-tile cavity
+    zr = _field_with_room(room, {(5, 4), (6, 4)})
+    zr["open_set"].discard((6, 7))     # walkable (still in ts/passable/reach) but
+                                        # reserved -- e.g. another object's approach cell
+    objs, n_pockets, depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
+    claimed = set()
+    for o in objs:
+        for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"]):
+            claimed.add((cx, cy))
+    unfilled = set(depth) - claimed
+    assert not unfilled, f"pocket tiles marked magenta with nothing placed: {unfilled}"
+
+
+def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine():
+    """s2-z1 diagnosis (2026-09): a pocket declared right by the castle got guarded,
+    and that guard's zone-of-control (its interactive cell + all 8 neighbours -- in
+    H3, standing next to a wandering monster forces combat) happened to seal the
+    ONLY isthmus connecting the town to its own force_town sawmill, even though the
+    sawmill already carries its own dedicated level-1 guard. Fixture: two open rooms
+    joined by a single 3-tile isthmus (6,4)-(8,4), with a legitimate 1-tile pocket
+    (mouth (7,3)/(7,4)) whose only guardable candidate sits AT (7,4), squarely on the
+    isthmus. TOWN is in the left room, a sawmill MINE in the right room."""
+    from vcmi_mapgen.steps.repair import caches as CA
+    from vcmi_mapgen.kit import objects as OR
+
+    left = {(x, y) for x in range(6) for y in range(9)}
+    right = {(x, y) for x in range(9, 15) for y in range(9)}
+    isthmus = {(6, 4), (7, 4), (8, 4)}
+    room = {(7, 2)}
+    mouth_extra = {(7, 3)}
+    ts = left | right | isthmus | room | mouth_extra
+
+    town = {"x": 2, "y": 2, "l": 0, "purpose": "TOWN", "type": "randomTown",
+           "subtype": "object", "mask": ["A"], "template": {"mask": ["A"]}}
+    mine = {"x": 12, "y": 2, "l": 0, "purpose": "MINE", "type": "mine",
+           "subtype": "sawmill", "mask": ["A"], "template": {"mask": ["A"]}}
+    zr = {"zid": 0, "terrain": "grass", "ts": ts, "open_set": set(ts),
+         "passable": set(ts), "reach": set(ts), "used": set()}
+
+    objs, n_pockets, depth = CA.place_pocket_caches(
+        [zr], seed=3, bounds=(20, 20), existing_objs=[town, mine], home_zids={0})
+
+    NB8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+    guard_zoc = set()
+    for o in objs:
+        if o.get("purpose") != "GUARD":
+            continue
+        for ix, iy in OR.mask_interactive_cells(o["mask"], o["x"], o["y"]):
+            guard_zoc.add((ix, iy))
+            for dx, dy in NB8:
+                guard_zoc.add((ix + dx, iy + dy))
+    assert not (guard_zoc & isthmus), (
+        f"a new pocket guard's ZoC {guard_zoc} still crosses the isthmus {isthmus} -- "
+        "town cut off from its own starting mine")
+
+
+@needs_stats
 def test_pocket_chest_fill_uses_only_the_allowed_types():
     """The cavity's non-artifact/non-resource fill is entirely chests/pandora's box
     (treasureChest, campfire, pandoraBox) -- never scholar/corpse/spellScroll/leanTo/

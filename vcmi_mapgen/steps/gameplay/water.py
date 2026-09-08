@@ -18,6 +18,12 @@ _SEA_ZONE_MIN_AREA = 50    # minimum water-body size to require a seaport per sh
 _ISLAND_MIN_AREA = 50      # minimum island-zone size to require a seaport
 _BORDER_ZONE_MIN_AREA = 30  # skip a seaport on a bordering land zone too small to bother
 _SEAPORT_SPACING_SQ = 30 * 30  # minimum squared Euclidean distance between seaports
+_SEAPORT_SEARCH_HOPS = 2   # near-coastal search depth (s10 diagnosis, 2026-09: the
+                           # shipyard mask ['VVV','VVV','BXB'] can need its anchor up to
+                           # 2 tiles inland of the water-adjacent blocking cell -- a
+                           # single hop sometimes misses every valid anchor on an
+                           # otherwise perfectly placeable shore, even after grouping by
+                           # shore instead of by land zone
 
 
 def _pick(pool, purpose, st_t, rng, allow_random=True, art_share=0.45):
@@ -107,12 +113,21 @@ def place_water(ts, zones, zid, seed=1):
 
 
 def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
-    """Guarantee ≥1 shipyard per land zone bordering a water body ≥ _SEA_ZONE_MIN_AREA
-    tiles, and ≥1 shipyard per island land zone ≥ _ISLAND_MIN_AREA tiles.
+    """Guarantee ≥1 shipyard per SHORE bordering a water body ≥ _SEA_ZONE_MIN_AREA tiles,
+    and ≥1 shipyard per island land zone ≥ _ISLAND_MIN_AREA tiles.
 
-    For a 'lake' (water body not touching map borders) this ensures each bordering zone has
-    a seaport — typically 1 zone = 1 seaport.  For 'open water' touching map borders, each
-    zone on opposite shores gets its own seaport (≥2 total).
+    A 'shore' is a maximal 8-connected cluster of land tiles bordering one water body --
+    NOT a land zone (s10 diagnosis, 2026-09: "analyze the shores depending on the sea
+    zones, don't take into account the number of land zones associated with shores"). A
+    single water body's coastline can be split into several disconnected shores (separate
+    islands/peninsulas around the same sea); grouping by land zone instead used to leave
+    an ENTIRE shore unseaported whenever every zone touching it individually was too
+    small/jagged to fit a shipyard's footprint alone -- even though the shore as a whole,
+    spanning several zones, clearly has room somewhere along it (confirmed empirically: of
+    a real 72x72 map's main sea, one shore -- spanning six land zones -- got zero
+    seaports while every zone on it failed placement on its own, while the other, smaller,
+    single-zone shore succeeded trivially). Placement candidates are now drawn from the
+    WHOLE shore's near-coastal expansion (every zone it touches), not one zone's own tiles.
 
     Placement uses any anchor in the zone where the shipyard's footprint fits with all its
     cells and the approach tile in the zone, and no blocking-cell conflict with existing
@@ -153,6 +168,29 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
                     tx = ax - (ww - 1 - ci)
                     ty = ay - (hh - 1 - r)
                     existing_blk.add((tx, ty))
+
+    # Every already-placed non-guard structure's own front row (s8 diagnosis, 2026-09:
+    # a seaport landed squarely in an arena's front row, sealing it off -- nothing
+    # checked a new placement against an existing structure's own approach). Guards
+    # are exempt on both sides: their ZoC may still block a front tile, and they have
+    # no "front" of their own worth protecting.
+    structure_blk = set()
+    structure_fronts = []
+    for o in objs:
+        if o.get("purpose") == "GUARD":
+            continue
+        mask_rows = o.get("mask") or o.get("template", {}).get("mask")
+        if not mask_rows:
+            continue
+        for cx, cy, blk in OR.mask_cells(mask_rows, o["x"], o["y"]):
+            if blk:
+                structure_blk.add((cx, cy))
+        front = OR.front_tiles(mask_rows, o["x"], o["y"])
+        if front:
+            structure_fronts.append(front)
+
+    def _blocks_a_structure_front(cand_blk):
+        return any(front <= (structure_blk | cand_blk) for front in structure_fronts)
 
     new_objs = []
     # Anchor positions of seaports already in objs (for 20-tile spacing constraint)
@@ -201,6 +239,8 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
             if not any((bx + dx, by + dy) in water_tiles
                        for bx, by in blk for dx, dy in NB4):
                 return False
+            if _blocks_a_structure_front(set(blk)):
+                return False
             if check_spacing and any(
                 (ax - px) ** 2 + (ay - py) ** 2 < _SEAPORT_SPACING_SQ
                 for px, py in placed_anchors
@@ -211,6 +251,10 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
         def _do_place(ax, ay):
             _, blk, _ = _seaport_footprint(ax, ay, ident["mask"])
             existing_blk.update(blk)
+            structure_blk.update(blk)
+            front = OR.front_tiles(ident["mask"], ax, ay)
+            if front:
+                structure_fronts.append(front)
             placed_anchors.append((ax, ay))
             o = {
                 "x": ax, "y": ay, "l": 0, "purpose": "WATER_TRANSPORT",
@@ -234,8 +278,8 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
                     return _do_place(ax, ay)
         return None
 
-    def _zone_has_seaport(zid, ts_set):
-        """True if any existing or new seaport is in this zone's tile set."""
+    def _has_seaport(ts_set):
+        """True if any existing or new seaport's dock row is in `ts_set`."""
         for o in objs + new_objs:
             if o.get("type") != "shipyard":
                 continue
@@ -244,6 +288,77 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
             if any((ax - 2 + i, ay) in ts_set for i in range(3)):
                 return True
         return False
+
+    def _zone_has_seaport(zid, ts_set):
+        return _has_seaport(ts_set)
+
+    def _shore_clusters(comp):
+        """Maximal 8-connected clusters of land tiles bordering water component `comp`
+        -- the physical shores a seaport actually serves, spanning zone boundaries."""
+        shore = set()
+        for wx, wy in comp:
+            for dx, dy in NB4:
+                t = (wx + dx, wy + dy)
+                if t in land_zone_of:
+                    shore.add(t)
+        DIRS8 = ((1, 0), (-1, 0), (0, 1), (0, -1),
+                (1, 1), (1, -1), (-1, 1), (-1, -1))
+        seen, clusters = set(), []
+        for s in sorted(shore):
+            if s in seen:
+                continue
+            cl = set()
+            q = collections.deque([s])
+            seen.add(s)
+            cl.add(s)
+            while q:
+                cx, cy = q.popleft()
+                for dx, dy in DIRS8:
+                    nb = (cx + dx, cy + dy)
+                    if nb in shore and nb not in seen:
+                        seen.add(nb)
+                        cl.add(nb)
+                        q.append(nb)
+            clusters.append(cl)
+        return clusters
+
+    def _place_for_shore(shore, label):
+        """Ensure this shore (spanning however many zones) has a seaport; candidates are
+        drawn from the near-coastal expansion of the WHOLE shore, and `ts_set` is the
+        union of every zone the shore touches -- not one zone's own tiles alone."""
+        if _has_seaport(shore):
+            return True
+        zids_here = sorted({land_zone_of[t] for t in shore})
+        ts_set = set()
+        for zid in zids_here:
+            ts_set |= set(zones[zid]["tiles_set"])
+        ident = None
+        for zid in zids_here:
+            terrain = TNAME.get(zones[zid]["terrain_type"])
+            ident = next((i for i in ontology.gameplay_pool(terrain, "WATER_TRANSPORT")
+                         if i.get("type") == "shipyard"), None)
+            if ident is not None:
+                break
+        if ident is None:
+            print(f"  WARNING: no seaport placed on shore near zone(s) {zids_here} "
+                  f"({len(shore)} shore tiles) — no shipyard identity for any "
+                  f"bordering terrain")
+            return False
+        # Expand inland (across the whole shore, any of its zones) so the footprint
+        # can anchor deep enough for its blocking row to still reach the water edge.
+        near_coastal = set(shore)
+        for _ in range(_SEAPORT_SEARCH_HOPS):
+            for t in list(near_coastal):
+                for dx, dy in NB4:
+                    nb = (t[0] + dx, t[1] + dy)
+                    if nb in ts_set:
+                        near_coastal.add(nb)
+        o = _try_place(ts_set, list(near_coastal), label, ident)
+        if not o:
+            print(f"  WARNING: no seaport placed on shore near zone(s) {zids_here} "
+                  f"({len(shore)} shore tiles) — no valid near-coastal anchor found")
+            return False
+        return True
 
     def _place_for_zone(zid, z, label):
         """Ensure zone zid has a seaport; restrict to near-coastal tiles only."""
@@ -263,11 +378,10 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
             for dx, dy in NB4)}
         if not coastal_set:
             return False
-        # Expand 1 hop inland so the footprint can anchor with its blocking bottom
-        # row immediately adjacent to the water edge — keeps seaports ≤1 tile
-        # from the shoreline.
+        # Expand inland so the footprint can anchor deep enough for its blocking row
+        # to still reach the water edge.
         near_coastal = set(coastal_set)
-        for _ in range(1):
+        for _ in range(_SEAPORT_SEARCH_HOPS):
             for t in list(near_coastal):
                 for dx, dy in NB4:
                     nb = (t[0]+dx, t[1]+dy)
@@ -281,7 +395,7 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
             return False
         return True
 
-    # ── 1. Water-body guarantee: one seaport per bordering zone ───────────────
+    # ── 1. Water-body guarantee: one seaport per SHORE (not per land zone) ────
     seen_w = set()
     for t0 in sorted(water_tiles):
         if t0 in seen_w:
@@ -298,20 +412,14 @@ def _ensure_water_seaports(W, H, grid, zones, objs, seed, ontology):
         if len(comp) < _SEA_ZONE_MIN_AREA:
             continue
 
-        # Find unique zones bordering this water body (by shore tile zone membership)
-        bordering_zids = set()
-        for wx, wy in comp:
-            for dx, dy in NB4:
-                t = (wx + dx, wy + dy)
-                zid = land_zone_of.get(t)
-                if zid is not None:
-                    bordering_zids.add(zid)
-
-        for zid in sorted(bordering_zids):
-            z = zones[zid]
-            if z["area"] < _BORDER_ZONE_MIN_AREA:
-                continue   # tiny border sliver — skip
-            _place_for_zone(zid, z, f"wb_{t0}_{zid}")
+        for i, shore in enumerate(_shore_clusters(comp)):
+            # Skip only if EVERY zone touching this shore is a tiny sliver -- the gate
+            # is about not bothering with a sliver zone's own economy, not the shore
+            # ring's own tile count (which can be modest even for a huge zone).
+            zids_here = {land_zone_of[t] for t in shore}
+            if max(zones[zid]["area"] for zid in zids_here) < _BORDER_ZONE_MIN_AREA:
+                continue
+            _place_for_shore(shore, f"wb_{t0}_{i}")
 
     # ── 2. Island guarantee ───────────────────────────────────────────────────
     for zid, z in sorted(zones.items()):

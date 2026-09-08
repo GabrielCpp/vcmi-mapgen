@@ -143,6 +143,34 @@ def mask_interactive_cells(mask: list[str], x: int, y: int):
     return out
 
 
+def front_tiles(mask: list[str], x: int, y: int) -> set[tuple[int, int]]:
+    """The row of tiles directly in front of (one step past) this object's own
+    footprint, on the side its interactive cell sits on. Every multi-row mask in this
+    ontology places its interactive ('A'/'X') cell in the mask's LAST row (verified
+    across the whole catalog: the sprite's ground-contact row) -- the one direction an
+    approach is always geometrically unobstructed by the object's own body is one
+    tile further in that same direction, spanning the interactive column and its two
+    neighbours (s8 diagnosis, 2026-09: a later structure placed squarely in this row
+    fully sealed off an existing structure's own approach, since nothing checked a new
+    placement against it).
+
+    Excludes any tile that is itself part of the object's own footprint. Empty for a
+    single-row mask or one with no interactive cell (a pure decoration/vegetation
+    object, or a guard's cosmetic sprite bleed) -- neither has a meaningful 'front'
+    distinct from its own body, so both are naturally exempt from needing one kept
+    open."""
+    if len(mask) < 2:
+        return set()
+    footprint = {(tx, ty) for tx, ty, _b in mask_cells(mask, x, y)}
+    front: set[tuple[int, int]] = set()
+    for ix, iy in mask_interactive_cells(mask, x, y):
+        for dx in (-1, 0, 1):
+            t = (ix + dx, iy + 1)
+            if t not in footprint:
+                front.add(t)
+    return front
+
+
 if __name__ == "__main__":
     names = all_map_names()
     print(f"faithful maps: {len(names)}  objlib purposes: {sorted(_OBJLIB)}")

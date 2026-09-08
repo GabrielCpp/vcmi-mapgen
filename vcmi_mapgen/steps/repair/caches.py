@@ -27,6 +27,108 @@ _ART_BY_LVL = ["avarnd1", "avarnd1", "avarnd2", "avarnd3", "avarnd3", "avarand"]
 _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
 
 
+def _guard_zoc(mask, x, y):
+    """A guard's zone of control: its own interactive (approach) cell(s) plus every
+    8-neighbour -- in H3, stepping adjacent to a wandering monster forces combat, so a
+    guard blocks more than the single tile it stands on. Used to test whether a NEW
+    pocket-guard candidate would seal a corridor a hero needs to walk through freely."""
+    interactive = OR.mask_interactive_cells(mask, x, y)
+    zoc = set(interactive)
+    for ix, iy in interactive:
+        for dx, dy in NB8:
+            zoc.add((ix + dx, iy + dy))
+    return zoc
+
+
+def _approach_tiles(mask, x, y, passable):
+    """Passable tiles a hero could stand on to visit this object -- its own interactive
+    cell(s) when walk-on, plus every passable 8-neighbour of them (covers a
+    blocked-entrance 'X' interactive cell, which is clicked from an adjacent tile, never
+    stood on itself)."""
+    ap = set()
+    for ix, iy in OR.mask_interactive_cells(mask, x, y):
+        if (ix, iy) in passable:
+            ap.add((ix, iy))
+        for dx, dy in NB8:
+            nb = (ix + dx, iy + dy)
+            if nb in passable:
+                ap.add(nb)
+    return ap
+
+
+def _reachable(passable, blocked, sources, targets):
+    """8-connected BFS: can a hero reach any `targets` tile from `sources` while never
+    stepping into `blocked`? `sources`/`targets` themselves are always allowed (they are
+    the actual endpoints, not obstacles)."""
+    avail = (passable - blocked) | sources | targets
+    frontier = collections.deque(t for t in sources if t in avail)
+    seen = set(frontier)
+    while frontier:
+        x, y = frontier.popleft()
+        if (x, y) in targets:
+            return True
+        for dx, dy in NB8:
+            nb = (x + dx, y + dy)
+            if nb in avail and nb not in seen:
+                seen.add(nb)
+                frontier.append(nb)
+    return bool(seen & targets)
+
+
+def home_mine_protect_pairs(existing_objs, zone_records, home_zids, global_true):
+    """(town_approach, mine_approach) pairs that a NEW pocket guard must never sever --
+    one pair per force_town zone's own sawmill/orePit (`home_zids`), for every player
+    town on this level (s2-z1 diagnosis, 2026-09: a pocket guard placed right by the
+    castle sealed the only route to BOTH of its own starting mines, even though each
+    already carries its own dedicated level-1 guard -- a mine's day-1 economy must stay
+    reachable without an extra, involuntary fight). Also returns the ZoC of every
+    EXISTING guard that is not itself a mine's own guard (those are expected fights,
+    never a blocker) -- the base 'blocked' set the caller folds new pocket guards into
+    as they're accepted. Returns (protect_pairs, base_blocked_zoc)."""
+    if not home_zids:
+        return [], set()
+    ts_by_zid = {zr["zid"]: zr["ts"] for zr in zone_records}
+    mine_cells = set()
+    for o in existing_objs:
+        if o.get("purpose") == "MINE":
+            mask = o.get("mask") or (o.get("template") or {}).get("mask")
+            if mask:
+                mine_cells |= {(cx, cy) for cx, cy, _b in OR.mask_cells(mask, o["x"], o["y"])}
+
+    def _is_mine_guard(o):
+        return any(max(abs(o["x"] - mx), abs(o["y"] - my)) <= 1 for mx, my in mine_cells)
+
+    base_blocked = set()
+    for o in existing_objs:
+        if o.get("purpose") == "GUARD" and not _is_mine_guard(o):
+            mask = o.get("mask") or (o.get("template") or {}).get("mask")
+            if mask:
+                base_blocked |= _guard_zoc(mask, o["x"], o["y"])
+
+    pairs = []
+    for zid in home_zids:
+        ts = ts_by_zid.get(zid)
+        if ts is None:
+            continue
+        town = next((o for o in existing_objs
+                    if o.get("purpose") == "TOWN" and (o["x"], o["y"]) in ts), None)
+        if town is None:
+            continue
+        t_mask = town.get("mask") or (town.get("template") or {}).get("mask")
+        town_ap = _approach_tiles(t_mask, town["x"], town["y"], global_true)
+        if not town_ap:
+            continue
+        for o in existing_objs:
+            if not (o.get("purpose") == "MINE" and o.get("subtype") in ("sawmill", "orePit")
+                    and (o["x"], o["y"]) in ts):
+                continue
+            m_mask = o.get("mask") or (o.get("template") or {}).get("mask")
+            mine_ap = _approach_tiles(m_mask, o["x"], o["y"], global_true)
+            if mine_ap:
+                pairs.append((frozenset(town_ap), frozenset(mine_ap)))
+    return pairs, base_blocked
+
+
 def _reach8(open_set, seed):
     """8-connected BFS over the true `open_set` (the physical open/blocked tile layer),
     seeded from tiles already proven reachable by `_web_dist`. Extends that 4-connected web
@@ -139,7 +241,7 @@ def _seerhut_quest(rng, artifact_subtype):
 
 
 def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozenset(),
-                        precomputed_pockets=None):
+                        precomputed_pockets=None, existing_objs=(), home_zids=frozenset()):
     """Guarded caches in genuine geometric pockets — found in ONE global, zone-independent
     pass over the WHOLE map's TRUE physical passability, run once after every zone's
     terrain, vegetation and scatter is finalized. `zone_records` is a list of
@@ -235,6 +337,14 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     global_reach8 = _reach8(global_true, global_reach)
     global_place = global_reach8 & global_open
 
+    # A NEW pocket guard must never cut a player's town off from its own force_town
+    # mines (s2-z1 diagnosis, 2026-09) -- see home_mine_protect_pairs. `protect_blocked`
+    # starts at every EXISTING non-mine guard's ZoC and grows as this function accepts
+    # its own new pocket guards, so two pocket guards can't jointly seal a corridor
+    # either even if neither would alone.
+    protect_pairs, protect_blocked = home_mine_protect_pairs(
+        existing_objs, zone_records, home_zids, global_true)
+
     raw = precomputed_pockets if precomputed_pockets is not None else find_pockets(global_true)
     blobs = _dedupe_pockets(raw, global_true)
     guard_mask = rnd_monster(1)["mask"]  # uniform across levels 1-7; used to pre-check fit
@@ -303,6 +413,12 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
                 gcells = [(tx, ty) for tx, ty, _b in OR.mask_cells(guard_mask, cand_g[0], cand_g[1])]
                 if any(not (0 <= tx < bw and 0 <= ty < bh) for tx, ty in gcells):
                     continue
+            if protect_pairs:
+                cand_zoc = _guard_zoc(guard_mask, cand_g[0], cand_g[1])
+                blocked = protect_blocked | cand_zoc
+                if not all(_reachable(global_true, blocked, src, dst)
+                          for src, dst in protect_pairs):
+                    continue  # would seal a town off from its own starting mine
             guard_tile = cand_g
             pocket, zid, ref_g, mouth = cand_pocket, cand_zid, cand_g, cand_mouth_fs
             break
@@ -322,13 +438,6 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         if guard_tile is None and ref_g not in border_guards:
             continue
 
-        # This pocket is accepted -- record its full geometric extent + depth gradient
-        # for the debug overlay (rendering only; it never re-derives this from objects).
-        depths = pocket_depths(pocket, mouth)
-        max_d = max(depths.values()) if depths else 0
-        for t, d in depths.items():
-            pocket_depth_by_tile[t] = d / max_d if max_d else 0.0
-
         # Reference point for distance-sorting (guard tile or ZoC-centre).
         ref = guard_tile if guard_tile is not None else ref_g
 
@@ -338,10 +447,15 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         pool_art = ON.gameplay_pool(terrain, "REWARD_PICKUP")
         rng = random.Random(seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)
         # Pocket tiles are passable (in global_true) and reachable (in global_reach8);
-        # they may be approach cells of adjacent gameplay objects (excluded from open_set /
-        # global_place) but are still valid for pickups — use global_reach8 as the
-        # eligibility check here, and pass it to _pocket_fill / _place_one below.
-        cache_spots = [t for t in pocket if t not in used and t in global_reach8]
+        # some may be approach cells of adjacent gameplay objects (excluded from
+        # open_set / global_place) -- physically walkable, but nothing NEW may be
+        # placed there (2026-09 diagnosis: a cache_spot selected against the looser
+        # global_reach8 while the actual `_place_one` calls below gate on the
+        # stricter global_place was ALWAYS going to fail placement, yet still got
+        # painted magenta by the depth-recording below -- "not all magenta tiles are
+        # filled"). Select against global_place, the same set every placement call
+        # below actually uses, so a selected cache_spot always CAN receive an object.
+        cache_spots = [t for t in pocket if t not in used and t in global_place]
         if not cache_spots:
             continue
 
@@ -374,12 +488,39 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
             # Tag it for steps.repair.step._dedup_nearby_guards's priority tiers.
             objs[-1]["pocket_guard"] = True
             placed_mouths.append(guard_tile)
+            if protect_pairs:
+                protect_blocked |= _guard_zoc(guard_mask, guard_tile[0], guard_tile[1])
 
         # Re-derive available spots after guard V cells enter `used`.
         avail = [t for t in cache_spots if t not in used]
         avail.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
         if not avail:
             continue
+
+        # This pocket is genuinely committed now -- a guard is down (or the mouth was
+        # already border-sealed) and at least one cache tile is actually going to
+        # receive an object below. Only NOW record its geometric extent + depth
+        # gradient for the debug overlay (rendering only; it never re-derives this from
+        # objects) -- recording it any earlier (right after the guard-required gate)
+        # painted a pocket magenta even when every later gate (`cache_spots`/`avail`
+        # empty, guard placement itself failing) still dropped it with zero objects
+        # actually placed (2026-09 diagnosis: "not all magenta tiles are filled").
+        #
+        # Restrict WHICH tiles get recorded to `fillable`: every selected cache_spot
+        # (will receive an object below, or already got the guard) plus any pocket
+        # tile some earlier pass already claimed. A pocket tile that is neither -- e.g.
+        # an approach cell of an adjacent object, walkable but off-limits to new
+        # placements -- is not a real fillable part of this pocket; painting it magenta
+        # would repeat the same "empty tile with nothing underneath" bug one tile at a
+        # time instead of one whole pocket at a time.
+        fillable = set(cache_spots) | (pocket & used)
+        depths = pocket_depths(pocket, mouth)
+        max_d = max(depths.values()) if depths else 0
+        for t, d in depths.items():
+            if t not in fillable:
+                continue
+            pocket_depth_by_tile[t] = d / max_d if max_d else 0.0
+
         art_spot   = avail[-1:]  # deepest tile gets the artifact
         fill_spots = avail[:-1]
 
@@ -387,12 +528,19 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         _pocket_fill(fill_spots, pool_res, pool_art, pool_chest, pool_vis, rng, st,
                      ref, terrain, reach=global_place)
 
-        # Artifact at the deepest tile — tier matches guard level.
+        # Artifact at the deepest tile — tier matches guard level. Falls back to a
+        # plain resource pile if the tiered identity doesn't land (mirrors
+        # `_pocket_fill`'s own per-tile fallback): the tile was already selected via
+        # `cache_spots`/`global_place`, so it CAN take something -- it must not stay
+        # empty under the tile it was recorded as pocket depth for.
         if art_spot:
             t = art_spot[0]
-            _place_one(objs, used, global_place, rng, st, "REWARD_PICKUP", pool_art,
-                       t[0], t[1], ident=ON.identity_of(anim), cache=True, bounds=bounds,
-                       interactive_only=True)
+            if not _place_one(objs, used, global_place, rng, st, "REWARD_PICKUP",
+                              pool_art, t[0], t[1], ident=ON.identity_of(anim),
+                              cache=True, bounds=bounds, interactive_only=True):
+                _place_one(objs, used, global_place, rng, st, "RESOURCE_PILE",
+                          pool_res, t[0], t[1], cache=True, bounds=bounds,
+                          interactive_only=True)
 
     return objs, len(blobs), pocket_depth_by_tile
 
