@@ -13,7 +13,7 @@ from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.gameplay.water import _legal
 from vcmi_mapgen.steps.pickup.scatter import _place_one
 
-LOOT_ZONE_MAX_TILES = 80        # land zone with ≤ this many tiles, exactly one entrance cluster, no town
+LOOT_ZONE_MAX_TILES = 60        # land zone with ≤ this many tiles, exactly one entrance cluster, no town
 
 _LOOT_COLORS = [                # (border_gate_anim, keymaster_anim); index == VCMI subtype 0-7
     ("avxbgt00", "avxkey00"),   # 0 light blue
@@ -27,18 +27,32 @@ _LOOT_COLORS = [                # (border_gate_anim, keymaster_anim); index == V
 ]
 _LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 _LOOT_EXCL_DECOR = frozenset({"LAKE", "FROZEN_LAKE", "RIVER_DELTA", "KELP", "REEF", "LAKE_2"})
-# Visitable structures excluded from BOTH pocket caches and loot zone fill.
+# Visitable structures excluded from pocket caches (steps.repair.caches still uses this).
 _FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})  # Fountain of Fortune, Idol of Fortune
-# Only shrines teaching spells at level ≥ 3 are placed in loot zones (level 1-2 are too weak).
-_LOOT_SHRINE_MIN_LEVEL = 3
-# Vis-pool entries excluded from loot zones only (still allowed in pockets with sep. constraint).
-_LOOT_VIS_EXCL_ANIMS = frozenset({"avxwelg0", "avxwelr0", "avxwlsn0"})  # Magic Well
 # REWARD_PICKUP types excluded from loot zone art/chest fill (pool_art + pool_chest).
 _LOOT_ART_EXCL_TYPES = frozenset({"leanTo", "wagon", "warriorTomb", "denOfThieves"})
 # chest-type fill is an explicit allow-list, not "everything but an artifact": scholar,
 # corpse and a spell scroll are REWARD_PICKUP too but are not a chest and were never meant
-# to be loot-zone content.
+# to be loot-zone content. Shared with steps.repair.caches' pocket fill -- don't widen
+# this one for loot-zone-only needs (see _LOOT_ZONE_CHEST_EXTRA_TYPES below instead).
 _LOOT_CHEST_TYPES = frozenset({"treasureChest", "campfire", "pandoraBox"})
+# Loot-zone-only chest-tier additions on top of _LOOT_CHEST_TYPES (user-mandated
+# 2026-09) -- NOT added to _LOOT_CHEST_TYPES itself since pocket fill (caches.py) reuses
+# that constant and wasn't asked to change. Spell scrolls are handled separately (a
+# fixed level 4-5 spell, not the plain unconfigured-random pool entry) -- see
+# _fill_loot's Pass 2.
+_LOOT_ZONE_CHEST_EXTRA_TYPES = frozenset({"scholar"})
+# A loot-zone spell scroll is always a real, fixed level 4 or 5 spell (never the
+# unconfigured-random pool entry) -- see ontology.spells_by_level, hand-extracted from
+# H3's own SPTRAITS.TXT (data/spell_levels.json).
+_LOOT_SCROLL_LEVELS = (4, 5)
+# Hero-strengthening structures allowed in loot-zone fill (Pass 1) -- an explicit
+# allow-list (user-mandated 2026-09), not "every solo-visitable object": these are all
+# STAT_PERMANENT, each placed at most once per zone (see _fill_loot's Pass 1).
+_LOOT_HERO_STRUCTURE_TYPES = frozenset({
+    "libraryOfEnlightenment", "arena", "marlettoTower", "hillFort", "treeOfKnowledge",
+    "schoolOfMagic", "learningStone", "gardenOfRevelation", "starAxis",
+})
 # Rare resources allowed in a loot zone: mercury, sulfur, crystal, gems, gold -- no wood/ore
 # (colloquially "stone") and no unrestricted randomResource (could resolve to either).
 _LOOT_RARE_RESOURCE_SUBTYPES = frozenset({"mercury", "sulfur", "crystal", "gems", "gold"})
@@ -297,14 +311,30 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                                  "template": {"animation": iv["animation"],
                                               "mask": iv["mask"]}})
 
-        pool_vis = _solo_visit_pool(terrain,
-                                    exclude_anims=_FILL_EXCL_ANIMS | _LOOT_VIS_EXCL_ANIMS,
-                                    min_shrine_level=_LOOT_SHRINE_MIN_LEVEL)
+        # Hero-strengthening structures: an explicit allow-list (user-mandated), not
+        # "every solo-visitable object" -- see _LOOT_HERO_STRUCTURE_TYPES.
+        pool_vis = [i for i in ON.gameplay_pool(terrain, "STAT_PERMANENT")
+                   if i.get("type") in _LOOT_HERO_STRUCTURE_TYPES]
         pool_art = [i for i in ON.gameplay_pool(terrain, "REWARD_PICKUP")
                     if i.get("type") not in _LOOT_ART_EXCL_TYPES]
         pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
-        # chest-type only: treasure chests, campfires, pandora's box.
-        pool_chest = [i for i in pool_art if i.get("type") in _LOOT_CHEST_TYPES]
+        # chest-type: treasure chests, campfires, pandora's box, scholar (loot-zone only),
+        # plus a fixed level 4-5 spell scroll (its own kind below, not from ON.gameplay_pool
+        # -- a spell scroll's `subtype` IS the spell identifier, an ontology-classified
+        # value, not a plain terrain pool entry). Grouped by KIND so the roll below picks
+        # one of the five kinds uniformly, then an identity within it -- otherwise the 25
+        # individual level-4/5 spells would swamp the single treasureChest/campfire/
+        # pandoraBox/scholar entries in a flat random choice.
+        pool_chest = [i for i in pool_art
+                     if i.get("type") in _LOOT_CHEST_TYPES | _LOOT_ZONE_CHEST_EXTRA_TYPES]
+        chest_kind_pools = {
+            kind: [i for i in pool_chest if i.get("type") == kind]
+            for kind in _LOOT_CHEST_TYPES | _LOOT_ZONE_CHEST_EXTRA_TYPES
+        }
+        chest_kind_pools["spellScroll"] = [
+            {"type": "spellScroll", "subtype": n, "animation": "ava0001", "mask": ["A"]}
+            for lvl in _LOOT_SCROLL_LEVELS for n in ON.spells_by_level(lvl)
+        ]
         # High-tier artifacts only (major + relic, i.e. level >= 3).
         arts_high = [(a, _LOOT_ART_W[a]) for a in ("avarnd3", "avarnd4") if a in _LOOT_ART_W]
         # Rare resources: mercury, sulfur, crystal, gems, gold — no wood/ore/randomResource.
@@ -313,40 +343,61 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         free = sorted(reach - used)
         rng.shuffle(free)
 
-        # Pass 1: hero-strengthening structures — 30 % of available tiles
+        # Pass 1: hero-strengthening structures — 30 % of available tiles, each
+        # whitelisted structure placed AT MOST ONCE per zone (user-mandated) -- once
+        # every distinct type in the pool has been used, this naturally stops even if
+        # n_vis isn't reached yet (there are only len(_LOOT_HERO_STRUCTURE_TYPES) of them).
         n_vis = max(1, len(free) * 3 // 10)
         vis_placed = 0
+        placed_vis_types: set = set()
         for t in free:
-            if not pool_vis or vis_placed >= n_vis:
+            if vis_placed >= n_vis:
                 break
-            iv = rng.choice(pool_vis)
+            candidates = [i for i in pool_vis if i.get("type") not in placed_vis_types]
+            if not candidates:
+                break
+            iv = rng.choice(candidates)
             if _place_one(objs, used, reach, rng, st,
                           iv.get("purpose", "BONUS_TEMP"), None,
                           t[0], t[1], ident=iv, cache=True, bounds=bounds,
                           interactive_only=True):
                 vis_placed += 1
+                placed_vis_types.add(iv.get("type"))
 
-        # Pass 2: 30 % major/relic artifact | 30 % chest/campfire | 40 % rare resource --
-        # falls back through plain resources so every tile ends up claimed (see docstring).
+        # Pass 2: a roll per tile -- 30 % major/relic artifact | 30 % chest (treasure
+        # chest / campfire / pandora's box / scholar / a fixed level 4-5 spell scroll --
+        # never corpse or any other REWARD_PICKUP type) | 40 % rare resource. A rolled
+        # pick that doesn't fit just leaves the tile for Pass 3, no in-pass fallback.
+        chest_kinds = [k for k, p in chest_kind_pools.items() if p]
         for t in sorted(reach - used):
             roll = rng.random()
-            placed = False
             if roll < 0.3 and arts_high:
                 ai = ON.identity_of(rng.choices(
                     [a for a, _ in arts_high],
                     weights=[w for _, w in arts_high], k=1)[0])
                 if ai:
-                    placed = _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                                        t[0], t[1], ident=ai, cache=True, bounds=bounds,
-                                        interactive_only=True)
-            elif roll < 0.6 and pool_chest:
-                placed = _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                                    t[0], t[1], ident=rng.choice(pool_chest), cache=True,
-                                    bounds=bounds, interactive_only=True)
-            if not placed and pool_rare:
-                placed = _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
-                                    t[0], t[1], ident=rng.choice(pool_rare), cache=True,
-                                    bounds=bounds, interactive_only=True)
+                    _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
+                              t[0], t[1], ident=ai, cache=True, bounds=bounds,
+                              interactive_only=True)
+            elif roll < 0.6 and chest_kinds:
+                ident = rng.choice(chest_kind_pools[rng.choice(chest_kinds)])
+                _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
+                          t[0], t[1], ident=ident, cache=True, bounds=bounds,
+                          interactive_only=True)
+            elif pool_rare:
+                _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
+                          t[0], t[1], ident=rng.choice(pool_rare), cache=True,
+                          bounds=bounds, interactive_only=True)
+
+        # Pass 3: any tile Pass 2 left free gets a rare resource -- a sealed loot zone
+        # can't leave ANY tile unclaimed (a boat could dock a hero directly onto it,
+        # bypassing the gate/monolith entirely, user-mandated). Falls back to any
+        # resource, then warns, only in the pathological case where even that fails.
+        for t in sorted(reach - used):
+            placed = pool_rare and _place_one(
+                objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
+                t[0], t[1], ident=rng.choice(pool_rare), cache=True, bounds=bounds,
+                interactive_only=True)
             if not placed and pool_res:
                 placed = _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
                                     t[0], t[1], cache=True, bounds=bounds,

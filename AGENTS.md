@@ -49,7 +49,13 @@ subcommand (the step contract, `MapState`, `ProviderRegistry`).
   `maps/` via `extract_vmap.py`).
 - **`data/`** — corpus-derived priors (`objlib.json`, `pp/*.json` — macro/gameplay/vegetation
   statistics) and static VCMI-derived reference tables (`objclass_names.json` — the raw
-  MapObjectID enum, feeding `ontology.py --regen`; `vmap_header_template.json`). Static
+  MapObjectID enum, feeding `ontology.py --regen`; `vmap_header_template.json`;
+  `spell_levels.json`/`artifact_tiers.json`/`monster_levels.json` — mage-guild level 1-5,
+  rarity tier, and town tier 1-7 respectively, hand-extracted once from H3's own
+  SPTRAITS.TXT/ARTRAITS.TXT legacy tables and VCMI's `config/creatures/*.json`, exposed via
+  `ontology.spell_level`/`spells_by_level`/`artifact_tier`/`artifacts_by_tier`/
+  `monster_level`/`monsters_by_level` — see `ontology.py`'s module-level comment for why
+  these are checked-in data rather than `--regen`-derived like `objects.txt`). Static
   VCMI/corpus-derived JSON lives here, never loose beside the `.py` sources — if you add a
   reference table, it goes in `data/`.
 - **`out/`** — transient outputs (templates, features, renders); **gitignored**.

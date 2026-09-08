@@ -24,6 +24,29 @@ CLASS_NAMES = {
     json.load(open(project_root() / "data" / "objclass_names.json")).items()
 }
 
+# Level/tier classification for the three "graded" H3 entity kinds -- spells (1-5,
+# mage-guild tier), artifacts (treasure/minor/major/relic), creatures (1-7, town tier).
+# Hand-extracted once (not part of `regenerate()`'s objects.txt-driven pipeline below):
+# unlike objects.txt, the source data isn't uniformly available at regen time on an
+# arbitrary machine --
+#   - MONSTER_LEVELS: VCMI engine source's own config/creatures/*.json ("level" field,
+#     already plain JSON, no legacy table involved) -- needs a VCMI *source* checkout.
+#   - SPELL_LEVELS / ARTIFACT_TIERS: the level/tier field itself lives in the original
+#     H3 game's own legacy text tables (DATA/SPTRAITS.TXT / DATA/ARTRAITS.TXT, inside
+#     H3bitmap.lod -- readable via renderers.sprites.lod().read(), same mechanism
+#     objects.txt uses), but mapping a row to its VCMI identifier requires VCMI *source*
+#     config too (config/spells/*.json / config/artifacts.json's "index" field, zipped
+#     positionally against the legacy table's file-order rows -- verified by spot-check,
+#     since neither file carries the identifier itself). A regen host only has the LOD
+#     (this project's existing prerequisite), not a VCMI source tree, so these are
+#     checked in as static data instead of re-derived live.
+# SPELL_LEVELS/ARTIFACT_TIERS only cover the real, hero-castable/obtainable roster:
+# creature-only special abilities (Stone Gaze, Paralyze, ...) and non-random artifacts
+# (Spell Book, Spell Scroll, war machines, the Grail) are excluded, not just untiered.
+MONSTER_LEVELS = json.load(open(project_root() / "data" / "monster_levels.json"))
+SPELL_LEVELS = json.load(open(project_root() / "data" / "spell_levels.json"))
+ARTIFACT_TIERS = json.load(open(project_root() / "data" / "artifact_tiers.json"))
+
 # ---- canonical subtype tables (verified vs corpus subclass distributions) ----
 RESOURCE = {
     0: "wood",
@@ -2599,6 +2622,41 @@ def mines_by_resource(terrain):
         res = MINE_RES.get(sub, sub if isinstance(sub, str) else str(sub))
         out.setdefault(res, []).append(ident)
     return out
+
+
+def spell_level(name):
+    """A spell's mage-guild level (1-5), or ``None`` if `name` isn't a real hero-castable
+    spell (a creature-only special ability, or not a recognized VCMI spell identifier)."""
+    return SPELL_LEVELS.get(name)
+
+
+def spells_by_level(level):
+    """Sorted list of spell identifiers at mage-guild `level` (1-5)."""
+    return sorted(n for n, lvl in SPELL_LEVELS.items() if lvl == level)
+
+
+def artifact_tier(name):
+    """An artifact's rarity tier ('treasure'/'minor'/'major'/'relic'), or ``None`` if
+    `name` isn't a randomly-obtainable artifact (a war machine, the Spell Book/Scroll,
+    the Grail, or not a recognized VCMI artifact identifier)."""
+    return ARTIFACT_TIERS.get(name)
+
+
+def artifacts_by_tier(tier):
+    """Sorted list of artifact identifiers in rarity `tier`
+    ('treasure'/'minor'/'major'/'relic')."""
+    return sorted(n for n, t in ARTIFACT_TIERS.items() if t == tier)
+
+
+def monster_level(name):
+    """A creature's town tier (1-7; 0 for war machines/siege equipment), or ``None`` if
+    `name` isn't a recognized VCMI creature identifier."""
+    return MONSTER_LEVELS.get(name)
+
+
+def monsters_by_level(level):
+    """Sorted list of creature identifiers at town tier `level`."""
+    return sorted(n for n, lvl in MONSTER_LEVELS.items() if lvl == level)
 
 
 def visitable_purposes():
