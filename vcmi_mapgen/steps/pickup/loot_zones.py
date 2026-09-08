@@ -50,8 +50,7 @@ _LOOT_SCROLL_LEVELS = (4, 5)
 # allow-list (user-mandated 2026-09), not "every solo-visitable object": these are all
 # STAT_PERMANENT, each placed at most once per zone (see _fill_loot's Pass 1).
 _LOOT_HERO_STRUCTURE_TYPES = frozenset({
-    "libraryOfEnlightenment", "arena", "marlettoTower", "hillFort", "treeOfKnowledge",
-    "schoolOfMagic", "learningStone", "gardenOfRevelation", "starAxis",
+    "treeOfKnowledge", "schoolOfMagic", "learningStone", "gardenOfRevelation", "starAxis",
 })
 # Rare resources allowed in a loot zone: mercury, sulfur, crystal, gems, gold -- no wood/ore
 # (colloquially "stone") and no unrestricted randomResource (could resolve to either).
@@ -181,6 +180,38 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         return n, frozenset(boundary)
 
     _DIRS8 = [(1,0),(-1,0),(0,1),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]
+
+    def _find_entry_tile(interactive, footprint_cells, ts):
+        """The tile just beyond the access object that must stay forever passable and
+        unclaimed -- the doorway the hero actually steps onto once the gate opens or
+        the monolith is reached. A direct neighbour of the interactive cell usually
+        works, but the object's own footprint can span two rows (a gate's V-row), so
+        this walks outward through the object's own PASSABLE cells (never its blocking
+        ones) to find the first genuine, non-footprint zone tile reachable -- fixes
+        the s7-z4 defect (2026-09): the interior neighbor could be sealed shut by
+        _seal_all_passages (which seals the zone's full raw perimeter, not just the
+        entrance actually used) while a naive one-hop check missed it because it sat
+        two cells away, past the gate's own V-row."""
+        footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
+        passable_footprint = {(cx, cy) for cx, cy, blk in footprint_cells if not blk}
+        frontier = set(interactive)
+        visited = set(frontier)
+        for _ in range(len(footprint) + 1):
+            nxt = set()
+            for fx, fy in frontier:
+                for dx, dy in _DIRS8:
+                    nb = (fx + dx, fy + dy)
+                    if nb in visited:
+                        continue
+                    if nb in ts and nb not in footprint:
+                        return nb
+                    if nb in passable_footprint:
+                        visited.add(nb)
+                        nxt.add(nb)
+            frontier = nxt
+            if not frontier:
+                break
+        return None
 
     loot_zrs = []   # list of (zone_record, passage_tile_frozenset)
     for zr in zone_records:
@@ -476,6 +507,7 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                     return (abs(gy - passage_cy), abs(gx - ideal_x))
 
             gate_tile = None
+            entry_tile = None
             for t in sorted(ts, key=_gate_score):
                 gx, gy = t
                 gate_cells = [(cx, cy)
@@ -486,6 +518,18 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                         continue
                 interactive = OR.mask_interactive_cells(gate_ident["mask"], gx, gy)
                 if not all(c in open_set for c in interactive):
+                    continue
+                # The tile(s) directly behind the interactive cell, on the loot-zone
+                # side, must include at least one usable doorway -- the interior tile
+                # the hero actually steps onto once the gate opens. Without one, the
+                # gate opens onto a wall (s7-z4 diagnosis, 2026-09): the zone's raw
+                # perimeter can extend past the passage the eligibility check found
+                # (e.g. a narrow zone whose sides are also boundary), and
+                # _seal_all_passages seals ALL of that perimeter, not just the
+                # detected passage cluster.
+                entry_tile_cand = _find_entry_tile(
+                    interactive, list(OR.mask_cells(gate_ident["mask"], gx, gy)), ts)
+                if entry_tile_cand is None:
                     continue
                 # Clear any object (vegetation, guard) whose footprint overlaps the gate's
                 # full cell set — including V-row cells that may be in the exterior zone.
@@ -514,18 +558,11 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                              "template": {"animation": gate_ident["animation"],
                                           "mask": gate_ident["mask"]}})
                 gate_tile = t
+                entry_tile = entry_tile_cand
                 break
             if gate_tile is None:
                 continue
 
-            # Verify seal leaves the gate's interactive tile with both an interior
-            # neighbor (so loot is reachable) and at least one passable exterior
-            # neighbor (so the gate can be approached and activated from outside).
-            sealed_boundary = passage_tiles - set(interactive)
-            passable_after_seal = ts - sealed_boundary
-            if not any((sk[0]+dx, sk[1]+dy) in passable_after_seal
-                       for sk in interactive for dx, dy in _DIRS8):
-                continue
             # Check exterior access: at least one non-loot-zone tile adjacent to
             # the interactive cell must be passable (not occupied/blocked by objects).
             ext_blocked = set()
@@ -540,11 +577,16 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 for sk in interactive for dx, dy in _DIRS8
             )
             if not has_ext_access:
+                objs.remove(objs[-1])
+                used.difference_update(gate_cells)
                 continue
 
+            # Reserve the doorway tile: never vegetation-sealed, never claimed by
+            # loot fill -- otherwise the gate is a wall with no interior side.
             _seal_all_passages(ts, open_set, used, terrain, rng,
-                               skip_cells=set(interactive))
+                               skip_cells=set(interactive) | {entry_tile})
             processed_loot_zids.add(zid)
+            used.add(entry_tile)
             _fill_loot(terrain, st, open_set, used, rng)
 
             km_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)
@@ -585,15 +627,27 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             if ext_t is None:
                 continue
 
-            # Place monolith at zone centroid (deepest interior tile).
+            # Place monolith at zone centroid (deepest interior tile). Its own
+            # footprint is fully passable ('V'/'A', no blocking cells), but the hero
+            # still needs a doorway beyond it to reach the zone's loot -- otherwise
+            # they arrive and are stuck on the monolith with nothing reachable (the
+            # same defect as an unlinked gate, see s7-z4 diagnosis, 2026-09).
             ts_cx = sum(t[0] for t in ts) / len(ts)
             ts_cy = sum(t[1] for t in ts) / len(ts)
             int_t = None
+            entry_tile = None
             for t in sorted(reach - used,
                             key=lambda t: (t[0] - ts_cx) ** 2 + (t[1] - ts_cy) ** 2):
-                if _legal(mono_ident, t[0], t[1], reach, used, bounds=bounds) is not None:
-                    int_t = t
-                    break
+                if _legal(mono_ident, t[0], t[1], reach, used, bounds=bounds) is None:
+                    continue
+                mono_cells = list(OR.mask_cells(mono_ident["mask"], t[0], t[1]))
+                mono_fp_coords = {(cx, cy) for cx, cy, _blk in mono_cells}
+                entry_tile_cand = _find_entry_tile(mono_fp_coords, mono_cells, ts)
+                if entry_tile_cand is None:
+                    continue
+                int_t = t
+                entry_tile = entry_tile_cand
+                break
             if int_t is None:
                 continue
 
@@ -602,8 +656,9 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             mono_interactive = set(OR.mask_interactive_cells(mono_ident["mask"],
                                                              int_t[0], int_t[1]))
             _seal_all_passages(ts, open_set, used, terrain, rng,
-                               skip_cells=mono_interactive)
+                               skip_cells=mono_interactive | {entry_tile})
             processed_loot_zids.add(zid)
+            used.add(entry_tile)
             _fill_loot(terrain, st, open_set, used, rng)
 
             ext_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)

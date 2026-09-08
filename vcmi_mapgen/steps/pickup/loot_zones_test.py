@@ -53,8 +53,7 @@ _ALLOWED_CHEST_TYPES = {"campfire", "treasureChest", "pandoraBox", "scholar", "s
 _ALLOWED_ART_TYPES = {"randomArtifactMajor", "randomArtifactRelic"}
 _ALLOWED_RESOURCE_SUBTYPES = {"mercury", "sulfur", "crystal", "gems", "gold"}
 _ALLOWED_HERO_STRUCTURE_TYPES = {
-    "libraryOfEnlightenment", "arena", "marlettoTower", "hillFort", "treeOfKnowledge",
-    "schoolOfMagic", "learningStone", "gardenOfRevelation", "starAxis",
+    "treeOfKnowledge", "schoolOfMagic", "learningStone", "gardenOfRevelation", "starAxis",
 }
 
 
@@ -95,10 +94,15 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories():
 
 def test_loot_zone_fill_claims_every_non_access_tile():
     """Every tile of a sealed loot zone ends up occupied except the access object's own
-    interactive cell -- an unfilled interior tile bordering water would let a boat-borne
-    hero dock directly onto it, bypassing the gate/monolith entirely (user-mandated)."""
+    interactive cell and, when needed, a single reserved doorway tile adjacent to it --
+    an unfilled interior tile bordering water would let a boat-borne hero dock directly
+    onto it, bypassing the gate/monolith entirely (user-mandated), but the doorway tile
+    itself must stay open or the access object opens onto a wall (s7-z4 diagnosis,
+    2026-09): asserts at most one gap tile, and that it's actually the doorway (adjacent
+    to the access object), not an unrelated unclaimed tile."""
     from vcmi_mapgen.kit import objects as OR
 
+    _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
     ts0 = _zone_records()[0][0]["ts"]
     ran_at_least_once = False
     for seed in range(1, 8):
@@ -110,6 +114,7 @@ def test_loot_zone_fill_claims_every_non_access_tile():
         ran_at_least_once = True
         claimed = set()
         access_interactive = set()
+        access_footprint = set()
         for o in objs:
             if (o["x"], o["y"]) not in ts0 and not any(
                     (cx, cy) in ts0 for cx, cy, _b in OR.mask_cells(o["mask"], o["x"], o["y"])):
@@ -119,8 +124,18 @@ def test_loot_zone_fill_claims_every_non_access_tile():
                     claimed.add((cx, cy))
             if o.get("purpose") in ("QUEST_GATE", "TRANSPORT"):
                 access_interactive |= set(OR.mask_interactive_cells(o["mask"], o["x"], o["y"])) & ts0
+                access_footprint |= {(cx, cy) for cx, cy, _b
+                                     in OR.mask_cells(o["mask"], o["x"], o["y"])}
         gap = ts0 - claimed - access_interactive
-        assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
+        assert len(gap) <= 1, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
+        if gap:
+            (doorway,) = gap
+            near_access = any(
+                (doorway[0] + dx, doorway[1] + dy) in access_footprint | access_interactive
+                for dx, dy in _DIRS8
+            )
+            assert near_access, (
+                f"seed {seed}: unclaimed tile {doorway} isn't the reserved access doorway")
     assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
 
 
@@ -154,3 +169,61 @@ def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll():
             break
     assert found is not None, "no spell scroll appeared across 39 seeds -- check the wiring"
     assert ON.spell_level(found["subtype"]) in (4, 5)
+
+
+def _narrow_zone_records():
+    """A 2-wide corridor (zone 0, 12 tiles) walled by a big exterior zone (zone 1) on
+    both long sides and the far end -- every zone-0 tile counts as zone perimeter, the
+    exact shape that exposed the s7-z4 defect: `_seal_all_passages` seals the FULL
+    perimeter (not just the single passage cluster the eligibility check found), so an
+    access object's interior-side neighbor could get sealed shut even though the old
+    check (which only looked at that stale passage cluster) believed it stayed open."""
+    ts0 = {(x, y) for x in (2, 3) for y in range(0, 6)}
+    # zone1 must NOT itself qualify as a loot zone (over LOOT_ZONE_MAX_TILES=60), or it
+    # would compete with zone0 for the only slot in ext_pool, leaving no zone free to
+    # host the keymaster/exterior monolith.
+    ts1 = ({(1, y) for y in range(0, 6)} | {(4, y) for y in range(0, 6)}
+           | {(x, y) for x in range(0, 30) for y in range(6, 12)})
+    zr0 = {"zid": 0, "terrain": "grass", "ts": ts0, "open_set": set(ts0),
+           "passable": set(ts0), "reach": set(ts0), "used": set()}
+    zr1 = {"zid": 1, "terrain": "grass", "ts": ts1, "open_set": set(ts1),
+           "passable": set(ts1), "reach": set(ts1), "used": set()}
+    return [zr0, zr1], []
+
+
+def test_a_narrow_loot_zones_access_object_always_has_a_usable_interior_doorway():
+    """s7-z4 (2026-09): a narrow zone's interior can be entirely on the raw zone
+    perimeter, which _seal_all_passages seals in full. Without a reserved doorway, the
+    access object's interactive cell ends up with no passable interior neighbor at all
+    -- the gate/monolith opens onto a wall. Sampled across enough seeds to exercise
+    both the gate and the two-way-monolith branch (50/50 per zone)."""
+    from vcmi_mapgen.kit import objects as OR
+
+    seen_gate = seen_mono = False
+    for seed in range(1, 30):
+        zone_records, objs_existing = _narrow_zone_records()
+        objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
+                                                   seed=seed, bounds=(32, 14))
+        if n_placed != 1:
+            continue
+        access = next(o for o in objs if o.get("purpose") in ("QUEST_GATE", "TRANSPORT"))
+        seen_gate = seen_gate or access["purpose"] == "QUEST_GATE"
+        seen_mono = seen_mono or access["purpose"] == "TRANSPORT"
+        interactive = OR.mask_interactive_cells(access["mask"], access["x"], access["y"])
+        blocked = set()
+        for o in objs:
+            for cx, cy, blk in OR.mask_cells(o["mask"], o["x"], o["y"]):
+                if blk:
+                    blocked.add((cx, cy))
+        ts0 = zone_records[0]["ts"]
+        has_open_interior_neighbor = any(
+            (ix + dx, iy + dy) in ts0 and (ix + dx, iy + dy) not in blocked
+            for ix, iy in interactive
+            for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1),
+                           (1, 1), (1, -1), (-1, 1), (-1, -1)]
+        )
+        assert has_open_interior_neighbor, (
+            f"seed {seed}: {access['purpose']} at ({access['x']},{access['y']}) has no "
+            "passable interior neighbor -- unreachable loot zone")
+    assert seen_gate, "fixture assumption broke: no seed produced a gate"
+    assert seen_mono, "fixture assumption broke: no seed produced a monolith"
