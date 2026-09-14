@@ -3,6 +3,36 @@ and its loot-zone content restrictions."""
 from vcmi_mapgen.steps.pickup import loot_zones as LZ
 
 _BOUNDS = (64, 64)
+_DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+
+
+def _find_leaks(ts0, all_ts, objs, access_interactive):
+    """8-connected (inside, outside) tile pairs that are BOTH passable, excluding the
+    access object's own interactive cell(s) -- the precise 'properly sealed' bar
+    (s7-z4/s9-z3 diagnosis, 2026-09): no 8-connected path from any loot-zone tile to
+    any tile outside it except through the gate's/monolith's own dark-green tile.
+    `objs` should be the FULL accumulated object list (this zone's own placements
+    plus everything already in neighbouring zones)."""
+    from vcmi_mapgen.kit import objects as OR
+
+    blocked = set()
+    for o in objs:
+        m = o.get("mask") or (o.get("template") or {}).get("mask")
+        if not m:
+            continue
+        for cx, cy, blk in OR.mask_cells(m, o["x"], o["y"]):
+            if blk:
+                blocked.add((cx, cy))
+    ext_ts = all_ts - ts0
+    leaks = []
+    for t in sorted(ts0):
+        if t in blocked or t in access_interactive:
+            continue
+        for dx, dy in _DIRS8:
+            nb = (t[0] + dx, t[1] + dy)
+            if nb in ext_ts and nb not in blocked:
+                leaks.append((t, nb))
+    return leaks
 
 
 def _zone_records(blocked_at=None):
@@ -24,6 +54,106 @@ def _zone_records(blocked_at=None):
                                "purpose": None, "mask": ["B"],
                                "template": {"mask": ["B"]}})
     return [zr0, zr1], objs_existing
+
+
+def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes():
+    """s7-z4/s9-z3 diagnosis (2026-09): a loot zone must have NO 8-connected path from
+    any of its own tiles to a tile outside it, except through the gate's/monolith's
+    own interactive tile. Two real, distinct root causes produced leaks: (1) the
+    over-eager BFS-tree corridor could exempt an entire boundary-classified room edge
+    from sealing merely because it sat on some deep interior tile's arbitrary
+    shortest path (s9-z3), and (2) placing the gate cleared ANY existing object whose
+    footprint grazed the gate's own -- including a neighbouring zone's vegetation
+    object anchored just outside the zone whose functional BLOCKING cell survived
+    outside the gate's own footprint but got swept away anyway because a purely
+    DECORATIVE cell of that same object happened to graze it (s7-z4). Swept across
+    three different zone shapes (plain single-entrance, 2-wide corridor, thin-strip)
+    and many seeds to exercise both the gate and monolith branches."""
+    from vcmi_mapgen.kit import objects as OR
+
+    fixtures = [
+        (lambda: _zone_records(), (64, 64)),
+        (lambda: _narrow_zone_records(), (32, 14)),
+        (lambda: _rect_zone_records(5, 4), (64, 64)),
+    ]
+    ran_at_least_once = False
+    for make_fixture, bounds in fixtures:
+        for seed in range(1, 20):
+            zone_records, objs_existing = make_fixture()
+            ts0 = zone_records[0]["ts"]
+            all_ts = set()
+            for zr in zone_records:
+                all_ts |= zr["ts"]
+            objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
+                                                       seed=seed, bounds=bounds)
+            if n_placed != 1:
+                continue
+            ran_at_least_once = True
+            access = next(o for o in objs if o.get("purpose") in ("QUEST_GATE", "TRANSPORT")
+                         and (o["x"], o["y"]) in ts0)
+            access_interactive = set(OR.mask_interactive_cells(
+                access["mask"], access["x"], access["y"]))
+            leaks = _find_leaks(ts0, all_ts, objs_existing + objs, access_interactive)
+            assert not leaks, (
+                f"{make_fixture.__name__ if hasattr(make_fixture, '__name__') else ''} "
+                f"seed {seed}: loot zone leaks {leaks}")
+    assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
+
+
+def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_footprint():
+    """s9-z3 defect (2026-09): `_seal_all_passages` only ever protected the gate's/
+    monolith's single INTERACTIVE cell from re-sealing, never its other footprint
+    tiles -- e.g. 3 of a 2x2 monolith's 4 mask cells are non-interactive 'V' overlay,
+    so a boundary-adjacent one of those got a second, BLOCKING vegetation object
+    stacked directly onto it (visually 'only one tile of the monolith is used').
+    Non-blocking V/A cells from OTHER objects (e.g. a resource pile's decorative
+    overlay) legitimately share a tile by this engine's own design -- see
+    `_place_one`'s GUARD docstring -- so this only checks for a BLOCKING cell landing
+    on any of the access object's own footprint tiles. Sweeps both the gate and
+    monolith branches across many seeds/shapes.
+
+    `_narrow_zone_records` is deliberately NOT swept here: its 2-wide corridor forces
+    the gate's wide mask to overhang into the *neighbouring* zone's own tile grid, and
+    closing the resulting leak there is `_close_stray_leaks`'s job, not
+    `_seal_all_passages`'s -- `_close_stray_leaks` has the same-shaped gap (tracked
+    separately, not fixed here: today it plugs that overhang leak by stacking a
+    blocker directly on the gate's own non-interactive tile, which this test would
+    otherwise flag)."""
+    from vcmi_mapgen.kit import objects as OR
+
+    fixtures = [
+        (lambda: _zone_records(), _BOUNDS),
+        (lambda: _rect_zone_records(5, 4), (64, 64)),
+    ]
+    ran_at_least_once = False
+    for make_fixture, bounds in fixtures:
+        for seed in range(1, 20):
+            zone_records, objs_existing = make_fixture()
+            objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
+                                                       seed=seed, bounds=bounds)
+            if n_placed != 1:
+                continue
+            access = next((o for o in objs
+                          if o.get("purpose") in ("QUEST_GATE", "TRANSPORT")), None)
+            if access is None:
+                continue
+            ran_at_least_once = True
+            blocked_by = {}
+            for o in objs:
+                if o is access:
+                    continue
+                for cx, cy, blk in OR.mask_cells(o["mask"], o["x"], o["y"]):
+                    if blk:
+                        blocked_by[(cx, cy)] = o
+            access_cells = {(cx, cy) for cx, cy, _b in
+                            OR.mask_cells(access["mask"], access["x"], access["y"])}
+            for cell in access_cells:
+                culprit = blocked_by.get(cell)
+                assert culprit is None, (
+                    f"seed {seed}: access object's own footprint tile {cell} got a "
+                    f"blocking object stacked onto it: {culprit}")
+    assert ran_at_least_once, (
+        "fixture assumption broke: no seed produced a loot zone with an access object")
 
 
 def test_a_single_entrance_zone_qualifies_as_a_loot_zone():
@@ -79,7 +209,10 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories():
             hero_structure_types_seen.append(typ)
         elif purpose == "REWARD_PICKUP" and typ != "artifact":
             if typ == "spellScroll":
-                if ON.spell_level(o.get("subtype")) not in (4, 5):
+                # VCMI's spellScroll object has exactly one subtype ("object"); the
+                # spell itself lives in options.spell, never in subtype.
+                spell = (o.get("options") or {}).get("spell")
+                if o.get("subtype") != "object" or ON.spell_level(spell) not in (4, 5):
                     violations.append(o)
             elif typ not in _ALLOWED_CHEST_TYPES | _ALLOWED_ART_TYPES:
                 violations.append(o)
@@ -293,7 +426,35 @@ def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll():
             found = scroll
             break
     assert found is not None, "no spell scroll appeared across 39 seeds -- check the wiring"
-    assert ON.spell_level(found["subtype"]) in (4, 5)
+    assert ON.spell_level(found.get("options", {}).get("spell")) in (4, 5)
+
+
+def test_spell_scroll_objects_carry_the_spell_in_options_not_subtype():
+    """VCMI's spellScroll object type has exactly one registered subtype ("object");
+    stashing the spell name in subtype instead (the s9 defect, 2026-09) makes VCMI
+    fail to load the map with 'Unknown entity spellScroll::<name> found!' -- confirmed
+    against lib/mapping/MapFormatJson.cpp, which reads the spell from
+    configuration["options"]["spell"]. Every generated spellScroll object must use
+    that shape, across enough seeds that several actually get placed."""
+    from vcmi_mapgen import ontology as ON
+
+    seen = 0
+    for seed in range(1, 40):
+        zone_records, objs_existing = _zone_records(blocked_at=None)
+        objs, n_placed, zids = LZ.place_loot_zones(zone_records, {}, objs_existing,
+                                                   seed=seed, bounds=_BOUNDS)
+        for o in objs:
+            if o.get("type") != "spellScroll":
+                continue
+            seen += 1
+            assert o.get("subtype") == "object", (
+                f"seed {seed}: spellScroll subtype {o.get('subtype')!r} must be "
+                f"'object' -- the spell name belongs in options.spell")
+            spell = (o.get("options") or {}).get("spell")
+            assert ON.spell_level(spell) in (4, 5), (
+                f"seed {seed}: spellScroll options.spell {spell!r} is not a known "
+                f"level 4/5 spell")
+    assert seen >= 3, "fixture assumption broke: too few spell scrolls placed to check"
 
 
 def _narrow_zone_records():
@@ -302,7 +463,15 @@ def _narrow_zone_records():
     exact shape that exposed the s7-z4 defect: `_seal_all_passages` seals the FULL
     perimeter (not just the single passage cluster the eligibility check found), so an
     access object's interior-side neighbor could get sealed shut even though the old
-    check (which only looked at that stale passage cluster) believed it stayed open."""
+    check (which only looked at that stale passage cluster) believed it stayed open.
+
+    zone1's own flanking columns are pre-blocked at y=2/y=3 (its own ordinary
+    vegetation density, already committed by the time `place_loot_zones` runs) --
+    without SOME pre-existing block there, EVERY possible gate position along this
+    2-wide corridor leaks sideways into zone1's wide-open flank (s7-z4 defect, 2026-09,
+    fourth occurrence: `_entry_tile_has_stray_leak` correctly rejects every one of
+    those, so a fixture with a fully-open neighbour never places a gate at all -- not a
+    real zone-1 border, just this fixture's own unrealistic 0%-density flank)."""
     ts0 = {(x, y) for x in (2, 3) for y in range(0, 6)}
     # zone1 must NOT itself qualify as a loot zone (over LOOT_ZONE_MAX_TILES=60), or it
     # would compete with zone0 for the only slot in ext_pool, leaving no zone free to
@@ -313,7 +482,11 @@ def _narrow_zone_records():
            "passable": set(ts0), "reach": set(ts0), "used": set()}
     zr1 = {"zid": 1, "terrain": "grass", "ts": ts1, "open_set": set(ts1),
            "passable": set(ts1), "reach": set(ts1), "used": set()}
-    return [zr0, zr1], []
+    objs_existing = [
+        {"x": x, "y": y, "l": 0, "purpose": None, "mask": ["B"], "template": {"mask": ["B"]}}
+        for x, y in ((1, 2), (1, 3), (4, 2), (4, 3))
+    ]
+    return [zr0, zr1], objs_existing
 
 
 def test_entry_corridor_reaches_the_whole_room_not_just_the_first_doorway_tile():

@@ -102,24 +102,50 @@ def _find_entry_tile(interactive, footprint_cells, ts):
     return None
 
 
-def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
-    """Every ts tile that must stay unsealed -- not just `entry_tile` itself -- to
-    keep the WHOLE zone connected to the gate/monolith once `_seal_all_passages`
-    closes off everything else. `entry_tile` alone only fixes a single-tile-deep
-    doorway; a loot zone's own interior shape can put a further boundary-classified
-    neck BEHIND that first tile (s7-z4 defect, 2026-09, second occurrence: a 1-tile
-    vestibule separated from the rest of the zone's room by a whole neck row that
-    also qualifies as 'boundary' -- adjacent to tiles outside `ts` -- and so got
-    fully sealed, leaving only the vestibule reachable from the gate).
+def _entry_tile_has_stray_leak(entry_tile, footprint_cells, ts, all_ts, blocked_ts):
+    """True if the doorway tile just behind the gate/monolith is 8-adjacent to a tile
+    outside `ts` that is NOT part of the access object's own footprint AND not
+    already blocked (by that neighbouring zone's own pre-existing vegetation/objects)
+    -- a leak unrelated to the gate/monolith itself, letting a hero step in or out
+    sideways without ever touching its interactive tile (s7-z4 defect, 2026-09,
+    fourth occurrence: the entry tile sits right behind the gate almost by
+    definition, so it is expected to border the gate's own exterior side -- but it
+    must not ALSO border genuinely open ground in a completely different
+    neighbouring zone). `blocked_ts` is `_blocked_ts` -- object-blocking-aware, so an
+    already-vegetated neighbouring border reads as sealed even though it is raw
+    zone-tile-adjacent to `ts`."""
+    footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
+    ext_ts = all_ts - ts
+    return any((entry_tile[0] + dx, entry_tile[1] + dy) in ext_ts
+              and (entry_tile[0] + dx, entry_tile[1] + dy) not in footprint
+              and (entry_tile[0] + dx, entry_tile[1] + dy) not in blocked_ts
+              for dx, dy in _DIRS8)
 
-    Computes a BFS shortest-path tree from `entry_tile` over the FULL `ts` graph
-    (footprint cells excluded, sealing not yet applied), then unions the
-    root-to-tile path for every INTERIOR tile (`ts` minus the true outer boundary)
-    -- the minimal corridor needed to reach every tile `_fill_loot` will actually
-    try to use, while still sealing every boundary tile that ISN'T on that
-    corridor. `all_ts` is the union of every zone's own tiles (this zone's own
-    boundary is whatever of `ts` borders a tile OUTSIDE `ts` but still in
-    `all_ts`)."""
+
+def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
+    """The MINIMAL set of `ts` tiles beyond `entry_tile` that must stay unsealed to
+    keep every INTERIOR tile (`ts` minus the true outer boundary) connected to the
+    gate/monolith once `_seal_all_passages` closes off everything else. `entry_tile`
+    alone only fixes a single-tile-deep doorway; a loot zone's own interior shape can
+    put a further boundary-classified neck BEHIND that first tile (s7-z4 defect,
+    2026-09, second occurrence: a 1-tile vestibule separated from the rest of the
+    zone's room by a whole neck row that also qualifies as 'boundary' -- adjacent to
+    tiles outside `ts` -- and so got fully sealed, leaving only the vestibule
+    reachable from the gate).
+
+    Grows the corridor ONE missing connection at a time (not a blanket union of every
+    interior tile's own shortest-path ancestors -- s9-z3 defect, 2026-09, third
+    occurrence: that over-eager version could pull an entire boundary-classified room
+    edge into the corridor merely because it sat on some deep interior tile's
+    arbitrary BFS-tie-broken shortest path, even though that interior tile was ALSO
+    reachable another way -- permanently exempting a real external leak on that edge
+    from sealing). Each iteration: find the nearest still-disconnected interior tile,
+    connect it via the shortest path over the full `ts` graph, add ONLY the new tiles
+    on that path, and recheck -- so a boundary tile is exempted from sealing only
+    when NO other route reaches the interior without it.
+
+    `all_ts` is the union of every zone's own tiles (this zone's own boundary is
+    whatever of `ts` borders a tile OUTSIDE `ts` but still in `all_ts`)."""
     if entry_tile is None:
         return set()
     footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
@@ -127,26 +153,49 @@ def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
     boundary = {t for t in ts
                 if any((t[0] + dx, t[1] + dy) in ext_ts for dx, dy in _DIRS8)}
     interior = ts - boundary
-    prev = {entry_tile: None}
-    q = collections.deque([entry_tile])
-    while q:
-        cx, cy = q.popleft()
-        for dx, dy in _DIRS8:
-            nb = (cx + dx, cy + dy)
-            if nb in ts and nb not in footprint and nb not in prev:
-                prev[nb] = (cx, cy)
-                q.append(nb)
+
+    def _reach(seed_tiles, avail):
+        d = set(t for t in seed_tiles if t in avail)
+        q = collections.deque(d)
+        while q:
+            cx, cy = q.popleft()
+            for dx, dy in _DIRS8:
+                nb = (cx + dx, cy + dy)
+                if nb in avail and nb not in d:
+                    d.add(nb)
+                    q.append(nb)
+        return d
+
     corridor = {entry_tile}
-    for t in interior:
-        # Walk t's ancestors, stopping at entry_tile (the root) or at another
-        # interior tile (never sealed anyway, and ITS OWN loop iteration already
-        # covers everything further upstream of it) -- keeps `corridor` to just
-        # the boundary-classified neck tiles genuinely needed, never an interior
-        # treasure tile that doesn't need reserving.
-        node = prev.get(t)
-        while node is not None and node != entry_tile and node not in interior:
-            corridor.add(node)
-            node = prev.get(node)
+    reached = _reach({entry_tile}, interior | corridor)
+    orphans = interior - reached
+    while orphans:
+        target = min(orphans)
+        prev = {}
+        seen = set(reached)
+        q = collections.deque(reached)
+        found = False
+        while q:
+            cx, cy = q.popleft()
+            if (cx, cy) == target:
+                found = True
+                break
+            for dx, dy in _DIRS8:
+                nb = (cx + dx, cy + dy)
+                if nb in ts and nb not in footprint and nb not in seen:
+                    seen.add(nb)
+                    prev[nb] = (cx, cy)
+                    q.append(nb)
+        if not found:
+            break   # unreachable within ts at all -- shouldn't happen, ts is connected
+        cur = target
+        while cur not in reached:
+            corridor.add(cur)
+            cur = prev.get(cur)
+            if cur is None:
+                break
+        reached = _reach({entry_tile}, interior | corridor)
+        orphans = interior - reached
     return corridor
 
 
@@ -343,15 +392,20 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         sealing the perimeter including any passable V-overlay cells of the gate.
 
         skip_cells: the gate's or monolith's interactive tile(s) — the one spot a hero
-        must stand on to activate the access object; these are NOT sealed."""
+        must stand on to activate the access object; these are NOT sealed. Any tile
+        already in `used` is skipped too — that set holds the FULL footprint of the
+        just-placed gate/monolith (not just its interactive cell, see `_legal`), so
+        without this a boundary-adjacent non-interactive footprint cell (e.g. one of a
+        monolith's 3 non-interactive 'V' cells) got a second, conflicting decor object
+        stacked directly onto it (s9-z3 defect, 2026-09)."""
         ext_ts = _all_ts - ts
         veg_pool = ON.decor_pool(terrain, blocking=True, max_cells=1,
                                  exclude_types=_LOOT_EXCL_DECOR)
         if not veg_pool:
             return
         for t in sorted(ts):
-            if t in skip_cells:
-                continue  # access object's interactive tile — must stay passable
+            if t in skip_cells or t in used:
+                continue  # access object's interactive tile, or its own footprint
             tx, ty = t
             if not any((tx + dx, ty + dy) in ext_ts
                        for dx, dy in [(1,0),(-1,0),(0,1),(0,-1),
@@ -366,6 +420,61 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                          "animation": iv["animation"], "mask": iv["mask"],
                          "template": {"animation": iv["animation"],
                                       "mask": iv["mask"]}})
+
+    def _close_stray_leaks(ts, access_interactive, terrain, rng):
+        """Final correctness pass, run once the gate/monolith, its corridor and its
+        fill are all committed: verify NO 8-connected path exists from any `ts` tile
+        to any tile outside `ts` except through `access_interactive`, and close every
+        leak found by sealing the OUTSIDE tile (in whichever neighbouring zone it
+        belongs to). `_seal_all_passages` only ever places blockers inside `ts` -- it
+        cannot, by itself, close a leak whose open side sits in a DIFFERENT zone
+        (s7-z4 defect, 2026-09, fifth occurrence: placing the gate clears any
+        existing object whose footprint grazes the gate's own -- including a
+        neighbouring zone's vegetation object anchored just outside `ts` whose
+        DECORATIVE overlay cell happened to graze the gate's own V-row, even though
+        that same object's actual BLOCKING cell, which had been sealing this exact
+        leak, sat outside the gate's footprint entirely and was needlessly swept away
+        with it). Mutates the neighbouring zone's own `used` set too, so later steps
+        never place something conflicting there."""
+        zone_of = {}
+        for zr in zone_records:
+            for t in zr["ts"]:
+                zone_of[t] = zr
+        ext_ts = _all_ts - ts
+        blocked = set()
+        for o in objs_existing + objs:
+            m = o.get("mask") or (o.get("template") or {}).get("mask")
+            if not m:
+                continue
+            for cx, cy, blk in OR.mask_cells(m, o["x"], o["y"]):
+                if blk:
+                    blocked.add((cx, cy))
+        veg_cache = {}
+        for t in sorted(ts):
+            if t in access_interactive or t in blocked:
+                continue
+            for dx, dy in _DIRS8:
+                nb = (t[0] + dx, t[1] + dy)
+                if nb not in ext_ts or nb in blocked:
+                    continue
+                nb_zr = zone_of.get(nb)
+                if nb_zr is None or nb in nb_zr["used"]:
+                    continue
+                nb_terrain = nb_zr["terrain"]
+                if nb_terrain not in veg_cache:
+                    veg_cache[nb_terrain] = ON.decor_pool(
+                        nb_terrain, blocking=True, max_cells=1, exclude_types=_LOOT_EXCL_DECOR)
+                pool = veg_cache[nb_terrain]
+                if not pool:
+                    continue
+                iv = rng.choice(pool)
+                objs.append({"x": nb[0], "y": nb[1], "l": 0,
+                            "type": iv.get("type"), "subtype": iv.get("subtype"),
+                            "animation": iv["animation"], "mask": iv["mask"],
+                            "template": {"animation": iv["animation"],
+                                         "mask": iv["mask"]}})
+                nb_zr["used"].add(nb)
+                blocked.add(nb)
 
     def _fill_loot(terrain, st, reach, used, rng):
         """Loot fill: background decor → hero-strengthening structures → mixed rewards.
@@ -589,6 +698,10 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                     interactive, list(OR.mask_cells(gate_ident["mask"], gx, gy)), ts)
                 if entry_tile_cand is None:
                     continue
+                if _entry_tile_has_stray_leak(
+                        entry_tile_cand, list(OR.mask_cells(gate_ident["mask"], gx, gy)),
+                        ts, _all_ts, _blocked_ts):
+                    continue
                 # Clear any object (vegetation, guard) whose footprint overlaps the gate's
                 # full cell set — including V-row cells that may be in the exterior zone.
                 fp = set(gate_cells)
@@ -659,6 +772,7 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                                skip_cells=set(interactive) | corridor)
             processed_loot_zids.add(zid)
             _fill_loot(terrain, st, open_set, used, rng)
+            _close_stray_leaks(ts, set(interactive), terrain, rng)
 
             km_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)
             km_st  = PG.mine_gameplay()[km_zr["terrain"]]
@@ -716,6 +830,8 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 entry_tile_cand = _find_entry_tile(mono_fp_coords, mono_cells, ts)
                 if entry_tile_cand is None:
                     continue
+                if _entry_tile_has_stray_leak(entry_tile_cand, mono_cells, ts, _all_ts, _blocked_ts):
+                    continue
                 int_t = t
                 entry_tile = entry_tile_cand
                 break
@@ -726,8 +842,6 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                       int_t[0], int_t[1], ident=mono_ident, bounds=bounds)
             mono_interactive = set(OR.mask_interactive_cells(mono_ident["mask"],
                                                              int_t[0], int_t[1]))
-            # Reserve the full doorway corridor, not just entry_tile (s7-z4 second
-            # occurrence, 2026-09 -- see the gate branch's identical comment above).
             # Excavate BEFORE the free-tile scan; the corridor is then ordinary floor,
             # not a reserved empty hallway -- see the gate branch's identical comment.
             corridor = _find_entry_corridor(entry_tile, mono_cells, ts, _all_ts)
@@ -735,6 +849,7 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                                skip_cells=mono_interactive | corridor)
             processed_loot_zids.add(zid)
             _fill_loot(terrain, st, open_set, used, rng)
+            _close_stray_leaks(ts, mono_interactive, terrain, rng)
 
             ext_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)
             ext_st  = PG.mine_gameplay()[ext_zr["terrain"]]

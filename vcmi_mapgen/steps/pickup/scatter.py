@@ -135,6 +135,14 @@ def _place_one(objs, used, reach, rng, st, purpose, pool, x, y,
         o["options"] = options
     elif ident.get("type") == "pandoraBox":  # absent => legal but permanently empty reward
         o["options"] = _pandora_reward(rng)
+    elif ident.get("type") == "spellScroll":
+        # VCMI's spellScroll object has exactly one registered subtype ("object") --
+        # the spell itself is carried in options.spell, never in subtype (confirmed
+        # against lib/mapping/MapFormatJson.cpp's CGArtifact deserialization). ident's
+        # own "subtype" is where the spell name was stashed by the caller's identity
+        # pool, so move it across before overwriting it.
+        o["options"] = {"spell": ident["subtype"]}
+        o["subtype"] = "object"
     if cache:  # a guarded-pocket pickup, not open scatter — informational marker only,
         o["cache"] = True        # ignored by the vmap exporter, used by tests
     objs.append(o)
