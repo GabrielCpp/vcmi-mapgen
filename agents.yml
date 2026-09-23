@@ -1,38 +1,15 @@
-# Agent toolkit config — installs repo-specific skills (uv + VCMI maps domain) for
-# the zone-rebuilding engine + learned terrain generator.
-repo:
-  name: vcmi-mapgen
 agents:
   claude: true
+
 skills:
-  # cross-language architecture + testing contracts (no ui/*)
-  - architecture/*
-  - testing/*
-  - vertical-slicing
-  - diagnosing-bugs
-  - code-review
-  # python stack (no python-htmx-accessibility)
-  - stacks/python/python-architecture
-  - stacks/python/python-cli
-  - stacks/python/python-pypi-release
-  - stacks/python/python-testing
-  # repo-specific
-  - projects/vcmi-mapgen/*   # repo root + maps domain
-  - infra/infra-cli-writer   # CLI/Makefile command-timeout conventions
-prompts:
-  - grill
-  - brainstorm
-  - implement-plan-worktree
-  - implement-plan-here
-  # /update-skill-from-conversation — fold a session's learnings back into the
-  # agent library (skills, commands, root instructions).
-  - agent-library/update-skill-from-conversation
-workflows:
-  - research                 # gate-loop benchmark program (program.yml manifest)
+  - projects/vcmi-mapgen/*
+packs:
+  - general
+  - python
+
 localInstructions:
   - skills:
       - vcmi-mapgen
-      - infra-cli-writer # always-loaded repo-root CLAUDE.md (uv + pipeline)
     paths: ["."]
     includeReadme: none
   - skill: vcmi-mapgen-maps # loaded when working under vcmi_mapgen/ (formats, engine, rendering)

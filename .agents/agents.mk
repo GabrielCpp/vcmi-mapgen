@@ -8,6 +8,7 @@
 # Usage:
 #   make agent-install             # regenerate the agent adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
+#   make farrier-run-hook          # what the repo's pre-commit hook invokes
 #   make agent-workflows           # what this machine can run, and where it came from
 #   make agent-run-<workflow>      # run one, in its own container
 #
@@ -37,6 +38,7 @@ FARRIER_LIB_ARG := $(if $(wildcard $(AGENTS_DIR)/library),--library "$(AGENTS_DI
 #
 #   make agent-run-<workflow>              # start a run, streaming its logs
 #   make agent-run-<workflow> DETACH=1     # start it in the background
+#   make agent-run-<workflow> PROFILE=x    # …on a named set of models
 #   make agent-runs                        # list live runs
 #   make agent-logs RUN=<workflow>-<id>    # follow one
 #   make agent-stop RUN=<workflow>-<id>    # SIGTERM it (resumable: docker restart)
@@ -66,6 +68,18 @@ AGENT_BASE_BRANCH  ?= $(shell git -C "$(AGENT_REPO)" symbolic-ref --quiet --shor
 DETACH ?=
 AGENT_UP_FLAGS = $(if $(DETACH),--detach,--abort-on-container-exit)
 
+# Which named model set this run buys, and which config file the name lives in.
+#
+#   make agent-run-<workflow> PROFILE=cheap
+#   make agent-run-<workflow> PROFILE=cheap CONFIG=./ci-config.toml
+#
+# PROFILE names a `[profiles.<name>]` table (`farrier config show --profile cheap`
+# prints one). CONFIG defaults to the machine's own config, so a profile is selectable
+# without naming a file. Neither set is the behavior every run had before profiles
+# existed: models resolve from the config's top-level tables.
+PROFILE ?=
+CONFIG  ?=
+
 # One launch. $(1) is the workflow name.
 #
 # The run id is a UUID minted HERE rather than derived inside the container: every
@@ -85,10 +99,13 @@ define agent_launch
 	repo_name="$$(basename "$(AGENT_REPO)")"; \
 	worktree_root="$(AGENT_WORKTREE_ROOT)/$$run_id"; \
 	run_auth="$$worktree_root/.credentials.json"; \
+	run_config="$$worktree_root/stablemate-config.toml"; \
 	mkdir -p "$$worktree_root"; \
 	$(agent_stage_credentials) \
+	$(agent_stage_config) \
 	$(agent_share_with_container) \
 	echo "[agent] workflow  : $(1)"; \
+	test -z "$(PROFILE)" || echo "[agent] profile   : $(PROFILE) (from $$run_config)"; \
 	echo "[agent] run id    : $$run_id"; \
 	echo "[agent] container : $$project"; \
 	echo "[agent] worktree  : $$worktree_root/$$repo_name"; \
@@ -97,6 +114,9 @@ define agent_launch
 	AGENT_RUN_ID="$$run_id" \
 	AGENT_UID="$(AGENT_UID)" AGENT_GID="$(AGENT_GID)" \
 	AGENT_CREDENTIALS_FILE="$$run_auth" \
+	AGENT_CONFIG_FILE="$$run_config" \
+	AGENT_CONFIG="$$run_config" \
+	AGENT_PROFILE="$(PROFILE)" \
 	AGENT_REPO_HOST_DIR="$(AGENT_REPO)" \
 	AGENT_SOURCE_MODE=worktree \
 	AGENT_WORKTREE_ROOT="$$worktree_root" \
@@ -125,6 +145,34 @@ endef
 define agent_stage_credentials
 	if [ -r "$$HOME/.claude/.credentials.json" ]; then \
 		install -m 640 "$$HOME/.claude/.credentials.json" "$$run_auth"; \
+	fi;
+endef
+
+# The config this run resolves its models from — a COPY, per run.
+#
+# The config is re-read every turn, so binding the operator's own file live would
+# mean an edit to it silently moving the models of every container already going.
+# That global mutation is exactly what naming a profile is meant to end, so the file
+# is snapshotted at launch: what a run starts on is what it finishes on, and a
+# `docker restart` resumes on it too. It is staged beside the worktree, under the
+# gitignored `.agents/`, so `agent-clean` takes it with the rest of the run.
+#
+# An unreadable CONFIG is fatal rather than ignored: falling back to the machine's
+# config would run a CI or benchmark launch on models nobody chose, and report
+# success. Same for a PROFILE with no config behind it — the profile would resolve
+# to nothing and the run would quietly take the harness defaults.
+define agent_stage_config
+	config_src="$(CONFIG)"; \
+	if [ -n "$$config_src" ] && [ ! -r "$$config_src" ]; then \
+		echo "[agent] CONFIG=$$config_src is not readable" >&2; exit 2; \
+	fi; \
+	[ -n "$$config_src" ] || config_src="$${STABLEMATE_CONFIG:-$$HOME/.config/stablemate/config.toml}"; \
+	if [ -r "$$config_src" ]; then \
+		install -m 644 "$$config_src" "$$run_config"; \
+	else \
+		test -z "$(PROFILE)" || { \
+			echo "[agent] PROFILE=$(PROFILE) but no config at $$config_src" >&2; exit 2; }; \
+		run_config=""; \
 	fi;
 endef
 
@@ -181,11 +229,16 @@ $(foreach wf,$(AGENT_WORKFLOWS),$(eval $(call agent_run_target,$(wf))))
 .PHONY: $(addprefix agent-run-,$(AGENT_WORKFLOWS))
 endif
 
-.DEFAULT_GOAL := help
+# The target is `agent-help`, not `help`, and the default goal is only claimed when
+# nothing has yet: this file is included at the END of a repo's own Makefile, so a
+# `help` here would override the repo's and make would warn about it on every run.
+ifeq ($(.DEFAULT_GOAL),)
+.DEFAULT_GOAL := agent-help
+endif
 
-.PHONY: help agent-install agent-check agent-workflows agent-runs agent-logs agent-stop agent-clean
+.PHONY: agent-help agent-install agent-check farrier-run-hook agent-workflows agent-runs agent-logs agent-stop agent-clean
 
-help: ## Show available targets
+agent-help: ## Show available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
 		awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
@@ -196,6 +249,10 @@ agent-check: ## Verify generated agent adapters are up to date (no writes)
 	@$(FARRIER) --repo "$(CURDIR)" --check $(FARRIER_LIB_ARG) \
 		&& echo "✓ agent files are up to date" \
 		|| { echo "↑ files above would be rewritten by 'make agent-install'"; exit 1; }
+
+farrier-run-hook: ## Run the pre-commit checks farrier and the installed skills own
+	@$(FARRIER) --repo "$(CURDIR)" --check --skip-unresolvable $(FARRIER_LIB_ARG)
+	@if [ -x "$(CURDIR)/.agents/hooks/pre-commit" ]; then "$(CURDIR)/.agents/hooks/pre-commit"; fi
 
 agent-workflows: ## Show which workflows this machine can run, and where they came from
 	@$(FARRIER) workflows

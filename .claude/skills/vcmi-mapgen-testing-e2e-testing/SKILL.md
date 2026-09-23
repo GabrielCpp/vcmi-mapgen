@@ -1,10 +1,10 @@
 ---
-name: vcmi-mapgen-e2e-testing
+name: vcmi-mapgen-testing-e2e-testing
 description: "The end-to-end test contract, driver-neutral — locate by role plus a stable minimal accessible name, never a full literal string; rely on auto-retrying assertions instead of sleeps; recognize the cold-start first-navigation race as a named failure shape; run the flaky-vs-real checklist before calling a failure either one; keep every scenario isolated. Load whenever writing or reviewing an end-to-end/journey spec; a stack skill (react-router-playwright, flutter-qa) supplies the concrete driver mechanics. Applies to E2E spec files on any platform."
 metadata:
   generated_by: farrier
   source: library/skills/testing/e2e-testing/SKILL.md
-  resolve: "farrier source .claude/skills/vcmi-mapgen-e2e-testing/SKILL.md"
+  resolve: "farrier source .claude/skills/vcmi-mapgen-testing-e2e-testing/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [standards, tests]
 ---
@@ -12,7 +12,7 @@ metadata:
 # The E2E Test Contract
 
 This is the driver-neutral definition of what makes an end-to-end spec trustworthy. It extends
-[`generated testing-design instruction file when installed`](generated testing-design instruction file when installed) — every rule
+[`../vcmi-mapgen-testing-design/SKILL.md`](../vcmi-mapgen-testing-design/SKILL.md) — every rule
 there applies here too — with the failure modes unique to driving a real, running system through
 its UI: locator brittleness, wait races, cold-start noise, and the "flaky or real?" judgment call.
 The mechanics of meeting it — the driver API, the assertion syntax, the mock layer — are
@@ -30,7 +30,7 @@ stable — it is what assistive technology depends on. Locate through it, not ar
 
 - **Prefer role + accessible name** over text-content or CSS/structure locators. A CSS path pins
   the DOM shape; a role locator pins the user-facing contract. This is the same contract
-  [`generated ui-accessibility instruction file when installed`](generated ui-accessibility instruction file when installed)
+  [`../vcmi-mapgen-ui-accessibility/SKILL.md`](../vcmi-mapgen-ui-accessibility/SKILL.md)
   requires the product to honor — an E2E locator is a screen-reader query, and a locator that
   cannot find an element is often reporting a real accessibility defect, not a test problem.
 - **Match the name on a stable, minimal token — a substring or pattern, never the full literal
@@ -74,7 +74,7 @@ deadline of §2 rather than a guessed bigger number sprinkled everywhere.
 ## 4. "Flaky" and "real" are both verdicts that need evidence
 
 Before a repair declares an E2E failure a test defect — or a product bug — run this checklist.
-It is [`generated testing-design instruction file when installed`](generated testing-design instruction file when installed) §9
+It is [`../vcmi-mapgen-testing-design/SKILL.md`](../vcmi-mapgen-testing-design/SKILL.md) §9
 (*ground truth from outside the code's own assumptions*) applied to E2E: the spec's own opinion of
 what happened is not evidence; the captured artifacts are.
 
