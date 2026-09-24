@@ -97,15 +97,17 @@ def index_of(objs: list[PlacedObject]) -> dict[tuple[int, Tile], list[Cover]]:
     return index
 
 
-_SPRITE_OVERHANG = frozenset({"GUARD", "RESOURCE_PILE", "REWARD_PICKUP"})
+_PICKUPS = frozenset({"RESOURCE_PILE", "REWARD_PICKUP"})
 
 
 def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str | None:
     """Why ``culprit``, covering ``tile`` with ``role``, may not share it with ``victim``. Only
     another object's visit, entrance or approach tile is protected. A guard stands on an
-    approach tile and its sprite overlays the entrance, since that is its job. A one-tile pickup
-    packs against its neighbours, so its sprite overhang is not held against them."""
-    if role is Role.APPROACH or (culprit.purpose in _SPRITE_OVERHANG and role is Role.OVERLAY):
+    approach tile and its sprite overlays the entrance, since that is its job. A pickup may sit
+    partly behind another object's sprite, so an overlay over a pickup is allowed."""
+    if role is Role.APPROACH:
+        return None
+    if role is Role.OVERLAY and (culprit.purpose == "GUARD" or victim.obj.purpose in _PICKUPS):
         return None
     if victim.obj is culprit or not victim.interactive:
         return None

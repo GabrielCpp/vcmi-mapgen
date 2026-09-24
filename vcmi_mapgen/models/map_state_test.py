@@ -75,9 +75,9 @@ def test_cover_index_refuses_an_overlay_on_a_visit_tile() -> None:
 
 def test_cover_index_refuses_a_visit_tile_under_an_overlay() -> None:
     canopy = _obj(3, 3, ("VV", "VV"))
-    pile = _obj(2, 2, ("A",), purpose="RESOURCE_PILE")
+    mine = _obj(2, 2, ("A",), purpose="MINE")
     index = CoverIndex([canopy])
-    assert not index.accepts(pile)
+    assert not index.accepts(mine)
 
 
 def test_cover_index_accepts_a_guard_on_an_approach_tile() -> None:
@@ -95,8 +95,14 @@ def test_cover_index_reset_forgets_removed_objects() -> None:
     assert index.try_add(canopy)
 
 
-def test_cover_index_accepts_adjacent_resource_piles() -> None:
-    first = _obj(2, 2, ("VA",), purpose="RESOURCE_PILE")
-    second = _obj(3, 2, ("VA",), purpose="RESOURCE_PILE")
-    index = CoverIndex([first])
-    assert index.try_add(second)
+def test_cover_index_accepts_an_overlay_over_a_resource_pile() -> None:
+    pile = _obj(2, 2, ("A",), purpose="RESOURCE_PILE")
+    canopy = _obj(3, 3, ("VV", "VV"))
+    assert CoverIndex([pile]).try_add(canopy)
+    assert CoverIndex([canopy]).try_add(pile)
+
+
+def test_cover_index_refuses_a_pile_overlay_over_a_mine_visit_tile() -> None:
+    mine = _obj(2, 2, ("A",), purpose="MINE")
+    pile = _obj(3, 2, ("VA",), purpose="RESOURCE_PILE")
+    assert not CoverIndex([mine]).try_add(pile)

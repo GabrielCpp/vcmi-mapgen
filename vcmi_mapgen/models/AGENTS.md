@@ -11,7 +11,8 @@ the blocking `BORDER` sentinel outside the map), `taken_tiles(level)`, `conflict
 `place` and `set_objs`. Those methods answer questions about tiles and objects
 that are already on the map. They never search or score. Every step that writes objects
 goes through `set_objs`, which refuses an object that covers another object's
-visit, entrance or approach tile (a guard may stand on an approach tile, and a guard, resource pile or reward pickup may overhang a neighbour's visit tile with its sprite). A placer never
+visit, entrance or approach tile. A guard may stand on an approach tile, and any overlay may
+sit over a resource pile or reward pickup. A placer never
 relies on that refusal. It asks a `CoverIndex` before each placement and skips the spot.
 
 ## `MapState`
