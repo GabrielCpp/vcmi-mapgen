@@ -67,7 +67,7 @@ def test_vmap_export_roundtrip(tmp_path: Path) -> None:
     cells = ZE.tile_terrain(grid, 16, 16)
     town = ON.gameplay_pool("grass", "TOWN")[0]
     objs = [_town(town, 8, 8)]
-    state = MapState(cells={0: cells}, objs=objs)
+    state = MapState(size=max(len(cells), len(cells[0])), cells={0: cells}, objs=objs)
     p = VmapRenderer(out_dir=str(tmp_path)).render(state, "test_pp_export.vmap", name="test")
     z = zipfile.ZipFile(p)
     surf = jv.as_list(_load(z, "surface_terrain.json"))
@@ -137,7 +137,7 @@ def test_vmap_export_game_contracts(tmp_path: Path) -> None:
     # ... and they survive the .vmap round trip, with sprite-extent masks
     grid = [[2] * 30 for _ in range(24)]
     cells = ZE.tile_terrain(grid, 30, 24)
-    state = MapState(cells={0: cells}, objs=objs)
+    state = MapState(size=max(len(cells), len(cells[0])), cells={0: cells}, objs=objs)
     p = VmapRenderer(out_dir=str(tmp_path)).render(state, "test_pp_contracts.vmap", name="test")
     vobjs = _objects(p)
     vtown = next(vo for vo in vobjs if vo.get("type") in ("town", "randomTown"))
@@ -169,7 +169,9 @@ def test_playability_overlay(tmp_path: Path) -> None:
     cells = ZE.tile_terrain(grid, 24, 24)
     town = ON.gameplay_pool("grass", "TOWN")[0]
     towns = [_town(town, 8, 8), _town(town, 18, 18)]
-    state = MapState(cells={0: cells}, objs=towns, player_towns=towns)
+    state = MapState(
+        size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
+    )
     p = VmapRenderer(out_dir=str(tmp_path)).render(
         state, "test_pp_play.vmap", name="test", teams_spec="ffa"
     )
@@ -209,7 +211,9 @@ def test_playability_overlay_alliance_grouping(tmp_path: Path) -> None:
     town = ON.gameplay_pool("grass", "TOWN")[0]
 
     towns = [_town(town, 8, 8), _town(town, 18, 18), _town(town, 8, 18), _town(town, 18, 8)]
-    state = MapState(cells={0: cells}, objs=towns, player_towns=towns)
+    state = MapState(
+        size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
+    )
     p = VmapRenderer(out_dir=str(tmp_path)).render(
         state, "test_pp_play_2v2.vmap", name="test", teams_spec="2v2"
     )
@@ -230,7 +234,9 @@ def test_playability_overlay_random_town_shows_random_in_lobby(tmp_path: Path) -
     grid = [[2] * 24 for _ in range(24)]
     cells = ZE.tile_terrain(grid, 24, 24)
     towns = [_town(rnd, 8, 8)]
-    state = MapState(cells={0: cells}, objs=towns, player_towns=towns)
+    state = MapState(
+        size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
+    )
     p = VmapRenderer(out_dir=str(tmp_path)).render(
         state, "test_pp_play_random.vmap", name="test", teams_spec="ffa"
     )

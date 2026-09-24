@@ -87,6 +87,7 @@ class PickupStep(PipelineStep):
             seal_avoid: set[Tile] = set()
             hard_avoid: set[Tile] = set()
 
+            taken = map_state.taken_tiles(level)
             for zid, zw in sorted(lvl_ws.zones.items()):
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & zw.ts_full
                 forbid = zw.occupied | set(zw.approaches) | zone_seaport_cells
@@ -103,6 +104,7 @@ class PickupStep(PipelineStep):
                     seed=self.seed,
                     bounds=(W, H),
                     entrances=zw.entrances,
+                    taken=taken,
                 )
                 if level == 1:  # place_scatter always tags l=0; retag the underground level
                     for o in sobjs:
@@ -200,5 +202,8 @@ class PickupStep(PipelineStep):
             self.zone_records[level] = zone_records
 
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        map_state.set_objs(self.objs, TerrainGate(ontology))
+        evicted = map_state.settle(self.objs, TerrainGate(ontology))
+        self.objs = map_state.objs
+        if evicted:
+            print(f"  evicted {len(evicted)} object(s) covering another object's visit tile")
         self._ctx.provide(PickupIndex(targets=self.targets, zone_records=self.zone_records))

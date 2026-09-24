@@ -13,7 +13,7 @@ def _run_gameplay(seed: int, size: int = 48, players: int = 2, subterrain: bool 
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        pipeline = Pipeline(Ontology())
+        pipeline = Pipeline(Ontology(), size)
         _ = pipeline.add_step(
             TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain)
         )

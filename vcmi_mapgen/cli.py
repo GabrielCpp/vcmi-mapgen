@@ -187,7 +187,7 @@ def cmd_generate(args: Args) -> None:
         sys.exit("--stop-after gate requires --subterrain (no GateStep otherwise)")
     wmode = args.water_mode or ("none" if args.no_water else "normal")
 
-    pipeline = Pipeline(ONTOLOGY)
+    pipeline = Pipeline(ONTOLOGY, args.size)
     for point_name, step in _generate_steps(args, wmode):
         _ = pipeline.add_step(step)
         if point_name == args.stop_after:

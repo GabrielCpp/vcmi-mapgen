@@ -24,7 +24,7 @@ class VmapReader:
 
     def read(self, path: str) -> MapState:
         doc = VM.read(path)
-        state = MapState()
+        state = MapState(size=max(doc.width, doc.height))
         for level, grid in enumerate(doc.terrain):
             state.surfs[level] = grid
             state.cells[level] = [[decode_tile_string(t) for t in row] for row in grid]
@@ -41,5 +41,4 @@ class VmapReader:
             )
             for o in doc.objects
         ]
-        state.size = max(doc.width, doc.height)
         return state

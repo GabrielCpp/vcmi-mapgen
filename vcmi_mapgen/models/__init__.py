@@ -1,4 +1,13 @@
-from vcmi_mapgen.models.map_state import MapState, PlacementError, PlacementRules
+from vcmi_mapgen.models.map_state import (
+    BORDER,
+    Cover,
+    MapState,
+    PlacementError,
+    PlacementRules,
+    Role,
+    TileView,
+    footprint,
+)
 from vcmi_mapgen.models.objects import (
     Cell,
     Entrance,
@@ -13,7 +22,9 @@ from vcmi_mapgen.models.pockets import Pockets
 from vcmi_mapgen.models.zone_record import ZoneRecord
 
 __all__ = [
+    "BORDER",
     "Cell",
+    "Cover",
     "Entrance",
     "Identity",
     "JsonValue",
@@ -23,7 +34,10 @@ __all__ = [
     "PlacementError",
     "PlacementRules",
     "Pockets",
+    "Role",
     "Tile",
+    "TileView",
     "Zone",
     "ZoneRecord",
+    "footprint",
 ]

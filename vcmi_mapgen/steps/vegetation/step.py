@@ -60,7 +60,7 @@ class VegetationStep(PipelineStep):
 
                 # Seaport footprint in this zone must be excluded from vegetation
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & ts_full
-                forbid = frozenset(zw.occupied) | frozenset(zw.approaches) | zone_seaport_cells
+                forbid = map_state.taken_tiles(level) | zone_seaport_cells
                 mine_cells = {
                     (mcx, mcy)
                     for o in zw.gobjs

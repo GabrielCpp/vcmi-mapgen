@@ -195,9 +195,9 @@ class Pipeline:
     afterward from ``pipeline.ctx`` by its dataclass type.
     """
 
-    def __init__(self, ontology: Ontology) -> None:
+    def __init__(self, ontology: Ontology, size: int) -> None:
         self.ontology: Ontology = ontology
-        self.map_state: MapState = MapState()
+        self.map_state: MapState = MapState(size=size)
         self.ctx: ProviderRegistry = ProviderRegistry()
         self._steps: list[PipelineStep] = []
 

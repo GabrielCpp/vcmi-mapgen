@@ -154,6 +154,7 @@ def place_one(
     options: dict[str, JsonValue] | None = None,
     interactive_only: bool = False,
     clear_of: Container[Tile] | None = None,
+    taken: Container[Tile] | None = None,
 ) -> bool:
     """Shared placement primitive for both scatter and pocket caches: resolve an identity,
     check its footprint against `reach`/`used`, and if legal append the obj and claim its
@@ -190,7 +191,7 @@ def place_one(
         cells = legal_cells(
             ident, x, y, reach, used, bounds=bounds, interactive_only=interactive_only
         )
-        if cells is None:
+        if cells is None or (taken is not None and any(c in taken for c in cells)):
             return False
     used.update(cells)
     o = PlacedObject.at(ident, x, y, purpose=purpose)
@@ -224,6 +225,7 @@ def place_scatter(
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
     entrances: Sequence[Entrance] | None = None,
+    taken: Container[Tile] | None = None,
 ) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
@@ -294,6 +296,7 @@ def place_scatter(
                 t[1],
                 art_share=SCATTER_ART_SHARE,
                 bounds=bounds,
+                taken=taken,
             ):
                 placed.append(t)
 

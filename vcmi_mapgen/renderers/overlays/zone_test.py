@@ -22,7 +22,7 @@ def _state() -> MapState:
             tiles_set=frozenset(ts),
         )
     }
-    return MapState(cells={0: grid}, objs=[], zones={0: zones})
+    return MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[], zones={0: zones})
 
 
 def _rgba_at(img: Image.Image, x: int, y: int) -> tuple[int, int, int, int]:

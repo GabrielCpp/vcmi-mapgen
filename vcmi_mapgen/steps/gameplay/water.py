@@ -16,7 +16,7 @@ from collections.abc import Set as AbstractSet
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.models import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.models import Identity, PlacedObject, Role, Tile, Zone, footprint
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.steps.gameplay.mines import (
     RND_ART,
@@ -225,6 +225,30 @@ def ensure_water_seaports(
         if front:
             structure_fronts.append(front)
 
+    interactive_tiles: set[Tile] = set()
+    covered_tiles: set[Tile] = set()
+
+    def _register(o: PlacedObject) -> None:
+        for tile, role in footprint(o):
+            covered_tiles.add(tile)
+            if role in (Role.VISIT, Role.ENTRANCE, Role.APPROACH):
+                interactive_tiles.add(tile)
+
+    for o in objs:
+        _register(o)
+
+    def _stacks_on_others(ident: Identity, ax: int, ay: int) -> bool:
+        probe = PlacedObject.at(ident, ax, ay, purpose="WATER_TRANSPORT")
+        for tile, role in footprint(probe):
+            if role is Role.APPROACH:
+                if tile in covered_tiles:
+                    return True
+            elif tile in interactive_tiles or (
+                role in (Role.ENTRANCE, Role.VISIT) and tile in covered_tiles
+            ):
+                return True
+        return False
+
     def _blocks_a_structure_front(cand_blk: AbstractSet[Tile]) -> bool:
         return any(front <= (structure_blk | cand_blk) for front in structure_fronts)
 
@@ -284,7 +308,7 @@ def ensure_water_seaports(
             # At least one BXB cell must be 4-adjacent to water
             if not any((bx + dx, by + dy) in water_tiles for bx, by in blk for dx, dy in NB4):
                 return False
-            if _blocks_a_structure_front(set(blk)):
+            if _blocks_a_structure_front(set(blk)) or _stacks_on_others(ident, ax, ay):
                 return False
             return not (
                 check_spacing
@@ -304,6 +328,7 @@ def ensure_water_seaports(
             placed_anchors.append((ax, ay))
             o = PlacedObject.at(ident, ax, ay, purpose="WATER_TRANSPORT")
             new_objs.append(o)
+            _register(o)
             return o
 
         for ax, ay in cap:

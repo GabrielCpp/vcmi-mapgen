@@ -437,5 +437,8 @@ class RepairStep(PipelineStep):
 
         # flatten into self.objs
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        map_state.set_objs(self.objs, TerrainGate(ontology))
+        evicted = map_state.settle(self.objs, TerrainGate(ontology))
+        self.objs = map_state.objs
+        if evicted:
+            print(f"  evicted {len(evicted)} object(s) covering another object's visit tile")
         self._ctx.provide(RepairResult(log=self.log, pockets=pockets_by_level))

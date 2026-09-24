@@ -70,7 +70,7 @@ class PipelineRun:
 @pytest.fixture(scope="module")
 def pipeline_run() -> PipelineRun:
     ontology = Ontology()
-    state = MapState()
+    state = MapState(size=SIZE)
     ctx = ProviderRegistry()
     result: dict[str, tuple[Snapshot, Snapshot]] = {}
     with contextlib.redirect_stdout(io.StringIO()):

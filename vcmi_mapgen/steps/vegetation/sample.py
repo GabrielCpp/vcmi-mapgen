@@ -84,6 +84,7 @@ class VegModel:
     idents: list[list[Identity]]
     iweights: list[list[float]]
     iblk: list[list[list[Tile]]]
+    ifoot: list[list[list[Tile]]]
     sigma: float
     target: float
     runs: dict[str, float]
@@ -123,16 +124,20 @@ def build_model(terrain: str) -> VegModel:
     idents: list[list[Identity]] = []
     iweights: list[list[float]] = []
     iblk: list[list[list[Tile]]] = []
+    ifoot: list[list[list[Tile]]] = []
     for c in cats:
         w = st.anim_w.get(c, {})
         ids = by_cat[c]
         idents.append(ids)
         iweights.append([w.get(i.animation.lower(), 0) + BASE_W for i in ids])
         blk: list[list[Tile]] = []
+        foot: list[list[Tile]] = []
         for i in ids:
             cells = [(cx, cy, b) for cx, cy, b in OR.mask_cells(i.mask, 0, 0)]
             blk.append([(cx, cy) for cx, cy, b in cells if b])
+            foot.append([(cx, cy) for cx, cy, _b in cells])
         iblk.append(blk)
+        ifoot.append(foot)
 
     return VegModel(
         terrain=terrain,
@@ -142,6 +147,7 @@ def build_model(terrain: str) -> VegModel:
         idents=idents,
         iweights=iweights,
         iblk=iblk,
+        ifoot=ifoot,
         sigma=PS.cox_sigma(st),
         target=st.veg_blocked_frac,
         runs=st.runs,
@@ -361,6 +367,8 @@ def sample_zone(
             ):
                 return None
             cells.append((bx, by))
+        if any((x + dx, y + dy) in forbid for dx, dy in model.ifoot[c][ii]):
+            return None
         return cells
 
     total = steps_per_tile * Nt

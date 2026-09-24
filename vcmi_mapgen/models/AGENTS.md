@@ -5,6 +5,14 @@ or derives anything — that logic lives in `steps/`, `kit/`, or `renderers/`. I
 about to add a method here that does more than return/assemble already-known fields,
 it belongs somewhere else.
 
+The one exception is `MapState`, which is the map's grid API: `MapState(size=...)`,
+`at(level, x, y)` (a `TileView` with terrain, zone, covering objects and their roles, or
+the blocking `BORDER` sentinel outside the map), `taken_tiles(level)`, `conflicts(obj)`,
+`place`, `set_objs` and `settle`. Those methods answer questions about tiles and objects
+that are already on the map. They never search or score. Every step that writes objects
+goes through `set_objs`/`settle`, which refuse an object that covers another object's
+visit, entrance or approach tile (a guard may stand on an approach tile).
+
 ## `MapState`
 
 `MapState` is the render-only view of a finished map: exactly what `PngRenderer`,
