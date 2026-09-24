@@ -6,16 +6,18 @@ modeled fields (name, mapLevels, players, teams, victory/defeat) -- the direct
 replacement for both the old "clone a template and patch two keys" writer and
 `VmapRenderer._apply_playability`'s raw zip surgery.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import zipfile
 
-from vcmi_mapgen.kit.vmap.document import VmapDocument
+from vcmi_mapgen.kit.vmap.document import PlayerSlot, VmapDocument, VmapObject
+from vcmi_mapgen.models import JsonValue
 
 
-def _name_struct(s):
+def _name_struct(s: str) -> dict[str, JsonValue]:
     return {
         "exactStrings": [s],
         "localStrings": None,
@@ -25,32 +27,34 @@ def _name_struct(s):
     }
 
 
-def _player_dict(slot):
+def _player_dict(slot: PlayerSlot) -> dict[str, JsonValue]:
     d = dict(slot.extra)
     d["canPlay"] = slot.can_play
     d["mainTown"] = slot.main_town
-    if slot.team is not None:
-        d["team"] = slot.team
-    else:
-        d.pop("team", None)
-    if slot.allowed_factions is not None:
-        d["allowedFactions"] = slot.allowed_factions
-    else:
-        d.pop("allowedFactions", None)
-    if slot.random_faction is not None:
-        d["randomFaction"] = slot.random_faction
-    else:
-        d.pop("randomFaction", None)
+    optional: tuple[tuple[str, JsonValue], ...] = (
+        ("team", slot.team),
+        ("allowedFactions", slot.allowed_factions),
+        ("randomFaction", slot.random_faction),
+    )
+    for key, value in optional:
+        if value is not None:
+            d[key] = value
+        elif key in d:
+            del d[key]
     return d
 
 
-def _object_dict(o):
-    tmpl = {"animation": o.animation, "editorAnimation": o.editor_animation, "mask": o.mask}
+def _object_dict(o: VmapObject) -> dict[str, JsonValue]:
+    tmpl: dict[str, JsonValue] = {
+        "animation": o.animation,
+        "editorAnimation": o.editor_animation,
+        "mask": list[JsonValue](o.mask),
+    }
     if o.visitable_from:
-        tmpl["visitableFrom"] = o.visitable_from
-    d = {
+        tmpl["visitableFrom"] = list[JsonValue](o.visitable_from)
+    d: dict[str, JsonValue] = {
         "instanceName": o.instance_name,
-        "l": o.l,
+        "l": o.level,
         "type": o.type,
         "subtype": o.subtype,
         "template": tmpl,
@@ -62,29 +66,34 @@ def _object_dict(o):
     return d
 
 
-def _build_header(doc: VmapDocument) -> dict:
+def _build_header(doc: VmapDocument) -> dict[str, JsonValue]:
     h = dict(doc.extra)
     h["name"] = _name_struct(doc.name)
-    ml = {"surface": {"height": doc.height, "index": 0, "layer": "core:surface", "width": doc.width}}
+    ml: dict[str, JsonValue] = {
+        "surface": {"height": doc.height, "index": 0, "layer": "core:surface", "width": doc.width}
+    }
     if doc.two_level:
         under = doc.terrain[1]
         ml["underground"] = {
-            "height": len(under), "index": 1, "layer": "core:underground",
+            "height": len(under),
+            "index": 1,
+            "layer": "core:underground",
             "width": len(under[0]) if under else doc.width,
         }
     h["mapLevels"] = ml
     h["players"] = {slot.id: _player_dict(slot) for slot in doc.players}
     if doc.teams is not None:
-        h["teams"] = doc.teams
-    else:
-        h.pop("teams", None)
-    for key, value in (
+        h["teams"] = [list[JsonValue](group) for group in doc.teams]
+    elif "teams" in h:
+        del h["teams"]
+    optional: tuple[tuple[str, JsonValue], ...] = (
         ("victoryIconIndex", doc.victory_icon_index),
         ("victoryMessage", doc.victory_message),
         ("defeatIconIndex", doc.defeat_icon_index),
         ("defeatMessage", doc.defeat_message),
         ("triggeredEvents", doc.triggered_events),
-    ):
+    )
+    for key, value in optional:
         if value is not None:
             h[key] = value
     return h

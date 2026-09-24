@@ -1,17 +1,12 @@
 """VmapReader — load a .vmap file into a MapState for rendering."""
+
 from __future__ import annotations
 
-import json
-import re
-import zipfile
-
-from vcmi_mapgen.models import MapState
-
-
-def _relaxed(text: str):
-    text = re.sub(r"//[^\n]*", "", text)
-    text = re.sub(r",(\s*[}\]])", r"\1", text)
-    return json.loads(text)
+from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.kit import vmap as VM
+from vcmi_mapgen.kit.objects import type_to_purpose
+from vcmi_mapgen.kit.vmap.terrain import decode_tile_string
+from vcmi_mapgen.models import MapState, PlacedObject
 
 
 class VmapReader:
@@ -28,34 +23,23 @@ class VmapReader:
     """
 
     def read(self, path: str) -> MapState:
-        with zipfile.ZipFile(path) as z:
-            names = z.namelist()
-            header = _relaxed(z.read("header.json").decode())
-            surf = _relaxed(z.read("surface_terrain.json").decode())
-            under = (
-                _relaxed(z.read("underground_terrain.json").decode())
-                if "underground_terrain.json" in names
-                else None
-            )
-            objs = _relaxed(z.read("objects.json").decode("utf-8", "replace"))
-
+        doc = VM.read(path)
         state = MapState()
-        state.surfs = {0: surf}
-        state.cells = {0: surf}
-        if under is not None:
-            state.surfs[1] = under
-            state.cells[1] = under
-        state.objs = objs
-
-        # infer size from the surface grid
-        if surf and surf[0]:
-            state.size = max(len(surf[0]), len(surf))
-
-        # subterrain flag
-        state.subterrain = under is not None
-
-        # carry header name if available
-        if isinstance(header, dict):
-            state.extras["vmap_name"] = header.get("name", "")
-
+        for level, grid in enumerate(doc.terrain):
+            state.surfs[level] = grid
+            state.cells[level] = [[decode_tile_string(t) for t in row] for row in grid]
+        state.objs = [
+            PlacedObject(
+                x=o.x,
+                y=o.y,
+                level=o.level,
+                purpose=type_to_purpose(o.type) or "UNKNOWN",
+                type=o.type,
+                subtype=o.subtype,
+                animation=o.animation,
+                mask=ON.mask_of(o.animation) if ON.has_animation(o.animation) else tuple(o.mask),
+            )
+            for o in doc.objects
+        ]
+        state.size = max(doc.width, doc.height)
         return state

@@ -5,42 +5,65 @@ in raster order with back-off. This reproduces the real LOCAL texture (patch siz
 coastlines, how terrains border each other) instead of arbitrary noise blobs.
 """
 
-import random, collections
+import collections
+import random
+from dataclasses import dataclass
 
 from vcmi_mapgen.kit import objects as OR
 
 
-def learn(level_index):
+@dataclass(slots=True)
+class MarkovModel:
+    full: collections.defaultdict[tuple[int, int, int], collections.Counter[int]]
+    pair: collections.defaultdict[tuple[int, int], collections.Counter[int]]
+    one: collections.defaultdict[tuple[int], collections.Counter[int]]
+    marg: collections.Counter[int]
+
+
+@dataclass(slots=True)
+class MarkovModel4:
+    full: collections.defaultdict[tuple[int, int, int, int], collections.Counter[int]]
+    horiz: collections.defaultdict[tuple[int, int], collections.Counter[int]]
+    vert: collections.defaultdict[tuple[int, int], collections.Counter[int]]
+
+
+def learn(level_index: int) -> MarkovModel:
     """counts for P(center | left, up, upleft) over real maps at the given level."""
-    full = collections.defaultdict(collections.Counter)  # (l,u,ul)->center
-    pair = collections.defaultdict(collections.Counter)  # (l,u)->center
-    one = collections.defaultdict(collections.Counter)  # (l,)->center
-    marg = collections.Counter()
+    full: collections.defaultdict[tuple[int, int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (l,u,ul)->center
+    pair: collections.defaultdict[tuple[int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (l,u)->center
+    one: collections.defaultdict[tuple[int], collections.Counter[int]] = collections.defaultdict(
+        collections.Counter
+    )  # (l,)->center
+    marg: collections.Counter[int] = collections.Counter()
     for name in OR.all_map_names():
         m = OR.load_faithful(name)
-        if level_index >= len(m["terrain"]):
+        if level_index >= len(m.terrain):
             continue
-        g = m["terrain"][level_index]
+        g = m.terrain[level_index]
         H = len(g)
         W = len(g[0])
-        T = [[c["t"] for c in row] for row in g]
+        T = [[c.t for c in row] for row in g]
         for y in range(H):
             for x in range(W):
                 c = T[y][x]
                 marg[c] += 1
-                l = T[y][x - 1] if x > 0 else None
+                lf = T[y][x - 1] if x > 0 else None
                 u = T[y - 1][x] if y > 0 else None
                 ul = T[y - 1][x - 1] if (x > 0 and y > 0) else None
-                if l is not None and u is not None and ul is not None:
-                    full[(l, u, ul)][c] += 1
-                if l is not None and u is not None:
-                    pair[(l, u)][c] += 1
-                if l is not None:
-                    one[(l,)][c] += 1
-    return {"full": full, "pair": pair, "one": one, "marg": marg}
+                if lf is not None and u is not None and ul is not None:
+                    full[(lf, u, ul)][c] += 1
+                if lf is not None and u is not None:
+                    pair[(lf, u)][c] += 1
+                if lf is not None:
+                    one[(lf,)][c] += 1
+    return MarkovModel(full=full, pair=pair, one=one, marg=marg)
 
 
-def _sample(counter, rnd):
+def sample(counter: collections.Counter[int], rnd: random.Random) -> int:
     tot = sum(counter.values())
     r = rnd.random() * tot
     acc = 0
@@ -51,79 +74,91 @@ def _sample(counter, rnd):
     return next(iter(counter))
 
 
-def generate(model, W, H, rnd, thresh=12):
+def generate(
+    model: MarkovModel, W: int, H: int, rnd: random.Random, thresh: int = 12
+) -> list[list[int]]:
     g = [[0] * W for _ in range(H)]
     for y in range(H):
         for x in range(W):
-            l = g[y][x - 1] if x > 0 else None
+            lf = g[y][x - 1] if x > 0 else None
             u = g[y - 1][x] if y > 0 else None
             ul = g[y - 1][x - 1] if (x > 0 and y > 0) else None
-            dist = None
+            dist: collections.Counter[int]
             if (
-                l is not None
+                lf is not None
                 and u is not None
                 and ul is not None
-                and sum(model["full"][(l, u, ul)].values()) >= thresh
+                and sum(model.full[(lf, u, ul)].values()) >= thresh
             ):
-                dist = model["full"][(l, u, ul)]
-            elif l is not None and u is not None and sum(model["pair"][(l, u)].values()) >= thresh:
-                dist = model["pair"][(l, u)]
-            elif l is not None and sum(model["one"][(l,)].values()) >= 1:
-                dist = model["one"][(l,)]
+                dist = model.full[(lf, u, ul)]
+            elif lf is not None and u is not None and sum(model.pair[(lf, u)].values()) >= thresh:
+                dist = model.pair[(lf, u)]
+            elif lf is not None and sum(model.one[(lf,)].values()) >= 1:
+                dist = model.one[(lf,)]
             else:
-                dist = model["marg"]
-            g[y][x] = _sample(dist, rnd)
+                dist = model.marg
+            g[y][x] = sample(dist, rnd)
     return g
 
 
-def learn4(level_index):
+def learn4(level_index: int) -> MarkovModel4:
     """P(center | left,up,right,down) for isotropic Gibbs, with back-off tables."""
-    full = collections.defaultdict(collections.Counter)  # (l,u,r,d)->c
-    pair = collections.defaultdict(
-        collections.Counter
-    )  # frozenset-ish (sorted 2 of nbrs) backoff via opposite pairs
-    horiz = collections.defaultdict(collections.Counter)  # (l,r)->c
-    vert = collections.defaultdict(collections.Counter)  # (u,d)->c
+    full: collections.defaultdict[tuple[int, int, int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (l,u,r,d)->c
+    horiz: collections.defaultdict[tuple[int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (l,r)->c
+    vert: collections.defaultdict[tuple[int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (u,d)->c
     for name in OR.all_map_names():
         m = OR.load_faithful(name)
-        if level_index >= len(m["terrain"]):
+        if level_index >= len(m.terrain):
             continue
-        g = m["terrain"][level_index]
+        g = m.terrain[level_index]
         H = len(g)
         W = len(g[0])
-        T = [[c["t"] for c in row] for row in g]
+        T = [[c.t for c in row] for row in g]
         for y in range(1, H - 1):
             for x in range(1, W - 1):
                 c = T[y][x]
-                l = T[y][x - 1]
+                lf = T[y][x - 1]
                 u = T[y - 1][x]
                 r = T[y][x + 1]
                 d = T[y + 1][x]
-                full[(l, u, r, d)][c] += 1
-                horiz[(l, r)][c] += 1
+                full[(lf, u, r, d)][c] += 1
+                horiz[(lf, r)][c] += 1
                 vert[(u, d)][c] += 1
-    return {"full": full, "horiz": horiz, "vert": vert}
+    return MarkovModel4(full=full, horiz=horiz, vert=vert)
 
 
-def gibbs(grid, M4, marg, rnd, sweeps=5, thresh=10):
+def gibbs(
+    grid: list[list[int]],
+    M4: MarkovModel4,
+    marg: collections.Counter[int],
+    rnd: random.Random,
+    sweeps: int = 5,
+    thresh: int = 10,
+) -> list[list[int]]:
     H = len(grid)
     W = len(grid[0])
-    for s in range(sweeps):
+    for _ in range(sweeps):
         for y in range(1, H - 1):
             for x in range(1, W - 1):
-                l = grid[y][x - 1]
+                lf = grid[y][x - 1]
                 u = grid[y - 1][x]
                 r = grid[y][x + 1]
                 d = grid[y + 1][x]
-                if sum(M4["full"][(l, u, r, d)].values()) >= thresh:
-                    dist = M4["full"][(l, u, r, d)]
+                if sum(M4.full[(lf, u, r, d)].values()) >= thresh:
+                    dist = M4.full[(lf, u, r, d)]
                 else:
-                    dist = collections.Counter()
-                    dist.update(M4["horiz"][(l, r)])
-                    dist.update(M4["vert"][(u, d)])
+                    dist = collections.Counter[int]()
+                    dist.update(M4.horiz[(lf, r)])
+                    dist.update(M4.vert[(u, d)])
                     if not dist:
                         dist = marg
-                grid[y][x] = _sample(dist, rnd)
+                grid[y][x] = sample(dist, rnd)
     return grid
 
 
@@ -132,12 +167,11 @@ if __name__ == "__main__":
     print("learning surface terrain Markov from 159 maps...")
     M = learn(0)
     M4 = learn4(0)
-    print(
-        f"  contexts: full={len(M['full'])} pair={len(M['pair'])}  marginal terrains={dict(M['marg'].most_common())}"
-    )
+    marginal = dict(M.marg.most_common())
+    print(f"  contexts: full={len(M.full)} pair={len(M.pair)}  marginal terrains={marginal}")
     W = H = 72
     gen = generate(M, W, H, rnd)  # raster init
     geng = [row[:] for row in gen]
-    gibbs(geng, M4, M["marg"], rnd, sweeps=6)  # isotropic smoothing
+    _ = gibbs(geng, M4, M.marg, rnd, sweeps=6)  # isotropic smoothing
     hist = collections.Counter(t for row in geng for t in row)
     print("  post-Gibbs terrain histogram:", dict(hist.most_common()))

@@ -1,10 +1,12 @@
 import os
+from pathlib import Path
 
 from vcmi_mapgen.kit.vmap import reader, writer
 from vcmi_mapgen.kit.vmap.document import PlayerSlot, VmapDocument, VmapObject
+from vcmi_mapgen.models import JsonValue
 
 
-def _sample_doc():
+def _sample_doc() -> VmapDocument:
     return VmapDocument(
         name="Round Trip Map",
         width=3,
@@ -13,17 +15,36 @@ def _sample_doc():
         terrain=[[["gr0_", "gr1_", "wt2_"], ["gr3_", "gr4_", "rc5_"]]],
         objects=[
             VmapObject(
-                instance_name="mine_1", type="mine", subtype="7", l=0, x=2, y=1,
-                animation="avlmn2", mask=["BAB"], visitable_from=["+++", "+-+", "+++"],
+                instance_name="mine_1",
+                type="mine",
+                subtype="7",
+                level=0,
+                x=2,
+                y=1,
+                animation="avlmn2",
+                mask=["BAB"],
+                visitable_from=["+++", "+-+", "+++"],
                 options={"owner": "red"},
             ),
-            VmapObject(instance_name="tree_1", type="tree", subtype="0", l=0, x=0, y=0,
-                       animation="avltree", mask=["V"]),
+            VmapObject(
+                instance_name="tree_1",
+                type="tree",
+                subtype="0",
+                level=0,
+                x=0,
+                y=0,
+                animation="avltree",
+                mask=["V"],
+            ),
         ],
         players=[
-            PlayerSlot(id="red", can_play="PlayerOrAI", team=0,
-                       main_town={"generateHero": True, "l": 0, "x": 5, "y": 5},
-                       extra={"aiTactic": "random"}),
+            PlayerSlot(
+                id="red",
+                can_play="PlayerOrAI",
+                team=0,
+                main_town={"generateHero": True, "l": 0, "x": 5, "y": 5},
+                extra={"aiTactic": "random"},
+            ),
             PlayerSlot(id="blue", can_play="false"),
         ],
         teams=[["red", "blue"]],
@@ -34,7 +55,7 @@ def _sample_doc():
     )
 
 
-def test_write_then_read_round_trips_every_modeled_field(tmp_path):
+def test_write_then_read_round_trips_every_modeled_field(tmp_path: Path) -> None:
     doc = _sample_doc()
     path = writer.write(doc, os.path.join(tmp_path, "roundtrip.vmap"))
 
@@ -52,16 +73,17 @@ def test_write_then_read_round_trips_every_modeled_field(tmp_path):
     assert back.extra["versionMajor"] == 3
 
 
-def test_unmodeled_header_keys_survive_a_write_read_cycle(tmp_path):
+def test_unmodeled_header_keys_survive_a_write_read_cycle(tmp_path: Path) -> None:
     """A hand-authored .vmap can carry keys this model doesn't know about (rumors,
     disposedHeroes, ...) -- they must not be dropped on a read-then-write pass."""
     doc = _sample_doc()
-    doc.extra["rumors"] = [{"name": "A Rumor", "text": {}}]
+    rumors: list[JsonValue] = [{"name": "A Rumor", "text": {}}]
+    doc.extra["rumors"] = rumors
     path = writer.write(doc, os.path.join(tmp_path, "extra.vmap"))
 
     back = reader.read(path)
-    assert back.extra["rumors"] == [{"name": "A Rumor", "text": {}}]
+    assert back.extra["rumors"] == rumors
 
     # and it keeps surviving a second cycle
     path2 = writer.write(back, os.path.join(tmp_path, "extra2.vmap"))
-    assert reader.read(path2).extra["rumors"] == [{"name": "A Rumor", "text": {}}]
+    assert reader.read(path2).extra["rumors"] == rumors

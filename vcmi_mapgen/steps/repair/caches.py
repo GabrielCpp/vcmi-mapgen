@@ -1,19 +1,32 @@
 """Guarded pocket caches + Seer Hut quests — Repair-only (always ran from
 `_repair_and_finish_level`, never from `_run_level`'s per-zone passes).
 """
-import collections
 
-from vcmi_mapgen.kit import objects as OR
+import collections
+import random
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
+from itertools import pairwise
+
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import NB8
 from vcmi_mapgen.kit.topology import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
+from vcmi_mapgen.models import Identity, JsonValue, Mask, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.steps.gameplay.mines import TerrainStats, mine_gameplay
 from vcmi_mapgen.steps.gate.gates import rnd_monster
-from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
 from vcmi_mapgen.steps.pickup.loot_zones import (
-    _FILL_EXCL_ANIMS, _LOOT_CHEST_TYPES, _solo_visit_pool,
+    FILL_EXCL_ANIMS,
+    LOOT_CHEST_TYPES,
+    solo_visit_pool,
 )
 from vcmi_mapgen.steps.pickup.scatter import (
-    PANDORA_CREATURES, _RW_LIMITER, _RW_REWARD, _RW_TEXT, _place_one, place_scatter,
+    PANDORA_CREATURES,
+    RW_LIMITER,
+    RW_REWARD,
+    RW_TEXT,
+    place_one,
+    place_scatter,
 )
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
@@ -21,13 +34,13 @@ from vcmi_mapgen.steps.pickup.scatter import (
 # The monster level is derived from resources + visitable structures placed in the pocket;
 # the artifact at the deepest tile then matches that level so the guard's strength is
 # always proportional to the prize behind it.
-_ART_BY_LVL = ["avarnd1", "avarnd1", "avarnd2", "avarnd3", "avarnd3", "avarand"]
+ART_BY_LVL = ["avarnd1", "avarnd1", "avarnd2", "avarnd3", "avarnd3", "avarand"]
 
 # Types that must maintain a minimum map-fraction separation between any two instances in pockets.
 _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
 
 
-def _guard_zoc(mask, x, y):
+def _guard_zoc(mask: Mask, x: int, y: int) -> set[Tile]:
     """A guard's zone of control: its own interactive (approach) cell(s) plus every
     8-neighbour -- in H3, stepping adjacent to a wandering monster forces combat, so a
     guard blocks more than the single tile it stands on. Used to test whether a NEW
@@ -40,12 +53,12 @@ def _guard_zoc(mask, x, y):
     return zoc
 
 
-def _approach_tiles(mask, x, y, passable):
+def _approach_tiles(mask: Mask, x: int, y: int, passable: Container[Tile]) -> set[Tile]:
     """Passable tiles a hero could stand on to visit this object -- its own interactive
     cell(s) when walk-on, plus every passable 8-neighbour of them (covers a
     blocked-entrance 'X' interactive cell, which is clicked from an adjacent tile, never
     stood on itself)."""
-    ap = set()
+    ap: set[Tile] = set()
     for ix, iy in OR.mask_interactive_cells(mask, x, y):
         if (ix, iy) in passable:
             ap.add((ix, iy))
@@ -56,7 +69,12 @@ def _approach_tiles(mask, x, y, passable):
     return ap
 
 
-def _reachable(passable, blocked, sources, targets):
+def _reachable(
+    passable: AbstractSet[Tile],
+    blocked: AbstractSet[Tile],
+    sources: AbstractSet[Tile],
+    targets: AbstractSet[Tile],
+) -> bool:
     """8-connected BFS: can a hero reach any `targets` tile from `sources` while never
     stepping into `blocked`? `sources`/`targets` themselves are always allowed (they are
     the actual endpoints, not obstacles)."""
@@ -75,7 +93,12 @@ def _reachable(passable, blocked, sources, targets):
     return bool(seen & targets)
 
 
-def home_mine_protect_pairs(existing_objs, zone_records, home_zids, global_true):
+def home_mine_protect_pairs(
+    existing_objs: Sequence[PlacedObject],
+    zone_records: Sequence[ZoneRecord],
+    home_zids: Collection[int],
+    global_true: Container[Tile],
+) -> tuple[list[tuple[frozenset[Tile], frozenset[Tile]]], set[Tile]]:
     """(town_approach, mine_approach) pairs that a NEW pocket guard must never sever --
     one pair per force_town zone's own sawmill/orePit (`home_zids`), for every player
     town on this level (s2-z1 diagnosis, 2026-09: a pocket guard placed right by the
@@ -87,49 +110,50 @@ def home_mine_protect_pairs(existing_objs, zone_records, home_zids, global_true)
     as they're accepted. Returns (protect_pairs, base_blocked_zoc)."""
     if not home_zids:
         return [], set()
-    ts_by_zid = {zr["zid"]: zr["ts"] for zr in zone_records}
-    mine_cells = set()
+    ts_by_zid = {zr.zid: zr.ts for zr in zone_records}
+    mine_cells: set[Tile] = set()
     for o in existing_objs:
-        if o.get("purpose") == "MINE":
-            mask = o.get("mask") or (o.get("template") or {}).get("mask")
+        if o.purpose == "MINE":
+            mask = o.mask
             if mask:
-                mine_cells |= {(cx, cy) for cx, cy, _b in OR.mask_cells(mask, o["x"], o["y"])}
+                mine_cells |= {(cx, cy) for cx, cy, _b in OR.mask_cells(mask, o.x, o.y)}
 
-    def _is_mine_guard(o):
-        return any(max(abs(o["x"] - mx), abs(o["y"] - my)) <= 1 for mx, my in mine_cells)
+    def _is_mine_guard(o: PlacedObject) -> bool:
+        return any(max(abs(o.x - mx), abs(o.y - my)) <= 1 for mx, my in mine_cells)
 
-    base_blocked = set()
+    base_blocked: set[Tile] = set()
     for o in existing_objs:
-        if o.get("purpose") == "GUARD" and not _is_mine_guard(o):
-            mask = o.get("mask") or (o.get("template") or {}).get("mask")
+        if o.purpose == "GUARD" and not _is_mine_guard(o):
+            mask = o.mask
             if mask:
-                base_blocked |= _guard_zoc(mask, o["x"], o["y"])
+                base_blocked |= _guard_zoc(mask, o.x, o.y)
 
-    pairs = []
+    pairs: list[tuple[frozenset[Tile], frozenset[Tile]]] = []
     for zid in home_zids:
         ts = ts_by_zid.get(zid)
         if ts is None:
             continue
-        town = next((o for o in existing_objs
-                    if o.get("purpose") == "TOWN" and (o["x"], o["y"]) in ts), None)
+        town = next(
+            (o for o in existing_objs if o.purpose == "TOWN" and (o.x, o.y) in ts),
+            None,
+        )
         if town is None:
             continue
-        t_mask = town.get("mask") or (town.get("template") or {}).get("mask")
-        town_ap = _approach_tiles(t_mask, town["x"], town["y"], global_true)
+        town_ap = _approach_tiles(town.mask, town.x, town.y, global_true)
         if not town_ap:
             continue
         for o in existing_objs:
-            if not (o.get("purpose") == "MINE" and o.get("subtype") in ("sawmill", "orePit")
-                    and (o["x"], o["y"]) in ts):
+            if not (
+                o.purpose == "MINE" and o.subtype in ("sawmill", "orePit") and (o.x, o.y) in ts
+            ):
                 continue
-            m_mask = o.get("mask") or (o.get("template") or {}).get("mask")
-            mine_ap = _approach_tiles(m_mask, o["x"], o["y"], global_true)
+            mine_ap = _approach_tiles(o.mask, o.x, o.y, global_true)
             if mine_ap:
                 pairs.append((frozenset(town_ap), frozenset(mine_ap)))
     return pairs, base_blocked
 
 
-def _reach8(open_set, seed):
+def _reach8(open_set: Container[Tile], seed: Iterable[Tile]) -> set[Tile]:
     """8-connected BFS over the true `open_set` (the physical open/blocked tile layer),
     seeded from tiles already proven reachable by `_web_dist`. Extends that 4-connected web
     reach with anything only joined by a diagonal step — H3 heroes move diagonally, so a
@@ -150,7 +174,10 @@ def _reach8(open_set, seed):
     return d
 
 
-def _dedupe_pockets(pockets, reach=frozenset()):
+def dedupe_pockets(
+    pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]],
+    reach: Container[Tile] = (),
+) -> list[list[tuple[Tile, frozenset[Tile], frozenset[Tile]]]]:
     """Collapse near-duplicate mouth candidates into one CANDIDATE LIST per genuine physical
     nook. `find_pockets` returns one entry per candidate MOUTH tile, but several nearby
     tiles each independently qualify as "the" guard spot of the same nook (a ZoC-neck is 3x3,
@@ -168,51 +195,55 @@ def _dedupe_pockets(pockets, reach=frozenset()):
     triple. The caller tries candidates within a blob in order and falls back to the next
     one when the top pick's mouth tile is unusable."""
     items = [(g, pocket, mouth_fs) for g, (pocket, mouth_fs) in pockets.items()]
-    owner = collections.defaultdict(list)
-    for idx, (g, pocket, mouth_fs) in enumerate(items):
+    owner: collections.defaultdict[Tile, list[int]] = collections.defaultdict(list)
+    for idx, (g, pocket, _mouth_fs) in enumerate(items):
         for t in (g, *pocket):
             owner[t].append(idx)
     parent = list(range(len(items)))
 
-    def find(i):
+    def find(i: int) -> int:
         while parent[i] != i:
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
 
     for idxs in owner.values():
-        for a, b in zip(idxs, idxs[1:]):
+        for a, b in pairwise(idxs):
             ra, rb = find(a), find(b)
             if ra != rb:
                 parent[ra] = rb
 
-    groups = collections.defaultdict(list)
+    groups: collections.defaultdict[int, list[tuple[Tile, frozenset[Tile], frozenset[Tile]]]] = (
+        collections.defaultdict(list)
+    )
     for idx, (g, pocket, mouth_fs) in enumerate(items):
         groups[find(idx)].append((g, pocket, mouth_fs))
-    blobs = [sorted(cands, key=lambda kv: mouth_key(reach, kv[0], kv[1]))
-             for cands in groups.values()]
+    blobs = [
+        sorted(cands, key=lambda kv: mouth_key(reach, kv[0], kv[1])) for cands in groups.values()
+    ]
     return sorted(blobs, key=lambda cands: mouth_key(reach, cands[0][0], cands[0][1]))
 
 
-def _seerhut_reward(rng):
+def _seerhut_reward(rng: random.Random) -> dict[str, JsonValue]:
     """The seer hut's own `options.rewardable` payout, paid once its quest's artifact
     condition is met -- same flavour draw as `_pandora_reward` but a tier up (VCMI's own
     RMG seer-hut samples pay in the 5-figure XP / dozens-of-creatures range, well above
     pandora's open-scatter tier: a seer hut costs the hero a whole side-quest, not a
     five-second detour)."""
-    reward = dict(_RW_REWARD)
+    reward = dict(RW_REWARD)
     flavor = rng.choices(("gold", "experience", "creatures"), weights=(35, 40, 25), k=1)[0]
     if flavor == "gold":
         reward["resources"] = {"gold": rng.choice((3000, 5000, 7500, 10000, 15000))}
     elif flavor == "experience":
         reward["heroExperience"] = rng.choice((2500, 5000, 7500, 10000, 15000))
     else:
-        reward["creatures"] = [{"type": f"core:{rng.choice(PANDORA_CREATURES)}",
-                                "amount": rng.randint(5, 20)}]
+        reward["creatures"] = [
+            {"type": f"core:{rng.choice(PANDORA_CREATURES)}", "amount": rng.randint(5, 20)}
+        ]
     return reward
 
 
-def _seerhut_quest(rng, artifact_subtype):
+def _seerhut_quest(rng: random.Random, artifact_subtype: str) -> dict[str, JsonValue]:
     """VCMI 'Quest' + 'Rewardable' payload for a seerHut (schema captured verbatim from two
     real VCMI-RMG .vmap seerHut instances): a MISSION_ARTIFACT quest -- the hero must be
     CARRYING one specific named artifact -- gated via `quest.limiter.artifacts`. The sibling
@@ -220,19 +251,28 @@ def _seerhut_quest(rng, artifact_subtype):
     base limiter: the artifact CHECK lives only in `quest.limiter`, confirmed against both
     reference instances, whose own `rewardable` limiter carries no `artifacts` restriction of
     its own."""
-    quest_limiter = dict(_RW_LIMITER, artifacts=[f"core:{artifact_subtype}"])
+    quest_limiter: dict[str, JsonValue] = {
+        **RW_LIMITER,
+        "artifacts": [f"core:{artifact_subtype}"],
+    }
     return {
         "quest": {
-            "completedText": dict(_RW_TEXT),
-            "firstVisitText": dict(_RW_TEXT),
+            "completedText": dict(RW_TEXT),
+            "firstVisitText": dict(RW_TEXT),
             "limiter": quest_limiter,
-            "nextVisitText": dict(_RW_TEXT),
+            "nextVisitText": dict(RW_TEXT),
         },
         "rewardable": {
-            "info": [{"limiter": dict(_RW_LIMITER), "message": dict(_RW_TEXT),
-                     "reward": _seerhut_reward(rng), "visitType": 1}],
+            "info": [
+                {
+                    "limiter": dict(RW_LIMITER),
+                    "message": dict(RW_TEXT),
+                    "reward": _seerhut_reward(rng),
+                    "visitType": 1,
+                }
+            ],
             "infoWindowType": 0,
-            "onSelect": dict(_RW_TEXT),
+            "onSelect": dict(RW_TEXT),
             "resetParameters": {"period": 0},
             "selectMode": "selectFirst",
             "visitMode": "unlimited",
@@ -240,8 +280,15 @@ def _seerhut_quest(rng, artifact_subtype):
     }
 
 
-def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozenset(),
-                        precomputed_pockets=None, existing_objs=(), home_zids=frozenset()):
+def place_pocket_caches(
+    zone_records: Sequence[ZoneRecord],
+    seed: int = 1,
+    bounds: tuple[int, int] | None = None,
+    border_guards: Container[Tile] = (),
+    precomputed_pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]] | None = None,
+    existing_objs: Sequence[PlacedObject] = (),
+    home_zids: Collection[int] = (),
+) -> tuple[list[PlacedObject], int, dict[Tile, float]]:
     """Guarded caches in genuine geometric pockets — found in ONE global, zone-independent
     pass over the WHOLE map's TRUE physical passability, run once after every zone's
     terrain, vegetation and scatter is finalized. `zone_records` is a list of
@@ -257,7 +304,7 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     User-mandated fix (2026-07-04): pocket detection must not run per zone against that
     zone's own `reach` alone — a tile absent from one zone's reach is NOT necessarily
     blocking, it may just be a NEIGHBOURING zone's open ground, and zone borders are wide
-    gate bands, not walls (see `kit.topology._zone_gate_bands`). Fix #1: build one GLOBAL
+    gate bands, not walls (see `kit.topology.zone_gate_bands`). Fix #1: build one GLOBAL
     reachable set (union of every zone's remaining reach) instead of a per-zone one.
 
     Third fix, same day (user: "there is something wrong in the way you classify open tile,
@@ -299,41 +346,46 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     its normalized depth (0 = at the mouth, 1 = deepest tile) -- the one piece of pocket
     geometry a renderer needs, computed once here so nothing downstream (the debug
     overlay) has to re-derive pocket membership from placed guard objects to draw it."""
-    import random
-    zone_of = {}
-    terrain_of = {}
-    global_open = set()
-    global_true = set()
-    global_reach = set()
-    used = set()
-    pocket_depth_by_tile: dict = {}
+    zone_of: dict[Tile, int] = {}
+    terrain_of: dict[int, str] = {}
+    global_open: set[Tile] = set()
+    global_true: set[Tile] = set()
+    global_reach: set[Tile] = set()
+    used: set[Tile] = set()
+    pocket_depth_by_tile: dict[Tile, float] = {}
     _sep_sq = (bounds[0] / 5.0) ** 2 if bounds else 0.0
-    _spaced = {}  # type -> [(x, y)] of placed instances in _POCKET_SPACED_TYPES
+    _spaced: dict[
+        str, list[Tile]
+    ] = {}  # type -> [(x, y)] of placed instances in _POCKET_SPACED_TYPES
 
-    def _spaced_ok(typ, tx, ty):
+    def _spaced_ok(typ: str | None, tx: int, ty: int) -> bool:
         """True if (tx, ty) is far enough from all prior same-type instances."""
-        return (not _sep_sq or typ not in _POCKET_SPACED_TYPES
-                or not any((tx - px) ** 2 + (ty - py) ** 2 < _sep_sq
-                           for px, py in _spaced.get(typ, ())))
+        return (
+            not _sep_sq
+            or typ is None
+            or typ not in _POCKET_SPACED_TYPES
+            or not any((tx - px) ** 2 + (ty - py) ** 2 < _sep_sq for px, py in _spaced.get(typ, ()))
+        )
 
-    def _register(ident, tx, ty):
-        if ident and ident.get("type") in _POCKET_SPACED_TYPES:
-            _spaced.setdefault(ident["type"], []).append((tx, ty))
+    def _register(ident: Identity | None, tx: int, ty: int) -> None:
+        if ident and ident.type is not None and ident.type in _POCKET_SPACED_TYPES:
+            _spaced.setdefault(ident.type, []).append((tx, ty))
+
     for zr in zone_records:
-        zid = zr["zid"]
-        for t in zr["ts"]:
+        zid = zr.zid
+        for t in zr.ts:
             zone_of[t] = zid
-        terrain_of[zid] = zr["terrain"]
-        used |= zr["used"]           # always claim used cells — no double-stacking
-        if zr.get("loot_zone"):
+        terrain_of[zid] = zr.terrain
+        used |= zr.used  # always claim used cells — no double-stacking
+        if zr.loot_zone:
             # Include in geometry (global_true) so external tiles adjacent to the loot
             # zone see passable neighbours and don't form false pockets against its wall.
             # Exclude from open/reach so no guard or cache can be placed inside.
-            global_true |= zr.get("passable", zr["open_set"])
+            global_true |= zr.passable
             continue
-        global_open |= zr["open_set"]
-        global_true |= zr.get("passable", zr["open_set"])
-        global_reach |= (zr["reach"] - zr["used"])
+        global_open |= zr.open_set
+        global_true |= zr.passable
+        global_reach |= zr.reach - zr.used
     global_reach8 = _reach8(global_true, global_reach)
     global_place = global_reach8 & global_open
 
@@ -343,16 +395,31 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
     # its own new pocket guards, so two pocket guards can't jointly seal a corridor
     # either even if neither would alone.
     protect_pairs, protect_blocked = home_mine_protect_pairs(
-        existing_objs, zone_records, home_zids, global_true)
+        existing_objs, zone_records, home_zids, global_true
+    )
+    protect_pairs = [
+        (src, dst)
+        for src, dst in protect_pairs
+        if _reachable(global_true, protect_blocked, src, dst)
+    ]
 
+    decor_blk = OR.decor_blocking_cells(existing_objs)
     raw = precomputed_pockets if precomputed_pockets is not None else find_pockets(global_true)
-    blobs = _dedupe_pockets(raw, global_true)
-    guard_mask = rnd_monster(1)["mask"]  # uniform across levels 1-7; used to pre-check fit
-    objs = []
-    placed_mouths = []
+    blobs = dedupe_pockets(raw, global_true)
+    guard_mask = rnd_monster(1).mask  # uniform across levels 1-7; used to pre-check fit
+    objs: list[PlacedObject] = []
+    placed_mouths: list[Tile] = []
 
-    def _pocket_fill(fill_spots, pool_res, pool_art, pool_chest, pool_vis, rng, st,
-                     ref_mouth, terrain, reach=None):
+    def _pocket_fill(
+        fill_spots: Sequence[Tile],
+        pool_res: Sequence[Identity],
+        pool_art: Sequence[Identity],
+        pool_chest: Sequence[Identity],
+        pool_vis: Sequence[Identity],
+        rng: random.Random,
+        st: TerrainStats,
+        reach: AbstractSet[Tile] | None = None,
+    ) -> None:
         """50 % resource | 25 % chest (non-artifact) | 25 % hero structure for each fill tile.
 
         reach: placement eligibility set — defaults to global_place (strict: open_set &
@@ -363,35 +430,110 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         for t in fill_spots:
             roll = rng.random()
             if roll < 0.50:
-                _place_one(objs, used, _r, rng, st, "RESOURCE_PILE", pool_res,
-                           t[0], t[1], cache=True, bounds=bounds, interactive_only=True)
+                _ = place_one(
+                    objs,
+                    used,
+                    _r,
+                    rng,
+                    st,
+                    "RESOURCE_PILE",
+                    pool_res,
+                    t[0],
+                    t[1],
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                )
             elif roll < 0.75:
-                avail_c = [i for i in pool_chest if _spaced_ok(i.get("type"), t[0], t[1])]
-                ci = rng.choice(avail_c) if avail_c else (rng.choice(pool_chest) if pool_chest else None)
-                if not (ci and _place_one(objs, used, _r, rng, st, "REWARD_PICKUP",
-                                          pool_art, t[0], t[1], ident=ci, cache=True,
-                                          bounds=bounds, interactive_only=True)):
-                    _place_one(objs, used, _r, rng, st, "RESOURCE_PILE", pool_res,
-                               t[0], t[1], cache=True, bounds=bounds, interactive_only=True)
+                avail_c = [i for i in pool_chest if _spaced_ok(i.type, t[0], t[1])]
+                ci = (
+                    rng.choice(avail_c)
+                    if avail_c
+                    else (rng.choice(pool_chest) if pool_chest else None)
+                )
+                if not (
+                    ci
+                    and place_one(
+                        objs,
+                        used,
+                        _r,
+                        rng,
+                        st,
+                        "REWARD_PICKUP",
+                        pool_art,
+                        t[0],
+                        t[1],
+                        ident=ci,
+                        cache=True,
+                        bounds=bounds,
+                        interactive_only=True,
+                    )
+                ):
+                    _ = place_one(
+                        objs,
+                        used,
+                        _r,
+                        rng,
+                        st,
+                        "RESOURCE_PILE",
+                        pool_res,
+                        t[0],
+                        t[1],
+                        cache=True,
+                        bounds=bounds,
+                        interactive_only=True,
+                    )
                 else:
                     _register(ci, t[0], t[1])
             else:
-                avail_v = [i for i in pool_vis if _spaced_ok(i.get("type"), t[0], t[1])]
-                vi = rng.choice(avail_v) if avail_v else (rng.choice(pool_vis) if pool_vis else None)
-                if not (vi and _place_one(objs, used, _r, rng, st,
-                                         vi.get("purpose", "BONUS_TEMP"), None,
-                                         t[0], t[1], ident=vi, cache=True, bounds=bounds,
-                                         interactive_only=True)):
-                    _place_one(objs, used, _r, rng, st, "RESOURCE_PILE", pool_res,
-                               t[0], t[1], cache=True, bounds=bounds, interactive_only=True)
+                avail_v = [i for i in pool_vis if _spaced_ok(i.type, t[0], t[1])]
+                vi = (
+                    rng.choice(avail_v) if avail_v else (rng.choice(pool_vis) if pool_vis else None)
+                )
+                if not (
+                    vi
+                    and place_one(
+                        objs,
+                        used,
+                        _r,
+                        rng,
+                        st,
+                        "BONUS_TEMP",
+                        None,
+                        t[0],
+                        t[1],
+                        ident=vi,
+                        cache=True,
+                        bounds=bounds,
+                        interactive_only=True,
+                    )
+                ):
+                    _ = place_one(
+                        objs,
+                        used,
+                        _r,
+                        rng,
+                        st,
+                        "RESOURCE_PILE",
+                        pool_res,
+                        t[0],
+                        t[1],
+                        cache=True,
+                        bounds=bounds,
+                        interactive_only=True,
+                    )
                 else:
                     _register(vi, t[0], t[1])
 
     for candidates in blobs:
         # Find the best guardable candidate (guard fits at the ZoC-centre position
         # whose ZoC seals the pocket and both mouth tiles are within it).
-        guard_tile = pocket = zid = mouth = None
-        ref_g = None  # ZoC-centre (reference for sorting / unguarded fallback)
+        guard_tile: Tile | None = None
+        pocket: frozenset[Tile] | None = None
+        zid: int | None = None
+        mouth: frozenset[Tile] | None = None
+        ref_g: Tile | None = None  # ZoC-centre (reference for sorting / unguarded fallback)
+        fallback: tuple[Tile, frozenset[Tile], int, frozenset[Tile]] | None = None
         for cand_g, cand_pocket, cand_mouth_fs in candidates:
             cand_zid = zone_of.get(cand_g)
             if cand_zid is None:
@@ -405,25 +547,42 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
                 ref_g, pocket, zid, mouth = cand_g, cand_pocket, cand_zid, cand_mouth_fs
             if cand_g in used:
                 continue
-            if not all(c in global_place and c not in used
-                       for c in OR.mask_interactive_cells(guard_mask, cand_g[0], cand_g[1])):
+            if not all(
+                c in global_place and c not in used
+                for c in OR.mask_interactive_cells(guard_mask, cand_g[0], cand_g[1])
+            ):
                 continue
             if bounds is not None:
                 bw, bh = bounds
-                gcells = [(tx, ty) for tx, ty, _b in OR.mask_cells(guard_mask, cand_g[0], cand_g[1])]
+                gcells = [
+                    (tx, ty) for tx, ty, _b in OR.mask_cells(guard_mask, cand_g[0], cand_g[1])
+                ]
                 if any(not (0 <= tx < bw and 0 <= ty < bh) for tx, ty in gcells):
                     continue
             if protect_pairs:
                 cand_zoc = _guard_zoc(guard_mask, cand_g[0], cand_g[1])
                 blocked = protect_blocked | cand_zoc
-                if not all(_reachable(global_true, blocked, src, dst)
-                          for src, dst in protect_pairs):
+                if not all(
+                    _reachable(global_true, blocked, src, dst) for src, dst in protect_pairs
+                ):
                     continue  # would seal a town off from its own starting mine
+            if any(
+                c in decor_blk for c in OR.mask_interactive_cells(guard_mask, cand_g[0], cand_g[1])
+            ):
+                continue
+            if not OR.overlay_clear(guard_mask, cand_g[0], cand_g[1], decor_blk):
+                if fallback is None:
+                    fallback = (cand_g, cand_pocket, cand_zid, cand_mouth_fs)
+                continue
             guard_tile = cand_g
             pocket, zid, ref_g, mouth = cand_pocket, cand_zid, cand_g, cand_mouth_fs
             break
+        else:
+            if fallback is not None:
+                guard_tile, pocket, zid, mouth = fallback
+                ref_g = guard_tile
 
-        if pocket is None:
+        if pocket is None or ref_g is None or zid is None or mouth is None:
             continue
 
         # Size gate: this is already find_pockets' own cap (POCKET_MAX_TILES) on the
@@ -467,8 +626,8 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         # resources, and one-tile hero-strengthening structures" (user-mandated), not
         # "everything but an artifact" (which would let scholar/corpse/spell-scroll/
         # leanTo/wagon/warriorTomb/denOfThieves leak in too).
-        pool_chest = [i for i in pool_art if i.get("type") in _LOOT_CHEST_TYPES]
-        pool_vis = _solo_visit_pool(terrain, exclude_anims=_FILL_EXCL_ANIMS)
+        pool_chest = [i for i in pool_art if i.type in LOOT_CHEST_TYPES]
+        pool_vis = solo_visit_pool(terrain, exclude_anims=FILL_EXCL_ANIMS)
 
         # Every pocket (1-10 tiles): guard at the mouth + one artifact at the deepest
         # tile, tier matching the guard's level exactly (user-mandated) -- the rest
@@ -476,17 +635,28 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         n_fill = len(cache_spots) - 1  # one slot reserved for the artifact
         est_val = int(n_fill * 2.25) + 5
         lvl = min(6, 1 + (est_val >= 4) + (est_val >= 7) + (est_val >= 10) + (est_val >= 13))
-        anim = _ART_BY_LVL[lvl - 1]
+        anim = ART_BY_LVL[lvl - 1]
 
         if guard_tile is not None:
             # Place a new guard at the pocket mouth.
             gident = rnd_monster(lvl)
-            if not _place_one(objs, used, global_place, rng, st, "GUARD", None,
-                              guard_tile[0], guard_tile[1], ident=gident, bounds=bounds):
+            if not place_one(
+                objs,
+                used,
+                global_place,
+                rng,
+                st,
+                "GUARD",
+                None,
+                guard_tile[0],
+                guard_tile[1],
+                ident=gident,
+                bounds=bounds,
+            ):
                 continue
             # _place_one always appends -- objs[-1] is the guard just placed.
-            # Tag it for steps.repair.step._dedup_nearby_guards's priority tiers.
-            objs[-1]["pocket_guard"] = True
+            # Tag it for steps.repair.step.dedup_nearby_guards's priority tiers.
+            objs[-1].pocket_guard = True
             placed_mouths.append(guard_tile)
             if protect_pairs:
                 protect_blocked |= _guard_zoc(guard_mask, guard_tile[0], guard_tile[1])
@@ -521,12 +691,20 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
                 continue
             pocket_depth_by_tile[t] = d / max_d if max_d else 0.0
 
-        art_spot   = avail[-1:]  # deepest tile gets the artifact
+        art_spot = avail[-1:]  # deepest tile gets the artifact
         fill_spots = avail[:-1]
 
         # Use global_place so fill and artifact never stack on top of gameplay objects.
-        _pocket_fill(fill_spots, pool_res, pool_art, pool_chest, pool_vis, rng, st,
-                     ref, terrain, reach=global_place)
+        _pocket_fill(
+            fill_spots,
+            pool_res,
+            pool_art,
+            pool_chest,
+            pool_vis,
+            rng,
+            st,
+            reach=global_place,
+        )
 
         # Artifact at the deepest tile — tier matches guard level. Falls back to a
         # plain resource pile if the tiered identity doesn't land (mirrors
@@ -535,25 +713,53 @@ def place_pocket_caches(zone_records, seed=1, bounds=None, border_guards=frozens
         # empty under the tile it was recorded as pocket depth for.
         if art_spot:
             t = art_spot[0]
-            if not _place_one(objs, used, global_place, rng, st, "REWARD_PICKUP",
-                              pool_art, t[0], t[1], ident=ON.identity_of(anim),
-                              cache=True, bounds=bounds, interactive_only=True):
-                _place_one(objs, used, global_place, rng, st, "RESOURCE_PILE",
-                          pool_res, t[0], t[1], cache=True, bounds=bounds,
-                          interactive_only=True)
+            if not place_one(
+                objs,
+                used,
+                global_place,
+                rng,
+                st,
+                "REWARD_PICKUP",
+                pool_art,
+                t[0],
+                t[1],
+                ident=ON.identity_of(anim),
+                cache=True,
+                bounds=bounds,
+                interactive_only=True,
+            ):
+                _ = place_one(
+                    objs,
+                    used,
+                    global_place,
+                    rng,
+                    st,
+                    "RESOURCE_PILE",
+                    pool_res,
+                    t[0],
+                    t[1],
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                )
 
     return objs, len(blobs), pocket_depth_by_tile
 
 
-SEERHUT_ZONE_RATIO = 4    # ~1 seer-hut quest per 4 eligible zones -- zone_engine.py's own
-                          # corpus-replay convention for the same object
+SEERHUT_ZONE_RATIO = 4  # ~1 seer-hut quest per 4 eligible zones -- zone_engine.py's own
+# corpus-replay convention for the same object
 MAX_SEER_HUTS = 6
-SEERHUT_MIN_REACH = 8     # a zone needs at least this many free reachable tiles to be worth
-                          # drawing into a quest (host EITHER the hut or its artifact)
+SEERHUT_MIN_REACH = 8  # a zone needs at least this many free reachable tiles to be worth
+# drawing into a quest (host EITHER the hut or its artifact)
 
 
-def place_seer_hut_quests(zone_records, seed=1, bounds=None, used_artifacts=None,
-                          pocket_tiles=None):
+def place_seer_hut_quests(
+    zone_records: Sequence[ZoneRecord],
+    seed: int = 1,
+    bounds: tuple[int, int] | None = None,
+    used_artifacts: set[str] | None = None,
+    pocket_tiles: AbstractSet[Tile] | None = None,
+) -> tuple[list[PlacedObject], int]:
     """One or more Seer Hut quests for the WHOLE level (VCMI RMG convention: a seer hut's
     mission gates on a single named artifact the hero must find and hand-carry to it). Each
     quest links two placements in DIFFERENT zones -- the quest's target artifact (an
@@ -573,37 +779,38 @@ def place_seer_hut_quests(zone_records, seed=1, bounds=None, used_artifacts=None
 
     `zone_records` is a list of {"zid", "terrain", "ts", "open_set", "passable", "reach",
     "used"} (see `pp_map._run_level`/`place_pocket_caches`). Returns (objs, n_quests)."""
-    import random
-
-    eligible = [zr for zr in zone_records if len(zr["reach"] - zr["used"]) >= SEERHUT_MIN_REACH]
+    eligible = [zr for zr in zone_records if len(zr.reach - zr.used) >= SEERHUT_MIN_REACH]
     if len(eligible) < 2:
         return [], 0
     n = min(MAX_SEER_HUTS, max(1, len(eligible) // SEERHUT_ZONE_RATIO))
 
     rng_pair = random.Random(seed ^ 0xEE47)
-    objs = []
+    objs: list[PlacedObject] = []
     if used_artifacts is None:
         used_artifacts = set()
     placed = 0
     # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
+    _ptiles_global: AbstractSet[Tile]
     if pocket_tiles is not None:
         _ptiles_global = pocket_tiles
     else:
-        passable_all = set().union(*(zr.get("passable", zr["reach"]) for zr in zone_records))
+        passable_all = set[Tile]().union(*(zr.passable for zr in zone_records))
         raw_p = find_pockets(passable_all)
-        _ptiles_global = set()
+        _ptiles_acc: set[Tile] = set()
         for _g, (pt, _mf) in raw_p.items():
             if len(pt) >= 3:
-                _ptiles_global |= set(pt)
+                _ptiles_acc |= set(pt)
+        _ptiles_global = _ptiles_acc
 
     for i in range(n):
         idx_hut, idx_art = rng_pair.sample(range(len(eligible)), 2)
         hut_zr = eligible[idx_hut]
         rng = random.Random(seed ^ (i * 92821) ^ 0xEE47)
 
-        pool_hut = sorted((h for h in ON.gameplay_pool(hut_zr["terrain"], "QUEST_GATE")
-                          if h.get("type") == "seerHut"),
-                          key=lambda h: h["animation"])
+        pool_hut = sorted(
+            (h for h in ON.gameplay_pool(hut_zr.terrain, "QUEST_GATE") if h.type == "seerHut"),
+            key=lambda h: h.animation,
+        )
         if not pool_hut:
             continue
         hut_ident = rng.choice(pool_hut)
@@ -612,69 +819,116 @@ def place_seer_hut_quests(zone_records, seed=1, bounds=None, used_artifacts=None
         # try other eligible zones to avoid getting 0 quests when the chosen zone
         # has no pocket tiles available.
         art_zr_order = [eligible[idx_art]] + [
-            zr for j, zr in enumerate(eligible) if j != idx_art and j != idx_hut]
-        art_zr = art_ident = None
+            zr for j, zr in enumerate(eligible) if j not in (idx_art, idx_hut)
+        ]
+        art_zr: ZoneRecord | None = None
+        art_ident: Identity | None = None
         for cand_art_zr in art_zr_order:
-            art_eligible = _ptiles_global & (cand_art_zr["reach"] - cand_art_zr["used"])
+            art_eligible = _ptiles_global & (cand_art_zr.reach - cand_art_zr.used)
             if not art_eligible:
                 continue
-            cand_pool_art = sorted((a for a in ON.gameplay_pool(cand_art_zr["terrain"],
-                                                                "REWARD_PICKUP")
-                                    if a.get("type") == "artifact"
-                                    and a["subtype"] not in used_artifacts),
-                                   key=lambda a: a["animation"])
+            cand_pool_art = sorted(
+                (
+                    a
+                    for a in ON.gameplay_pool(cand_art_zr.terrain, "REWARD_PICKUP")
+                    if a.type == "artifact" and a.subtype not in used_artifacts
+                ),
+                key=lambda a: a.animation,
+            )
             if not cand_pool_art:
                 continue
             art_zr, art_ident = cand_art_zr, rng.choice(cand_pool_art)
             break
-        if art_zr is None:
-            continue   # no eligible art zone with a ≥3-tile pocket
+        if art_zr is None or art_ident is None or art_ident.subtype is None:
+            continue  # no eligible art zone with a ≥3-tile pocket
 
-        st_art = mine_gameplay()[art_zr["terrain"]]
-        art_eligible = _ptiles_global & (art_zr["reach"] - art_zr["used"])
+        st_art = mine_gameplay()[art_zr.terrain]
+        art_eligible = _ptiles_global & (art_zr.reach - art_zr.used)
         art_cands = sorted(art_eligible)
         rng.shuffle(art_cands)
         art_xy = None
         for t in art_cands:
-            if _place_one(objs, art_zr["used"], art_zr["reach"], rng, st_art, "REWARD_PICKUP",
-                         None, t[0], t[1], ident=art_ident, bounds=bounds):
+            if place_one(
+                objs,
+                art_zr.used,
+                art_zr.reach,
+                rng,
+                st_art,
+                "REWARD_PICKUP",
+                None,
+                t[0],
+                t[1],
+                ident=art_ident,
+                bounds=bounds,
+            ):
                 art_xy = t
                 break
         if art_xy is None:
             continue
 
-        st_hut = mine_gameplay()[hut_zr["terrain"]]
-        hut_cands = sorted(hut_zr["reach"] - hut_zr["used"])
+        st_hut = mine_gameplay()[hut_zr.terrain]
+        hut_cands = sorted(hut_zr.reach - hut_zr.used)
         rng.shuffle(hut_cands)
-        options = _seerhut_quest(rng, art_ident["subtype"])
+        options = _seerhut_quest(rng, art_ident.subtype)
         hut_xy = None
         for t in hut_cands:
-            if _place_one(objs, hut_zr["used"], hut_zr["reach"], rng, st_hut, "QUEST_GATE",
-                         None, t[0], t[1], ident=hut_ident, options=options, bounds=bounds):
+            if place_one(
+                objs,
+                hut_zr.used,
+                hut_zr.reach,
+                rng,
+                st_hut,
+                "QUEST_GATE",
+                None,
+                t[0],
+                t[1],
+                ident=hut_ident,
+                options=options,
+                bounds=bounds,
+            ):
                 hut_xy = t
                 break
         if hut_xy is None:
             # no room for the hut => a dangling quest artifact nobody asked for; drop it
             # rather than leave an orphaned reference
-            objs.pop()
-            for cx, cy, _b in OR.mask_cells(art_ident["mask"], art_xy[0], art_xy[1]):
-                art_zr["used"].discard((cx, cy))
+            _ = objs.pop()
+            for cx, cy, _b in OR.mask_cells(art_ident.mask, art_xy[0], art_xy[1]):
+                art_zr.used.discard((cx, cy))
             continue
 
-        used_artifacts.add(art_ident["subtype"])
+        used_artifacts.add(art_ident.subtype)
         placed += 1
     return objs, placed
 
 
-def place_pickups(ts, zones, zid, terrain, open_set, prot, seed=1, bounds=None):
+def place_pickups(
+    ts: AbstractSet[Tile],
+    zones: Mapping[int, Zone],
+    zid: int,
+    terrain: str,
+    open_set: set[Tile],
+    prot: Collection[Tile],
+    seed: int = 1,
+    bounds: tuple[int, int] | None = None,
+) -> list[PlacedObject]:
     """Single-zone convenience wrapper (scatter + pocket caches over just this one zone's
     own reach) — used by tests and any other single-zone caller. Production multi-zone maps
     must NOT use this: call `place_scatter` per zone and `place_pocket_caches` ONCE globally
     instead (see `pp_map.build`), so pocket detection runs against the whole map's reachable
     field rather than one zone's alone."""
-    sobjs, sused, reach = place_scatter(ts, zones, zid, terrain, open_set, prot, seed=seed,
-                                        bounds=bounds)
-    zone_records = [{"zid": zid, "terrain": terrain, "ts": ts, "passable": set(open_set),
-                     "open_set": open_set, "reach": reach, "used": sused}]
+    sobjs, sused, reach = place_scatter(
+        ts, zones, zid, terrain, open_set, prot, seed=seed, bounds=bounds
+    )
+    zone_records = [
+        ZoneRecord(
+            zid=zid,
+            terrain=terrain,
+            ts=frozenset(ts),
+            open_set=open_set,
+            passable=set(open_set),
+            reach=reach,
+            used=sused,
+        )
+    ]
     cobjs, _n, _depths = place_pocket_caches(zone_records, seed=seed, bounds=bounds)
     return sobjs + cobjs

@@ -1,10 +1,17 @@
 """PngRenderer — render a MapState level to a PIL Image using H3 sprites."""
+
 from __future__ import annotations
 
+import dataclasses
 import os
+from collections.abc import Iterable
 
-from vcmi_mapgen.models import MapState
+from PIL import Image
+
+import vcmi_mapgen.renderers.sprites as RED
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.models import MapState
+from vcmi_mapgen.renderers.overlays.base import MapOverlay
 
 ROOT = project_root()
 
@@ -25,22 +32,23 @@ class PngRenderer:
         renderer = PngRenderer(overlays=[ZoneOverlay(), BlockingOverlay()])
     """
 
-    def __init__(self, out_dir: str | None = None, overlays=()) -> None:
+    out_dir: str
+    _overlays: list[MapOverlay]
+
+    def __init__(self, out_dir: str | None = None, overlays: Iterable[MapOverlay] = ()) -> None:
         self.out_dir = out_dir or str(ROOT / "out" / "render" / "pp")
         self._overlays = list(overlays)
 
-    def render(self, state: MapState, level: int = 0, title: str = ""):
+    def render(self, state: MapState, level: int = 0, title: str = "") -> Image.Image:
         """Return a PIL Image for the given level, with overlays composited."""
-        from PIL import Image
-        from vcmi_mapgen.renderers import sprites as RED
         surfs = state.surfs.get(level)
         if surfs is None:
             raise ValueError(f"state.surfs has no level {level}")
         if level == 0:
-            objs = [o for o in state.objs if o.get("l", 0) == 0]
+            objs = [o for o in state.objs if o.level == 0]
         else:
             # renderers.sprites draws only l==0 objects; shift underground to l=0
-            objs = [dict(o, l=0) for o in state.objs if o.get("l", 0) == level]
+            objs = [dataclasses.replace(o, level=0) for o in state.objs if o.level == level]
         base = RED.render_map(surfs, objs, title=title)
         if not self._overlays:
             return base
@@ -49,8 +57,7 @@ class PngRenderer:
             img = Image.alpha_composite(img, overlay.apply(state, level))
         return img.convert("RGB")
 
-    def save(self, state: MapState, path: str, level: int = 0,
-             title: str = "") -> str:
+    def save(self, state: MapState, path: str, level: int = 0, title: str = "") -> str:
         """Render and save to *path*. Returns the resolved path."""
         if not os.path.isabs(path):
             path = os.path.join(self.out_dir, path)

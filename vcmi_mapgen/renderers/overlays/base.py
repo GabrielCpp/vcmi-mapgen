@@ -1,4 +1,5 @@
 """Base class for semi-transparent map overlays."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -11,11 +12,11 @@ TILE = 32  # pixels per tile — matches renderers.sprites
 
 
 class MapOverlay(ABC):
-    """Return an RGBA image the same size as the base map (W*TILE × H*TILE).
+    """Return an RGBA image the same size as the base map (W*TILE x H*TILE).
 
     Each pixel with alpha > 0 is alpha-composited over the base sprite render,
     so the H3 terrain and objects show through at reduced opacity.  Use low
-    alpha values (60–120 / 255) so the underlying sprites remain legible.
+    alpha values (60-120 / 255) so the underlying sprites remain legible.
     """
 
     @abstractmethod

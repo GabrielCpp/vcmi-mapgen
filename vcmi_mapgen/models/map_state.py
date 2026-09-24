@@ -1,7 +1,10 @@
 """MapState — the render-only view of a finished VCMI map."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from vcmi_mapgen.models.objects import Cell, PlacedObject, Tile, Zone
 
 
 @dataclass
@@ -18,15 +21,9 @@ class MapState:
     """
 
     size: int = 72
-    # level -> 2-D list of tile-string objects (e.g. "gr2_")
-    surfs: dict = field(default_factory=dict)
-    # level -> 2-D list of tile-dict objects ({"t":…, "view":…, …})
-    cells: dict = field(default_factory=dict)
-    # level -> zone dict {zid: {tiles_set, terrain_type, area, centroid, …}}
-    zones: dict = field(default_factory=dict)
-    # level -> frozenset of blocked tiles from gates (BlockingOverlay)
-    gate_blk: dict = field(default_factory=dict)
-    # all placed objects across all levels
-    objs: list = field(default_factory=list)
-    # town objects in player order (VmapRenderer playability wiring)
-    player_towns: list = field(default_factory=list)
+    surfs: dict[int, list[list[str]]] = field(default_factory=dict)
+    cells: dict[int, list[list[Cell]]] = field(default_factory=dict)
+    zones: dict[int, dict[int, Zone]] = field(default_factory=dict)
+    gate_blk: dict[int, frozenset[Tile]] = field(default_factory=dict)
+    objs: list[PlacedObject] = field(default_factory=list)
+    player_towns: list[PlacedObject] = field(default_factory=list)

@@ -6,80 +6,54 @@ This replaces the dot/blob renders that hid structural problems.
 
 Usage:
   uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap
-  uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap --compare "All for One"
+  uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap \\
+      --compare "All for One"
     (side-by-side: generated left, real right re-rendered from the corpus .vmap)
 """
 
-import os, struct, zlib, argparse
-from PIL import Image
+import argparse
+import os
+import struct
+from collections.abc import Sequence
+
+from PIL import Image, ImageDraw
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import vmap as VM
-from vcmi_mapgen.kit.paths import project_root, vcmi_home
+from vcmi_mapgen.kit.lod import lod
+from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.kit.vmap.document import VmapDocument
+from vcmi_mapgen.models import PlacedObject
+
 ROOT = project_root()
 
-LOD_DIR = os.path.join(vcmi_home(), "Data")
-LOD_FILES = ["H3sprite.lod", "H3ab_spr.lod", "H3bitmap.lod", "H3ab_bmp.lod"]
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
-TERR_DEF = {
-    "dt": "dirttl.def", "sa": "sandtl.def", "gr": "grastl.def", "sn": "snowtl.def",
-    "sw": "swmptl.def", "rg": "rougtl.def", "sb": "subbtl.def", "lv": "lavatl.def",
-    "wt": "watrtl.def", "rc": "rocktl.def",
+TERR_DEF: dict[str, str] = {
+    "dt": "dirttl.def",
+    "sa": "sandtl.def",
+    "gr": "grastl.def",
+    "sn": "snowtl.def",
+    "sw": "swmptl.def",
+    "rg": "rougtl.def",
+    "sb": "subbtl.def",
+    "lv": "lavatl.def",
+    "wt": "watrtl.def",
+    "rc": "rocktl.def",
 }
-TILE = 32        # pixels per map tile
-SPECIAL_PALETTE = {0: (0,0,0,0), 1:(0,0,0,0), 4:(0,0,0,0), 5:(0,0,0,0), 6:(0,0,0,0), 7:(0,0,0,0)}
-
-
-# --------------------------------------------------------------------------- LOD index
-class LodIndex:
-    def __init__(self):
-        self._files = {}   # name.lower() -> (lod_path, offset, size, csize)
-        for lodname in LOD_FILES:
-            path = os.path.join(LOD_DIR, lodname)
-            if not os.path.exists(path):
-                continue
-            with open(path, "rb") as f:
-                f.seek(8); count = struct.unpack("<I", f.read(4))[0]; f.seek(92)
-                for _ in range(count):
-                    raw = f.read(16)
-                    name = raw.rstrip(b"\x00").decode("latin1", "replace").lower().split("\x00")[0]
-                    off, size, _, csize = struct.unpack("<IIII", f.read(16))
-                    if name not in self._files:
-                        self._files[name] = (path, off, size, csize)
-
-    def read(self, name):
-        key = name.lower()
-        if key not in self._files and not key.endswith(".def"):
-            key += ".def"
-        if key not in self._files:
-            return None
-        path, off, size, csize = self._files[key]
-        # csize == 0 means the entry is stored UNCOMPRESSED: the payload is `size` bytes, not 0.
-        nbytes = csize if csize else size
-        with open(path, "rb") as f:
-            f.seek(off); raw = f.read(nbytes)
-        if csize == size or csize == 0:
-            return raw
-        try:
-            return zlib.decompress(raw)
-        except zlib.error:
-            return raw   # stored uncompressed despite size mismatch
-
-    def has(self, name):
-        k = name.lower(); return k in self._files or (k + ".def") in self._files
-
-
-_LOD = None
-def lod():
-    global _LOD
-    if _LOD is None:
-        _LOD = LodIndex()
-    return _LOD
+TILE = 32  # pixels per map tile
+SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
+    0: (0, 0, 0, 0),
+    1: (0, 0, 0, 0),
+    4: (0, 0, 0, 0),
+    5: (0, 0, 0, 0),
+    6: (0, 0, 0, 0),
+    7: (0, 0, 0, 0),
+}
 
 
 # --------------------------------------------------------------------------- DEF parser
-def _decode_frame(data, foff, w, h):
+def _decode_frame(data: bytes, foff: int) -> Image.Image:
     """Decode one DEF frame to RGBA PIL Image (32-bit).
 
     H3 SSpriteDef header (8 uint32): size, format, fullW, fullH, frameW, frameH,
@@ -97,15 +71,28 @@ def _decode_frame(data, foff, w, h):
     7 player-flag transparent for static renders.
     """
     _sz, comp, fw_full, fh_full, fw, fh, fleft, ftop = struct.unpack_from("<IIIIIIII", data, foff)
-    pal_raw = data[16:16 + 256 * 3]
-    SPECIAL = {0: (0, 0, 0, 0), 1: (0, 0, 0, 64), 2: (0, 0, 0, 0), 3: (0, 0, 0, 0),
-               4: (0, 0, 0, 128), 5: (0, 0, 0, 0), 6: (0, 0, 0, 128), 7: (0, 0, 0, 0)}
-    palette = [SPECIAL[i] if i < 8 else (pal_raw[i*3], pal_raw[i*3+1], pal_raw[i*3+2], 255)
-               for i in range(256)]
+    pal_raw = data[16 : 16 + 256 * 3]
+    SPECIAL: dict[int, tuple[int, int, int, int]] = {
+        0: (0, 0, 0, 0),
+        1: (0, 0, 0, 64),
+        2: (0, 0, 0, 0),
+        3: (0, 0, 0, 0),
+        4: (0, 0, 0, 128),
+        5: (0, 0, 0, 0),
+        6: (0, 0, 0, 128),
+        7: (0, 0, 0, 0),
+    }
+    palette: list[tuple[int, int, int, int]] = [
+        SPECIAL[i] if i < 8 else (pal_raw[i * 3], pal_raw[i * 3 + 1], pal_raw[i * 3 + 2], 255)
+        for i in range(256)
+    ]
 
     img = Image.new("RGBA", (fw_full, fh_full), (0, 0, 0, 0))
     px = img.load()
+    if px is None:
+        raise RuntimeError("image has no pixel access")
     base = foff + 32
+    offs: tuple[int, ...]
 
     if comp == 0:
         p = base
@@ -116,7 +103,7 @@ def _decode_frame(data, foff, w, h):
         return img
 
     if comp == 1:
-        offs = struct.unpack_from("<%dI" % fh, data, base)
+        offs = struct.unpack_from(f"<{fh}I", data, base)
         for y in range(fh):
             p, x = base + offs[y], 0
             while x < fw:
@@ -137,11 +124,12 @@ def _decode_frame(data, foff, w, h):
         return img
 
     if comp == 2:
-        offs = struct.unpack_from("<%dH" % fh, data, base)
+        offs = struct.unpack_from(f"<{fh}H", data, base)
         for y in range(fh):
             p, x = base + offs[y], 0
             while x < fw:
-                seg = data[p]; p += 1
+                seg = data[p]
+                p += 1
                 typ, length = seg >> 5, (seg & 0x1F) + 1
                 if typ == 7:
                     for _ in range(length):
@@ -159,13 +147,14 @@ def _decode_frame(data, foff, w, h):
 
     # comp == 3: per-line 32-px blocks, one uint16 offset per block (row-major)
     blocks = (fw + 31) // 32
-    offs = struct.unpack_from("<%dH" % (blocks * fh), data, base)
+    offs = struct.unpack_from(f"<{blocks * fh}H", data, base)
     for y in range(fh):
         for b in range(blocks):
             p = base + offs[y * blocks + b]
             x, xend = b * 32, min(b * 32 + 32, fw)
             while x < xend:
-                seg = data[p]; p += 1
+                seg = data[p]
+                p += 1
                 typ, length = seg >> 5, (seg & 0x1F) + 1
                 if typ == 7:
                     for _ in range(length):
@@ -182,27 +171,29 @@ def _decode_frame(data, foff, w, h):
     return img
 
 
-def parse_def(data):
+def parse_def(data: bytes) -> list[list[Image.Image]]:
     """Parse a DEF file -> list of groups, each group = list of PIL Images."""
-    dtype, fw, fh, nblocks = struct.unpack_from("<IIII", data, 0)  # 4 fields before palette
+    _dtype, fw, fh, nblocks = struct.unpack_from("<IIII", data, 0)  # 4 fields before palette
     if nblocks == 0 or nblocks > 64:
         nblocks = 1
     pos = 16 + 256 * 3
-    groups = []
+    groups: list[list[Image.Image]] = []
     for _ in range(max(1, nblocks)):
         if pos + 8 > len(data):
             break
-        bid, nframes = struct.unpack_from("<II", data, pos); pos += 16
+        _bid, nframes = struct.unpack_from("<II", data, pos)
+        pos += 16
         if nframes > 200 or nframes <= 0:
             break
-        pos += nframes * 13                        # skip names
+        pos += nframes * 13  # skip names
         if pos + nframes * 4 > len(data):
             break
-        offsets = list(struct.unpack_from("<" + "I" * nframes, data, pos)); pos += nframes * 4
-        frames = []
+        offsets: list[int] = list(struct.unpack_from("<" + "I" * nframes, data, pos))
+        pos += nframes * 4
+        frames: list[Image.Image] = []
         for foff in offsets:
             try:
-                img = _decode_frame(data, foff, fw, fh)
+                img = _decode_frame(data, foff)
                 frames.append(img)
             except Exception:
                 frames.append(Image.new("RGBA", (fw, fh), (0, 0, 0, 0)))
@@ -210,16 +201,19 @@ def parse_def(data):
     return groups
 
 
-_def_cache = {}
-def get_def(name):
+_def_cache: dict[str, list[list[Image.Image]] | None] = {}
+
+
+def get_def(name: str) -> list[list[Image.Image]] | None:
     key = name.lower()
     if key in _def_cache:
         return _def_cache[key]
     data = lod().read(key)
     if data is None:
-        _def_cache[key] = None; return None
+        _def_cache[key] = None
+        return None
     try:
-        groups = parse_def(data)
+        groups: list[list[Image.Image]] | None = parse_def(data)
     except Exception:
         groups = None
     _def_cache[key] = groups
@@ -227,7 +221,7 @@ def get_def(name):
 
 
 # --------------------------------------------------------------------------- terrain tile decode
-def terr_tile_img(tile_str):
+def terr_tile_img(tile_str: str) -> Image.Image:
     """tile_str e.g. 'dt15_' -> 32x32 RGBA terrain tile image."""
     tc = tile_str[:2]
     rest = tile_str[2:]
@@ -250,46 +244,57 @@ def terr_tile_img(tile_str):
     frames = groups[0]
     img = frames[view % len(frames)].copy()
     if img.size != (TILE, TILE):
-        img = img.resize((TILE, TILE), Image.NEAREST)
+        img = img.resize((TILE, TILE), Image.Resampling.NEAREST)
     if flip_h:
-        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     if flip_v:
-        img = img.transpose(Image.FLIP_TOP_BOTTOM)
+        img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     return img.convert("RGBA")
 
 
 # --------------------------------------------------------------------------- vmap reader
-def _adapt(doc):
+def _adapt(doc: VmapDocument) -> tuple[list[list[str]], list[PlacedObject]]:
     """A VmapDocument -> the (surf, objs) shape render_map needs (surface terrain +
     each object's l/x/y/type/animation/mask)."""
     surf = doc.terrain[0]
     objs = [
-        {"x": o.x, "y": o.y, "l": o.l, "type": o.type,
-         "template": {"animation": o.animation, "mask": o.mask}}
+        PlacedObject(
+            x=o.x,
+            y=o.y,
+            level=o.level,
+            purpose="",
+            type=o.type,
+            subtype=None,
+            animation=o.animation,
+            mask=tuple(o.mask),
+        )
         for o in doc.objects
     ]
     return surf, objs
 
 
-def read_vmap(path):
+def read_vmap(path: str) -> tuple[list[list[str]], list[PlacedObject]]:
     return _adapt(VM.read(path))
 
 
-def read_real(name):
+def read_real(name: str) -> tuple[list[list[str]], list[PlacedObject]]:
     """Load the corpus map's own .vmap (full tile view/mirror data) + objects with animation."""
     return _adapt(VM.read(OR.faithful_path(name)))
 
 
 # --------------------------------------------------------------------------- compositing
-def paint_sort(objs):
+def paint_sort(objs: Sequence[PlacedObject]) -> list[PlacedObject]:
     """Canonical paint order so overlapping sprites stack identically across renders.
     ``render_map`` re-sorts stably by (l!=0, y, x), so this only fixes ties."""
-    return sorted(objs, key=lambda o: (o["y"], o["x"], o.get("type", ""),
-                                       o.get("subtype", ""),
-                                       o.get("template", {}).get("animation", "")))
+    return sorted(
+        objs,
+        key=lambda o: (o.y, o.x, o.type or "", o.subtype or "", o.animation),
+    )
 
 
-def render_map(surf, objs, title=""):
+def render_map(
+    surf: Sequence[Sequence[str]], objs: Sequence[PlacedObject], title: str = ""
+) -> Image.Image:
     H, W = len(surf), len(surf[0])
     canvas = Image.new("RGB", (W * TILE, H * TILE), (0, 0, 0))
 
@@ -300,40 +305,46 @@ def render_map(surf, objs, title=""):
             canvas.paste(tile_img.convert("RGB"), (x * TILE, y * TILE))
 
     # 2) objects: painter's order = sort by y asc, then by x asc (back-to-front)
-    sorted_objs = sorted(objs, key=lambda o: (o.get("l", 0) != 0, o["y"], o["x"]))
+    sorted_objs = sorted(objs, key=lambda o: (o.level != 0, o.y, o.x))
     miss = 0
     for o in sorted_objs:
-        if o.get("l", 0) != 0:
+        if o.level != 0:
             continue
-        anim = o.get("template", {}).get("animation", "")
+        anim = o.animation
         if not anim:
             continue
         groups = get_def(anim)
         if not groups or not groups[0]:
-            miss += 1; continue
-        sprite = groups[0][0]                      # frame 0 of group 0
+            miss += 1
+            continue
+        sprite = groups[0][0]  # frame 0 of group 0
         sw, sh = sprite.size
         # anchor is bottom-right of the object footprint; sprite is drawn so its
         # bottom-right pixel aligns with the bottom-right of the anchor tile.
-        px = (o["x"] + 1) * TILE - sw
-        py = (o["y"] + 1) * TILE - sh
+        px = (o.x + 1) * TILE - sw
+        py = (o.y + 1) * TILE - sh
         canvas.paste(sprite.convert("RGB"), (px, py), sprite.split()[3])
     if miss:
         print(f"  {miss} objects with missing sprites")
 
     # 3) optional title bar
     if title:
-        from PIL import ImageDraw
         ImageDraw.Draw(canvas).text((4, 4), title, fill=(255, 255, 255))
     return canvas
 
 
-def main():
+class _Args(argparse.Namespace):
+    vmap: str = ""
+    compare: str | None = None
+    out: str | None = None
+
+
+def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("vmap", help=".vmap path to render")
-    ap.add_argument("--compare", default=None, help="corpus map name to render alongside")
-    ap.add_argument("--out", default=None, help="output PNG path (default auto)")
-    args = ap.parse_args()
+    _ = ap.add_argument("vmap", help=".vmap path to render")
+    _ = ap.add_argument("--compare", default=None, help="corpus map name to render alongside")
+    _ = ap.add_argument("--out", default=None, help="output PNG path (default auto)")
+    args = ap.parse_args(namespace=_Args())
 
     surf, objs = read_vmap(args.vmap)
     gen_img = render_map(surf, objs, title=os.path.basename(args.vmap))
@@ -342,8 +353,11 @@ def main():
         rsurf, robjs = read_real(args.compare)
         real_img = render_map(rsurf, robjs, title=f"REAL: {args.compare}")
         gap = 8
-        canvas = Image.new("RGB", (real_img.width + gen_img.width + gap,
-                                   max(real_img.height, gen_img.height)), (0, 0, 0))
+        canvas = Image.new(
+            "RGB",
+            (real_img.width + gen_img.width + gap, max(real_img.height, gen_img.height)),
+            (0, 0, 0),
+        )
         canvas.paste(real_img, (0, 0))
         canvas.paste(gen_img, (real_img.width + gap, 0))
         out_img = canvas
@@ -351,8 +365,8 @@ def main():
         out_img = gen_img
 
     out_path = args.out or os.path.join(
-        ROOT, "out", "render",
-        os.path.basename(args.vmap).replace(".vmap", "_editor.png"))
+        ROOT, "out", "render", os.path.basename(args.vmap).replace(".vmap", "_editor.png")
+    )
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     out_img.save(out_path)
     print(f"wrote {out_path}  ({out_img.width}x{out_img.height})")

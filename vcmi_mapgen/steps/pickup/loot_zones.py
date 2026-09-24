@@ -1,43 +1,51 @@
 """Loot-zone access mechanic (gate+keymaster / sealed+monolith) for small single-entrance
 zones — a global, per-level pass that runs once every zone's scatter is placed.
 
-Also owns `_solo_visit_pool`/`_shrine_spell_level`, needed by
+Also owns `solo_visit_pool`/`shrine_spell_level`, needed by
 `steps.repair.caches.place_pocket_caches` too — Pickup is the first step in pipeline order
 to need them.
 """
+
 import collections
+import random
+import re
+from collections.abc import Collection, Sequence
+from collections.abc import Set as AbstractSet
+from operator import itemgetter
 
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.models import Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.steps.gameplay import mines as PG
-from vcmi_mapgen.steps.gameplay.water import _legal
-from vcmi_mapgen.steps.pickup.scatter import _place_one
+from vcmi_mapgen.steps.gameplay.water import legal_cells
+from vcmi_mapgen.steps.gate.gates import rnd_monster
+from vcmi_mapgen.steps.pickup.scatter import place_one
 
-LOOT_ZONE_MAX_TILES = 60        # land zone with ≤ this many tiles, exactly one entrance cluster, no town
+LOOT_ZONE_MAX_TILES = 60  # land zone with ≤ this many tiles, exactly one entrance cluster, no town
 
-_LOOT_COLORS = [                # (border_gate_anim, keymaster_anim); index == VCMI subtype 0-7
-    ("avxbgt00", "avxkey00"),   # 0 light blue
-    ("avxbgt10", "avxkey10"),   # 1 green
-    ("avxbgt20", "avxkey20"),   # 2 red
-    ("avxbgt30", "avxkey30"),   # 3 dark blue
-    ("avxbgt40", "avxkey40"),   # 4 brown
-    ("avxbgt50", "avxkey50"),   # 5 purple
-    ("avxbgt60", "avxkey60"),   # 6 white
-    ("avxbgt70", "avxkey70"),   # 7 black
+_LOOT_COLORS = [  # (border_gate_anim, keymaster_anim); index == VCMI subtype 0-7
+    ("avxbgt00", "avxkey00"),  # 0 light blue
+    ("avxbgt10", "avxkey10"),  # 1 green
+    ("avxbgt20", "avxkey20"),  # 2 red
+    ("avxbgt30", "avxkey30"),  # 3 dark blue
+    ("avxbgt40", "avxkey40"),  # 4 brown
+    ("avxbgt50", "avxkey50"),  # 5 purple
+    ("avxbgt60", "avxkey60"),  # 6 white
+    ("avxbgt70", "avxkey70"),  # 7 black
 ]
 _LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 _LOOT_EXCL_DECOR = frozenset({"LAKE", "FROZEN_LAKE", "RIVER_DELTA", "KELP", "REEF", "LAKE_2"})
 # Visitable structures excluded from pocket caches (steps.repair.caches still uses this).
-_FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})  # Fountain of Fortune, Idol of Fortune
+FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})  # Fountain of Fortune, Idol of Fortune
 # REWARD_PICKUP types excluded from loot zone art/chest fill (pool_art + pool_chest).
 _LOOT_ART_EXCL_TYPES = frozenset({"leanTo", "wagon", "warriorTomb", "denOfThieves"})
 # chest-type fill is an explicit allow-list, not "everything but an artifact": scholar,
 # corpse and a spell scroll are REWARD_PICKUP too but are not a chest and were never meant
 # to be loot-zone content. Shared with steps.repair.caches' pocket fill -- don't widen
 # this one for loot-zone-only needs (see _LOOT_ZONE_CHEST_EXTRA_TYPES below instead).
-_LOOT_CHEST_TYPES = frozenset({"treasureChest", "campfire", "pandoraBox"})
-# Loot-zone-only chest-tier additions on top of _LOOT_CHEST_TYPES (user-mandated
-# 2026-09) -- NOT added to _LOOT_CHEST_TYPES itself since pocket fill (caches.py) reuses
+LOOT_CHEST_TYPES = frozenset({"treasureChest", "campfire", "pandoraBox"})
+# Loot-zone-only chest-tier additions on top of LOOT_CHEST_TYPES (user-mandated
+# 2026-09) -- NOT added to LOOT_CHEST_TYPES itself since pocket fill (caches.py) reuses
 # that constant and wasn't asked to change. Spell scrolls are handled separately (a
 # fixed level 4-5 spell, not the plain unconfigured-random pool entry) -- see
 # _fill_loot's Pass 2.
@@ -50,12 +58,16 @@ _LOOT_SCROLL_LEVELS = (4, 5)
 # allow-list (user-mandated 2026-09), not "every solo-visitable object": these are all
 # STAT_PERMANENT. Exactly TWO of each type get placed per zone, apart from each other
 # (never adjacent) -- see _fill_loot's Pass 1.
-_LOOT_HERO_STRUCTURE_TYPES = frozenset({
-    "learningStone", "gardenOfRevelation", "starAxis",
-})
-_LOOT_HERO_STRUCTURE_COUNT = 2   # instances of EACH whitelisted type placed per zone
-_LOOT_HERO_STRUCTURE_MIN_SEP = 2   # Chebyshev distance the two instances of one type
-                                  # must clear -- "separated... not adjacent" (user-mandated)
+_LOOT_HERO_STRUCTURE_TYPES = frozenset(
+    {
+        "learningStone",
+        "gardenOfRevelation",
+        "starAxis",
+    }
+)
+_LOOT_HERO_STRUCTURE_COUNT = 2  # instances of EACH whitelisted type placed per zone
+LOOT_HERO_STRUCTURE_MIN_SEP = 2  # Chebyshev distance the two instances of one type
+# must clear -- "separated... not adjacent" (user-mandated)
 # Rare resources allowed in a loot zone: mercury, sulfur, crystal, gems, gold -- no wood/ore
 # (colloquially "stone") and no unrestricted randomResource (could resolve to either).
 _LOOT_RARE_RESOURCE_SUBTYPES = frozenset({"mercury", "sulfur", "crystal", "gems", "gold"})
@@ -69,7 +81,11 @@ _SOLO_VIS_PURPOSES = ("BONUS_TEMP", "SPELL_SKILL", "MANA", "STAT_PERMANENT")
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
 
-def _find_entry_tile(interactive, footprint_cells, ts):
+def _find_entry_tile(
+    interactive: Collection[Tile],
+    footprint_cells: Sequence[tuple[int, int, bool]],
+    ts: AbstractSet[Tile],
+) -> Tile | None:
     """The tile just beyond the access object that must stay forever passable and
     unclaimed -- the doorway the hero actually steps onto once the gate opens or
     the monolith is reached. A direct neighbour of the interactive cell usually
@@ -85,7 +101,7 @@ def _find_entry_tile(interactive, footprint_cells, ts):
     frontier = set(interactive)
     visited = set(frontier)
     for _ in range(len(footprint) + 1):
-        nxt = set()
+        nxt: set[Tile] = set()
         for fx, fy in frontier:
             for dx, dy in _DIRS8:
                 nb = (fx + dx, fy + dy)
@@ -102,7 +118,13 @@ def _find_entry_tile(interactive, footprint_cells, ts):
     return None
 
 
-def _entry_tile_has_stray_leak(entry_tile, footprint_cells, ts, all_ts, blocked_ts):
+def _entry_tile_has_stray_leak(
+    entry_tile: Tile,
+    footprint_cells: Sequence[tuple[int, int, bool]],
+    ts: AbstractSet[Tile],
+    all_ts: AbstractSet[Tile],
+    blocked_ts: AbstractSet[Tile],
+) -> bool:
     """True if the doorway tile just behind the gate/monolith is 8-adjacent to a tile
     outside `ts` that is NOT part of the access object's own footprint AND not
     already blocked (by that neighbouring zone's own pre-existing vegetation/objects)
@@ -116,13 +138,20 @@ def _entry_tile_has_stray_leak(entry_tile, footprint_cells, ts, all_ts, blocked_
     zone-tile-adjacent to `ts`."""
     footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
     ext_ts = all_ts - ts
-    return any((entry_tile[0] + dx, entry_tile[1] + dy) in ext_ts
-              and (entry_tile[0] + dx, entry_tile[1] + dy) not in footprint
-              and (entry_tile[0] + dx, entry_tile[1] + dy) not in blocked_ts
-              for dx, dy in _DIRS8)
+    return any(
+        (entry_tile[0] + dx, entry_tile[1] + dy) in ext_ts
+        and (entry_tile[0] + dx, entry_tile[1] + dy) not in footprint
+        and (entry_tile[0] + dx, entry_tile[1] + dy) not in blocked_ts
+        for dx, dy in _DIRS8
+    )
 
 
-def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
+def find_entry_corridor(
+    entry_tile: Tile | None,
+    footprint_cells: Sequence[tuple[int, int, bool]],
+    ts: AbstractSet[Tile],
+    all_ts: AbstractSet[Tile],
+) -> set[Tile]:
     """The MINIMAL set of `ts` tiles beyond `entry_tile` that must stay unsealed to
     keep every INTERIOR tile (`ts` minus the true outer boundary) connected to the
     gate/monolith once `_seal_all_passages` closes off everything else. `entry_tile`
@@ -150,12 +179,11 @@ def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
         return set()
     footprint = {(cx, cy) for cx, cy, _blk in footprint_cells}
     ext_ts = all_ts - ts
-    boundary = {t for t in ts
-                if any((t[0] + dx, t[1] + dy) in ext_ts for dx, dy in _DIRS8)}
+    boundary = {t for t in ts if any((t[0] + dx, t[1] + dy) in ext_ts for dx, dy in _DIRS8)}
     interior = ts - boundary
 
-    def _reach(seed_tiles, avail):
-        d = set(t for t in seed_tiles if t in avail)
+    def _reach(seed_tiles: AbstractSet[Tile], avail: AbstractSet[Tile]) -> set[Tile]:
+        d = {t for t in seed_tiles if t in avail}
         q = collections.deque(d)
         while q:
             cx, cy = q.popleft()
@@ -171,7 +199,7 @@ def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
     orphans = interior - reached
     while orphans:
         target = min(orphans)
-        prev = {}
+        prev: dict[Tile, Tile] = {}
         seen = set(reached)
         q = collections.deque(reached)
         found = False
@@ -187,8 +215,8 @@ def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
                     prev[nb] = (cx, cy)
                     q.append(nb)
         if not found:
-            break   # unreachable within ts at all -- shouldn't happen, ts is connected
-        cur = target
+            break  # unreachable within ts at all -- shouldn't happen, ts is connected
+        cur: Tile | None = target
         while cur not in reached:
             corridor.add(cur)
             cur = prev.get(cur)
@@ -199,14 +227,17 @@ def _find_entry_corridor(entry_tile, footprint_cells, ts, all_ts):
     return corridor
 
 
-def _shrine_spell_level(anim):
+def shrine_spell_level(anim: str) -> int:
     """Spell level a shrine teaches from its animation name (avxlNsh0 → N), or 0 if not a shrine."""
-    import re
     m = re.match(r"avxl(\d)sh", anim, re.IGNORECASE)
     return int(m.group(1)) if m else 0
 
 
-def _solo_visit_pool(terrain, exclude_anims=frozenset(), min_shrine_level=None):
+def solo_visit_pool(
+    terrain: str,
+    exclude_anims: Collection[str] = (),
+    min_shrine_level: int | None = None,
+) -> list[Identity]:
     """Objects with exactly one visit tile and no blocking body cells — the 'christmas-green'
     category (shrines, magic wells, fountains, etc.).  These fit inside a single open tile
     and are safe to cache inside pockets.
@@ -214,27 +245,32 @@ def _solo_visit_pool(terrain, exclude_anims=frozenset(), min_shrine_level=None):
     exclude_anims: animation names to skip entirely.
     min_shrine_level: when set, shrines teaching spells below this level are excluded
         (non-shrine objects are unaffected)."""
-    pool = []
-    seen = set()
+    pool: list[Identity] = []
+    seen: set[str] = set()
     for purpose in _SOLO_VIS_PURPOSES:
         for ident in ON.gameplay_pool(terrain, purpose):
-            anim = ident.get("animation", "").lower()
+            anim = ident.animation.lower()
             if anim in seen or anim in exclude_anims:
                 continue
             if min_shrine_level is not None:
-                lvl = _shrine_spell_level(anim)
+                lvl = shrine_spell_level(anim)
                 if lvl > 0 and lvl < min_shrine_level:
                     continue
-            mask = ident.get("mask", [])
+            mask = ident.mask
             n_visit = sum(1 for row in mask for ch in row if ch in "AX")
-            n_body  = sum(1 for row in mask for ch in row if ch == "B")
+            n_body = sum(1 for row in mask for ch in row if ch == "B")
             if n_visit == 1 and n_body == 0:
                 seen.add(anim)
                 pool.append(ident)
     return pool
 
 
-def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=None):
+def place_loot_zones(
+    zone_records: list[ZoneRecord],
+    objs_existing: list[PlacedObject],
+    seed: int = 1,
+    bounds: tuple[int, int] | None = None,
+) -> tuple[list[PlacedObject], int, set[int]]:
     """Loot-zone access mechanic for small single-entrance zones.
 
     A 'loot zone' has ≤ LOOT_ZONE_MAX_TILES tiles, exactly one 8-connected cluster of
@@ -258,14 +294,12 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
     object is committed, so no permanently impassable gate or unreachable interior is
     ever left on the map.  Returns (objs, n_placements, sealed_zid_set).
     """
-    import random
-
-    town_tiles = {(o["x"], o["y"]) for o in objs_existing if o.get("purpose") == "TOWN"}
+    town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == "TOWN"}
 
     # Pre-compute full tile set of all zones for boundary detection.
-    _all_ts = set()
+    _all_ts: set[Tile] = set()
     for _zr in zone_records:
-        _all_ts |= _zr["ts"]
+        _all_ts |= _zr.ts
 
     # Tiles blocked by an already-placed object (gameplay + the vegetation step's
     # border-densifying walls, both already committed to objs_existing by the time
@@ -273,18 +307,18 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
     # passable connectivity, not raw zone-terrain adjacency. Mirrors
     # renderers.overlays._tiles.passable_tiles's blocking half (no terrain grid
     # needed here: zone/ext tile sets are already land-only).
-    _blocked_ts = set()
+    _blocked_ts: set[Tile] = set()
     for _o in objs_existing:
-        if _o.get("l", 0) != 0:
+        if _o.level != 0:
             continue
-        _mask = _o.get("mask") or (_o.get("template") or {}).get("mask")
+        _mask = _o.mask
         if not _mask:
             continue
-        for _tx, _ty, _blk in OR.mask_cells(_mask, _o.get("x", 0), _o.get("y", 0)):
+        for _tx, _ty, _blk in OR.mask_cells(_mask, _o.x, _o.y):
             if _blk:
                 _blocked_ts.add((_tx, _ty))
 
-    def _passage_components(zr):
+    def _passage_components(zr: ZoneRecord) -> tuple[int, frozenset[Tile]]:
         """Count 8-connected clusters of ACTUALLY PASSABLE zone tiles that border an
         actually-passable tile of another zone -- object-blocking aware (the same
         notion PassageOverlay's 'blue' renders), not just raw zone-terrain adjacency,
@@ -292,13 +326,18 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         walls still leave the zone's raw perimeter one contiguous terrain-adjacency
         strip. This is the topological single-entrance check: 1 cluster = 1 direction
         of connectivity. Returns (n_clusters, frozenset_of_boundary_tiles)."""
-        ts = zr["ts"] - _blocked_ts
-        ext_ts = (_all_ts - zr["ts"]) - _blocked_ts
-        boundary = {t for t in ts
-                    if any((t[0] + dx, t[1] + dy) in ext_ts
-                           for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1),
-                                          (1, 1), (1, -1), (-1, 1), (-1, -1)])}
-        seen, n = set(), 0
+        ts = zr.ts - _blocked_ts
+        ext_ts = (_all_ts - zr.ts) - _blocked_ts
+        boundary = {
+            t
+            for t in ts
+            if any(
+                (t[0] + dx, t[1] + dy) in ext_ts
+                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+            )
+        }
+        seen: set[Tile] = set()
+        n = 0
         for s in sorted(boundary):
             if s in seen:
                 continue
@@ -307,19 +346,27 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             seen.add(s)
             while q:
                 cx, cy = q.popleft()
-                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1),
-                               (1, 1), (1, -1), (-1, 1), (-1, -1)]:
+                for dx, dy in [
+                    (1, 0),
+                    (-1, 0),
+                    (0, 1),
+                    (0, -1),
+                    (1, 1),
+                    (1, -1),
+                    (-1, 1),
+                    (-1, -1),
+                ]:
                     nb = (cx + dx, cy + dy)
                     if nb in boundary and nb not in seen:
                         seen.add(nb)
                         q.append(nb)
         return n, frozenset(boundary)
 
-    loot_zrs = []   # list of (zone_record, passage_tile_frozenset)
+    loot_zrs: list[tuple[ZoneRecord, frozenset[Tile]]] = []  # (zone_record, passage_tiles)
     for zr in zone_records:
-        if len(zr["ts"]) > LOOT_ZONE_MAX_TILES:
+        if len(zr.ts) > LOOT_ZONE_MAX_TILES:
             continue
-        if any(t in town_tiles for t in zr["ts"]):
+        if any(t in town_tiles for t in zr.ts):
             continue
         n_clusters, passage_tiles = _passage_components(zr)
         if n_clusters != 1:
@@ -329,46 +376,60 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
     if not loot_zrs:
         return [], 0, set()
 
-    loot_zids = {zr["zid"] for zr, _ in loot_zrs}
-    ext_no_castle = [zr for zr in zone_records
-                     if zr["zid"] not in loot_zids
-                     and not any(t in town_tiles for t in zr["ts"])]
-    ext_any = [zr for zr in zone_records if zr["zid"] not in loot_zids]
+    loot_zids = {zr.zid for zr, _ in loot_zrs}
+    ext_no_castle = [
+        zr
+        for zr in zone_records
+        if zr.zid not in loot_zids and not any(t in town_tiles for t in zr.ts)
+    ]
+    ext_any = [zr for zr in zone_records if zr.zid not in loot_zids]
 
-    placed_ext_tiles = []   # positions of exterior partners already placed
+    placed_ext_tiles: list[Tile] = []  # positions of exterior partners already placed
 
-    def _far_score(zr):
-        free = zr["reach"] - zr["used"]
+    def _far_score(zr: ZoneRecord) -> tuple[float, ...]:
+        free = zr.reach - zr.used
         if not free:
             return (-1, 0, 0)
-        cx = sum(x for x, _ in zr["ts"]) / len(zr["ts"])
-        cy = sum(y for _, y in zr["ts"]) / len(zr["ts"])
-        d_castle = (min((cx - tx) ** 2 + (cy - ty) ** 2
-                        for tx, ty in town_tiles) ** 0.5
-                    if town_tiles else 1e9)
-        d_partner = (min((cx - px) ** 2 + (cy - py) ** 2
-                         for px, py in placed_ext_tiles) ** 0.5
-                     if placed_ext_tiles else 1e9)
+        cx = sum(x for x, _ in zr.ts) / len(zr.ts)
+        cy = sum(y for _, y in zr.ts) / len(zr.ts)
+        d_castle = (
+            min((cx - tx) ** 2 + (cy - ty) ** 2 for tx, ty in town_tiles) ** 0.5
+            if town_tiles
+            else 1e9
+        )
+        d_partner = (
+            min((cx - px) ** 2 + (cy - py) ** 2 for px, py in placed_ext_tiles) ** 0.5
+            if placed_ext_tiles
+            else 1e9
+        )
         return (d_castle + d_partner, len(free))
 
-    def _find_ext_spot(ext_ident, ext_pool):
+    def _find_ext_spot(
+        ext_ident: Identity, ext_pool: Sequence[ZoneRecord]
+    ) -> tuple[ZoneRecord, Tile] | None:
         """Return (zone_record, tile) farthest from castles and from existing
         exterior partners (keymasters / exterior monoliths already placed)."""
         for cand in sorted(ext_pool, key=_far_score, reverse=True):
-            free = sorted(cand["reach"] - cand["used"])
+            free = sorted(cand.reach - cand.used)
             if not free:
                 continue
-            def _tscore(t):
-                d_c = (min((t[0] - tx) ** 2 + (t[1] - ty) ** 2
-                           for tx, ty in town_tiles) ** 0.5
-                       if town_tiles else 1e9)
-                d_p = (min((t[0] - px) ** 2 + (t[1] - py) ** 2
-                           for px, py in placed_ext_tiles) ** 0.5
-                       if placed_ext_tiles else 1e9)
+
+            def _tscore(t: Tile) -> float:
+                d_c = (
+                    min((t[0] - tx) ** 2 + (t[1] - ty) ** 2 for tx, ty in town_tiles) ** 0.5
+                    if town_tiles
+                    else 1e9
+                )
+                d_p = (
+                    min((t[0] - px) ** 2 + (t[1] - py) ** 2 for px, py in placed_ext_tiles) ** 0.5
+                    if placed_ext_tiles
+                    else 1e9
+                )
                 return d_c + d_p
+
             free.sort(key=_tscore, reverse=True)
-            ts_set = cand["ts"]
-            op_set = cand["open_set"]
+            ts_set = cand.ts
+            op_set = cand.open_set
             for t in free:
                 tx, ty = t
                 # [N N]   (tx-1,ty-1) (tx,  ty-1)
@@ -376,17 +437,21 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 # All three N-cells must be clear: either outside this zone or
                 # inside it and in open_set (not occupied by vegetation or objects).
                 if not all(
-                    (cx, cy) not in ts_set
-                    or ((cx, cy) in op_set and (cx, cy) not in cand["used"])
+                    (cx, cy) not in ts_set or ((cx, cy) in op_set and (cx, cy) not in cand.used)
                     for cx, cy in ((tx - 1, ty - 1), (tx, ty - 1), (tx - 1, ty))
                 ):
                     continue
-                if _legal(ext_ident, tx, ty, cand["reach"],
-                          cand["used"], bounds=bounds) is not None:
+                if legal_cells(ext_ident, tx, ty, cand.reach, cand.used, bounds=bounds) is not None:
                     return cand, t
-        return None, None
+        return None
 
-    def _seal_all_passages(ts, open_set, used, terrain, rng, skip_cells=frozenset()):
+    def _seal_all_passages(
+        ts: AbstractSet[Tile],
+        used: set[Tile],
+        terrain: str,
+        rng: random.Random,
+        skip_cells: Collection[Tile] = (),
+    ) -> None:
         """Fill EVERY boundary tile of the loot zone (tile in ts that is 8-adjacent
         to a tile outside ts) with a single-cell blocking vegetation object, perfectly
         sealing the perimeter including any passable V-overlay cells of the gate.
@@ -394,34 +459,35 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         skip_cells: the gate's or monolith's interactive tile(s) — the one spot a hero
         must stand on to activate the access object; these are NOT sealed. Any tile
         already in `used` is skipped too — that set holds the FULL footprint of the
-        just-placed gate/monolith (not just its interactive cell, see `_legal`), so
+        just-placed gate/monolith (not just its interactive cell, see `legal_cells`), so
         without this a boundary-adjacent non-interactive footprint cell (e.g. one of a
         monolith's 3 non-interactive 'V' cells) got a second, conflicting decor object
         stacked directly onto it (s9-z3 defect, 2026-09)."""
         ext_ts = _all_ts - ts
-        veg_pool = ON.decor_pool(terrain, blocking=True, max_cells=1,
-                                 exclude_types=_LOOT_EXCL_DECOR)
+        veg_pool = ON.decor_pool(
+            terrain, blocking=True, max_cells=1, exclude_types=_LOOT_EXCL_DECOR
+        )
         if not veg_pool:
             return
         for t in sorted(ts):
             if t in skip_cells or t in used:
                 continue  # access object's interactive tile, or its own footprint
             tx, ty = t
-            if not any((tx + dx, ty + dy) in ext_ts
-                       for dx, dy in [(1,0),(-1,0),(0,1),(0,-1),
-                                      (1,1),(1,-1),(-1,1),(-1,-1)]):
+            if not any(
+                (tx + dx, ty + dy) in ext_ts
+                for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+            ):
                 continue  # interior tile — left for loot
-            objs[:] = [o for o in objs if not (o.get("purpose") == "GUARD"
-                                                and o["x"] == tx and o["y"] == ty)]
+            objs[:] = [o for o in objs if not (o.purpose == "GUARD" and o.x == tx and o.y == ty)]
             iv = rng.choice(veg_pool)
             used.add(t)
-            objs.append({"x": tx, "y": ty, "l": 0,
-                         "type": iv.get("type"), "subtype": iv.get("subtype"),
-                         "animation": iv["animation"], "mask": iv["mask"],
-                         "template": {"animation": iv["animation"],
-                                      "mask": iv["mask"]}})
+            objs.append(PlacedObject.at(iv, tx, ty, purpose=""))
 
-    def _close_stray_leaks(ts, access_interactive, terrain, rng):
+    def _close_stray_leaks(
+        ts: AbstractSet[Tile],
+        access_interactive: AbstractSet[Tile],
+        rng: random.Random,
+    ) -> None:
         """Final correctness pass, run once the gate/monolith, its corridor and its
         fill are all committed: verify NO 8-connected path exists from any `ts` tile
         to any tile outside `ts` except through `access_interactive`, and close every
@@ -436,20 +502,20 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         leak, sat outside the gate's footprint entirely and was needlessly swept away
         with it). Mutates the neighbouring zone's own `used` set too, so later steps
         never place something conflicting there."""
-        zone_of = {}
+        zone_of: dict[Tile, ZoneRecord] = {}
         for zr in zone_records:
-            for t in zr["ts"]:
+            for t in zr.ts:
                 zone_of[t] = zr
         ext_ts = _all_ts - ts
-        blocked = set()
+        blocked: set[Tile] = set()
         for o in objs_existing + objs:
-            m = o.get("mask") or (o.get("template") or {}).get("mask")
+            m = o.mask
             if not m:
                 continue
-            for cx, cy, blk in OR.mask_cells(m, o["x"], o["y"]):
+            for cx, cy, blk in OR.mask_cells(m, o.x, o.y):
                 if blk:
                     blocked.add((cx, cy))
-        veg_cache = {}
+        veg_cache: dict[str, list[Identity]] = {}
         for t in sorted(ts):
             if t in access_interactive or t in blocked:
                 continue
@@ -458,25 +524,28 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 if nb not in ext_ts or nb in blocked:
                     continue
                 nb_zr = zone_of.get(nb)
-                if nb_zr is None or nb in nb_zr["used"]:
+                if nb_zr is None or nb in nb_zr.used:
                     continue
-                nb_terrain = nb_zr["terrain"]
+                nb_terrain = nb_zr.terrain
                 if nb_terrain not in veg_cache:
                     veg_cache[nb_terrain] = ON.decor_pool(
-                        nb_terrain, blocking=True, max_cells=1, exclude_types=_LOOT_EXCL_DECOR)
+                        nb_terrain, blocking=True, max_cells=1, exclude_types=_LOOT_EXCL_DECOR
+                    )
                 pool = veg_cache[nb_terrain]
                 if not pool:
                     continue
                 iv = rng.choice(pool)
-                objs.append({"x": nb[0], "y": nb[1], "l": 0,
-                            "type": iv.get("type"), "subtype": iv.get("subtype"),
-                            "animation": iv["animation"], "mask": iv["mask"],
-                            "template": {"animation": iv["animation"],
-                                         "mask": iv["mask"]}})
-                nb_zr["used"].add(nb)
+                objs.append(PlacedObject.at(iv, nb[0], nb[1], purpose=""))
+                nb_zr.used.add(nb)
                 blocked.add(nb)
 
-    def _fill_loot(terrain, st, reach, used, rng):
+    def _fill_loot(
+        terrain: str,
+        st: PG.TerrainStats,
+        reach: AbstractSet[Tile],
+        used: set[Tile],
+        rng: random.Random,
+    ) -> None:
         """Loot fill: background decor → hero-strengthening structures → mixed rewards.
 
         Pass 0 (bg): non-blocking terrain decor on interior tiles (under gameplay objects).
@@ -493,26 +562,30 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 straight in without ever touching the gate/monolith (user-mandated)."""
         # Pass 0: background — non-blocking terrain decor on interior (non-boundary) tiles.
         ext_ts_inner = _all_ts - reach
-        interior = {t for t in reach
-                    if not any((t[0]+dx, t[1]+dy) in ext_ts_inner for dx, dy in _DIRS8)}
-        pool_bg = ON.decor_pool(terrain, blocking=False, max_cells=1,
-                                exclude_types=_LOOT_EXCL_DECOR)
+        interior = {
+            t for t in reach if not any((t[0] + dx, t[1] + dy) in ext_ts_inner for dx, dy in _DIRS8)
+        }
+        pool_bg = ON.decor_pool(
+            terrain, blocking=False, max_cells=1, exclude_types=_LOOT_EXCL_DECOR
+        )
         if pool_bg:
             for t in sorted(interior):
                 if rng.random() < 0.5:
                     iv = rng.choice(pool_bg)
-                    objs.append({"x": t[0], "y": t[1], "l": 0,
-                                 "type": iv.get("type"), "subtype": iv.get("subtype"),
-                                 "animation": iv["animation"], "mask": iv["mask"],
-                                 "template": {"animation": iv["animation"],
-                                              "mask": iv["mask"]}})
+                    objs.append(PlacedObject.at(iv, t[0], t[1], purpose=""))
 
         # Hero-strengthening structures: an explicit allow-list (user-mandated), not
         # "every solo-visitable object" -- see _LOOT_HERO_STRUCTURE_TYPES.
-        pool_vis = [i for i in ON.gameplay_pool(terrain, "STAT_PERMANENT")
-                   if i.get("type") in _LOOT_HERO_STRUCTURE_TYPES]
-        pool_art = [i for i in ON.gameplay_pool(terrain, "REWARD_PICKUP")
-                    if i.get("type") not in _LOOT_ART_EXCL_TYPES]
+        pool_vis = [
+            i
+            for i in ON.gameplay_pool(terrain, "STAT_PERMANENT")
+            if i.type in _LOOT_HERO_STRUCTURE_TYPES
+        ]
+        pool_art = [
+            i
+            for i in ON.gameplay_pool(terrain, "REWARD_PICKUP")
+            if i.type not in _LOOT_ART_EXCL_TYPES
+        ]
         pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
         # chest-type: treasure chests, campfires, pandora's box, scholar (loot-zone only),
         # plus a fixed level 4-5 spell scroll (its own kind below, not from ON.gameplay_pool
@@ -521,45 +594,60 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         # one of the five kinds uniformly, then an identity within it -- otherwise the 25
         # individual level-4/5 spells would swamp the single treasureChest/campfire/
         # pandoraBox/scholar entries in a flat random choice.
-        pool_chest = [i for i in pool_art
-                     if i.get("type") in _LOOT_CHEST_TYPES | _LOOT_ZONE_CHEST_EXTRA_TYPES]
-        chest_kind_pools = {
-            kind: [i for i in pool_chest if i.get("type") == kind]
-            for kind in _LOOT_CHEST_TYPES | _LOOT_ZONE_CHEST_EXTRA_TYPES
+        pool_chest = [
+            i for i in pool_art if i.type in LOOT_CHEST_TYPES | _LOOT_ZONE_CHEST_EXTRA_TYPES
+        ]
+        chest_kind_pools: dict[str, list[Identity]] = {
+            kind: [i for i in pool_chest if i.type == kind]
+            for kind in LOOT_CHEST_TYPES | _LOOT_ZONE_CHEST_EXTRA_TYPES
         }
         chest_kind_pools["spellScroll"] = [
-            {"type": "spellScroll", "subtype": n, "animation": "ava0001", "mask": ["A"]}
-            for lvl in _LOOT_SCROLL_LEVELS for n in ON.spells_by_level(lvl)
+            Identity(type="spellScroll", subtype=n, animation="ava0001", mask=("A",))
+            for lvl in _LOOT_SCROLL_LEVELS
+            for n in ON.spells_by_level(lvl)
         ]
         # High-tier artifacts only (major + relic, i.e. level >= 3).
         arts_high = [(a, _LOOT_ART_W[a]) for a in ("avarnd3", "avarnd4") if a in _LOOT_ART_W]
         # Rare resources: mercury, sulfur, crystal, gems, gold — no wood/ore/randomResource.
-        pool_rare = [i for i in pool_res if i.get("subtype") in _LOOT_RARE_RESOURCE_SUBTYPES]
+        pool_rare = [i for i in pool_res if i.subtype in _LOOT_RARE_RESOURCE_SUBTYPES]
 
         free = sorted(reach - used)
         rng.shuffle(free)
 
         # Pass 1: TWO of each whitelisted hero-strengthening structure, separated from
-        # each other by >= _LOOT_HERO_STRUCTURE_MIN_SEP (never adjacent/touching), tile
+        # each other by >= LOOT_HERO_STRUCTURE_MIN_SEP (never adjacent/touching), tile
         # availability permitting (user-mandated 2026-09).
         for struct_type in sorted(_LOOT_HERO_STRUCTURE_TYPES):
-            candidates = [i for i in pool_vis if i.get("type") == struct_type]
+            candidates = [i for i in pool_vis if i.type == struct_type]
             if not candidates:
                 continue
             iv = rng.choice(candidates)
-            placed_at = []
+            placed_at: list[Tile] = []
             for t in free:
                 if len(placed_at) >= _LOOT_HERO_STRUCTURE_COUNT:
                     break
                 if t in used:
                     continue
-                if any(max(abs(t[0] - p[0]), abs(t[1] - p[1])) < _LOOT_HERO_STRUCTURE_MIN_SEP
-                       for p in placed_at):
+                if any(
+                    max(abs(t[0] - p[0]), abs(t[1] - p[1])) < LOOT_HERO_STRUCTURE_MIN_SEP
+                    for p in placed_at
+                ):
                     continue
-                if _place_one(objs, used, reach, rng, st,
-                              iv.get("purpose", "BONUS_TEMP"), None,
-                              t[0], t[1], ident=iv, cache=True, bounds=bounds,
-                              interactive_only=True):
+                if place_one(
+                    objs,
+                    used,
+                    reach,
+                    rng,
+                    st,
+                    "BONUS_TEMP",
+                    None,
+                    t[0],
+                    t[1],
+                    ident=iv,
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                ):
                     placed_at.append(t)
 
         # Pass 2: a roll per tile -- 20 % major/relic artifact | 40 % chest (treasure
@@ -570,100 +658,172 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
         for t in sorted(reach - used):
             roll = rng.random()
             if roll < 0.2 and arts_high:
-                ai = ON.identity_of(rng.choices(
-                    [a for a, _ in arts_high],
-                    weights=[w for _, w in arts_high], k=1)[0])
-                if ai:
-                    _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                              t[0], t[1], ident=ai, cache=True, bounds=bounds,
-                              interactive_only=True)
+                ai = ON.identity_of(
+                    rng.choices([a for a, _ in arts_high], weights=[w for _, w in arts_high], k=1)[
+                        0
+                    ]
+                )
+                _ = place_one(
+                    objs,
+                    used,
+                    reach,
+                    rng,
+                    st,
+                    "REWARD_PICKUP",
+                    pool_art,
+                    t[0],
+                    t[1],
+                    ident=ai,
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                )
             elif roll < 0.6 and chest_kinds:
                 ident = rng.choice(chest_kind_pools[rng.choice(chest_kinds)])
-                _place_one(objs, used, reach, rng, st, "REWARD_PICKUP", pool_art,
-                          t[0], t[1], ident=ident, cache=True, bounds=bounds,
-                          interactive_only=True)
+                _ = place_one(
+                    objs,
+                    used,
+                    reach,
+                    rng,
+                    st,
+                    "REWARD_PICKUP",
+                    pool_art,
+                    t[0],
+                    t[1],
+                    ident=ident,
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                )
             elif pool_rare:
-                _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
-                          t[0], t[1], ident=rng.choice(pool_rare), cache=True,
-                          bounds=bounds, interactive_only=True)
+                _ = place_one(
+                    objs,
+                    used,
+                    reach,
+                    rng,
+                    st,
+                    "RESOURCE_PILE",
+                    pool_res,
+                    t[0],
+                    t[1],
+                    ident=rng.choice(pool_rare),
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                )
 
         # Pass 3: any tile Pass 2 left free gets a rare resource -- a sealed loot zone
         # can't leave ANY tile unclaimed (a boat could dock a hero directly onto it,
         # bypassing the gate/monolith entirely, user-mandated). Falls back to any
         # resource, then warns, only in the pathological case where even that fails.
         for t in sorted(reach - used):
-            placed = pool_rare and _place_one(
-                objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
-                t[0], t[1], ident=rng.choice(pool_rare), cache=True, bounds=bounds,
-                interactive_only=True)
+            placed = bool(pool_rare) and place_one(
+                objs,
+                used,
+                reach,
+                rng,
+                st,
+                "RESOURCE_PILE",
+                pool_res,
+                t[0],
+                t[1],
+                ident=rng.choice(pool_rare),
+                cache=True,
+                bounds=bounds,
+                interactive_only=True,
+            )
             if not placed and pool_res:
-                placed = _place_one(objs, used, reach, rng, st, "RESOURCE_PILE", pool_res,
-                                    t[0], t[1], cache=True, bounds=bounds,
-                                    interactive_only=True)
+                placed = place_one(
+                    objs,
+                    used,
+                    reach,
+                    rng,
+                    st,
+                    "RESOURCE_PILE",
+                    pool_res,
+                    t[0],
+                    t[1],
+                    cache=True,
+                    bounds=bounds,
+                    interactive_only=True,
+                )
             if not placed:
-                print(f"  WARNING: loot zone fill left tile {t} unclaimed "
-                      f"(no fitting identity for terrain {terrain!r})")
+                print(
+                    f"  WARNING: loot zone fill left tile {t} unclaimed "
+                    + f"(no fitting identity for terrain {terrain!r})"
+                )
 
-    objs, n_placed = [], 0
-    processed_loot_zids = set()   # zones whose entrance was actually sealed this run
+    objs: list[PlacedObject] = []
+    n_placed = 0
+    processed_loot_zids: set[int] = set()  # zones whose entrance was actually sealed this run
     gate_count, mono_count = 0, 0
 
-    for loot_zr, passage_tiles in sorted(loot_zrs, key=lambda x: x[0]["zid"]):
-        zid      = loot_zr["zid"]
-        terrain  = loot_zr["terrain"]
-        st       = PG.mine_gameplay()[terrain]
-        ts       = loot_zr["ts"]
-        reach    = loot_zr["reach"]
-        used     = loot_zr["used"]
-        open_set = loot_zr.get("open_set")
-        rng      = random.Random(seed ^ (zid * 92821) ^ 0xA117)
+    for loot_zr, passage_tiles in sorted(loot_zrs, key=lambda x: x[0].zid):
+        zid = loot_zr.zid
+        terrain = loot_zr.terrain
+        st = PG.mine_gameplay()[terrain]
+        ts = loot_zr.ts
+        used = loot_zr.used
+        rng = random.Random(seed ^ (zid * 92821) ^ 0xA117)
         ext_pool = ext_no_castle or ext_any
         passage_cx = sum(t[0] for t in passage_tiles) / len(passage_tiles)
         passage_cy = sum(t[1] for t in passage_tiles) / len(passage_tiles)
 
         # Clear scatter vegetation so the whole interior is available for loot.
-        objs_existing[:] = [o for o in objs_existing if (o["x"], o["y"]) not in ts]
-        objs[:] = [o for o in objs if (o["x"], o["y"]) not in ts]
+        objs_existing[:] = [o for o in objs_existing if (o.x, o.y) not in ts]
+        objs[:] = [o for o in objs if (o.x, o.y) not in ts]
         used.clear()
         # After clearing, all zone tiles are passable (loot zones have no gameplay
         # blockers — no town, no mine).  The stored open_set/reach were computed with
         # dense vegetation in place (~70 % blocking) so they cover only ~30 % of ts.
         # Reset both to the full tile set so seal and fill can reach every tile.
         open_set = ts
-        reach    = ts
+        reach = ts
 
         # Determine which side of the loot zone's bounding box the passage is on.
-        ts_xs = [t[0] for t in ts]; ts_ys = [t[1] for t in ts]
+        ts_xs = [t[0] for t in ts]
+        ts_ys = [t[1] for t in ts]
         bbox_x0, bbox_x1 = min(ts_xs), max(ts_xs)
         bbox_y0, bbox_y1 = min(ts_ys), max(ts_ys)
-        d_top    = passage_cy - bbox_y0
+        d_top = passage_cy - bbox_y0
         d_bottom = bbox_y1 - passage_cy
-        d_left   = passage_cx - bbox_x0
-        d_right  = bbox_x1 - passage_cx
-        passage_side = min(
-            [("top", d_top), ("bottom", d_bottom), ("left", d_left), ("right", d_right)],
-            key=lambda s: s[1]
-        )[0]
+        d_left = passage_cx - bbox_x0
+        d_right = bbox_x1 - passage_cx
+        side_dists: list[tuple[str, float]] = [
+            ("top", d_top),
+            ("bottom", d_bottom),
+            ("left", d_left),
+            ("right", d_right),
+        ]
+        passage_side = min(side_dists, key=itemgetter(1))[0]
 
         use_gate = rng.random() < 0.5
         if use_gate:
             # ── Border Gate + Keymaster ──────────────────────────────────────
-            # Gate mask ['VVVV','VBXB']: 4-wide × 2-tall, anchor = bottom-right.
+            # Gate mask ['VVVV','VBXB']: 4-wide x 2-tall, anchor = bottom-right.
             # V-row at y-1 (passable/exterior), blocking-row at y (loot zone side).
             # Sort candidates so the blocking-row aligns with the passage side:
             #   top/bottom → anchor y at boundary row, x centred on passage
             #   left/right → anchor y at passage cy, x so the gate span covers passage x
             gate_anim, key_anim = _LOOT_COLORS[gate_count % len(_LOOT_COLORS)]
             gate_ident = ON.identity_of(gate_anim)
-            key_ident  = ON.identity_of(key_anim)
-            if gate_ident is None or key_ident is None:
-                continue
+            key_ident = ON.identity_of(key_anim)
 
-            km_zr, km_t = _find_ext_spot(key_ident, ext_pool)
-            if km_t is None:
+            km_spot = _find_ext_spot(key_ident, ext_pool)
+            if km_spot is None:
                 continue
+            km_zr, km_t = km_spot
 
-            def _gate_score(t):
+            def _gate_score(
+                t: Tile,
+                passage_side: str = passage_side,
+                bbox_x0: int = bbox_x0,
+                bbox_x1: int = bbox_x1,
+                bbox_y0: int = bbox_y0,
+                bbox_y1: int = bbox_y1,
+                passage_cx: float = passage_cx,
+                passage_cy: float = passage_cy,
+            ) -> tuple[float, float]:
                 gx, gy = t
                 if passage_side in ("top", "bottom"):
                     bnd_y = bbox_y0 if passage_side == "top" else bbox_y1
@@ -673,17 +833,18 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                     ideal_x = bbox_x0 + 3 if passage_side == "left" else bbox_x1
                     return (abs(gy - passage_cy), abs(gx - ideal_x))
 
-            gate_tile = None
-            entry_tile = None
+            gate_tile: Tile | None = None
+            entry_tile: Tile | None = None
+            gate_cells: list[Tile] = []
+            interactive: list[Tile] = []
             for t in sorted(ts, key=_gate_score):
                 gx, gy = t
-                gate_cells = [(cx, cy)
-                              for cx, cy, _ in OR.mask_cells(gate_ident["mask"], gx, gy)]
+                gate_cells = [(cx, cy) for cx, cy, _ in OR.mask_cells(gate_ident.mask, gx, gy)]
                 if bounds:
                     bw, bh = bounds
                     if any(not (0 <= cx < bw and 0 <= cy < bh) for cx, cy in gate_cells):
                         continue
-                interactive = OR.mask_interactive_cells(gate_ident["mask"], gx, gy)
+                interactive = OR.mask_interactive_cells(gate_ident.mask, gx, gy)
                 if not all(c in open_set for c in interactive):
                     continue
                 # The tile(s) directly behind the interactive cell, on the loot-zone
@@ -695,39 +856,41 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
                 # _seal_all_passages seals ALL of that perimeter, not just the
                 # detected passage cluster.
                 entry_tile_cand = _find_entry_tile(
-                    interactive, list(OR.mask_cells(gate_ident["mask"], gx, gy)), ts)
+                    interactive, list(OR.mask_cells(gate_ident.mask, gx, gy)), ts
+                )
                 if entry_tile_cand is None:
                     continue
                 if _entry_tile_has_stray_leak(
-                        entry_tile_cand, list(OR.mask_cells(gate_ident["mask"], gx, gy)),
-                        ts, _all_ts, _blocked_ts):
+                    entry_tile_cand,
+                    list(OR.mask_cells(gate_ident.mask, gx, gy)),
+                    ts,
+                    _all_ts,
+                    _blocked_ts,
+                ):
                     continue
                 # Clear any object (vegetation, guard) whose footprint overlaps the gate's
                 # full cell set — including V-row cells that may be in the exterior zone.
                 fp = set(gate_cells)
-                cleared = set()
+                cleared: set[Tile] = set()
                 for src in (objs_existing, objs):
-                    victims = [o for o in src
-                               if any((cx, cy) in fp
-                                      for cx, cy, _ in OR.mask_cells(o["mask"], o["x"], o["y"]))]
+                    victims = [
+                        o
+                        for o in src
+                        if any((cx, cy) in fp for cx, cy, _ in OR.mask_cells(o.mask, o.x, o.y))
+                    ]
                     for o in victims:
                         src.remove(o)
-                        for cx, cy, _ in OR.mask_cells(o["mask"], o["x"], o["y"]):
+                        for cx, cy, _ in OR.mask_cells(o.mask, o.x, o.y):
                             cleared.add((cx, cy))
                 for zr in zone_records:
-                    zr["used"] -= cleared
+                    zr.used -= cleared
                 used.update(gate_cells)
-                objs.append({"x": gx, "y": gy, "l": 0, "purpose": "QUEST_GATE",
-                             "type": gate_ident.get("type"),
-                             "subtype": gate_ident.get("subtype"),
-                             "animation": gate_ident["animation"],
-                             "mask": gate_ident["mask"],
-                             # Allow approach from all 8 directions so the gate is
-                             # visitable from the exterior (above the VVVV row), not
-                             # only from the interior side.
-                             "visitableFrom": ["+++", "+-+", "+++"],
-                             "template": {"animation": gate_ident["animation"],
-                                          "mask": gate_ident["mask"]}})
+                gate_obj = PlacedObject.at(gate_ident, gx, gy, purpose="QUEST_GATE")
+                # Allow approach from all 8 directions so the gate is
+                # visitable from the exterior (above the VVVV row), not
+                # only from the interior side.
+                gate_obj.visitable_from = ("+++", "+-+", "+++")
+                objs.append(gate_obj)
                 gate_tile = t
                 entry_tile = entry_tile_cand
                 break
@@ -736,16 +899,18 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
 
             # Check exterior access: at least one non-loot-zone tile adjacent to
             # the interactive cell must be passable (not occupied/blocked by objects).
-            ext_blocked = set()
+            ext_blocked: set[Tile] = set()
             for o in objs + objs_existing:
-                for cx, cy, blk in OR.mask_cells(o["mask"], o["x"], o["y"]):
+                for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
                     if blk:
                         ext_blocked.add((cx, cy))
             has_ext_access = any(
-                (sk[0]+dx, sk[1]+dy) not in ts and (sk[0]+dx, sk[1]+dy) not in ext_blocked
-                and 0 <= sk[0]+dx < (bounds[0] if bounds else 999)
-                and 0 <= sk[1]+dy < (bounds[1] if bounds else 999)
-                for sk in interactive for dx, dy in _DIRS8
+                (sk[0] + dx, sk[1] + dy) not in ts
+                and (sk[0] + dx, sk[1] + dy) not in ext_blocked
+                and 0 <= sk[0] + dx < (bounds[0] if bounds else 999)
+                and 0 <= sk[1] + dy < (bounds[1] if bounds else 999)
+                for sk in interactive
+                for dx, dy in _DIRS8
             )
             if not has_ext_access:
                 objs.remove(objs[-1])
@@ -764,53 +929,91 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             # unfilled forever). Loot fill uses `interactive_only` placement (a walk-on
             # 'A' cell), so a resource pile or structure sitting in the corridor never
             # blocks the hero's path through it.
-            corridor = _find_entry_corridor(
+            corridor = find_entry_corridor(
                 entry_tile,
-                list(OR.mask_cells(gate_ident["mask"], gate_tile[0], gate_tile[1])),
-                ts, _all_ts)
-            _seal_all_passages(ts, open_set, used, terrain, rng,
-                               skip_cells=set(interactive) | corridor)
+                list(OR.mask_cells(gate_ident.mask, gate_tile[0], gate_tile[1])),
+                ts,
+                _all_ts,
+            )
+            _seal_all_passages(ts, used, terrain, rng, skip_cells=set(interactive) | corridor)
             processed_loot_zids.add(zid)
             _fill_loot(terrain, st, open_set, used, rng)
-            _close_stray_leaks(ts, set(interactive), terrain, rng)
+            _close_stray_leaks(ts, set(interactive), rng)
 
             km_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)
-            km_st  = PG.mine_gameplay()[km_zr["terrain"]]
-            placed = _place_one(objs, km_zr["used"], km_zr["reach"], km_rng, km_st,
-                                "QUEST_GATE", None, km_t[0], km_t[1],
-                                ident=key_ident, bounds=bounds)
+            km_st = PG.mine_gameplay()[km_zr.terrain]
+            placed = place_one(
+                objs,
+                km_zr.used,
+                km_zr.reach,
+                km_rng,
+                km_st,
+                "QUEST_GATE",
+                None,
+                km_t[0],
+                km_t[1],
+                ident=key_ident,
+                bounds=bounds,
+            )
             if not placed:
-                for t in sorted(km_zr["reach"] - km_zr["used"]):
-                    if _place_one(objs, km_zr["used"], km_zr["reach"], km_rng, km_st,
-                                 "QUEST_GATE", None, t[0], t[1],
-                                 ident=key_ident, bounds=bounds):
+                for t in sorted(km_zr.reach - km_zr.used):
+                    if place_one(
+                        objs,
+                        km_zr.used,
+                        km_zr.reach,
+                        km_rng,
+                        km_st,
+                        "QUEST_GATE",
+                        None,
+                        t[0],
+                        t[1],
+                        ident=key_ident,
+                        bounds=bounds,
+                    ):
                         placed = True
                         break
             if placed:
                 n_placed += 1
                 gate_count += 1
                 placed_ext_tiles.append(km_t)
-                gident_km = PG.rnd_monster(7)
-                for t in sorted(km_zr["reach"] - km_zr["used"],
-                                key=lambda t: max(abs(t[0] - km_t[0]),
-                                                  abs(t[1] - km_t[1]))):
-                    if max(abs(t[0] - km_t[0]), abs(t[1] - km_t[1])) > 1:
-                        break
-                    if _place_one(objs, km_zr["used"], km_zr["reach"], km_rng, km_st,
-                                  "GUARD", None, t[0], t[1], ident=gident_km,
-                                  bounds=bounds):
+                gident_km = rnd_monster(7)
+                decor_blk = OR.decor_blocking_cells(objs)
+                guard_done = False
+                for clear_of in (decor_blk, None):
+                    for t in sorted(
+                        km_zr.reach - km_zr.used,
+                        key=lambda t: max(abs(t[0] - km_t[0]), abs(t[1] - km_t[1])),
+                    ):
+                        if max(abs(t[0] - km_t[0]), abs(t[1] - km_t[1])) > 1:
+                            break
+                        if place_one(
+                            objs,
+                            km_zr.used,
+                            km_zr.reach,
+                            km_rng,
+                            km_st,
+                            "GUARD",
+                            None,
+                            t[0],
+                            t[1],
+                            ident=gident_km,
+                            bounds=bounds,
+                            clear_of=clear_of,
+                        ):
+                            guard_done = True
+                            break
+                    if guard_done:
                         break
 
         else:
             # ── Fully sealed + Two-Way Monolith pair ─────────────────────────
-            mono_anim  = _LOOT_MONOLITHS[mono_count % len(_LOOT_MONOLITHS)]
+            mono_anim = _LOOT_MONOLITHS[mono_count % len(_LOOT_MONOLITHS)]
             mono_ident = ON.identity_of(mono_anim)
-            if mono_ident is None:
-                continue
 
-            ext_zr, ext_t = _find_ext_spot(mono_ident, ext_pool)
-            if ext_t is None:
+            ext_spot = _find_ext_spot(mono_ident, ext_pool)
+            if ext_spot is None:
                 continue
+            ext_zr, ext_t = ext_spot
 
             # Place monolith at zone centroid (deepest interior tile). Its own
             # footprint is fully passable ('V'/'A', no blocking cells), but the hero
@@ -819,18 +1022,22 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             # same defect as an unlinked gate, see s7-z4 diagnosis, 2026-09).
             ts_cx = sum(t[0] for t in ts) / len(ts)
             ts_cy = sum(t[1] for t in ts) / len(ts)
-            int_t = None
+            int_t: Tile | None = None
             entry_tile = None
-            for t in sorted(reach - used,
-                            key=lambda t: (t[0] - ts_cx) ** 2 + (t[1] - ts_cy) ** 2):
-                if _legal(mono_ident, t[0], t[1], reach, used, bounds=bounds) is None:
+            mono_cells: list[tuple[int, int, bool]] = []
+            for t in sorted(
+                reach - used, key=lambda c, cx=ts_cx, cy=ts_cy: (c[0] - cx) ** 2 + (c[1] - cy) ** 2
+            ):
+                if legal_cells(mono_ident, t[0], t[1], reach, used, bounds=bounds) is None:
                     continue
-                mono_cells = list(OR.mask_cells(mono_ident["mask"], t[0], t[1]))
+                mono_cells = list(OR.mask_cells(mono_ident.mask, t[0], t[1]))
                 mono_fp_coords = {(cx, cy) for cx, cy, _blk in mono_cells}
                 entry_tile_cand = _find_entry_tile(mono_fp_coords, mono_cells, ts)
                 if entry_tile_cand is None:
                     continue
-                if _entry_tile_has_stray_leak(entry_tile_cand, mono_cells, ts, _all_ts, _blocked_ts):
+                if _entry_tile_has_stray_leak(
+                    entry_tile_cand, mono_cells, ts, _all_ts, _blocked_ts
+                ):
                     continue
                 int_t = t
                 entry_tile = entry_tile_cand
@@ -838,44 +1045,91 @@ def place_loot_zones(zone_records, entrance_plan, objs_existing, seed=1, bounds=
             if int_t is None:
                 continue
 
-            _place_one(objs, used, reach, rng, st, "TRANSPORT", None,
-                      int_t[0], int_t[1], ident=mono_ident, bounds=bounds)
-            mono_interactive = set(OR.mask_interactive_cells(mono_ident["mask"],
-                                                             int_t[0], int_t[1]))
+            _ = place_one(
+                objs,
+                used,
+                reach,
+                rng,
+                st,
+                "TRANSPORT",
+                None,
+                int_t[0],
+                int_t[1],
+                ident=mono_ident,
+                bounds=bounds,
+            )
+            mono_interactive = set(OR.mask_interactive_cells(mono_ident.mask, int_t[0], int_t[1]))
             # Excavate BEFORE the free-tile scan; the corridor is then ordinary floor,
             # not a reserved empty hallway -- see the gate branch's identical comment.
-            corridor = _find_entry_corridor(entry_tile, mono_cells, ts, _all_ts)
-            _seal_all_passages(ts, open_set, used, terrain, rng,
-                               skip_cells=mono_interactive | corridor)
+            corridor = find_entry_corridor(entry_tile, mono_cells, ts, _all_ts)
+            _seal_all_passages(ts, used, terrain, rng, skip_cells=mono_interactive | corridor)
             processed_loot_zids.add(zid)
             _fill_loot(terrain, st, open_set, used, rng)
-            _close_stray_leaks(ts, mono_interactive, terrain, rng)
+            _close_stray_leaks(ts, mono_interactive, rng)
 
             ext_rng = random.Random(seed ^ (zid * 131071) ^ 0xCEBF)
-            ext_st  = PG.mine_gameplay()[ext_zr["terrain"]]
-            placed  = _place_one(objs, ext_zr["used"], ext_zr["reach"], ext_rng, ext_st,
-                                 "TRANSPORT", None, ext_t[0], ext_t[1],
-                                 ident=mono_ident, bounds=bounds)
+            ext_st = PG.mine_gameplay()[ext_zr.terrain]
+            placed = place_one(
+                objs,
+                ext_zr.used,
+                ext_zr.reach,
+                ext_rng,
+                ext_st,
+                "TRANSPORT",
+                None,
+                ext_t[0],
+                ext_t[1],
+                ident=mono_ident,
+                bounds=bounds,
+            )
             if not placed:
-                for t in sorted(ext_zr["reach"] - ext_zr["used"]):
-                    if _place_one(objs, ext_zr["used"], ext_zr["reach"], ext_rng, ext_st,
-                                 "TRANSPORT", None, t[0], t[1],
-                                 ident=mono_ident, bounds=bounds):
+                for t in sorted(ext_zr.reach - ext_zr.used):
+                    if place_one(
+                        objs,
+                        ext_zr.used,
+                        ext_zr.reach,
+                        ext_rng,
+                        ext_st,
+                        "TRANSPORT",
+                        None,
+                        t[0],
+                        t[1],
+                        ident=mono_ident,
+                        bounds=bounds,
+                    ):
                         placed = True
                         break
             if placed:
                 n_placed += 1
                 mono_count += 1
                 placed_ext_tiles.append(ext_t)
-                gident_ext = PG.rnd_monster(7)
-                for t in sorted(ext_zr["reach"] - ext_zr["used"],
-                                key=lambda t: max(abs(t[0] - ext_t[0]),
-                                                  abs(t[1] - ext_t[1]))):
-                    if max(abs(t[0] - ext_t[0]), abs(t[1] - ext_t[1])) > 1:
-                        break
-                    if _place_one(objs, ext_zr["used"], ext_zr["reach"], ext_rng, ext_st,
-                                  "GUARD", None, t[0], t[1], ident=gident_ext,
-                                  bounds=bounds):
+                gident_ext = rnd_monster(7)
+                decor_blk = OR.decor_blocking_cells(objs)
+                guard_done = False
+                for clear_of in (decor_blk, None):
+                    for t in sorted(
+                        ext_zr.reach - ext_zr.used,
+                        key=lambda t: max(abs(t[0] - ext_t[0]), abs(t[1] - ext_t[1])),
+                    ):
+                        if max(abs(t[0] - ext_t[0]), abs(t[1] - ext_t[1])) > 1:
+                            break
+                        if place_one(
+                            objs,
+                            ext_zr.used,
+                            ext_zr.reach,
+                            ext_rng,
+                            ext_st,
+                            "GUARD",
+                            None,
+                            t[0],
+                            t[1],
+                            ident=gident_ext,
+                            bounds=bounds,
+                            clear_of=clear_of,
+                        ):
+                            guard_done = True
+                            break
+                    if guard_done:
                         break
 
     return objs, n_placed, processed_loot_zids

@@ -2,7 +2,7 @@
 name = "vcmi-mapgen"
 version = "0.1.0"
 description = "Learned procedural map generator for VCMI"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "pillow>=10",  # editor-quality H3 sprite rendering (vcmi_mapgen/render_editor.py)
     "numpy>=1.26",  # terrain segmentation + zone transform math
@@ -10,7 +10,7 @@ dependencies = [
 
 # pytest in the PROJECT env; uv installs the `dev` group by default for `uv run`/`uv sync`.
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.8", "basedpyright>=1.20"]
 
 # Everything else is the Python standard library. Run via uv, e.g.:
 #   uv run python -m vcmi_mapgen.zone_engine run "All for One"
@@ -21,17 +21,16 @@ package = false
 
 [tool.ruff]
 line-length = 100
+target-version = "py312"
 
 [tool.ruff.lint]
-# Pre-existing codebase style — do not touch these in bulk:
-#   E401/E402: multi-import lines + sys.path hacks before third-party imports
-#   F401: imports used for side-effects or available to callers without __all__
-#   E741: `l` used throughout as "level" variable name
-#   F841: intermediate computations stored but not always read
-#   E731: lambdas assigned to local helpers (idiom in embedding/noise code)
-#   E722: bare except in resilient loaders
-#   F821/F601/F541: minor pre-existing issues
-ignore = ["E401", "E402", "F401", "E741", "F841", "E731", "E722", "F821", "F601", "F541"]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "PL", "RUF"]
+ignore = ["PLR2004", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917"]
+
+[tool.basedpyright]
+pythonVersion = "3.12"
+typeCheckingMode = "all"
+include = ["vcmi_mapgen"]
 
 [tool.pytest.ini_options]
 testpaths = ["vcmi_mapgen"]

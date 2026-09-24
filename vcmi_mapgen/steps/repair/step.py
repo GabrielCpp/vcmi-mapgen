@@ -1,13 +1,19 @@
 """RepairStep — border seal, unreachable-zone rescue, G2 repair, island fill, pocket caches."""
+
 from __future__ import annotations
 
 import collections
+from collections.abc import Collection, Container, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from typing import final, override
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import find_pockets
-from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
+from vcmi_mapgen.models import MapState, PlacedObject, Pockets, Tile, Zone, ZoneRecord
+from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.steps.gameplay.step import GameplayIndex
 from vcmi_mapgen.steps.gate.step import GateResult
 from vcmi_mapgen.steps.pickup.step import PickupIndex
@@ -22,36 +28,53 @@ class RepairResult:
     """Diagnostic log lines + pocket geometry — the CLI's own input (printed / handed
     to PocketOverlay), never consumed by another step."""
 
-    log: list = field(default_factory=list)
-    pockets: dict = field(default_factory=dict)
+    log: list[str] = field(default_factory=list)
+    pockets: Pockets = field(default_factory=dict)
 
 
-def _find_start(player_zids, zones_by_level: dict, workspace: PlacementWorkspace):
+_EMPTY: frozenset[Tile] = frozenset()
+_EMPTY_ZIDS: frozenset[int] = frozenset()
+
+
+def _find_start(
+    player_zids: Sequence[tuple[int, int]],
+    zones_by_level: Mapping[int, Mapping[int, Zone]],
+    workspace: PlacementWorkspace,
+) -> tuple[int, Tile] | None:
     """Return (level, (x, y)) for the first player town, or centroid of the
     largest surface land zone when there are no players."""
     for lvl, zid in player_zids:
         lvl_ws = workspace.levels.get(lvl)
         t = lvl_ws.town_of_zone.get(zid) if lvl_ws is not None else None
         if t is not None:
-            return (lvl, (t["x"], t["y"]))
+            return (lvl, (t.x, t.y))
     # No players — use nearest-to-centroid tile of the largest surface land zone
     zones0 = zones_by_level.get(0, {})
     big = max(
-        (z for z in zones0.values()
-         if TNAME.get(z["terrain_type"]) not in (None, "water", "rock")),
-        key=lambda z: z["area"],
+        (z for z in zones0.values() if TNAME.get(z.terrain_type) not in (None, "water", "rock")),
+        key=lambda z: z.area,
         default=None,
     )
     if big is not None:
-        bx, by = big["centroid"]
-        return (0, min(big["tiles_set"],
-                       key=lambda t: ((t[0] - bx) ** 2 + (t[1] - by) ** 2, t)))
+        bx, by = big.centroid
+        return (0, min(big.tiles_set, key=lambda t: ((t[0] - bx) ** 2 + (t[1] - by) ** 2, t)))
     return None
 
 
-def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
-                      boat_ok=True, ridge=frozenset(), seerhut_artifacts=None,
-                      border_guards=frozenset(), home_zids=frozenset()):
+def _repair_one_level(
+    level: int,
+    size: int,
+    grid: Sequence[Sequence[int]],
+    objs: list[PlacedObject],
+    targets: list[Tile],
+    zone_records: Sequence[ZoneRecord],
+    seed: int,
+    boat_ok: bool = True,
+    ridge: AbstractSet[Tile] = _EMPTY,
+    seerhut_artifacts: set[str] | None = None,
+    border_guards: Container[Tile] = _EMPTY,
+    home_zids: Collection[int] = _EMPTY_ZIDS,
+) -> tuple[list[PlacedObject], int, int, int, int, int, dict[Tile, float]]:
     """G2 map-level gate + island repair + guarded pocket caches + dup-guard cleanup for ONE
     already-fully-populated level (gates included, border already sealed). MUST run before
     pocket detection (user-mandated: "the pocket detection should run after the map is fully
@@ -63,8 +86,7 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     Returns (objs, ncarved, nreconn, nfilled, n_pockets, ndrop, pocket_depth_by_tile)."""
     objs_before_g2 = list(objs)
     objs, ncarved = GEO.g2_repair(size, grid, objs, targets, costly=ridge)
-    removed_g2 = [o for o in objs_before_g2
-                  if id(o) not in {id(x) for x in objs}]
+    removed_g2 = [o for o in objs_before_g2 if id(o) not in {id(x) for x in objs}]
 
     objs_before_fill = list(objs)
     ids_before_fill = {id(o) for o in objs_before_fill}
@@ -78,34 +100,40 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     #      fill_open_islands would carve through the seal (cost 40 < cap 120) to reconnect
     #      them.  Pricing loot-zone tiles at 400 makes those paths exceed the cap, so
     #      fill_open_islands fills the pocket with blocking decoration instead of carving.
-    loot_interior = set()
+    loot_interior: set[Tile] = set()
     for zr in zone_records:
-        if zr.get("loot_zone"):
-            loot_interior |= zr["ts"]
+        if zr.loot_zone:
+            loot_interior |= zr.ts
     fill_targets = targets + [t for t in sorted(loot_interior) if t not in set(targets)]
-    objs, nreconn, nfilled = GEO.fill_open_islands(size, grid, objs, fill_targets, seed=seed,
-                                                   boat_ok=boat_ok, costly=ridge | loot_interior)
+    objs, nreconn, nfilled = GEO.fill_open_islands(
+        size, grid, objs, fill_targets, seed=seed, boat_ok=boat_ok, costly=ridge | loot_interior
+    )
     ids_after_fill = {id(o) for o in objs}
     removed_fill = [o for o in objs_before_fill if id(o) not in ids_after_fill]
     added_fill = [o for o in objs if id(o) not in ids_before_fill]
 
-    zone_of_tile = {}
-    zr_by_zid = {zr["zid"]: zr for zr in zone_records}
+    zone_of_tile: dict[Tile, int] = {}
+    zr_by_zid = {zr.zid: zr for zr in zone_records}
     for zr in zone_records:
-        for t in zr["ts"]:
-            zone_of_tile[t] = zr["zid"]
-    for o in removed_g2 + removed_fill:               # vegetation carved away -> walkable again
-        for cx, cy in BS._blocking_cells(o):
-            zr = zr_by_zid.get(zone_of_tile.get((cx, cy)))
+        for t in zr.ts:
+            zone_of_tile[t] = zr.zid
+    still_blocked = {c for o in objs for c in BS.blocking_cells(o)}
+    for o in removed_g2 + removed_fill:  # vegetation carved away -> walkable again
+        for cx, cy in BS.blocking_cells(o):
+            if (cx, cy) in still_blocked:  # stacked decor: another object still blocks it
+                continue
+            zid = zone_of_tile.get((cx, cy))
+            zr = zr_by_zid.get(zid) if zid is not None else None
             if zr is not None:
-                zr["passable"].add((cx, cy))
-                zr["open_set"].add((cx, cy))
-    for o in added_fill:                               # new blocking filler -> now impassable
-        for cx, cy in BS._blocking_cells(o):
-            zr = zr_by_zid.get(zone_of_tile.get((cx, cy)))
+                zr.passable.add((cx, cy))
+                zr.open_set.add((cx, cy))
+    for o in added_fill:  # new blocking filler -> now impassable
+        for cx, cy in BS.blocking_cells(o):
+            zid = zone_of_tile.get((cx, cy))
+            zr = zr_by_zid.get(zid) if zid is not None else None
             if zr is not None:
-                zr["passable"].discard((cx, cy))
-                zr["open_set"].discard((cx, cy))
+                zr.passable.discard((cx, cy))
+                zr.open_set.discard((cx, cy))
 
     # L4a' Seer Hut quests: one fixed named artifact + a seer hut whose mission gates on it
     # (VCMI RMG convention — "add seer hut with quest to the map like the vcmi generator
@@ -114,19 +142,23 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     # Pre-compute global pocket geometry ONCE, shared by both the seer-hut quest pass
     # (artifact restricted to ≥3-tile pockets) and the pocket-cache pass (avoids a
     # second expensive find_pockets call on the same data).
-    _global_true_pkt = set()
+    _global_true_pkt: set[Tile] = set()
     for _zr_pkt in zone_records:
-        _global_true_pkt |= _zr_pkt.get("passable", _zr_pkt["open_set"])
+        _global_true_pkt |= _zr_pkt.passable
     _raw_pkt = find_pockets(_global_true_pkt)
-    _pocket_tiles_pkt = set()
+    _pocket_tiles_pkt: set[Tile] = set()
     for _g_pkt, (_pt_pkt, _mf_pkt) in _raw_pkt.items():
         if len(_pt_pkt) >= 3:
             _pocket_tiles_pkt |= set(_pt_pkt)
-    qobjs, n_quests = CA.place_seer_hut_quests(zone_records, seed=seed, bounds=(size, size),
-                                               used_artifacts=seerhut_artifacts,
-                                               pocket_tiles=_pocket_tiles_pkt)
+    qobjs, n_quests = CA.place_seer_hut_quests(
+        zone_records,
+        seed=seed,
+        bounds=(size, size),
+        used_artifacts=seerhut_artifacts,
+        pocket_tiles=_pocket_tiles_pkt,
+    )
     objs.extend(qobjs)
-    targets.extend((o["x"], o["y"]) for o in qobjs)
+    targets.extend((o.x, o.y) for o in qobjs)
     if n_quests:
         print(f"  L{level} seer hut quests: {n_quests}")
 
@@ -135,21 +167,28 @@ def _repair_one_level(level, size, grid, objs, targets, zone_records, seed,
     # repair passes above are finalized (user-mandated 2026-07-04 — see
     # steps.repair.caches.place_pocket_caches docstring for the rationale).
     cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
-        zone_records, seed=seed, bounds=(size, size),
-        border_guards=border_guards, precomputed_pockets=_raw_pkt,
-        existing_objs=objs, home_zids=home_zids)
+        zone_records,
+        seed=seed,
+        bounds=(size, size),
+        border_guards=border_guards,
+        precomputed_pockets=_raw_pkt,
+        existing_objs=objs,
+        home_zids=home_zids,
+    )
     objs.extend(cobjs)
-    targets.extend((o["x"], o["y"]) for o in cobjs)
-    ck = collections.Counter(o["purpose"] for o in cobjs)
-    print(f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "
-          f"art={ck.get('REWARD_PICKUP', 0)} guard={ck.get('GUARD', 0)}")
+    targets.extend((o.x, o.y) for o in cobjs)
+    ck = collections.Counter(o.purpose for o in cobjs)
+    print(
+        f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "
+        + f"art={ck.get('REWARD_PICKUP', 0)} guard={ck.get('GUARD', 0)}"
+    )
 
-    objs, ndrop = _dedup_nearby_guards(objs)
+    objs, ndrop = dedup_nearby_guards(objs)
 
     return objs, ncarved, nreconn, nfilled, n_pockets, ndrop, pocket_depth_by_tile
 
 
-def _dedup_nearby_guards(objs):
+def dedup_nearby_guards(objs: list[PlacedObject]) -> tuple[list[PlacedObject], int]:
     """Both sides of one corridor may have guarded the same gate — keep only the
     stronger of any two GUARDs within Chebyshev 2 (deterministic scan order).
 
@@ -174,22 +213,27 @@ def _dedup_nearby_guards(objs):
 
     Per-LEVEL only: two guards that happen to share (x, y) on different levels are
     not physically near each other. Returns (deduped_objs, n_dropped)."""
-    drop = set()
-    guards = [(i, o) for i, o in enumerate(objs) if o.get("purpose") == "GUARD"]
+    drop: set[int] = set()
+    guards = [(i, o) for i, o in enumerate(objs) if o.purpose == "GUARD"]
     mine_cells = [
-        (mx, my) for o in objs if o.get("purpose") == "MINE"
-        for mx, my, _ in OR.mask_cells(o["mask"], o["x"], o["y"])
+        (mx, my)
+        for o in objs
+        if o.purpose == "MINE"
+        for mx, my, _ in OR.mask_cells(o.mask, o.x, o.y)
     ]
     access_cells = [
-        (ax, ay) for o in objs if o.get("purpose") in ("QUEST_GATE", "TRANSPORT")
-        for ax, ay, _ in OR.mask_cells(o["mask"], o["x"], o["y"])
+        (ax, ay)
+        for o in objs
+        if o.purpose in ("QUEST_GATE", "TRANSPORT")
+        for ax, ay, _ in OR.mask_cells(o.mask, o.x, o.y)
     ]
 
-    def _rank(o):
-        if (any(max(abs(o["x"] - mx), abs(o["y"] - my)) <= 1 for mx, my in mine_cells)
-                or any(max(abs(o["x"] - ax), abs(o["y"] - ay)) <= 1 for ax, ay in access_cells)):
+    def _rank(o: PlacedObject) -> int:
+        if any(max(abs(o.x - mx), abs(o.y - my)) <= 1 for mx, my in mine_cells) or any(
+            max(abs(o.x - ax), abs(o.y - ay)) <= 1 for ax, ay in access_cells
+        ):
             return 0
-        if o.get("pocket_guard"):
+        if o.pocket_guard:
             return 1
         return 2
 
@@ -202,7 +246,7 @@ def _dedup_nearby_guards(objs):
             ib, ob = guards[b]
             if ib in drop:
                 continue
-            if max(abs(oa["x"] - ob["x"]), abs(oa["y"] - ob["y"])) <= 2:
+            if max(abs(oa.x - ob.x), abs(oa.y - ob.y)) <= 2:
                 ra, rb = ranks[ia], ranks[ib]
                 if ra < rb:
                     drop.add(ib)
@@ -212,12 +256,13 @@ def _dedup_nearby_guards(objs):
                     continue  # both gate a mine/access object — never drop either
                 else:
                     # randomMonsterLevelN sorts by N lexically (levels 1..7)
-                    drop.add(ib if str(oa.get("type")) >= str(ob.get("type")) else ia)
+                    drop.add(ib if str(oa.type) >= str(ob.type) else ia)
     if drop:
         objs = [o for i, o in enumerate(objs) if i not in drop]
     return objs, len(drop)
 
 
+@final
 class RepairStep(PipelineStep):
     """Post-placement repair: residual border-leak seal, unreachable-zone rescue, G2
     repairs, island fill, guarded pocket caches, and seerhut deduplication.
@@ -252,18 +297,19 @@ class RepairStep(PipelineStep):
         self.seed = seed
         self.size = size
         self.subterrain = subterrain
-        self.objs: list = []
-        self.log: list = []
-        self._ctx = None
-        self._targets: dict = {}
-        self._zone_records: dict = {}
-        self._grids: dict = {}
-        self._workspace: PlacementWorkspace | None = None
-        self._player_zids: list = []
-        self._gate_objs: list = []
-        self._tunnel_protect: frozenset = frozenset()
+        self.objs: list[PlacedObject] = []
+        self.log: list[str] = []
+        self._ctx = ProviderRegistry()
+        self._targets: dict[int, list[Tile]] = {}
+        self._zone_records: dict[int, list[ZoneRecord]] = {}
+        self._grids: dict[int, list[list[int]]] = {}
+        self._workspace = PlacementWorkspace()
+        self._player_zids: list[tuple[int, int]] = []
+        self._gate_objs: list[PlacedObject] = []
+        self._tunnel_protect: frozenset[Tile] = _EMPTY
 
-    def inject(self, ctx) -> None:
+    @override
+    def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
         pickup = ctx.require(PickupIndex)
         self._targets = pickup.targets
@@ -275,7 +321,9 @@ class RepairStep(PipelineStep):
         self._player_zids = ctx.require(GameplayIndex).player_zids
         self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
 
-    def run(self, ontology, map_state) -> None:
+    @override
+    def run(self, ontology: Ontology, map_state: MapState) -> None:
+        _ = ontology
         W = H = self.size
         size = self.size
         grids = self._grids
@@ -284,84 +332,109 @@ class RepairStep(PipelineStep):
         zone_records_by_level = self._zone_records
 
         # partition flat objs list by level for per-level repair
-        objs_by_level: dict = {lvl: [] for lvl in grids}
+        objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in grids}
         for o in map_state.objs:
-            lvl = o.get("l", 0)
+            lvl = o.level
             if lvl in objs_by_level:
                 objs_by_level[lvl].append(o)
 
         # ── Residual border-leak seal (the tail that used to run inside _run_level, once
         # per level, right after that level's own vegetation+scatter finished) ───────────
-        border_guards_by_level: dict = {}
+        border_guards_by_level: dict[int, set[Tile]] = {}
         for level in sorted(grids):
             lvl_ws = self._workspace.levels[level]
             zone_records = zone_records_by_level[level]
-            loot_ts = set()
+            loot_ts: set[Tile] = set()
             for zr in zone_records:
-                if zr.get("loot_zone"):
-                    loot_ts |= zr["ts"]
-            tunnel_protect = self._tunnel_protect if level == 1 else frozenset()
+                if zr.loot_zone:
+                    loot_ts |= zr.ts
+            tunnel_protect = self._tunnel_protect if level == 1 else _EMPTY
             sobjs_seal, sealed, guard_tiles, n_open = BS.seal_zone_borders(
-                W, H, grids[level], zones_by_level[level], lvl_ws.entrance_plan,
-                objs_by_level[level], lvl_ws.seal_avoid | tunnel_protect,
-                lvl_ws.hard_avoid, self.seed, level, skip_tiles=loot_ts)
+                W,
+                H,
+                grids[level],
+                zones_by_level[level],
+                lvl_ws.entrance_plan,
+                objs_by_level[level],
+                lvl_ws.seal_avoid | tunnel_protect,
+                lvl_ws.hard_avoid,
+                self.seed,
+                level,
+                skip_tiles=loot_ts,
+            )
             objs_by_level[level].extend(sobjs_seal)
             if sealed or guard_tiles or n_open:
                 self.log.append(
                     f"L{level} border seal: {len(sealed)} cells closed, "
-                    f"{len(guard_tiles)} back-path guards"
-                    + (f", {n_open} crossings left free (unguardable)" if n_open else ""))
-            for zr in zone_records:                      # keep pocket detection honest
-                zr["passable"] -= sealed
-                zr["open_set"] -= sealed | guard_tiles
+                    + f"{len(guard_tiles)} back-path guards"
+                    + (f", {n_open} crossings left free (unguardable)" if n_open else "")
+                )
+            for zr in zone_records:  # keep pocket detection honest
+                zr.passable -= sealed
+                zr.open_set -= sealed | guard_tiles
             lvl_ws.guard_tiles = frozenset(guard_tiles)
             border_guards_by_level[level] = guard_tiles
 
-        gate_xy = {(o["x"], o["y"]) for o in self._gate_objs if o.get("l", 0) == 0}
+        gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
         start = _find_start(self._player_zids, zones_by_level, self._workspace)
 
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
-                size, grids, zones_by_level, objs_by_level, targets_by_level,
-                zone_records_by_level, start, gate_xy, self.seed)
+                size,
+                grids,
+                zones_by_level,
+                objs_by_level,
+                targets_by_level,
+                zone_records_by_level,
+                start,
+                gate_xy,
+                self.seed,
+            )
             if n_portals:
                 self.log.append(f"RepairStep: {n_portals} portal rescue(s) added")
 
-        seerhut_artifacts: set = set()
-        pockets_by_level: dict = {}
+        seerhut_artifacts: set[str] = set()
+        pockets_by_level: Pockets = {}
         for level in sorted(grids):
             objs = objs_by_level[level]
             targets = targets_by_level[level]
             zone_records = zone_records_by_level[level]
             lvl_ridge = self._workspace.levels[level].ridge
-            lvl_border_guards = border_guards_by_level.get(level, frozenset())
-            boat_ok = (level == 0)
+            lvl_border_guards = border_guards_by_level.get(level, _EMPTY)
+            boat_ok = level == 0
 
             lvl_home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
 
-            (repaired, ncarved, nreconn, nfilled,
-             npockets, ndrop, pocket_depth_by_tile) = _repair_one_level(
-                level, size, grids[level], objs, targets, zone_records, self.seed,
-                boat_ok=boat_ok, ridge=lvl_ridge,
-                seerhut_artifacts=seerhut_artifacts,
-                border_guards=lvl_border_guards,
-                home_zids=lvl_home_zids,
+            (repaired, ncarved, nreconn, nfilled, npockets, ndrop, pocket_depth_by_tile) = (
+                _repair_one_level(
+                    level,
+                    size,
+                    grids[level],
+                    objs,
+                    targets,
+                    zone_records,
+                    self.seed,
+                    boat_ok=boat_ok,
+                    ridge=lvl_ridge,
+                    seerhut_artifacts=seerhut_artifacts,
+                    border_guards=lvl_border_guards,
+                    home_zids=lvl_home_zids,
+                )
             )
             objs_by_level[level] = repaired
             pockets_by_level[level] = pocket_depth_by_tile
 
             self.log.append(
                 f"L{level} repair: carved={ncarved} reconnected={nreconn} "
-                f"filled={nfilled} pockets={npockets} dup_drops={ndrop}"
+                + f"filled={nfilled} pockets={npockets} dup_drops={ndrop}"
             )
 
         # retag all underground objects with l=1
         if self.subterrain and 1 in objs_by_level:
             for o in objs_by_level[1]:
-                o["l"] = 1
+                o.level = 1
 
         # flatten into self.objs
-        self.objs = [o for lvl in sorted(objs_by_level)
-                     for o in objs_by_level[lvl]]
+        self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
         map_state.objs = self.objs
         self._ctx.provide(RepairResult(log=self.log, pockets=pockets_by_level))

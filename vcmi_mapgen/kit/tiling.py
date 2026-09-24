@@ -8,92 +8,105 @@ Tiny terrain speckles are despeckled first (merged into their dominant neighbour
 generated terrain reads as coherent regions rather than fragmenting into unplayable
 sliver-zones.
 """
-import collections
 
+import collections
+import functools
+from collections.abc import Collection
+
+from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import terrain_segment as TS
+from vcmi_mapgen.models import Cell, Tile
+
+type ViewMirror = tuple[int, int]
+type Tiler = tuple[
+    dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]],
+    dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]],
+    dict[int, collections.Counter[ViewMirror]],
+]
 
 # Per-terrain CLEAN interior tile views (corpus-derived: the views real maps use on
 # tiles whose 4 neighbours are the same terrain). Synthetic views 0-7 land on
 # transition/border frames for most terrains, which renders as an "off"/patchy
 # ground — restricting to these keeps generated terrain reading as flat ground.
-CLEAN_VIEWS = {
-    0: [21, 22, 23, 24, 25, 26, 27, 28, 29],   # dirt
-    1: [0, 1, 2, 3, 4, 5, 6, 7],               # sand
-    2: [49, 50, 51, 52, 53, 54, 55, 56],       # grass
-    3: [49, 50, 51, 52, 53, 54, 55, 56],       # snow
-    4: [49, 50, 51, 52, 53, 54, 55, 56],       # swamp
-    5: [49, 50, 51, 52, 53, 54, 55, 56],       # rough
-    6: [49, 50, 51, 52, 53, 54, 55, 56],       # subterr
-    7: [49, 50, 51, 52, 53, 54, 55, 56],       # lava
-    8: [21, 22, 23, 24, 25, 26, 27, 28, 29],   # water
-    9: [0, 1, 2, 3, 4, 5, 6, 7],               # rock
+CLEAN_VIEWS: dict[int, list[int]] = {
+    0: [21, 22, 23, 24, 25, 26, 27, 28, 29],  # dirt
+    1: [0, 1, 2, 3, 4, 5, 6, 7],  # sand
+    2: [49, 50, 51, 52, 53, 54, 55, 56],  # grass
+    3: [49, 50, 51, 52, 53, 54, 55, 56],  # snow
+    4: [49, 50, 51, 52, 53, 54, 55, 56],  # swamp
+    5: [49, 50, 51, 52, 53, 54, 55, 56],  # rough
+    6: [49, 50, 51, 52, 53, 54, 55, 56],  # subterr
+    7: [49, 50, 51, 52, 53, 54, 55, 56],  # lava
+    8: [21, 22, 23, 24, 25, 26, 27, 28, 29],  # water
+    9: [0, 1, 2, 3, 4, 5, 6, 7],  # rock
 }
 
 
-def _cell(t, x=0, y=0):
+def _cell(t: int, x: int = 0, y: int = 0) -> Cell:
     # vary the terrain view-frame per tile (deterministic) across the CLEAN center
     # variants for this terrain, so painted ground reads as flat ground (not a
     # repeated tile, and not transition/border frames).
     vs = CLEAN_VIEWS.get(t, [49, 50, 51, 52, 53, 54, 55, 56])
-    return {"t": t, "view": vs[(x * 7 + y * 13) % len(vs)],
-            "rt": 0, "rd": 0, "ot": 0, "od": 0, "m": 0}
+    return Cell(t=t, view=vs[(x * 7 + y * 13) % len(vs)])
 
-
-_TILER = {}
 
 _N8 = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
 
-def _neigh8(grid, x, y, W, H, t):
-    return tuple(grid[y + dy][x + dx] if 0 <= x + dx < W and 0 <= y + dy < H else t
-                 for dx, dy in _N8)
+def _neigh8(grid: list[list[int]], x: int, y: int, W: int, H: int, t: int) -> tuple[int, ...]:
+    return tuple(
+        grid[y + dy][x + dx] if 0 <= x + dx < W and 0 <= y + dy < H else t for dx, dy in _N8
+    )
 
 
-def _learn_terrain_tiler():
+@functools.cache
+def _learn_terrain_tiler() -> Tiler:
     """(exact, four, clean) view/m tables learned from every corpus terrain tile."""
-    if "v" in _TILER:
-        return _TILER["v"]
-    from vcmi_mapgen.kit import objects as OR
-    exact = collections.defaultdict(collections.Counter)   # (t, sig8)        -> (view,m)
-    four = collections.defaultdict(collections.Counter)    # (t, N,W,E,S)     -> (view,m)
-    clean = collections.defaultdict(collections.Counter)   # t (all-same nbrs)-> (view,m)
+    exact: dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (t, sig8)        -> (view,m)
+    four: dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]] = (
+        collections.defaultdict(collections.Counter)
+    )  # (t, N,W,E,S)     -> (view,m)
+    clean: dict[int, collections.Counter[ViewMirror]] = collections.defaultdict(
+        collections.Counter
+    )  # t (all-same nbrs)-> (view,m)
     for name in OR.all_map_names():
-        m = OR.load_faithful(name)
-        for g in m["terrain"]:
+        fm = OR.load_faithful(name)
+        for g in fm.terrain:
             H = len(g)
             W = len(g[0])
-            T = [[c["t"] for c in row] for row in g]
+            T = [[c.t for c in row] for row in g]
             for y in range(H):
                 for x in range(W):
                     c = g[y][x]
-                    t = c["t"]
-                    vm = (c["view"], c["m"])
+                    t = c.t
+                    vm = (c.view, c.m)
                     sig = _neigh8(T, x, y, W, H, t)
                     exact[(t, sig)][vm] += 1
                     four[(t, (sig[1], sig[3], sig[4], sig[6]))][vm] += 1
                     if all(v == t for v in sig):
                         clean[t][vm] += 1
-    _TILER["v"] = (exact, four, clean)
-    return _TILER["v"]
+    return (exact, four, clean)
 
 
-def _tile_cell(t, sig, x, y, tiler):
+def _tile_cell(t: int, sig: tuple[int, ...], x: int, y: int, tiler: Tiler) -> Cell:
     exact, four, clean = tiler
-    if all(v == t for v in sig):                     # interior: vary for texture
+    if all(v == t for v in sig):  # interior: vary for texture
         cc = clean.get(t)
         if cc:
             opts = [vm for vm, _ in cc.most_common(8)]
             view, mm = opts[(x * 7 + y * 13) % len(opts)]
-            return {"t": t, "view": view, "rt": 0, "rd": 0, "ot": 0, "od": 0, "m": mm}
+            return Cell(t=t, view=view, m=mm)
         return _cell(t, x, y)
     hit = exact.get((t, sig)) or four.get((t, (sig[1], sig[3], sig[4], sig[6])))
-    if not hit:                                      # unseen border config: flat fallback
+    if not hit:  # unseen border config: flat fallback
         return _cell(t, x, y)
-    view, mm = hit.most_common(1)[0][0]              # the H3-correct transition frame
-    return {"t": t, "view": view, "rt": 0, "rd": 0, "ot": 0, "od": 0, "m": mm}
+    view, mm = hit.most_common(1)[0][0]  # the H3-correct transition frame
+    return Cell(t=t, view=view, m=mm)
 
 
-MIN_TERRAIN_PATCH = 4   # a patch (= future zone) must have more than this many tiles, EXCEPT a
+MIN_TERRAIN_PATCH = 4  # a patch (= future zone) must have more than this many tiles, EXCEPT a
 #                         compact 2x2 square which is still a fine zone; anything smaller or a
 #                         4-tile narrow shape (1x4 line, L/S/T tetromino) is merged into the
 #                         dominant LAND neighbour, so terrain reads as coherent regions (and
@@ -110,24 +123,29 @@ MIN_TERRAIN_PATCH = 4   # a patch (= future zone) must have more than this many 
 _EROSION_EXEMPT = frozenset({0, 1, 6})  # dirt, sand, subterranean
 
 
-def _thin_tiles(ids, W, H):
+def _thin_tiles(ids: list[list[int]], W: int, H: int) -> list[Tile]:
     """Tiles of a non-exempt terrain that belong to NO 2x2 same-terrain square. Off-map cells
     count as same terrain, mirroring ``_neigh8``, so map-edge tiles get the natural treatment."""
-    def same(xs, ys, t):
+
+    def same(xs: int, ys: int, t: int) -> bool:
         return not (0 <= xs < W and 0 <= ys < H) or ids[ys][xs] == t
-    thin = []
+
+    thin: list[Tile] = []
     for y in range(H):
         for x in range(W):
             t = ids[y][x]
             if t in _EROSION_EXEMPT:
                 continue
-            if not any(all(same(xs + dx, ys + dy, t) for dx in (0, 1) for dy in (0, 1))
-                       for xs in (x - 1, x) for ys in (y - 1, y)):
+            if not any(
+                all(same(xs + dx, ys + dy, t) for dx in (0, 1) for dy in (0, 1))
+                for xs in (x - 1, x)
+                for ys in (y - 1, y)
+            ):
                 thin.append((x, y))
     return thin
 
 
-def _keep_patch(tiles, min_patch=MIN_TERRAIN_PATCH):
+def keep_patch(tiles: Collection[Tile], min_patch: int = MIN_TERRAIN_PATCH) -> bool:
     """Shape-aware keep rule: more than ``min_patch`` tiles always stays; exactly ``min_patch``
     stays only when compact (bounding box 2x2 — for 4 tiles that forces the full square, the
     one 4-tile shape that isn't a narrow sliver); anything smaller is absorbed."""
@@ -140,8 +158,14 @@ def _keep_patch(tiles, min_patch=MIN_TERRAIN_PATCH):
     return False
 
 
-def _despeckle_ids(ids, W, H, min_patch=MIN_TERRAIN_PATCH, protect=frozenset()):
-    """Reassign every connected same-terrain patch failing ``_keep_patch`` — and every
+def despeckle_ids(
+    ids: list[list[int]],
+    W: int,
+    H: int,
+    min_patch: int = MIN_TERRAIN_PATCH,
+    protect: Collection[Tile] = (),
+) -> list[list[int]]:
+    """Reassign every connected same-terrain patch failing ``keep_patch`` — and every
     non-exempt tile in no 2x2 same-terrain square (``_thin_tiles``: 1-wide tendrils, necks
     and inlets H3's transition tilesets cannot draw) — to the LAND terrain it borders most
     (water/rock only when no land borders it — a sliver enclosed by barriers becomes
@@ -153,7 +177,7 @@ def _despeckle_ids(ids, W, H, min_patch=MIN_TERRAIN_PATCH, protect=frozenset()):
     NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
     for _ in range(24):
         comp = [[-1] * W for _ in range(H)]
-        comps = []
+        comps: list[tuple[list[Tile], int]] = []
         cid = 0
         for y in range(H):
             for x in range(W):
@@ -174,10 +198,10 @@ def _despeckle_ids(ids, W, H, min_patch=MIN_TERRAIN_PATCH, protect=frozenset()):
                 cid += 1
         changed = False
         for tiles, t in comps:
-            if _keep_patch(tiles, min_patch) or any(tp in protect for tp in tiles):
+            if keep_patch(tiles, min_patch) or any(tp in protect for tp in tiles):
                 continue
-            nbr_land = collections.Counter()
-            nbr_all = collections.Counter()
+            nbr_land: collections.Counter[int] = collections.Counter()
+            nbr_all: collections.Counter[int] = collections.Counter()
             for x, y in tiles:
                 for dx, dy in NB4:
                     nx, ny = x + dx, y + dy
@@ -212,11 +236,18 @@ def _despeckle_ids(ids, W, H, min_patch=MIN_TERRAIN_PATCH, protect=frozenset()):
     return ids
 
 
-def tile_terrain(id_grid, W, H, protect=frozenset()):
+def tile_terrain(
+    id_grid: list[list[int]], W: int, H: int, protect: Collection[Tile] = ()
+) -> list[list[Cell]]:
     """Terrain-id grid -> faithful cell grid with corpus-correct transition views. Tiny terrain
     speckles (< MIN_TERRAIN_PATCH tiles) are first merged into their dominant neighbour;
-    `protect` cells are exempt (see `_despeckle_ids`)."""
-    id_grid = _despeckle_ids(id_grid, W, H, protect=protect)
+    `protect` cells are exempt (see `despeckle_ids`)."""
+    id_grid = despeckle_ids(id_grid, W, H, protect=protect)
     tiler = _learn_terrain_tiler()
-    return [[_tile_cell(id_grid[y][x], _neigh8(id_grid, x, y, W, H, id_grid[y][x]), x, y, tiler)
-             for x in range(W)] for y in range(H)]
+    return [
+        [
+            _tile_cell(id_grid[y][x], _neigh8(id_grid, x, y, W, H, id_grid[y][x]), x, y, tiler)
+            for x in range(W)
+        ]
+        for y in range(H)
+    ]

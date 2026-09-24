@@ -16,36 +16,50 @@ The terrain cells in a faithful map ({t,view,rt,rd,ot,od,m}) are already what
 ``renderers.vmap.VmapRenderer`` / ``kit.vmap.terrain.tile_string`` expect, so a generated
 map can pass faithful terrain straight through.
 """
+
 from __future__ import annotations
 
-import json
 import os
+from collections import Counter
+from collections.abc import Container, Iterable, Iterator, Sequence
+from dataclasses import dataclass
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.vmap.terrain import decode_tile_string
+from vcmi_mapgen.models import Cell, Identity, PlacedObject, Tile
 
 ROOT = project_root()
-_OBJLIB = json.load(open(str(ROOT / "data" / "objlib.json")))
+_OBJLIB = jv.as_object(jv.loads((ROOT / "data" / "objlib.json").read_text()))
 
-# Identity fields a faithful object carries that the .vmap writer needs.
-_IDENT_KEYS = ("type", "subtype", "animation", "mask")
+
+@dataclass(frozen=True, slots=True)
+class FaithfulMap:
+    name: str
+    width: int
+    height: int
+    two_level: bool
+    terrain: list[list[list[Cell]]]
+    objects: list[PlacedObject]
+    main_town: Tile | None = None
 
 
 # ---------------------------------------------------------------------------
 # Corpus loading
 # ---------------------------------------------------------------------------
 
+
 def faithful_path(name: str) -> str:
     return str(ROOT / "maps_vmap" / f"{name}.vmap")
 
 
-def load_faithful(name: str) -> dict:
+def load_faithful(name: str) -> FaithfulMap:
     """Load a byte-exact faithful map: terrain (writer-ready) + objects (exact mask).
 
     Adapts the real .vmap this corpus map now lives as (via `kit.vmap.reader`) into the
-    plain-dict shape the rest of the engine expects. Each object's `mask` is re-derived
+    `FaithfulMap` shape the rest of the engine expects. Each object's `mask` is re-derived
     from the ontology by animation (`ontology.mask_of`), NOT read from the file's
     `template.mask` -- see the module docstring and `kit.vmap.terrain.vcmi_mask` for why
     that field is lossy for the 'X' vs 'A' distinction `is_blocking`/`mask_cells` depend on.
@@ -57,18 +71,26 @@ def load_faithful(name: str) -> dict:
     doc = VM.read(faithful_path(name))
     terrain = [[[decode_tile_string(s) for s in row] for row in lvl] for lvl in doc.terrain]
     objects = [
-        {
-            "x": o.x, "y": o.y, "l": o.l,
-            "type": o.type, "subtype": o.subtype,
-            "animation": o.animation,
-            "mask": ON.mask_of(o.animation) if ON.has_animation(o.animation) else o.mask,
-        }
+        PlacedObject(
+            x=o.x,
+            y=o.y,
+            level=o.level,
+            purpose=type_to_purpose(o.type) or "UNKNOWN",
+            type=o.type,
+            subtype=o.subtype,
+            animation=o.animation,
+            mask=ON.mask_of(o.animation) if ON.has_animation(o.animation) else tuple(o.mask),
+        )
         for o in doc.objects
     ]
-    return {
-        "name": doc.name, "width": doc.width, "height": doc.height,
-        "twoLevel": doc.two_level, "terrain": terrain, "objects": objects,
-    }
+    return FaithfulMap(
+        name=doc.name,
+        width=doc.width,
+        height=doc.height,
+        two_level=doc.two_level,
+        terrain=terrain,
+        objects=objects,
+    )
 
 
 def all_map_names() -> list[str]:
@@ -80,38 +102,43 @@ def all_map_names() -> list[str]:
 # Object classification & exact identity
 # ---------------------------------------------------------------------------
 
-_TYPE2PURPOSE = {it["type"]: p for p, terr in _OBJLIB.items()
-                 for items in terr.values() for it in items}
+_TYPE2PURPOSE: dict[str, str] = {
+    jv.as_str(jv.as_object(it).get("type")): p
+    for p, terr in _OBJLIB.items()
+    for items in jv.as_object(terr).values()
+    for it in jv.as_list(items)
+}
 
 
-def type_to_purpose(type_name: str) -> str | None:
+def type_to_purpose(type_name: str | None) -> str | None:
     """Purpose for an object TYPE alone -- built from the same objlib.json catalog
     harvested from the corpus. The only lookup a real .vmap object's type/subtype
     supports (it carries no raw h3m cls/sub)."""
-    return _TYPE2PURPOSE.get(type_name)
+    return _TYPE2PURPOSE.get(type_name) if type_name is not None else None
 
 
-def purpose_of(obj: dict) -> str:
+def purpose_of(obj: PlacedObject) -> str:
     """Purpose of a faithful (corpus) or generated object, keyed by its `type` alone."""
-    return type_to_purpose(obj.get("type")) or "UNKNOWN"
+    return type_to_purpose(obj.type) or "UNKNOWN"
 
 
-def exact_identity(obj: dict) -> dict:
+def exact_identity(obj: PlacedObject) -> Identity:
     """The exact {type, subtype, animation, mask} of a corpus object."""
-    return {k: obj[k] for k in _IDENT_KEYS}
+    return Identity(type=obj.type, subtype=obj.subtype, animation=obj.animation, mask=obj.mask)
 
 
-def is_blocking(mask: list[str]) -> bool:
+def is_blocking(mask: Sequence[str]) -> bool:
     """True if the object's footprint blocks movement (mask has a 'B' or 'X' cell — 'X' is a
     blocked-and-visitable building action tile)."""
     return any(ch in "BX" for row in mask for ch in row)
 
 
-def mask_cells(mask: list[str], x: int, y: int):
+def mask_cells(mask: Sequence[str], x: int, y: int) -> Iterator[tuple[int, int, bool]]:
     """Tiles a mask covers when anchored at (x, y).
 
     Convention: anchor (x, y) is the BOTTOM-RIGHT tile of the footprint. Mask rows are stored
-    LEFT-TO-RIGHT, sprite-aligned (matching `kit.vmap.mask.build_mask_from_h3m` and `ontology._decode_mask`),
+    LEFT-TO-RIGHT, sprite-aligned (matching `kit.vmap.mask.build_mask_from_h3m` and
+    `ontology._decode_mask`),
     so column 0 is the LEFTMOST tile and the anchor is the LAST column of each row ->
     `tx = x - (ww - 1 - c)` where `ww = len(row)`. (Verified pixel-for-pixel against real sprite
     art: a sawmill's ramp/visit tile and a pine clump's trunks land on the correct side only with
@@ -128,13 +155,13 @@ def mask_cells(mask: list[str], x: int, y: int):
             yield x - (ww - 1 - c), y - (hh - 1 - r), (ch in ("B", "X"))
 
 
-def mask_interactive_cells(mask: list[str], x: int, y: int):
+def mask_interactive_cells(mask: Sequence[str], x: int, y: int) -> list[Tile]:
     """The subset of `mask_cells` a hero must actually step on to trigger this object --
     visitable ('A') or blocking+visitable ('X') -- as opposed to pure passable overlay
     ('V') or solid-but-inert ('B'). A guard's other footprint cells are cosmetic canopy;
     only this cell needs to be free & reachable for the object to functionally gate a tile."""
     hh = len(mask)
-    out = []
+    out: list[Tile] = []
     for r, row in enumerate(mask):
         ww = len(row)
         for c, ch in enumerate(row):
@@ -143,7 +170,26 @@ def mask_interactive_cells(mask: list[str], x: int, y: int):
     return out
 
 
-def front_tiles(mask: list[str], x: int, y: int) -> set[tuple[int, int]]:
+def decor_blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
+    """Blocking cells of every purpose-less (vegetation/decor) object in `objs`."""
+    return {
+        (cx, cy)
+        for o in objs
+        if not o.purpose
+        for cx, cy, blk in mask_cells(o.mask, o.x, o.y)
+        if blk
+    }
+
+
+def overlay_clear(mask: Sequence[str], x: int, y: int, blocked: Container[Tile]) -> bool:
+    """True if none of the mask's non-interactive cells (sprite overlay) sit on `blocked`."""
+    inter = set(mask_interactive_cells(mask, x, y))
+    return not any(
+        (tx, ty) in blocked for tx, ty, _b in mask_cells(mask, x, y) if (tx, ty) not in inter
+    )
+
+
+def front_tiles(mask: Sequence[str], x: int, y: int) -> set[Tile]:
     """The row of tiles directly in front of (one step past) this object's own
     footprint, on the side its interactive cell sits on. Every multi-row mask in this
     ontology places its interactive ('A'/'X') cell in the mask's LAST row (verified
@@ -162,7 +208,7 @@ def front_tiles(mask: list[str], x: int, y: int) -> set[tuple[int, int]]:
     if len(mask) < 2:
         return set()
     footprint = {(tx, ty) for tx, ty, _b in mask_cells(mask, x, y)}
-    front: set[tuple[int, int]] = set()
+    front: set[Tile] = set()
     for ix, iy in mask_interactive_cells(mask, x, y):
         for dx in (-1, 0, 1):
             t = (ix + dx, iy + 1)
@@ -175,8 +221,7 @@ if __name__ == "__main__":
     names = all_map_names()
     print(f"faithful maps: {len(names)}  objlib purposes: {sorted(_OBJLIB)}")
     m = load_faithful("All for One")
-    from collections import Counter
-    pc = Counter(purpose_of(o) for o in m["objects"])
+    pc = Counter(purpose_of(o) for o in m.objects)
     print("All for One purposes:", dict(pc.most_common()))
-    o = m["objects"][0]
-    print("exact identity sample:", exact_identity(o), "blocking=", is_blocking(o["mask"]))
+    o = m.objects[0]
+    print("exact identity sample:", exact_identity(o), "blocking=", is_blocking(o.mask))

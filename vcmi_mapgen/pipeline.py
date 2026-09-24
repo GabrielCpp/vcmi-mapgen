@@ -33,14 +33,27 @@ mutation order and RNG determinism depend on it. The registry only changes how a
 crosses from one step to a later one; it does not turn the pipeline into a lazy
 dependency graph.
 """
+
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import cast, overload
 
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.models import Entrance, MapState, PlacedObject, Tile
+from vcmi_mapgen.ontology import Ontology
 
-__all__ = ["MapState", "ZoneWorkspace", "LevelWorkspace", "PlacementWorkspace",
-           "MissingProviderError", "ProviderRegistry", "PipelineStep", "Pipeline"]
+__all__ = [
+    "LevelWorkspace",
+    "MapState",
+    "MissingProviderError",
+    "Pipeline",
+    "PipelineStep",
+    "PlacementWorkspace",
+    "ProviderRegistry",
+    "ZoneWorkspace",
+]
 
 
 @dataclass
@@ -50,35 +63,37 @@ class ZoneWorkspace:
     map-level fact anything outside these four steps needs to read."""
 
     terrain: str = ""
-    ts: frozenset = frozenset()          # set by GameplayStep
-    ts_full: frozenset = frozenset()
-    gobjs: list = field(default_factory=list)
-    occupied: frozenset = frozenset()
-    gblocked: frozenset = frozenset()
-    approaches: tuple = ()
-    entrances: list = field(default_factory=list)   # kit.topology.plan_entrances entries
-    prot: frozenset = frozenset()         # protected web
-    rim8: frozenset = frozenset()
-    ent_bands: frozenset = frozenset()
-    blocked: frozenset = frozenset()      # set by VegetationStep
-    open_set: frozenset = frozenset()
-    passable: frozenset = frozenset()
-    reach: frozenset = frozenset()        # set by PickupStep
-    used: frozenset = frozenset()
+    ts: frozenset[Tile] = frozenset()  # set by GameplayStep
+    ts_full: frozenset[Tile] = frozenset()
+    gobjs: list[PlacedObject] = field(default_factory=list)
+    occupied: frozenset[Tile] = frozenset()
+    gblocked: frozenset[Tile] = frozenset()
+    approaches: tuple[Tile, ...] = ()
+    entrances: list[Entrance] = field(default_factory=list)  # kit.topology.plan_entrances entries
+    prot: frozenset[Tile] = frozenset()  # protected web
+    rim8: frozenset[Tile] = frozenset()
+    ent_bands: frozenset[Tile] = frozenset()
+    blocked: frozenset[Tile] = frozenset()  # set by VegetationStep
+    open_set: frozenset[Tile] = frozenset()
+    passable: frozenset[Tile] = frozenset()
+    reach: frozenset[Tile] = frozenset()  # set by PickupStep
+    used: frozenset[Tile] = frozenset()
 
 
 @dataclass
 class LevelWorkspace:
-    zones: dict = field(default_factory=dict)          # zid -> ZoneWorkspace
-    entrance_plan: dict = field(default_factory=dict)
-    ridge: frozenset = frozenset()
-    seal_avoid: set = field(default_factory=set)
-    hard_avoid: set = field(default_factory=set)
-    guard_tiles: frozenset = frozenset()
+    zones: dict[int, ZoneWorkspace] = field(default_factory=dict)  # zid -> ZoneWorkspace
+    entrance_plan: dict[int, list[Entrance]] = field(default_factory=dict)
+    ridge: frozenset[Tile] = frozenset()
+    seal_avoid: set[Tile] = field(default_factory=set)
+    hard_avoid: set[Tile] = field(default_factory=set)
+    guard_tiles: frozenset[Tile] = frozenset()
     # seaport blocking/approach cells (set by GameplayStep) — vegetation must forbid them
-    seaport_blk: frozenset = frozenset()
-    seaport_appr: frozenset = frozenset()
-    town_of_zone: dict = field(default_factory=dict)   # set by GameplayStep — zid -> town obj
+    seaport_blk: frozenset[Tile] = frozenset()
+    seaport_appr: frozenset[Tile] = frozenset()
+    town_of_zone: dict[int, PlacedObject] = field(
+        default_factory=dict
+    )  # set by GameplayStep — zid -> town obj
 
 
 class PlacementWorkspace:
@@ -90,7 +105,7 @@ class PlacementWorkspace:
     computed-once value (see ``vcmi_mapgen/steps/AGENTS.md``)."""
 
     def __init__(self) -> None:
-        self.levels: dict = {}   # level -> LevelWorkspace
+        self.levels: dict[int, LevelWorkspace] = {}  # level -> LevelWorkspace
 
 
 class MissingProviderError(LookupError):
@@ -119,26 +134,33 @@ class ProviderRegistry:
     def __init__(self) -> None:
         self._values: dict[type, object] = {}
 
-    def provide(self, value) -> None:
+    def provide(self, value: object) -> None:
         self._values[type(value)] = value
 
-    def require(self, cls):
+    def require[T](self, cls: type[T]) -> T:
         if cls not in self._values:
             raise MissingProviderError(
                 f"no {cls.__name__} has been provided yet — the step that produces it "
-                f"is missing, or was added out of order")
-        return self._values[cls]
+                + "is missing, or was added out of order"
+            )
+        return cast(T, self._values[cls])
 
-    def get(self, cls, default=None):
-        return self._values.get(cls, default)
+    @overload
+    def get[T](self, cls: type[T]) -> T | None: ...
 
-    def get_or_create(self, cls, factory):
+    @overload
+    def get[T](self, cls: type[T], default: T) -> T: ...
+
+    def get[T](self, cls: type[T], default: T | None = None) -> T | None:
+        return cast(T | None, self._values.get(cls, default))
+
+    def get_or_create[T](self, cls: type[T], factory: Callable[[], T]) -> T:
         if cls not in self._values:
             self._values[cls] = factory()
-        return self._values[cls]
+        return cast(T, self._values[cls])
 
 
-class PipelineStep:
+class PipelineStep(ABC):
     """Base class for all map-generation steps.
 
     Subclasses store constructor-known config as their own attributes (never a value
@@ -152,9 +174,10 @@ class PipelineStep:
     """
 
     def inject(self, ctx: ProviderRegistry) -> None:
-        pass
+        _ = ctx
 
-    def run(self, ontology, map_state) -> None:
+    @abstractmethod
+    def run(self, ontology: Ontology, map_state: MapState) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")
 
 
@@ -172,13 +195,13 @@ class Pipeline:
     afterward from ``pipeline.ctx`` by its dataclass type.
     """
 
-    def __init__(self, ontology) -> None:
-        self.ontology = ontology
-        self.map_state = MapState()
-        self.ctx = ProviderRegistry()
+    def __init__(self, ontology: Ontology) -> None:
+        self.ontology: Ontology = ontology
+        self.map_state: MapState = MapState()
+        self.ctx: ProviderRegistry = ProviderRegistry()
         self._steps: list[PipelineStep] = []
 
-    def add_step(self, step: PipelineStep) -> "Pipeline":
+    def add_step(self, step: PipelineStep) -> Pipeline:
         self._steps.append(step)
         return self
 

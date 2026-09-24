@@ -1,0 +1,8 @@
+#!/bin/sh
+# The repo's pre-commit hook. Farrier owns only the fenced region below; anything
+# outside it is yours and survives `farrier install`.
+set -eu
+# >>> farrier: hooks (generated) >>>
+make farrier-run-hook
+# <<< farrier: hooks <<<
+make check

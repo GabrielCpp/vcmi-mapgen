@@ -5,9 +5,12 @@ other header/player key survives untouched in `extra` so a real (possibly
 hand-authored) .vmap round-trips losslessly even though this model doesn't
 enumerate 100% of VCMI's header schema.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from vcmi_mapgen.models import JsonValue
 
 
 @dataclass
@@ -17,16 +20,16 @@ class VmapObject:
     charset the engine's internal `mask_cells`/`is_blocking` expect."""
 
     instance_name: str
-    type: str
-    subtype: str
-    l: int
+    type: str | None
+    subtype: str | None
+    level: int
     x: int
     y: int
     animation: str
     editor_animation: str = ""
-    mask: list = field(default_factory=list)
-    visitable_from: list | None = None
-    options: dict | None = None
+    mask: list[str] = field(default_factory=list)
+    visitable_from: list[str] | None = None
+    options: dict[str, JsonValue] | None = None
 
 
 @dataclass
@@ -37,10 +40,10 @@ class PlayerSlot:
     id: str
     can_play: str = "false"
     team: int | None = None
-    main_town: dict | None = None
-    allowed_factions: dict | None = None
+    main_town: dict[str, JsonValue] | None = None
+    allowed_factions: dict[str, JsonValue] | None = None
     random_faction: bool | None = None
-    extra: dict = field(default_factory=dict)
+    extra: dict[str, JsonValue] = field(default_factory=dict)
 
 
 @dataclass
@@ -53,16 +56,16 @@ class VmapDocument:
     width: int
     height: int
     two_level: bool
-    terrain: list = field(default_factory=list)
-    objects: list = field(default_factory=list)          # list[VmapObject]
-    players: list = field(default_factory=list)           # list[PlayerSlot]
-    teams: list | None = None                             # list[list[str]] (color groups)
+    terrain: list[list[list[str]]] = field(default_factory=list)
+    objects: list[VmapObject] = field(default_factory=list)
+    players: list[PlayerSlot] = field(default_factory=list)
+    teams: list[list[str]] | None = None  # color groups
     victory_icon_index: int | None = None
-    victory_message: dict | None = None
+    victory_message: dict[str, JsonValue] | None = None
     defeat_icon_index: int | None = None
-    defeat_message: dict | None = None
-    triggered_events: dict | None = None
-    extra: dict = field(default_factory=dict)             # raw header minus modeled keys
+    defeat_message: dict[str, JsonValue] | None = None
+    triggered_events: dict[str, JsonValue] | None = None
+    extra: dict[str, JsonValue] = field(default_factory=dict)  # raw header minus modeled keys
 
     def player(self, color: str) -> PlayerSlot | None:
         return next((p for p in self.players if p.id == color), None)

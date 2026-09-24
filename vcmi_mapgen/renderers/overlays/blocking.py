@@ -1,13 +1,17 @@
 """BlockingOverlay — highlight blocked tiles in semi-transparent red."""
+
 from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+from typing import override
 
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.models import MapState
-from vcmi_mapgen.renderers.overlays import _tiles
-from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
+from vcmi_mapgen.renderers.overlays._tiles import classify_objects
+from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
-_COLOR = (220, 50, 50, 100)   # red, ~40 % opaque
+_COLOR = (220, 50, 50, 100)  # red, ~40 % opaque
 _GATE_COLOR = (255, 160, 0, 120)  # amber for gate-blocked tiles
 
 # tiers=True palette: background clutter / a structure's blocked body / its
@@ -36,9 +40,12 @@ class BlockingOverlay(MapOverlay):
             of one flat red tint (default False).
     """
 
+    _tiers: bool
+
     def __init__(self, tiers: bool = False) -> None:
         self._tiers = tiers
 
+    @override
     def apply(self, state: MapState, level: int) -> Image.Image:
         surf = state.surfs.get(level) or state.cells.get(level)
         W = len(surf[0]) if surf and surf[0] else state.size
@@ -47,8 +54,7 @@ class BlockingOverlay(MapOverlay):
         draw = ImageDraw.Draw(img)
 
         if self._tiers:
-            background, struct_body, struct_visit, solo_visit = \
-                _tiles.classify_objects(state.objs, level)
+            background, struct_body, struct_visit, solo_visit = classify_objects(state.objs, level)
             for tiles, color in (
                 (background, _BACKGROUND_COLOR),
                 (struct_body, _STRUCT_BODY_COLOR),
@@ -59,13 +65,12 @@ class BlockingOverlay(MapOverlay):
                         _fill_tile(draw, tx, ty, color)
         else:
             for o in state.objs:
-                if o.get("l", 0) != level:
+                if o.level != level:
                     continue
-                mask = (o.get("template") or {}).get("mask")
+                mask = o.mask
                 if not mask:
                     continue
-                ox, oy = o.get("x", 0), o.get("y", 0)
-                for tx, ty, blocking in _iter_mask(mask, ox, oy):
+                for tx, ty, blocking in _iter_mask(mask, o.x, o.y):
                     if blocking and 0 <= tx < W and 0 <= ty < H:
                         _fill_tile(draw, tx, ty, _COLOR)
 
@@ -77,7 +82,7 @@ class BlockingOverlay(MapOverlay):
         return img
 
 
-def _iter_mask(mask, x, y):
+def _iter_mask(mask: Sequence[str], x: int, y: int) -> Iterator[tuple[int, int, bool]]:
     hh = len(mask)
     for r, row in enumerate(mask):
         ww = len(row)
@@ -87,6 +92,8 @@ def _iter_mask(mask, x, y):
             yield x - (ww - 1 - c), y - (hh - 1 - r), (ch in ("B", "X"))
 
 
-def _fill_tile(draw, tx, ty, color):
+def _fill_tile(
+    draw: ImageDraw.ImageDraw, tx: int, ty: int, color: tuple[int, int, int, int]
+) -> None:
     x0, y0 = tx * TILE, ty * TILE
     draw.rectangle([x0, y0, x0 + TILE - 1, y0 + TILE - 1], fill=color)

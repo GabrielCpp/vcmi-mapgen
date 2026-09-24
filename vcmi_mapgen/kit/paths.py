@@ -5,12 +5,14 @@ Priority: the VCMI_HOME environment variable, then the platform's standard VCMI
 locations (first existing wins), then the first candidate as a best-effort default
 so error messages still point at a sensible path.
 """
+
 import os
 import pathlib
+import re
 import sys
 
 
-def _wsl_windows_home():
+def _wsl_windows_home() -> str | None:
     """Return the Windows user home via /mnt/c/Users when running inside WSL, else None."""
     try:
         with open("/proc/version") as f:
@@ -30,7 +32,7 @@ def _wsl_windows_home():
     return None
 
 
-def _candidates():
+def _candidates() -> list[str]:
     home = os.path.expanduser("~")
     if sys.platform == "win32":
         return [os.path.join(home, "Documents", "My Games", "vcmi")]
@@ -39,7 +41,7 @@ def _candidates():
     xdg = os.environ.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
     cands = [
         os.path.join(home, ".var", "app", "eu.vcmi.VCMI", "data", "vcmi"),  # flatpak
-        os.path.join(xdg, "vcmi"),                                          # native
+        os.path.join(xdg, "vcmi"),  # native
     ]
     win_home = _wsl_windows_home()
     if win_home:
@@ -47,7 +49,7 @@ def _candidates():
     return cands
 
 
-def vcmi_home():
+def vcmi_home() -> str:
     env = os.environ.get("VCMI_HOME")
     if env:
         return os.path.expanduser(env)
@@ -58,8 +60,8 @@ def vcmi_home():
     return cands[0]
 
 
-def vcmi_config_dirs():
-    """Directories that contain VCMI's core config/ tree (config/objects, config/creatures, …).
+def vcmi_config_dirs() -> list[str]:
+    """Directories that contain VCMI's core config/ tree (config/objects, config/creatures, ...).
 
     On a flatpak install this is the read-only share directory; on Windows / WSL it lives
     under AppData/Roaming/VCMI.  Returns all existing candidates so callers can search
@@ -84,5 +86,4 @@ def project_root() -> pathlib.Path:
 
 def slug(name: str) -> str:
     """A map name -> a filesystem-safe stem for output artifact filenames."""
-    import re
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")

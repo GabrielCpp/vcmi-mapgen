@@ -1,21 +1,36 @@
 """GameplayStep — towns, mines, dwellings, water bodies, seaports, and the zone-level ledger."""
+
 from __future__ import annotations
 
 import collections
+from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from typing import override
 
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.steps.vegetation import sample as PP  # protected_web
-from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.geometry import NB8, edge_dist
+from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import plan_entrances
-from vcmi_mapgen.pipeline import LevelWorkspace, PipelineStep, PlacementWorkspace, ZoneWorkspace
+from vcmi_mapgen.models import Entrance, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.pipeline import (
+    LevelWorkspace,
+    PipelineStep,
+    PlacementWorkspace,
+    ProviderRegistry,
+    ZoneWorkspace,
+)
 from vcmi_mapgen.steps.gameplay import mines as MN
 from vcmi_mapgen.steps.gameplay import water as WT
 from vcmi_mapgen.steps.gate.step import GateResult
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
+from vcmi_mapgen.steps.vegetation import sample as PP  # protected_web
 
-MIN_AREA = 25          # vegetate even smallish zones (the stats floor stays 60 in vegetation)
+NO_TILES: frozenset[Tile] = frozenset()
+NO_APPROACHES: tuple[Tile, ...] = ()
+
+MIN_AREA = 25  # vegetate even smallish zones (the stats floor stays 60 in vegetation)
 
 
 @dataclass
@@ -25,24 +40,53 @@ class GameplayIndex:
     generate does; a stopped-early --stop-after run reads it with ``ctx.get(...,
     GameplayIndex())`` instead)."""
 
-    player_zids: list = field(default_factory=list)
+    player_zids: list[tuple[int, int]] = field(default_factory=list)
 
 
-def _rim8(zones):
+def _rim8(zones: Mapping[int, Zone]) -> set[Tile]:
     """The 8-connected inter-zone rim: every tile with an 8-neighbour in another zone
     (both sides of every border). Diagonal contact counts — corner-cutting is a legal
     hero move in H3, so a diagonal-only touch leaks exactly like a shared edge."""
-    owner = {}
+    owner: dict[Tile, int] = {}
     for zid, z in zones.items():
-        for t in z["tiles_set"]:
+        for t in z.tiles_set:
             owner[t] = zid
-    return {t for t, zid in owner.items()
-            if any(owner.get((t[0] + dx, t[1] + dy), zid) != zid for dx, dy in NB8)}
+    return {
+        t
+        for t, zid in owner.items()
+        if any(owner.get((t[0] + dx, t[1] + dy), zid) != zid for dx, dy in NB8)
+    }
 
 
-def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, seed,
-                        has_subterrain, ontology, gate_occ=frozenset(), gate_blk=frozenset(),
-                        gate_appr=(), tunnel_protect=frozenset()):
+type LevelResult = tuple[
+    list[PlacedObject],
+    dict[int, ZoneWorkspace],
+    dict[int, list[Entrance]],
+    bool,
+    dict[int, PlacedObject],
+    frozenset[Tile],
+    frozenset[Tile],
+    frozenset[Tile],
+]
+
+
+def _run_level_gameplay(
+    level: int,
+    W: int,
+    H: int,
+    grid: Sequence[Sequence[int]],
+    zones: Mapping[int, Zone],
+    player_zids: Collection[int],
+    ledger: MN.Ledger,
+    gstats: Mapping[str, MN.TerrainStats],
+    seed: int,
+    has_subterrain: bool,
+    ontology: Ontology,
+    gate_occ: AbstractSet[Tile] = NO_TILES,
+    gate_blk: AbstractSet[Tile] = NO_TILES,
+    gate_appr: Collection[Tile] = NO_APPROACHES,
+    tunnel_protect: frozenset[Tile] = NO_TILES,
+) -> LevelResult:
     """Gameplay-only half of the map-generation pass: water-body population (surface only),
     per-zone ``mines.place_zone`` + protected web, and the seaport guarantee. Originally
     split out of the (now-retired) legacy ``pp_map._run_level``/``build()`` so both paths
@@ -52,8 +96,8 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     Returns (objs, zone_cache, entrance_plan, has_water, town_of_zone, ridge, seaport_blk,
     seaport_appr): ``zone_cache`` is ``{zid: {...}}`` with the same keys `_run_level`'s
     Pass 2 (vegetation/pickup, still legacy for now) already expects."""
-    objs = []
-    town_of_zone = {}
+    objs: list[PlacedObject] = []
+    town_of_zone: dict[int, PlacedObject] = {}
 
     # map-level isolation plan: 1-2 aligned narrow crossings per adjacent zone pair,
     # computed ONCE over all zones so both sides agree where the entrances are. Everything
@@ -63,8 +107,8 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     # border (`border=` bias) so zones read as isolated regions with a few real entrances.
     # `seal_zone_borders` below then closes whatever aligned holes the statistics left.
     entrance_plan = plan_entrances(zones)
-    ridge = set()                                    # all rim tiles minus entrance bands
-    rim_all = _rim8(zones)                           # 8-connected inter-zone rim, both sides
+    ridge: set[Tile] = set()  # all rim tiles minus entrance bands
+    rim_all = _rim8(zones)  # 8-connected inter-zone rim, both sides
 
     has_water = False
     water_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] == 8}
@@ -73,7 +117,7 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
         # directly: flotsam / sea chests / buoys / boats / whirlpools / wrecks / sea guards
         water = water_tiles
         has_water = bool(water)
-        seen_w = set()
+        seen_w: set[Tile] = set()
         wi = 0
         for t0 in sorted(water):
             if t0 in seen_w:
@@ -96,20 +140,22 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     # ── Pass 1: L3 gameplay for all zones ─────────────────────────────────────
     # Seaports are placed after all gameplay objects are known (so conflict
     # detection is complete), but BEFORE vegetation so veg forbids their footprint.
-    zone_cache = {}   # zid → per-zone data needed for pass 2
+    zone_cache: dict[int, ZoneWorkspace] = {}  # zid → per-zone data needed for pass 2
     for zid, z in sorted(zones.items()):
-        terrain = TNAME.get(z["terrain_type"])
-        if terrain in (None, "water", "rock") or z["area"] < MIN_AREA:
+        terrain = TNAME.get(z.terrain_type)
+        if terrain in (None, "water", "rock") or z.area < MIN_AREA:
             continue
-        ts_full = set(z["tiles_set"])
+        ts_full = set(z.tiles_set)
         ts = ts_full
         z_gate_occ = ts_full & gate_occ
         z_gate_blk = ts_full & gate_blk
         z_gate_appr = tuple(a for a in gate_appr if a in ts_full)
-        coastal = frozenset(t for t in ts
-                            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
-                            if 0 <= t[0] + dx < W and 0 <= t[1] + dy < H
-                            and grid[t[1] + dy][t[0] + dx] == 8)
+        coastal = frozenset(
+            t
+            for t in ts
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+            if 0 <= t[0] + dx < W and 0 <= t[1] + dy < H and grid[t[1] + dy][t[0] + dx] == 8
+        )
 
         # L3 gameplay first: rigid objects at spread nodes (corpus densities, ontology pools)
         # `avoid` keeps every footprint/approach off the corridor protect set — gameplay
@@ -117,14 +163,26 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
         # a tunnel that vegetation-forbidding alone could never have touched.
         z_entr = entrance_plan.get(zid, [])
         gobjs, occupied, gblocked, approaches = MN.place_zone(
-            ts, zones, zid, terrain, seed=seed, coastal=coastal,
-            force_town=zid in player_zids, ledger=ledger, has_water=has_water,
-            level=level, has_subterrain=has_subterrain, avoid=tunnel_protect & ts,
-            preoccupied=z_gate_occ, preblocked=z_gate_blk, preapproaches=z_gate_appr,
-            entrances=z_entr)
+            ts,
+            zones,
+            zid,
+            terrain,
+            seed=seed,
+            coastal=coastal,
+            force_town=zid in player_zids,
+            ledger=ledger,
+            has_water=has_water,
+            level=level,
+            has_subterrain=has_subterrain,
+            avoid=tunnel_protect & ts,
+            preoccupied=z_gate_occ,
+            preblocked=z_gate_blk,
+            preapproaches=z_gate_appr,
+            entrances=z_entr,
+        )
         objs.extend(gobjs)
         if zid in player_zids:
-            t = next((o for o in gobjs if o.get("purpose") == "TOWN"), None)
+            t = next((o for o in gobjs if o.purpose == "TOWN"), None)
             if t is not None:
                 town_of_zone[zid] = t
             else:
@@ -133,25 +191,40 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
         # protected walkable web: backbone + gates + gameplay approaches, routed around the
         # IMPASSABLE gameplay cells (approach tiles themselves are passable and stay nodes)
         edist = edge_dist(ts)
-        zcx, zcy = z["centroid"]
-        seedt = min(ts, key=lambda t: (t[0] - int(round(zcx))) ** 2
-                    + (t[1] - int(round(zcy))) ** 2)
+        zcx, zcy = z.centroid
+        seedt = min(ts, key=lambda t: (t[0] - round(zcx)) ** 2 + (t[1] - round(zcy)) ** 2)
         # the zone's 8-connected rim: every tile with an 8-neighbour in ANOTHER zone
         # (diagonal corner-cutting is a legal hero move, so diagonal-only contact leaks
         # like a front tile). The web routes off it, scatter skips it, the sampler's
         # border bias targets it, and repair prices carving it at 400.
-        ent_bands = set().union(*(b for _r, b, _o in z_entr)) if z_entr else set()
+        ent_bands: set[Tile] = set[Tile]().union(*(b for _r, b, _o in z_entr)) if z_entr else set()
         rim8 = rim_all & ts
         ridge |= rim8 - ent_bands
-        prot = PP.protected_web(ts, zones, zid, edist, seedt,
-                                extra_nodes=approaches, avoid=gblocked,
-                                open_frac=gstats[terrain].get("border_open_frac", 0.5),
-                                entrances=z_entr, keep_off=rim8)
+        prot = PP.protected_web(
+            ts,
+            zones,
+            zid,
+            edist,
+            seedt,
+            extra_nodes=approaches,
+            avoid=gblocked,
+            open_frac=gstats[terrain].border_open_frac,
+            entrances=z_entr,
+            keep_off=rim8,
+        )
         prot = prot | (tunnel_protect & ts)
-        zone_cache[zid] = dict(
-            terrain=terrain, ts=ts, ts_full=ts_full,
-            gobjs=gobjs, occupied=occupied, gblocked=gblocked, approaches=approaches,
-            z_entr=z_entr, prot=prot, rim8=rim8, ent_bands=ent_bands,
+        zone_cache[zid] = ZoneWorkspace(
+            terrain=terrain,
+            ts=frozenset(ts),
+            ts_full=frozenset(ts_full),
+            gobjs=gobjs,
+            occupied=frozenset(occupied),
+            gblocked=frozenset(gblocked),
+            approaches=tuple(approaches),
+            entrances=z_entr,
+            prot=frozenset(prot),
+            rim8=frozenset(rim8),
+            ent_bands=frozenset(ent_bands),
         )
 
     # ── Seaport placement: after all gameplay objects, before vegetation ────────
@@ -159,7 +232,7 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     # approach tile is added to targets, and their footprint is excluded from
     # scatter open sets.  Placed here so the veg pass below can forbid their cells.
     if level == 0:
-        ship_objs = WT._ensure_water_seaports(W, H, grid, zones, objs, seed, ontology)
+        ship_objs = WT.ensure_water_seaports(W, H, grid, zones, objs, seed, ontology)
         if ship_objs:
             objs.extend(ship_objs)
             print(f"  L{level} seaport guarantee: {len(ship_objs)} shipyard(s) added")
@@ -167,17 +240,25 @@ def _run_level_gameplay(level, W, H, grid, zones, player_zids, ledger, gstats, s
     # Seaport blocking cells + approach tile — exclude from vegetation in pass 2.
     # The approach tile (one tile south of the X cell) must stay walkable so a
     # hero can board the ship.
-    seaport_blk = set()
-    seaport_appr = set()
+    seaport_blk: set[Tile] = set()
+    seaport_appr: set[Tile] = set()
     for _so in objs:
-        if _so.get("type") == "shipyard":
-            for _scx, _scy, _sblk in OR.mask_cells(_so["mask"], _so["x"], _so["y"]):
+        if _so.type == "shipyard":
+            for _scx, _scy, _sblk in OR.mask_cells(_so.mask, _so.x, _so.y):
                 if _sblk:
                     seaport_blk.add((_scx, _scy))
-            seaport_appr.add((_so["x"] - 1, _so["y"] + 1))
+            seaport_appr.add((_so.x - 1, _so.y + 1))
 
-    return (objs, zone_cache, entrance_plan, has_water, town_of_zone, frozenset(ridge),
-            frozenset(seaport_blk), frozenset(seaport_appr))
+    return (
+        objs,
+        zone_cache,
+        entrance_plan,
+        has_water,
+        town_of_zone,
+        frozenset(ridge),
+        frozenset(seaport_blk),
+        frozenset(seaport_appr),
+    )
 
 
 class GameplayStep(PipelineStep):
@@ -205,24 +286,26 @@ class GameplayStep(PipelineStep):
     it stays a local instance attribute, not a published value.
     """
 
-    def __init__(self, seed: int = 3, players: int = 0, size: int = 72,
-                 subterrain: bool = False) -> None:
-        self.seed = seed
-        self.players = players
-        self.size = size
-        self.subterrain = subterrain
-        self.objs: list = []
-        self.player_zids: list = []
-        self.player_towns: list = []
-        self.ledger: dict = {}
-        self._ctx = None
-        self._grids: dict = {}
-        self._tunnel_protect: frozenset = frozenset()
-        self._gate_objs: list = []
-        self._gate_occ: dict = {}
-        self._gate_appr: dict = {}
+    def __init__(
+        self, seed: int = 3, players: int = 0, size: int = 72, subterrain: bool = False
+    ) -> None:
+        self.seed: int = seed
+        self.players: int = players
+        self.size: int = size
+        self.subterrain: bool = subterrain
+        self.objs: list[PlacedObject] = []
+        self.player_zids: list[tuple[int, int]] = []
+        self.player_towns: list[PlacedObject] = []
+        self.ledger: MN.Ledger = MN.Ledger(missing=set(), towns=0, gold=0)
+        self._ctx: ProviderRegistry | None = None
+        self._grids: dict[int, list[list[int]]] = {}
+        self._tunnel_protect: frozenset[Tile] = NO_TILES
+        self._gate_objs: list[PlacedObject] = []
+        self._gate_occ: dict[int, set[Tile]] = {}
+        self._gate_appr: dict[int, list[Tile]] = {}
 
-    def inject(self, ctx) -> None:
+    @override
+    def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
         terrain = ctx.require(TerrainGrids)
         self._grids = terrain.grids
@@ -232,79 +315,92 @@ class GameplayStep(PipelineStep):
         self._gate_occ = gate.gate_occ
         self._gate_appr = gate.gate_appr
 
-    def run(self, ontology, map_state) -> None:
+    @override
+    def run(self, ontology: Ontology, map_state: MapState) -> None:
         W = H = self.size
         zones_by_level = map_state.zones
         gate_blk_by_level = map_state.gate_blk
 
         player_zids = MN.select_player_zones(zones_by_level, self.players)
         if self.players and len(player_zids) < self.players:
-            print(f"  WARNING: only {len(player_zids)} zones can host a player town "
-                  f"(requested {self.players})")
+            print(
+                f"  WARNING: only {len(player_zids)} zones can host a player town "
+                + f"(requested {self.players})"
+            )
 
-        zids_by_level: dict = collections.defaultdict(set)
+        zids_by_level: collections.defaultdict[int, set[int]] = collections.defaultdict(set)
         for lvl, zid in player_zids:
             zids_by_level[lvl].add(zid)
 
-        ledger = {
-            "missing": set(MN.BASIC_MINE_RES),
-            "towns": len(player_zids),
-            "gold": 0,
-        }
+        ledger = MN.Ledger(
+            missing=set(MN.BASIC_MINE_RES),
+            towns=len(player_zids),
+            gold=0,
+        )
 
+        assert self._ctx is not None
         workspace = self._ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)
 
-        all_town_of_zone: dict = {}
-        all_ridge: dict = {}
-        all_objs: list = []
+        all_town_of_zone: dict[int, dict[int, PlacedObject]] = {}
+        all_ridge: dict[int, frozenset[Tile]] = {}
+        all_objs: list[PlacedObject] = []
 
         for level in sorted(self._grids):
             grid = self._grids[level]
             zones = zones_by_level[level]
             gstats = MN.mine_gameplay(level=level)
 
-            gate_occ = self._gate_occ.get(level, frozenset())
-            gate_blk = gate_blk_by_level.get(level, frozenset())
-            gate_appr = self._gate_appr.get(level, ())
-            tunnel_protect = self._tunnel_protect if level == 1 else frozenset()
+            gate_occ = self._gate_occ.get(level, NO_TILES)
+            gate_blk = gate_blk_by_level.get(level, NO_TILES)
+            gate_appr = self._gate_appr.get(level, NO_APPROACHES)
+            tunnel_protect = self._tunnel_protect if level == 1 else NO_TILES
 
-            (objs, zone_cache, entrance_plan, _has_water, town_of_zone, ridge,
-             seaport_blk, seaport_appr) = _run_level_gameplay(
-                level, W, H, grid, zones, zids_by_level[level],
-                ledger, gstats, self.seed, self.subterrain, ontology,
-                gate_occ=gate_occ, gate_blk=gate_blk, gate_appr=gate_appr,
+            (
+                objs,
+                zone_workspaces,
+                entrance_plan,
+                _has_water,
+                town_of_zone,
+                ridge,
+                seaport_blk,
+                seaport_appr,
+            ) = _run_level_gameplay(
+                level,
+                W,
+                H,
+                grid,
+                zones,
+                zids_by_level[level],
+                ledger,
+                gstats,
+                self.seed,
+                self.subterrain,
+                ontology,
+                gate_occ=gate_occ,
+                gate_blk=gate_blk,
+                gate_appr=gate_appr,
                 tunnel_protect=tunnel_protect,
             )
 
             # merge pre-placed gate objects for this level
-            level_gate_objs = [o for o in self._gate_objs
-                               if o.get("l", 0) == level]
+            level_gate_objs = [o for o in self._gate_objs if o.level == level]
             objs.extend(level_gate_objs)
 
             # retag underground objects so downstream steps can partition by level
             if level == 1:
                 for o in objs:
-                    o["l"] = 1
+                    o.level = 1
 
             all_objs.extend(objs)
             all_town_of_zone[level] = town_of_zone
             all_ridge[level] = ridge
 
-            zone_workspaces = {
-                zid: ZoneWorkspace(
-                    terrain=c["terrain"], ts=frozenset(c["ts"]),
-                    ts_full=frozenset(c["ts_full"]), gobjs=c["gobjs"],
-                    occupied=frozenset(c["occupied"]),
-                    gblocked=frozenset(c["gblocked"]),
-                    approaches=tuple(c["approaches"]), entrances=c["z_entr"],
-                    prot=frozenset(c["prot"]), rim8=frozenset(c["rim8"]),
-                    ent_bands=frozenset(c["ent_bands"]),
-                )
-                for zid, c in zone_cache.items()
-            }
             workspace.levels[level] = LevelWorkspace(
-                zones=zone_workspaces, entrance_plan=entrance_plan, ridge=ridge,
-                seaport_blk=seaport_blk, seaport_appr=seaport_appr,
+                zones=zone_workspaces,
+                entrance_plan=entrance_plan,
+                ridge=ridge,
+                seaport_blk=seaport_blk,
+                seaport_appr=seaport_appr,
                 town_of_zone=town_of_zone,
             )
 
@@ -315,20 +411,19 @@ class GameplayStep(PipelineStep):
         # resolve player towns from town_of_zone; top up from surplus neutral towns if a
         # forced placement failed (rare: no legal anchor in the zone) — matches legacy
         # build()'s fallback so a player is never left without a start town.
-        player_towns = []
+        player_towns: list[PlacedObject] = []
         for lvl, zid in player_zids:
             t = all_town_of_zone.get(lvl, {}).get(zid)
             if t is not None:
                 player_towns.append(t)
         if self.players:
-            spare = [o for o in all_objs if o.get("purpose") == "TOWN" and o not in player_towns]
-            player_towns += spare[:max(0, self.players - len(player_towns))]
-            player_towns = player_towns[:self.players]
+            spare = [o for o in all_objs if o.purpose == "TOWN" and o not in player_towns]
+            player_towns += spare[: max(0, self.players - len(player_towns))]
+            player_towns = player_towns[: self.players]
         self.player_towns = player_towns
 
-        if ledger["missing"]:
-            print(f"  WARNING: mine coverage incomplete — missing "
-                  f"{sorted(ledger['missing'])}")
+        if ledger.missing:
+            print(f"  WARNING: mine coverage incomplete — missing {sorted(ledger.missing)}")
 
         map_state.objs = self.objs
         map_state.player_towns = self.player_towns

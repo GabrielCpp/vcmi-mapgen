@@ -1,8 +1,10 @@
 """Decode an h3m object template's raw block/visit bitmasks into the engine-internal
 B/A/V/X footprint charset (folded in from the retired h3m2vmap.py)."""
 
+from collections.abc import Sequence
 
-def build_mask_from_h3m(block_mask, visit_mask):
+
+def build_mask_from_h3m(block_mask: Sequence[int], visit_mask: Sequence[int]) -> list[str]:
     """6 rows x 8 cols. block bit 1=passable/0=blocked; visit bit 1=visitable. A cell carries
     TWO independent bits -> four states: 'B' blocked, 'V' passable, 'A' passable+visitable
     (stand on), 'X' blocked+visitable (a building's action tile -- visited from an adjacent

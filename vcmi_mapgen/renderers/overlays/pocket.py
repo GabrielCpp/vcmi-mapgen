@@ -3,14 +3,19 @@
 Pure rendering: pocket geometry (which tiles form a sealed nook, at what depth) is
 disposable analysis computed once by steps.repair.caches.place_pocket_caches, not a
 MapState fact (see vcmi_mapgen/models/AGENTS.md) -- this overlay never re-derives it."""
+
 from __future__ import annotations
 
 import colorsys
+from typing import TYPE_CHECKING, override
 
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.models import MapState
-from vcmi_mapgen.renderers.overlays.base import MapOverlay, TILE
+from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
+
+if TYPE_CHECKING:
+    from vcmi_mapgen.models import Pockets
 
 
 class PocketOverlay(MapOverlay):
@@ -22,9 +27,12 @@ class PocketOverlay(MapOverlay):
             ``ctx["pockets"]`` (produced by `steps.repair.caches.place_pocket_caches`).
     """
 
-    def __init__(self, pockets: dict | None = None) -> None:
+    _pockets: Pockets
+
+    def __init__(self, pockets: Pockets | None = None) -> None:
         self._pockets = pockets or {}
 
+    @override
     def apply(self, state: MapState, level: int) -> Image.Image:
         W, H = self._grid_size(state, level)
         img = Image.new("RGBA", (W * TILE, H * TILE), (0, 0, 0, 0))
@@ -34,12 +42,12 @@ class PocketOverlay(MapOverlay):
                 continue
             draw.rectangle(
                 [x * TILE, y * TILE, (x + 1) * TILE - 1, (y + 1) * TILE - 1],
-                fill=_magenta_color(t),
+                fill=magenta_color(t),
             )
         return img
 
 
-def _magenta_color(t: float) -> tuple:
+def magenta_color(t: float) -> tuple[int, int, int, int]:
     """t=0 (mouth, darkest) -> t=1 (deepest, lightest). Returns RGBA."""
     v = 0.30 + 0.70 * t
     r, g, b = colorsys.hsv_to_rgb(300 / 360, 0.90, v)

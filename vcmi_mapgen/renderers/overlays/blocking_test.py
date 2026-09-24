@@ -1,22 +1,38 @@
-from vcmi_mapgen.models import MapState
+from PIL import Image
+
+from vcmi_mapgen.models import Cell, MapState, Mask, PlacedObject
 from vcmi_mapgen.renderers.overlays.blocking import BlockingOverlay
 
 TILE = 32
 
 
-def _cell(t=2):
-    return {"t": t, "view": 0, "rt": 0, "rd": 0, "ot": 0, "od": 0, "m": 0}
+def _cell(t: int = 2) -> Cell:
+    return Cell(t=t)
 
 
-def _color_at(img, x, y):
-    return img.getpixel((x * TILE, y * TILE))
+def _obj(x: int, y: int, purpose: str, mask: Mask, level: int = 0) -> PlacedObject:
+    return PlacedObject(
+        x=x,
+        y=y,
+        level=level,
+        purpose=purpose,
+        type=None,
+        subtype=None,
+        animation="",
+        mask=mask,
+    )
 
 
-def test_tiers_false_tints_every_blocking_cell_uniformly():
+def _color_at(img: Image.Image, x: int, y: int) -> tuple[int, int, int, int]:
+    offset = (y * TILE * img.width + x * TILE) * 4
+    r, g, b, a = img.tobytes()[offset : offset + 4]
+    return r, g, b, a
+
+
+def test_tiers_false_tints_every_blocking_cell_uniformly() -> None:
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
-    town = {"x": 3, "y": 3, "l": 0, "purpose": "TOWN",
-            "template": {"mask": ["BB", "BA"]}}
-    state = MapState(cells={0: grid}, surfs={0: grid}, objs=[town])
+    town = _obj(3, 3, "TOWN", ("BB", "BA"))
+    state = MapState(cells={0: grid}, objs=[town])
     img = BlockingOverlay(tiers=False).apply(state, 0)
     # 'B' cells anchored bottom-right at (3,3): (2,2),(3,2),(2,3) block; (3,3) is 'A'
     for x, y in ((2, 2), (3, 2), (2, 3)):
@@ -24,27 +40,28 @@ def test_tiers_false_tints_every_blocking_cell_uniformly():
     assert _color_at(img, 3, 3)[3] == 0, "the visit tile itself is not a blocking cell"
 
 
-def test_tiers_true_separates_structure_body_from_visit_tile():
+def test_tiers_true_separates_structure_body_from_visit_tile() -> None:
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
-    town = {"x": 3, "y": 3, "l": 0, "purpose": "TOWN", "mask": ["BB", "BA"]}
-    state = MapState(cells={0: grid}, surfs={0: grid}, objs=[town])
+    town = _obj(3, 3, "TOWN", ("BB", "BA"))
+    state = MapState(cells={0: grid}, objs=[town])
     img = BlockingOverlay(tiers=True).apply(state, 0)
 
-    body_color = _color_at(img, 2, 2)     # a 'B' body cell
-    visit_color = _color_at(img, 3, 3)    # the 'A' visit cell
+    body_color = _color_at(img, 2, 2)  # a 'B' body cell
+    visit_color = _color_at(img, 3, 3)  # the 'A' visit cell
     assert body_color[3] > 0 and visit_color[3] > 0
     assert body_color != visit_color, "body and visit tiles must use different tiers"
 
 
-def test_tiers_true_shares_the_visit_color_with_a_solo_visitable():
+def test_tiers_true_shares_the_visit_color_with_a_solo_visitable() -> None:
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
-    shrine = {"x": 2, "y": 2, "l": 0, "purpose": "INFO", "mask": ["A"]}
-    town = {"x": 4, "y": 4, "l": 0, "purpose": "TOWN", "mask": ["BB", "BA"]}
-    state = MapState(cells={0: grid}, surfs={0: grid}, objs=[shrine, town])
+    shrine = _obj(2, 2, "INFO", ("A",))
+    town = _obj(4, 4, "TOWN", ("BB", "BA"))
+    state = MapState(cells={0: grid}, objs=[shrine, town])
     img = BlockingOverlay(tiers=True).apply(state, 0)
 
     solo_color = _color_at(img, 2, 2)
     struct_visit_color = _color_at(img, 4, 4)
     assert solo_color[3] > 0
-    assert solo_color == struct_visit_color, \
+    assert solo_color == struct_visit_color, (
         "a bodyless solo-visitable shares the struct-visit tier, not its own"
+    )

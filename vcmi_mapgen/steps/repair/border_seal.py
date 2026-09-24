@@ -1,18 +1,33 @@
 """Residual border-leak seal — Repair-only (structural/guard fixes, no content placement)."""
-import collections
 
-from vcmi_mapgen.kit import objects as OR
+import collections
+import random
+from collections.abc import Collection, Container, Mapping, Sequence
+
 from vcmi_mapgen import ontology as ON
-from vcmi_mapgen.kit.terrain_lookup import TNAME, EXCLUDE_DECOR_TYPES
+from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
+from vcmi_mapgen.models import PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 
 
-def _blocking_cells(o):
-    return [(cx, cy) for cx, cy, blk in OR.mask_cells(o["mask"], o["x"], o["y"]) if blk]
+def blocking_cells(o: PlacedObject) -> list[Tile]:
+    return [(cx, cy) for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y) if blk]
 
 
-def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid, seed, level,
-                      skip_tiles=frozenset()):
+def seal_zone_borders(
+    W: int,
+    H: int,
+    grid: Sequence[Sequence[int]],
+    zones: Mapping[int, Zone],
+    entrance_plan: Mapping[int, Sequence[tuple[Tile, frozenset[Tile], int]]],
+    objs: list[PlacedObject],
+    avoid: Container[Tile],
+    hard_avoid: Container[Tile],
+    seed: int,
+    level: int,
+    skip_tiles: Container[Tile] = (),
+) -> tuple[list[PlacedObject], set[Tile], set[Tile], int]:
     """Residual border-leak seal. The border bias (`pp_sample` BORDER_W) densifies zone
     fronts statistically, which is enough on compact probes but NOT on a real map: jagged
     fronts, gameplay approach tiles near the border and repair carve-backs leave aligned
@@ -32,36 +47,35 @@ def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid,
     crossings shares one guard. The map then has NO free informal crossing: every border
     pass is sealed, a planned guarded entrance, or a guarded back path.
     Returns (new_objs, sealed_cells, guard_tiles, n_unguarded_pairs)."""
-    import random
-
     rng = random.Random(seed ^ 0x5EA1 ^ (level * 7919))
-    owner, tname = {}, {}
+    owner: dict[Tile, int] = {}
+    tname: dict[Tile, str] = {}
     for zid, z in sorted(zones.items()):
-        terr = TNAME.get(z["terrain_type"])
-        if terr in (None, "water", "rock"):
+        terr = TNAME.get(z.terrain_type)
+        if terr is None or terr in ("water", "rock"):
             continue
-        for t in z["tiles_set"]:
+        for t in z.tiles_set:
             owner[t] = zid
             tname[t] = terr
-    blocked = set()
+    blocked: set[Tile] = set()
     for o in objs:
-        blocked.update(_blocking_cells(o))
+        blocked.update(blocking_cells(o))
     land = {(x, y) for y in range(H) for x in range(W) if grid[y][x] < 8}
     open_all = land - blocked
-    bands = set()
+    bands: set[Tile] = set()
     for ents in entrance_plan.values():
         for _r, b, _o in ents:
             bands |= set(b)
 
     # non-band pairs: eligible for vegetation seal AND guard fallback
     # band pairs: entrance corridors — skip vegetation seal, guard-only
-    pairs = []
-    band_pairs = []
+    pairs: list[tuple[Tile, Tile]] = []
+    band_pairs: list[tuple[Tile, Tile]] = []
     for t in sorted(open_all):
         a = owner.get(t)
         if a is None or t in skip_tiles:
             continue
-        for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):    # each unordered pair once
+        for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):  # each unordered pair once
             n = (t[0] + dx, t[1] + dy)
             if n not in open_all or n in skip_tiles:
                 continue
@@ -72,48 +86,58 @@ def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid,
                 else:
                     pairs.append((t, n))
 
-    dead = set()                                     # no decor pool for its terrain
+    dead: set[Tile] = set()  # no decor pool for its terrain
 
-    def sealable(t):
+    def sealable(t: Tile) -> bool:
         return t not in avoid and t not in dead and t in owner and t not in bands
 
-    new_objs, sealed = [], set()
+    new_objs: list[PlacedObject] = []
+    sealed: set[Tile] = set()
     while pairs:
-        cnt = collections.Counter()
+        cnt: collections.Counter[Tile] = collections.Counter()
         for t, n in pairs:
             if sealable(t):
                 cnt[t] += 1
             if sealable(n):
                 cnt[n] += 1
         if not cnt:
-            break                                    # everything left is unsealable
+            break  # everything left is unsealable
         pick, _n = max(cnt.items(), key=lambda kv: (kv[1], kv[0]))
-        pool = ON.decor_pool(tname[pick], blocking=True, max_cells=1,
-                             exclude_types=EXCLUDE_DECOR_TYPES)
+        pool = ON.decor_pool(
+            tname[pick], blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
+        )
         if not pool:
             dead.add(pick)
             continue
         ident = rng.choice(pool)
-        new_objs.append({"x": pick[0], "y": pick[1], "l": 0,
-                         "type": ident.get("type"), "subtype": ident.get("subtype"),
-                         "animation": ident["animation"], "mask": ident["mask"],
-                         "template": {"animation": ident["animation"],
-                                      "mask": ident["mask"]}})
+        new_objs.append(PlacedObject.at(ident, pick[0], pick[1], level=0, purpose=""))
         sealed.add(pick)
         pairs = [p for p in pairs if pick not in p]
 
     # Collect existing gameplay guards from objs (placed by pp_gameplay) so the guard
     # pass below avoids duplicating coverage already provided.
-    existing_guards = {(o["x"], o["y"]) for o in objs if o.get("purpose") == "GUARD"}
+    existing_guards = {(o.x, o.y) for o in objs if o.purpose == "GUARD"}
 
-    def _covered(t, n, g_set):
-        return any(max(abs(g[0] - t[0]), abs(g[1] - t[1])) <= 1
-                   or max(abs(g[0] - n[0]), abs(g[1] - n[1])) <= 1
-                   for g in g_set)
+    def _covered(t: Tile, n: Tile, g_set: Collection[Tile]) -> bool:
+        return any(
+            max(abs(g[0] - t[0]), abs(g[1] - t[1])) <= 1
+            or max(abs(g[0] - n[0]), abs(g[1] - n[1])) <= 1
+            for g in g_set
+        )
 
     # what must stay open gets contested instead: one hostile guard covers every residual
     # crossing within its Chebyshev-1 zone of control
-    guard_tiles = set()
+    decor_blk = OR.decor_blocking_cells(objs + new_objs)
+
+    def _pick_guard(cands: Sequence[Tile]) -> Tile:
+        """First candidate whose sprite overlay is clear of decor; else the first."""
+        rnd = rnd_monster(3)
+        for c in cands:
+            if OR.overlay_clear(rnd.mask, c[0], c[1], decor_blk):
+                return c
+        return cands[0]
+
+    guard_tiles: set[Tile] = set()
     unguarded = 0
     for t, n in pairs:
         if _covered(t, n, guard_tiles | existing_guards):
@@ -122,36 +146,32 @@ def seal_zone_borders(W, H, grid, zones, entrance_plan, objs, avoid, hard_avoid,
         if not cands:
             unguarded += 1
             continue
-        g = cands[0]
+        g = _pick_guard(cands)
         gident = rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
-        new_objs.append({"x": g[0], "y": g[1], "l": 0, "purpose": "GUARD",
-                         "type": gident.get("type"), "subtype": gident.get("subtype"),
-                         "animation": gident["animation"], "mask": gident["mask"],
-                         "template": {"animation": gident["animation"],
-                                      "mask": gident["mask"]},
-                         "options": {"character": "hostile"},
-                         "seal": True})               # informational: dup-guard cleanup must
-        guard_tiles.add(g)                            # never drop it — it IS the border
+        guard = PlacedObject.at(
+            gident, g[0], g[1], level=0, purpose="GUARD", options={"character": "hostile"}
+        )
+        guard.seal = True
+        new_objs.append(guard)  # informational: dup-guard cleanup must
+        guard_tiles.add(g)  # never drop it — it IS the border
 
     # Band pairs (planned entrance corridors) were left open on purpose but every corridor
     # must have at least one guard so the crossing requires a fight.  If pp_gameplay already
     # placed a guard that covers the pair, skip it; otherwise add one now.
-    band_guard_tiles = set()
+    band_guard_tiles: set[Tile] = set()
     for t, n in band_pairs:
         if _covered(t, n, guard_tiles | existing_guards | band_guard_tiles):
             continue
         cands = [c for c in sorted((t, n)) if c not in hard_avoid]
         if not cands:
             continue
-        g = cands[0]
+        g = _pick_guard(cands)
         gident = rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
-        new_objs.append({"x": g[0], "y": g[1], "l": 0, "purpose": "GUARD",
-                         "type": gident.get("type"), "subtype": gident.get("subtype"),
-                         "animation": gident["animation"], "mask": gident["mask"],
-                         "template": {"animation": gident["animation"],
-                                      "mask": gident["mask"]},
-                         "options": {"character": "hostile"},
-                         "seal": True})
+        guard = PlacedObject.at(
+            gident, g[0], g[1], level=0, purpose="GUARD", options={"character": "hostile"}
+        )
+        guard.seal = True
+        new_objs.append(guard)
         band_guard_tiles.add(g)
 
     guard_tiles |= band_guard_tiles

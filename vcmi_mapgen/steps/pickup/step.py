@@ -1,10 +1,14 @@
 """PickupStep — unguarded scatter loot per zone, then the global loot-zone access pass."""
+
 from __future__ import annotations
 
 import collections
 from dataclasses import dataclass, field
+from typing import override
 
-from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace
+from vcmi_mapgen.models import MapState, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.steps.gate.step import GateResult
 from vcmi_mapgen.steps.pickup import loot_zones as LZ
 from vcmi_mapgen.steps.pickup import scatter as SC
@@ -16,8 +20,8 @@ class PickupIndex:
     further in place by it: this is the same object PickupStep computed, not a fresh
     snapshot each demand)."""
 
-    targets: dict = field(default_factory=dict)
-    zone_records: dict = field(default_factory=dict)
+    targets: dict[int, list[Tile]] = field(default_factory=dict)
+    zone_records: dict[int, list[ZoneRecord]] = field(default_factory=dict)
 
 
 class PickupStep(PipelineStep):
@@ -43,38 +47,44 @@ class PickupStep(PipelineStep):
     """
 
     def __init__(self, seed: int = 3, size: int = 72) -> None:
-        self.seed = seed
-        self.size = size
-        self.objs: list = []
-        self.targets: dict = {}
-        self.zone_records: dict = {}
-        self._ctx = None
+        self.seed: int = seed
+        self.size: int = size
+        self.objs: list[PlacedObject] = []
+        self.targets: dict[int, list[Tile]] = {}
+        self.zone_records: dict[int, list[ZoneRecord]] = {}
+        self._ctx: ProviderRegistry | None = None
         self._workspace: PlacementWorkspace | None = None
-        self._gate_objs: list = []
+        self._gate_objs: list[PlacedObject] = []
 
-    def inject(self, ctx) -> None:
+    @override
+    def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
         self._workspace = ctx.require(PlacementWorkspace)
         self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
 
-    def run(self, ontology, map_state) -> None:
+    @override
+    def run(self, ontology: Ontology, map_state: MapState) -> None:
         W = H = self.size
+        assert self._workspace is not None
+        assert self._ctx is not None
 
         # partition the flat objs list by level — place_loot_zones mutates its
         # objs_existing list in place (clearing vegetation/scatter under a sealed
         # loot zone), so each level needs its own real (not concatenated-copy) list.
-        objs_by_level: dict = {level: [] for level in self._workspace.levels}
+        objs_by_level: dict[int, list[PlacedObject]] = {
+            level: [] for level in self._workspace.levels
+        }
         for o in map_state.objs:
-            lvl = o.get("l", 0)
+            lvl = o.level
             if lvl in objs_by_level:
                 objs_by_level[lvl].append(o)
 
         for level, lvl_ws in self._workspace.levels.items():
             level_objs = objs_by_level[level]
-            targets: list = []
-            zone_records: list = []
-            seal_avoid: set = set()
-            hard_avoid: set = set()
+            targets: list[Tile] = []
+            zone_records: list[ZoneRecord] = []
+            seal_avoid: set[Tile] = set()
+            hard_avoid: set[Tile] = set()
 
             for zid, zw in sorted(lvl_ws.zones.items()):
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & zw.ts_full
@@ -83,19 +93,26 @@ class PickupStep(PipelineStep):
                 # scatter loot never sits on the rim: a pickup there is a walkable,
                 # unsealable hole
                 sobjs, sused, reach = SC.place_scatter(
-                    zw.ts, map_state.zones[level], zid, zw.terrain,
-                    zw.open_set - (zw.rim8 - zw.ent_bands), zw.prot, seed=self.seed,
-                    bounds=(W, H), entrances=zw.entrances)
-                if level == 1:   # place_scatter always tags l=0; retag the underground level
+                    zw.ts,
+                    map_state.zones[level],
+                    zid,
+                    zw.terrain,
+                    zw.open_set - (zw.rim8 - zw.ent_bands),
+                    zw.prot,
+                    seed=self.seed,
+                    bounds=(W, H),
+                    entrances=zw.entrances,
+                )
+                if level == 1:  # place_scatter always tags l=0; retag the underground level
                     for o in sobjs:
-                        o["l"] = 1
+                        o.level = 1
                 level_objs.extend(sobjs)
 
                 zw.reach = frozenset(reach)
                 zw.used = frozenset(sused)
 
                 targets.extend(zw.approaches)
-                targets.extend((o["x"], o["y"]) for o in sobjs)
+                targets.extend((o.x, o.y) for o in sobjs)
                 # every planned crossing must survive repair: its rep is a named G2
                 # target, so g2_repair verifies the entrance stayed connected once the
                 # level is finalized
@@ -107,12 +124,22 @@ class PickupStep(PipelineStep):
 
                 # RepairStep mutates open_set/passable in place (.add/.discard) — these
                 # must be plain sets, not the workspace's frozensets.
-                zone_records.append({"zid": zid, "terrain": zw.terrain, "ts": zw.ts_full,
-                                     "open_set": set(zw.open_set), "passable": set(zw.passable),
-                                     "reach": reach, "used": sused})
-                pk = collections.Counter(o["purpose"] for o in sobjs)
-                print(f"  L{level} zone {zid:>3} {zw.terrain:<8} {len(zw.ts_full):>5} tiles: "
-                      f"scatter res={pk.get('RESOURCE_PILE', 0)} art={pk.get('REWARD_PICKUP', 0)}")
+                zone_records.append(
+                    ZoneRecord(
+                        zid=zid,
+                        terrain=zw.terrain,
+                        ts=zw.ts_full,
+                        open_set=set(zw.open_set),
+                        passable=set(zw.passable),
+                        reach=reach,
+                        used=sused,
+                    )
+                )
+                pk = collections.Counter(o.purpose for o in sobjs)
+                print(
+                    f"  L{level} zone {zid:>3} {zw.terrain:<8} {len(zw.ts_full):>5} tiles: "
+                    + f"scatter res={pk.get('RESOURCE_PILE', 0)} art={pk.get('REWARD_PICKUP', 0)}"
+                )
 
             # place_loot_zones clears every object under a newly-sealed loot zone by
             # (x, y) alone (see loot_zones.py), which would sweep a pre-placed
@@ -122,28 +149,29 @@ class PickupStep(PipelineStep):
             # they were physically absent here and immune; this pipeline merges them in
             # earlier (GameplayStep, so downstream forbid/occupied sets see them), so we
             # must shield them from the sweep by pulling them out and restoring them.
-            gate_ids = {id(o) for o in self._gate_objs if o.get("l", 0) == level}
+            gate_ids = {id(o) for o in self._gate_objs if o.level == level}
             shielded = [o for o in level_objs if id(o) in gate_ids]
             level_objs[:] = [o for o in level_objs if id(o) not in gate_ids]
 
             loot_objs, n_loot, loot_zids = LZ.place_loot_zones(
-                zone_records, lvl_ws.entrance_plan, level_objs, seed=self.seed,
-                bounds=(W, H))
-            if level == 1:   # place_loot_zones always tags l=0; retag the underground level
+                zone_records, level_objs, seed=self.seed, bounds=(W, H)
+            )
+            if level == 1:  # place_loot_zones always tags l=0; retag the underground level
                 for o in loot_objs:
-                    o["l"] = 1
+                    o.level = 1
             level_objs.extend(shielded)
             level_objs.extend(loot_objs)
             # Only add EXTERIOR loot zone objects to targets (keymaster, exterior monolith).
             # Interior objects (gate, interior monolith) are reachable via teleportation/
             # gate, not via physical traversal — adding them causes g2_repair to carve a
             # hole in the loot zone seal to make them physically reachable.
-            loot_interior_tiles: set = set()
+            loot_interior_tiles: set[Tile] = set()
             for zr in zone_records:
-                if zr["zid"] in loot_zids:
-                    loot_interior_tiles |= zr["ts"]
-            targets.extend((o["x"], o["y"]) for o in loot_objs
-                           if o.get("purpose") and (o["x"], o["y"]) not in loot_interior_tiles)
+                if zr.zid in loot_zids:
+                    loot_interior_tiles |= zr.ts
+            targets.extend(
+                (o.x, o.y) for o in loot_objs if o.purpose and (o.x, o.y) not in loot_interior_tiles
+            )
             # Remove any stale scatter targets from loot zone interiors — scatter loot was
             # placed inside those zones before place_loot_zones cleared it; without this,
             # g2_repair sees those now-open positions as unreachable targets and carves a
@@ -154,14 +182,16 @@ class PickupStep(PipelineStep):
             # receive a spurious interior guard (the access mechanic already provides the
             # gate keeper).
             for zr in zone_records:
-                if zr["zid"] in loot_zids:
-                    zr["loot_zone"] = True
+                if zr.zid in loot_zids:
+                    zr.loot_zone = True
             if n_loot:
                 zid_str = ", ".join(str(z) for z in sorted(loot_zids))
-                print(f"  L{level} loot zones: {n_loot} access pair(s) placed "
-                      f"(1 gate+key, {n_loot - 1} sealed+monolith) zones=[{zid_str}]"
-                      if n_loot > 1
-                      else f"  L{level} loot zones: 1 gate+key pair placed zones=[{zid_str}]")
+                print(
+                    f"  L{level} loot zones: {n_loot} access pair(s) placed "
+                    + f"(1 gate+key, {n_loot - 1} sealed+monolith) zones=[{zid_str}]"
+                    if n_loot > 1
+                    else f"  L{level} loot zones: 1 gate+key pair placed zones=[{zid_str}]"
+                )
 
             lvl_ws.seal_avoid = seal_avoid
             lvl_ws.hard_avoid = hard_avoid
