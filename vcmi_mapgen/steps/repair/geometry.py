@@ -295,7 +295,7 @@ def place_reward_zone(
         return []
 
     n_res = max(4, area // 10) + max(2, area // 25)
-    pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
+    pool_res = ON.pool("RESOURCE_PILE", terrain)
     objs: list[PlacedObject] = []
     val = 0
 

@@ -26,6 +26,7 @@ from vcmi_mapgen.steps.gameplay import water as WT
 from vcmi_mapgen.steps.gate.step import GateResult
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.steps.vegetation import sample as PP  # protected_web
+from vcmi_mapgen.validate import TerrainGate
 
 NO_TILES: frozenset[Tile] = frozenset()
 NO_APPROACHES: tuple[Tile, ...] = ()
@@ -425,6 +426,6 @@ class GameplayStep(PipelineStep):
         if ledger.missing:
             print(f"  WARNING: mine coverage incomplete — missing {sorted(ledger.missing)}")
 
-        map_state.objs = self.objs
+        map_state.set_objs(self.objs, TerrainGate(ontology))
         map_state.player_towns = self.player_towns
         self._ctx.provide(GameplayIndex(player_zids=self.player_zids))

@@ -602,8 +602,8 @@ def place_pocket_caches(
 
         terrain = terrain_of[zid]
         st = mine_gameplay()[terrain]
-        pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
-        pool_art = ON.gameplay_pool(terrain, "REWARD_PICKUP")
+        pool_res = ON.pool("RESOURCE_PILE", terrain)
+        pool_art = ON.pool("REWARD_PICKUP", terrain)
         rng = random.Random(seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)
         # Pocket tiles are passable (in global_true) and reachable (in global_reach8);
         # some may be approach cells of adjacent gameplay objects (excluded from
@@ -808,7 +808,7 @@ def place_seer_hut_quests(
         rng = random.Random(seed ^ (i * 92821) ^ 0xEE47)
 
         pool_hut = sorted(
-            (h for h in ON.gameplay_pool(hut_zr.terrain, "QUEST_GATE") if h.type == "seerHut"),
+            (h for h in ON.pool("QUEST_GATE", hut_zr.terrain) if h.type == "seerHut"),
             key=lambda h: h.animation,
         )
         if not pool_hut:
@@ -830,7 +830,7 @@ def place_seer_hut_quests(
             cand_pool_art = sorted(
                 (
                     a
-                    for a in ON.gameplay_pool(cand_art_zr.terrain, "REWARD_PICKUP")
+                    for a in ON.pool("REWARD_PICKUP", cand_art_zr.terrain)
                     if a.type == "artifact" and a.subtype not in used_artifacts
                 ),
                 key=lambda a: a.animation,

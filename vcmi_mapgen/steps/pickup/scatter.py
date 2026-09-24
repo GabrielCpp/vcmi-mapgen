@@ -259,7 +259,7 @@ def place_scatter(
         bands = zone_gate_bands(ts, zones, zid, open_frac=st.border_open_frac)
     gd = PG.gate_dist(ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
 
-    pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
+    pool_res = ON.pool("RESOURCE_PILE", terrain)
 
     objs: list[PlacedObject] = []
     used: set[Tile] = set()

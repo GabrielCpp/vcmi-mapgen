@@ -12,6 +12,7 @@ from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegis
 from vcmi_mapgen.steps.gate.step import GateResult
 from vcmi_mapgen.steps.pickup import loot_zones as LZ
 from vcmi_mapgen.steps.pickup import scatter as SC
+from vcmi_mapgen.validate import TerrainGate
 
 
 @dataclass
@@ -199,5 +200,5 @@ class PickupStep(PipelineStep):
             self.zone_records[level] = zone_records
 
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        map_state.objs = self.objs
+        map_state.set_objs(self.objs, TerrainGate(ontology))
         self._ctx.provide(PickupIndex(targets=self.targets, zone_records=self.zone_records))

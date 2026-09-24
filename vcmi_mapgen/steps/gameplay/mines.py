@@ -510,11 +510,15 @@ def intensity_weights(
     return w
 
 
+def _walk_on_only(ident: Identity) -> bool:
+    return not any("X" in row for row in ident.mask)
+
+
 def _info_pool(terrain: str, has_water: bool, has_subterrain: bool = False) -> list[Identity]:
-    """`ON.gameplay_pool(terrain, "INFO")`, minus cartographer subtypes the map can't back up:
+    """`ON.pool("INFO", terrain)`, minus cartographer subtypes the map can't back up:
     cartographerSubterranean is dropped unless the map actually has a second level, and
     cartographerWater is dropped on maps with no water at all."""
-    pool = ON.gameplay_pool(terrain, "INFO")
+    pool = ON.pool("INFO", terrain)
     return [
         i
         for i in pool
@@ -654,7 +658,7 @@ def place_zone(
         ident = (
             ON.identity_of(RND_TOWN)
             if force_town or rng.random() < RANDOM_SHARE
-            else pick(ON.gameplay_pool(terrain, "TOWN"), "TOWN")
+            else pick(ON.pool("TOWN", terrain), "TOWN")
         )
         if ident:
             wanted.append(("TOWN", ident))
@@ -712,7 +716,7 @@ def place_zone(
     wanted += [("MINE", i) for i in mine_idents if i]
     # dwellings are mostly random (generic or by level, skewed low); fixed dwellings are
     # the deliberate exception in real maps
-    pool_dw = ON.gameplay_pool(terrain, "DWELLING")
+    pool_dw = ON.pool("DWELLING", terrain)
     for _ in range(n_dwell):
         if rng.random() < 0.8:
             anim = (
@@ -728,16 +732,14 @@ def place_zone(
     # creature banks (utopias, conservatories, crypts, pyramids) — corpus density, no
     # approach guard: the bank IS the fight, its reward is its own
     for _ in range(n_bank):
-        ident = pick(ON.gameplay_pool(terrain, "BANK"), "BANK")
+        ident = pick(ON.pool("BANK", terrain), "BANK")
         if ident:
             wanted.append(("BANK", ident))
     vw = [st.counts.get(p, 0) + 0.2 for p in VISIT_PURPOSES]
     for _ in range(n_visit):
         p = rng.choices(VISIT_PURPOSES, weights=vw, k=1)[0]
         pool = (
-            _info_pool(terrain, has_water, has_subterrain)
-            if p == "INFO"
-            else ON.gameplay_pool(terrain, p)
+            _info_pool(terrain, has_water, has_subterrain) if p == "INFO" else ON.pool(p, terrain)
         )
         ident = pick(pool, p)
         if ident:
@@ -880,8 +882,15 @@ def place_zone(
                     if fit:
                         node = (node[0] + dx, node[1] + dy)
                         break
+            if fit and purpose == "MINE" and _walk_on_only(ident):
+                below = (fit[2][0], fit[2][1] + 1)
+                if below not in ts or below in occupied or below in fit[1] or below in avoid:
+                    fit = None
             if fit:
                 approach = settle(purpose, ident, fit, node)
+                if purpose == "MINE" and _walk_on_only(ident):
+                    approach = (approach[0], approach[1] + 1)
+                    approaches.append(approach)
                 if purpose == "TOWN":  # the economy pair anchors around this
                     mh = len(ident.mask)
                     mw = max(len(r) for r in ident.mask)
@@ -924,9 +933,9 @@ def place_zone(
     # a shipyard on the shore of a coastal zone (mined WATER_TRANSPORT density, boosted for
     # the coastal-only condition) — makes the adjacent water actually navigable
     if coastal and rng.random() < min(0.8, dens.get("WATER_TRANSPORT", 0) * area * 3):
-        pool = [
-            i for i in ON.gameplay_pool(terrain, "WATER_TRANSPORT") if i.type == "shipyard"
-        ] or [ON.identity_of("avxshyd0")]
+        pool = [i for i in ON.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"] or [
+            ON.identity_of("avxshyd0")
+        ]
         ident = pool[0]
         cand = sorted(coastal)
         rng.shuffle(cand)
@@ -1069,9 +1078,7 @@ def audit_variety(level: int = 0) -> list[AuditGap]:
                 seen[(p, anim)] = seen.get((p, anim), 0) + cnt
     pool_anims: dict[str, set[str]] = {}  # purpose -> anims reachable on ANY terrain incl water
     for p in {p for p, _a in seen}:
-        pool_anims[p] = {
-            i.animation.lower() for t in (*LAND, "water") for i in ON.gameplay_pool(t, p)
-        }
+        pool_anims[p] = {i.animation.lower() for t in (*LAND, "water") for i in ON.pool(p, t)}
     gaps: list[AuditGap] = []
     for (p, raw_anim), cnt in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
         anim = TOWN_SPRITE_VARIANTS.get(raw_anim, raw_anim)
@@ -1081,7 +1088,7 @@ def audit_variety(level: int = 0) -> list[AuditGap]:
         elif p not in PLACED_PURPOSES:
             gaps.append(AuditGap(p, anim, cnt, f"purpose {p} not placed by the generator"))
         elif "random" not in (ident.type or "").lower() and anim not in pool_anims[p]:
-            gaps.append(AuditGap(p, anim, cnt, "not in gameplay_pool for any land terrain"))
+            gaps.append(AuditGap(p, anim, cnt, "not in pool for any land terrain"))
     return gaps
 
 

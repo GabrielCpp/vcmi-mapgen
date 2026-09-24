@@ -9,6 +9,7 @@ from vcmi_mapgen.models import MapState, PlacedObject, Tile
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.steps.vegetation import sample as PP
+from vcmi_mapgen.validate import TerrainGate
 
 
 class VegetationStep(PipelineStep):
@@ -117,4 +118,4 @@ class VegetationStep(PipelineStep):
                 zw.passable = frozenset(passable)
 
         self.objs = new_objs
-        map_state.objs = map_state.objs + new_objs
+        map_state.set_objs(map_state.objs + new_objs, TerrainGate(ontology))

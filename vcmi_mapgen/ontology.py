@@ -1691,7 +1691,18 @@ TAXONOMY: Taxonomy = {
                 "swamp": ["avxsnsw0"],
             },
         },
-        "MANA": {"MAGIC_WELL": {"land": ["avxwelg0", "avxwelr0", "avxwlsn0"]}},
+        "MANA": {
+            "MAGIC_WELL": {
+                "dirt": ["avxwelr0"],
+                "grass": ["avxwelg0"],
+                "lava": ["avxwelr0"],
+                "rough": ["avxwelr0"],
+                "sand": ["avxwelr0"],
+                "snow": ["avxwlsn0"],
+                "subterr": ["avxwelr0"],
+                "swamp": ["avxwelg0"],
+            }
+        },
         "MINE": {
             "ABANDONED_MINE": {
                 "grass": ["avxamgr"],
@@ -3567,6 +3578,20 @@ def terrains_of(animation: str) -> set[str]:
     return set(_indexes().anim_terrains.get((animation or "").lower(), ()))
 
 
+def allowed_on(animation: str, terrain: str | int) -> bool:
+    """True if the animation may stand on a terrain. Terrain-specific tags beat the generic
+    'land' tag, which admits any non-water terrain. An animation the ontology does not know is
+    allowed nowhere."""
+    tags = terrains_of(animation)
+    if not tags:
+        return False
+    name = _terrain_name(terrain)
+    specific = tags - {"land"}
+    if specific:
+        return name in specific
+    return name not in ("water", "")
+
+
 def _decor_keys(name: str) -> list[str]:
     """Terrain-node keys to pull DECORATION from for a terrain: the terrain itself plus the
     terrain-independent 'land'/'water' bucket (generic obstacles usable anywhere)."""
@@ -3695,6 +3720,60 @@ def category_of(animation: str) -> int | None:
     return idx.veg_categories.index(typ) if typ in idx.veg_categories else None
 
 
+def pool(
+    object_class: str,
+    terrain: str | int,
+    *,
+    blocking: bool | None = None,
+    max_cells: int | None = None,
+    exclude_types: Iterable[str] = (),
+) -> list[Identity]:
+    """Every identity of an object class that may stand on a terrain. ``object_class`` is a
+    gameplay purpose (MINE, DWELLING, ...) or a decoration category (CRATER, mountain, ...).
+    Terrain-specific tags beat the generic 'land' tag. Empty when the class has nothing native
+    to that terrain."""
+    idx = _indexes()
+    if object_class in idx.veg_categories:
+        return [
+            i
+            for i in decor_pool(
+                terrain, blocking=blocking, max_cells=max_cells, exclude_types=exclude_types
+            )
+            if idx.anim_category.get(i.animation) == object_class
+        ]
+    return [
+        i
+        for i in gameplay_pool(terrain, object_class)
+        if (blocking is None or is_blocking(i.animation) == blocking)
+        and (max_cells is None or footprint_size(i.animation) <= max_cells)
+        and idx.anim_category.get(i.animation) not in set(exclude_types)
+    ]
+
+
+def pick(
+    object_class: str,
+    terrain: str | int,
+    rng: Random,
+    *,
+    blocking: bool | None = None,
+    max_cells: int | None = None,
+    exclude_types: Iterable[str] = (),
+) -> Identity | None:
+    """One identity of an object class allowed on a terrain, drawn uniformly with ``rng``.
+    None when the class has nothing native to that terrain."""
+    candidates = sorted(
+        pool(
+            object_class,
+            terrain,
+            blocking=blocking,
+            max_cells=max_cells,
+            exclude_types=exclude_types,
+        ),
+        key=lambda i: i.animation,
+    )
+    return rng.choice(candidates) if candidates else None
+
+
 def decode_identity(
     category: int | str | None, terrain: str | int, rng: Random | None = None
 ) -> Identity | None:
@@ -3707,14 +3786,12 @@ def decode_identity(
         typ = idx.veg_categories[category]
     else:
         return None
-    name = _terrain_name(terrain)
-    cands: list[str] = []
-    for k in _decor_keys(name):
-        cands += [a for a in idx.decor_by_terrain.get(k, ()) if idx.anim_category.get(a) == typ]
-    if not cands:
+    candidates = pool(typ, terrain)
+    if not candidates:
         return None
-    anim = cands[0] if rng is None else rng.choice(sorted(set(cands)))
-    return identity_of(anim)
+    if rng is None:
+        return candidates[0]
+    return pick(typ, terrain, rng)
 
 
 def category_terrain_matrix() -> list[list[bool]]:
@@ -4099,6 +4176,45 @@ class Ontology:
 
     def terrains_of(self, animation: str) -> set[str]:
         return terrains_of(animation)
+
+    def allowed_on(self, animation: str, terrain: str | int) -> bool:
+        return allowed_on(animation, terrain)
+
+    def pool(
+        self,
+        object_class: str,
+        terrain: str | int,
+        *,
+        blocking: bool | None = None,
+        max_cells: int | None = None,
+        exclude_types: Iterable[str] = (),
+    ) -> list[Identity]:
+        return pool(
+            object_class,
+            terrain,
+            blocking=blocking,
+            max_cells=max_cells,
+            exclude_types=exclude_types,
+        )
+
+    def pick(
+        self,
+        object_class: str,
+        terrain: str | int,
+        rng: Random,
+        *,
+        blocking: bool | None = None,
+        max_cells: int | None = None,
+        exclude_types: Iterable[str] = (),
+    ) -> Identity | None:
+        return pick(
+            object_class,
+            terrain,
+            rng,
+            blocking=blocking,
+            max_cells=max_cells,
+            exclude_types=exclude_types,
+        )
 
     def decor_pool(
         self,

@@ -248,7 +248,7 @@ def solo_visit_pool(
     pool: list[Identity] = []
     seen: set[str] = set()
     for purpose in _SOLO_VIS_PURPOSES:
-        for ident in ON.gameplay_pool(terrain, purpose):
+        for ident in ON.pool(purpose, terrain):
             anim = ident.animation.lower()
             if anim in seen or anim in exclude_anims:
                 continue
@@ -577,16 +577,12 @@ def place_loot_zones(
         # Hero-strengthening structures: an explicit allow-list (user-mandated), not
         # "every solo-visitable object" -- see _LOOT_HERO_STRUCTURE_TYPES.
         pool_vis = [
-            i
-            for i in ON.gameplay_pool(terrain, "STAT_PERMANENT")
-            if i.type in _LOOT_HERO_STRUCTURE_TYPES
+            i for i in ON.pool("STAT_PERMANENT", terrain) if i.type in _LOOT_HERO_STRUCTURE_TYPES
         ]
         pool_art = [
-            i
-            for i in ON.gameplay_pool(terrain, "REWARD_PICKUP")
-            if i.type not in _LOOT_ART_EXCL_TYPES
+            i for i in ON.pool("REWARD_PICKUP", terrain) if i.type not in _LOOT_ART_EXCL_TYPES
         ]
-        pool_res = ON.gameplay_pool(terrain, "RESOURCE_PILE")
+        pool_res = ON.pool("RESOURCE_PILE", terrain)
         # chest-type: treasure chests, campfires, pandora's box, scholar (loot-zone only),
         # plus a fixed level 4-5 spell scroll (its own kind below, not from ON.gameplay_pool
         # -- a spell scroll's `subtype` IS the spell identifier, an ontology-classified

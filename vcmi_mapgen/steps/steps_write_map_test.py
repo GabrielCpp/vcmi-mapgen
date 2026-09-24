@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from vcmi_mapgen.kit.objects import mask_interactive_cells
 from vcmi_mapgen.models import MapState
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, ProviderRegistry
@@ -16,6 +17,7 @@ from vcmi_mapgen.steps import (
     TerrainStep,
     VegetationStep,
 )
+from vcmi_mapgen.validate import terrain_violations
 
 SIZE = 48
 SEED = 7
@@ -58,8 +60,15 @@ def _steps() -> list[tuple[str, PipelineStep]]:
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class PipelineRun:
+    ontology: Ontology
+    state: MapState
+    transitions: dict[str, tuple[Snapshot, Snapshot]]
+
+
 @pytest.fixture(scope="module")
-def transitions() -> dict[str, tuple[Snapshot, Snapshot]]:
+def pipeline_run() -> PipelineRun:
     ontology = Ontology()
     state = MapState()
     ctx = ProviderRegistry()
@@ -70,7 +79,12 @@ def transitions() -> dict[str, tuple[Snapshot, Snapshot]]:
             step.inject(ctx)
             step.run(ontology, state)
             result[name] = (before, _snapshot(state))
-    return result
+    return PipelineRun(ontology, state, result)
+
+
+@pytest.fixture(scope="module")
+def transitions(pipeline_run: PipelineRun) -> dict[str, tuple[Snapshot, Snapshot]]:
+    return pipeline_run.transitions
 
 
 def test_terrain_gen_writes_cells_and_surfs(
@@ -115,3 +129,23 @@ def test_placement_steps_change_objs(
 def test_repair_writes_objs(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:
     before, after = transitions["repair"]
     assert after.objs != before.objs
+
+
+def test_no_object_stands_on_a_disallowed_terrain(pipeline_run: PipelineRun) -> None:
+    violations = list(terrain_violations(pipeline_run.ontology, pipeline_run.state))
+    assert violations == []
+
+
+def test_no_guard_stands_on_a_mine_visit_tile(pipeline_run: PipelineRun) -> None:
+    visit = {
+        (o.level, tile)
+        for o in pipeline_run.state.objs
+        if o.purpose == "MINE"
+        for tile in mask_interactive_cells(o.mask, o.x, o.y)
+    }
+    guards = [
+        o
+        for o in pipeline_run.state.objs
+        if o.purpose == "GUARD" and (o.level, (o.x, o.y)) in visit
+    ]
+    assert guards == []

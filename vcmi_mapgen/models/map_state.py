@@ -3,8 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from vcmi_mapgen.models.objects import Cell, PlacedObject, Tile, Zone
+
+
+class PlacementError(ValueError):
+    pass
+
+
+class PlacementRules(Protocol):
+    def check(self, obj: PlacedObject, cells: dict[int, list[list[Cell]]]) -> list[str]: ...
 
 
 @dataclass
@@ -27,3 +36,13 @@ class MapState:
     gate_blk: dict[int, frozenset[Tile]] = field(default_factory=dict)
     objs: list[PlacedObject] = field(default_factory=list)
     player_towns: list[PlacedObject] = field(default_factory=list)
+
+    def place(self, obj: PlacedObject, rules: PlacementRules) -> None:
+        self.set_objs([*self.objs, obj], rules)
+
+    def set_objs(self, objs: list[PlacedObject], rules: PlacementRules) -> None:
+        for obj in objs:
+            problems = rules.check(obj, self.cells)
+            if problems:
+                raise PlacementError("; ".join(problems))
+        self.objs = objs

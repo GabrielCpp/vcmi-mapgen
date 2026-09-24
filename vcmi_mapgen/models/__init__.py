@@ -1,4 +1,4 @@
-from vcmi_mapgen.models.map_state import MapState
+from vcmi_mapgen.models.map_state import MapState, PlacementError, PlacementRules
 from vcmi_mapgen.models.objects import (
     Cell,
     Entrance,
@@ -20,6 +20,8 @@ __all__ = [
     "MapState",
     "Mask",
     "PlacedObject",
+    "PlacementError",
+    "PlacementRules",
     "Pockets",
     "Tile",
     "Zone",

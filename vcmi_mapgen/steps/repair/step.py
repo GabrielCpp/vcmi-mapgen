@@ -21,6 +21,7 @@ from vcmi_mapgen.steps.repair import border_seal as BS
 from vcmi_mapgen.steps.repair import caches as CA
 from vcmi_mapgen.steps.repair import geometry as GEO
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
+from vcmi_mapgen.validate import TerrainGate
 
 
 @dataclass
@@ -436,5 +437,5 @@ class RepairStep(PipelineStep):
 
         # flatten into self.objs
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        map_state.objs = self.objs
+        map_state.set_objs(self.objs, TerrainGate(ontology))
         self._ctx.provide(RepairResult(log=self.log, pockets=pockets_by_level))

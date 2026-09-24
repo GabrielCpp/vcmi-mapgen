@@ -119,7 +119,7 @@ def place_water(
         n = min(int(x) + (1 if rng.random() < x - int(x) else 0), 14)
         if not n:
             continue
-        pool = ON.gameplay_pool("water", p)
+        pool = ON.pool(p, "water")
         cands = sorted(ts)
         placed: list[Tile] = []
         for t in rng.choices(cands, k=50 * n):
@@ -132,6 +132,9 @@ def place_water(
                 break
             cells = legal_cells(ident, t[0], t[1], ts, used)
             if cells is None:
+                continue
+            solid = tuple(row.replace("V", " ") for row in ident.mask)
+            if any((tx, ty) not in ts for tx, ty, _b in OR.mask_cells(solid, t[0], t[1])):
                 continue
             used.update(cells)
             objs.append(PlacedObject.at(ident, t[0], t[1], purpose=p))
@@ -372,11 +375,7 @@ def ensure_water_seaports(
             if terrain is None:
                 continue
             ident = next(
-                (
-                    i
-                    for i in ontology.gameplay_pool(terrain, "WATER_TRANSPORT")
-                    if i.type == "shipyard"
-                ),
+                (i for i in ontology.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"),
                 None,
             )
             if ident is not None:
@@ -415,7 +414,7 @@ def ensure_water_seaports(
         if terrain is None:
             return False
         ident = next(
-            (i for i in ontology.gameplay_pool(terrain, "WATER_TRANSPORT") if i.type == "shipyard"),
+            (i for i in ontology.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"),
             None,
         )
         if ident is None:
