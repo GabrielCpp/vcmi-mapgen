@@ -13,7 +13,7 @@ from functools import partial
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
-from vcmi_mapgen.models import Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
 from vcmi_mapgen.steps.gate.gates import GAP, Fit, fits, rnd_monster
 from vcmi_mapgen.steps.pickup.scatter import place_one
@@ -238,6 +238,7 @@ def fill_open_islands(
     if removed:
         objs = [o for i, o in enumerate(objs) if i not in removed]
     n_filled = 0
+    cover = CoverIndex(objs)
     if filled_tiles:
         by_terrain: collections.defaultdict[str | None, list[Tile]] = collections.defaultdict(list)
         for t in filled_tiles:
@@ -252,8 +253,10 @@ def fill_open_islands(
                 continue
             for x, y in tiles:
                 ident = rng.choice(pool)
-                objs.append(PlacedObject.at(ident, x, y, level=0, purpose=""))
-                n_filled += 1
+                decor = PlacedObject.at(ident, x, y, level=0, purpose="")
+                if cover.try_add(decor):
+                    objs.append(decor)
+                    n_filled += 1
     return objs, len(removed), n_filled
 
 
@@ -262,6 +265,7 @@ def place_reward_zone(
     entry: Tile,
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
+    cover: CoverIndex | None = None,
 ) -> list[PlacedObject]:
     """SPECIAL REWARD upgrade for a zone rescued by a guarded two-way monolith (pp_map's
     unreachable-zone pass): the pocket-cache grammar scaled to the whole zone — dense
@@ -316,6 +320,7 @@ def place_reward_zone(
             t[1],
             cache=True,
             bounds=bounds,
+            cover=cover,
         ):
             n_res -= 1
             val += 2
@@ -329,7 +334,18 @@ def place_reward_zone(
         gident = rnd_monster(lvl)
         for t in sorted(reach - used, key=partial(_centre_key, cx=cx, cy=cy)):
             if place_one(
-                objs, used, reach, rng, st, "GUARD", None, t[0], t[1], ident=gident, bounds=bounds
+                objs,
+                used,
+                reach,
+                rng,
+                st,
+                "GUARD",
+                None,
+                t[0],
+                t[1],
+                ident=gident,
+                bounds=bounds,
+                cover=cover,
             ):
                 break
     return objs
@@ -514,11 +530,16 @@ def rescue_unreachable_zones(
         for lvl, objs in objs_by_level.items()
     }
 
+    cover_by = {lvl: CoverIndex(objs) for lvl, objs in objs_by_level.items()}
+
+    def portal_end(lvl: int, ident: Identity, node: Tile) -> PlacedObject:
+        return PlacedObject.at(ident, node[0], node[1], level=lvl, purpose="TRANSPORT")
+
     def emit_end(lvl: int, ident: Identity, node: Tile, fit: Fit) -> Tile:
         allc, _blk, approach = fit
-        objs_by_level[lvl].append(
-            PlacedObject.at(ident, node[0], node[1], level=lvl, purpose="TRANSPORT")
-        )
+        end = portal_end(lvl, ident, node)
+        cover_by[lvl].add(end)
+        objs_by_level[lvl].append(end)
         st = state[lvl]
         st.occupied.update(allc)
         for cx, cy in allc:
@@ -548,7 +569,7 @@ def rescue_unreachable_zones(
         far_node: Tile | None = None
         for t in sorted(ts, key=partial(_centre_key, cx=cx, cy=cy)):
             fit = fits(ident, t[0], t[1], ts, st.occupied, st.near, st.reserved)
-            if fit:
+            if fit and cover_by[lvl].accepts(portal_end(lvl, ident, t)):
                 far_fit, far_node = fit, t
                 break
         if far_fit is None or far_node is None:
@@ -580,7 +601,7 @@ def rescue_unreachable_zones(
 
             for t in order:
                 fit = fits(ident, t[0], t[1], hts, st.occupied, st.near, st.reserved)
-                if fit is None:
+                if fit is None or not cover_by[lvl].accepts(portal_end(lvl, ident, t)):
                     continue
                 g = _guard_spot(fit[2], set(fit[0]), gident, grids[lvl], st, W, H)
                 if g is None:  # a portal must be guardable — skip
@@ -592,18 +613,19 @@ def rescue_unreachable_zones(
         if near_fit is None or near_node is None or gtile is None:
             continue
 
+        guard = PlacedObject.at(
+            gident,
+            gtile[0],
+            gtile[1],
+            level=lvl,
+            purpose="GUARD",
+            options={"character": "hostile"},
+        )
         far_appr = emit_end(lvl, ident, far_node, far_fit)
         _ = emit_end(lvl, ident, near_node, near_fit)
-        objs_by_level[lvl].append(
-            PlacedObject.at(
-                gident,
-                gtile[0],
-                gtile[1],
-                level=lvl,
-                purpose="GUARD",
-                options={"character": "hostile"},
-            )
-        )
+        if not cover_by[lvl].try_add(guard):
+            continue
+        objs_by_level[lvl].append(guard)
         st.occupied.add(gtile)
 
         # the reward upgrade: the portal makes the zone special
@@ -620,7 +642,7 @@ def rescue_unreachable_zones(
                 used=set(),
             )
         zr.used.update(far_fit[0])  # the monolith's own cells
-        robjs = place_reward_zone(zr, far_appr, seed=seed, bounds=(W, H))
+        robjs = place_reward_zone(zr, far_appr, seed=seed, bounds=(W, H), cover=cover_by[lvl])
         for o in robjs:
             o.level = lvl
         objs_by_level[lvl].extend(robjs)

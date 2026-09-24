@@ -12,7 +12,16 @@ from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import NB8
 from vcmi_mapgen.kit.topology import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
-from vcmi_mapgen.models import Identity, JsonValue, Mask, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.models import (
+    CoverIndex,
+    Identity,
+    JsonValue,
+    Mask,
+    PlacedObject,
+    Tile,
+    Zone,
+    ZoneRecord,
+)
 from vcmi_mapgen.steps.gameplay.mines import TerrainStats, mine_gameplay
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.pickup.loot_zones import (
@@ -408,6 +417,7 @@ def place_pocket_caches(
     blobs = dedupe_pockets(raw, global_true)
     guard_mask = rnd_monster(1).mask  # uniform across levels 1-7; used to pre-check fit
     objs: list[PlacedObject] = []
+    cover = CoverIndex(existing_objs)
     placed_mouths: list[Tile] = []
 
     def _pocket_fill(
@@ -442,6 +452,7 @@ def place_pocket_caches(
                     t[1],
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 )
             elif roll < 0.75:
@@ -466,6 +477,7 @@ def place_pocket_caches(
                         ident=ci,
                         cache=True,
                         bounds=bounds,
+                        cover=cover,
                         interactive_only=True,
                     )
                 ):
@@ -481,6 +493,7 @@ def place_pocket_caches(
                         t[1],
                         cache=True,
                         bounds=bounds,
+                        cover=cover,
                         interactive_only=True,
                     )
                 else:
@@ -505,6 +518,7 @@ def place_pocket_caches(
                         ident=vi,
                         cache=True,
                         bounds=bounds,
+                        cover=cover,
                         interactive_only=True,
                     )
                 ):
@@ -520,6 +534,7 @@ def place_pocket_caches(
                         t[1],
                         cache=True,
                         bounds=bounds,
+                        cover=cover,
                         interactive_only=True,
                     )
                 else:
@@ -652,6 +667,7 @@ def place_pocket_caches(
                 guard_tile[1],
                 ident=gident,
                 bounds=bounds,
+                cover=cover,
             ):
                 continue
             # _place_one always appends -- objs[-1] is the guard just placed.
@@ -726,6 +742,7 @@ def place_pocket_caches(
                 ident=ON.identity_of(anim),
                 cache=True,
                 bounds=bounds,
+                cover=cover,
                 interactive_only=True,
             ):
                 _ = place_one(
@@ -740,6 +757,7 @@ def place_pocket_caches(
                     t[1],
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 )
 
@@ -759,6 +777,7 @@ def place_seer_hut_quests(
     bounds: tuple[int, int] | None = None,
     used_artifacts: set[str] | None = None,
     pocket_tiles: AbstractSet[Tile] | None = None,
+    existing_objs: Sequence[PlacedObject] = (),
 ) -> tuple[list[PlacedObject], int]:
     """One or more Seer Hut quests for the WHOLE level (VCMI RMG convention: a seer hut's
     mission gates on a single named artifact the hero must find and hand-carry to it). Each
@@ -786,6 +805,7 @@ def place_seer_hut_quests(
 
     rng_pair = random.Random(seed ^ 0xEE47)
     objs: list[PlacedObject] = []
+    cover = CoverIndex(existing_objs)
     if used_artifacts is None:
         used_artifacts = set()
     placed = 0
@@ -860,6 +880,7 @@ def place_seer_hut_quests(
                 t[1],
                 ident=art_ident,
                 bounds=bounds,
+                cover=cover,
             ):
                 art_xy = t
                 break
@@ -885,6 +906,7 @@ def place_seer_hut_quests(
                 ident=hut_ident,
                 options=options,
                 bounds=bounds,
+                cover=cover,
             ):
                 hut_xy = t
                 break
@@ -916,8 +938,9 @@ def place_pickups(
     must NOT use this: call `place_scatter` per zone and `place_pocket_caches` ONCE globally
     instead (see `pp_map.build`), so pocket detection runs against the whole map's reachable
     field rather than one zone's alone."""
+    cover = CoverIndex()
     sobjs, sused, reach = place_scatter(
-        ts, zones, zid, terrain, open_set, prot, seed=seed, bounds=bounds
+        ts, zones, zid, terrain, open_set, prot, seed=seed, bounds=bounds, cover=cover
     )
     zone_records = [
         ZoneRecord(
@@ -930,5 +953,7 @@ def place_pickups(
             used=sused,
         )
     ]
-    cobjs, _n, _depths = place_pocket_caches(zone_records, seed=seed, bounds=bounds)
+    cobjs, _n, _depths = place_pocket_caches(
+        zone_records, seed=seed, bounds=bounds, existing_objs=sobjs
+    )
     return sobjs + cobjs

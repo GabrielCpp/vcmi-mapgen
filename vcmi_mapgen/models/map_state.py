@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Protocol
@@ -96,39 +97,79 @@ def index_of(objs: list[PlacedObject]) -> dict[tuple[int, Tile], list[Cover]]:
     return index
 
 
+_SPRITE_OVERHANG = frozenset({"GUARD", "RESOURCE_PILE", "REWARD_PICKUP"})
+
+
+def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str | None:
+    """Why ``culprit``, covering ``tile`` with ``role``, may not share it with ``victim``. Only
+    another object's visit, entrance or approach tile is protected. A guard stands on an
+    approach tile and its sprite overlays the entrance, since that is its job. A one-tile pickup
+    packs against its neighbours, so its sprite overhang is not held against them."""
+    if role is Role.APPROACH or (culprit.purpose in _SPRITE_OVERHANG and role is Role.OVERLAY):
+        return None
+    if victim.obj is culprit or not victim.interactive:
+        return None
+    if culprit.purpose == "GUARD" and victim.role is Role.APPROACH:
+        return None
+    return (
+        f"{culprit.animation} at {tile} covers the {victim.role.name.lower()} tile"
+        + f" of {victim.obj.animation}"
+    )
+
+
 def covering_problems(obj: PlacedObject, index: dict[tuple[int, Tile], list[Cover]]) -> list[str]:
     """Reasons ``obj`` cannot stand where it is: any of its tiles on another object's visit,
-    entrance or approach tile. A guard stands on an approach tile and its sprite overlays the
-    entrance, since that is its job."""
+    entrance or approach tile."""
     problems: list[str] = []
     for tile, role in footprint(obj):
-        if role is Role.APPROACH or (obj.purpose == "GUARD" and role is Role.OVERLAY):
-            continue
         for cover in index.get((obj.level, tile), ()):
-            if cover.obj is obj or not cover.interactive:
-                continue
-            if obj.purpose == "GUARD" and cover.role is Role.APPROACH:
-                continue
-            problems.append(
-                f"{obj.animation} at {tile} covers the {cover.role.name.lower()} tile"
-                + f" of {cover.obj.animation}"
-            )
+            problem = _clash(obj, role, tile, cover)
+            if problem:
+                problems.append(problem)
     return problems
 
 
-def evict_conflicts(objs: list[PlacedObject]) -> tuple[list[PlacedObject], list[PlacedObject]]:
-    """Split ``objs`` into those that may stay and those whose tiles cover another object's
-    visit, entrance or approach tile. Each round evicts every offender, so two objects that
-    cover each other both go."""
-    kept = list(objs)
-    evicted: list[PlacedObject] = []
-    while True:
-        index = index_of(kept)
-        bad = {id(o) for o in kept if covering_problems(o, index)}
-        if not bad:
-            return kept, evicted
-        evicted.extend(o for o in kept if id(o) in bad)
-        kept = [o for o in kept if id(o) not in bad]
+class CoverIndex:
+    """The tiles of one level that objects cover, kept up to date as a placer adds objects.
+    ``conflicts`` answers both ways: ``obj`` covering another object's interactive tile, and
+    another object covering an interactive tile of ``obj``."""
+
+    def __init__(self, objs: Iterable[PlacedObject] = ()) -> None:
+        self._at: dict[Tile, list[Cover]] = {}
+        for obj in objs:
+            self.add(obj)
+
+    def add(self, obj: PlacedObject) -> None:
+        for tile, role in footprint(obj):
+            self._at.setdefault(tile, []).append(Cover(obj, role))
+
+    def reset(self, objs: Iterable[PlacedObject]) -> None:
+        self._at.clear()
+        for obj in objs:
+            self.add(obj)
+
+    def conflicts(self, obj: PlacedObject) -> list[str]:
+        problems: list[str] = []
+        for tile, role in footprint(obj):
+            for cover in self._at.get(tile, ()):
+                if cover.obj is obj:
+                    continue
+                for problem in (
+                    _clash(obj, role, tile, cover),
+                    _clash(cover.obj, cover.role, tile, Cover(obj, role)),
+                ):
+                    if problem:
+                        problems.append(problem)
+        return problems
+
+    def accepts(self, obj: PlacedObject) -> bool:
+        return not self.conflicts(obj)
+
+    def try_add(self, obj: PlacedObject) -> bool:
+        if self.conflicts(obj):
+            return False
+        self.add(obj)
+        return True
 
 
 class PlacementError(ValueError):
@@ -216,13 +257,6 @@ class MapState:
 
     def place(self, obj: PlacedObject, rules: PlacementRules) -> None:
         self.set_objs([*self.objs, obj], rules)
-
-    def settle(self, objs: list[PlacedObject], rules: PlacementRules) -> list[PlacedObject]:
-        """Write ``objs`` after evicting every object that covers another object's interactive
-        tile. Returns the evicted objects."""
-        kept, evicted = evict_conflicts(objs)
-        self.set_objs(kept, rules)
-        return evicted
 
     def set_objs(self, objs: list[PlacedObject], rules: PlacementRules) -> None:
         index = index_of(objs)

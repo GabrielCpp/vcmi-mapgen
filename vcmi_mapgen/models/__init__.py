@@ -1,6 +1,7 @@
 from vcmi_mapgen.models.map_state import (
     BORDER,
     Cover,
+    CoverIndex,
     MapState,
     PlacementError,
     PlacementRules,
@@ -25,6 +26,7 @@ __all__ = [
     "BORDER",
     "Cell",
     "Cover",
+    "CoverIndex",
     "Entrance",
     "Identity",
     "JsonValue",

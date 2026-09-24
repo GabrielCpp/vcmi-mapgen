@@ -1,6 +1,6 @@
 import pytest
 
-from vcmi_mapgen.models import BORDER, MapState, PlacedObject, PlacementError, Role
+from vcmi_mapgen.models import BORDER, CoverIndex, MapState, PlacedObject, PlacementError, Role
 
 
 class _NoRules:
@@ -63,3 +63,40 @@ def test_guard_may_stand_on_an_approach_tile() -> None:
     state = MapState(size=5)
     state.set_objs([mine, guard], _NoRules())
     assert Role.APPROACH in {c.role for c in state.covers_at(0, 2, 3)}
+
+
+def test_cover_index_refuses_an_overlay_on_a_visit_tile() -> None:
+    mine = _obj(2, 2, ("A",), purpose="MINE")
+    canopy = _obj(3, 3, ("VV", "VV"))
+    index = CoverIndex([mine])
+    assert not index.try_add(canopy)
+    assert index.conflicts(canopy)
+
+
+def test_cover_index_refuses_a_visit_tile_under_an_overlay() -> None:
+    canopy = _obj(3, 3, ("VV", "VV"))
+    pile = _obj(2, 2, ("A",), purpose="RESOURCE_PILE")
+    index = CoverIndex([canopy])
+    assert not index.accepts(pile)
+
+
+def test_cover_index_accepts_a_guard_on_an_approach_tile() -> None:
+    mine = _obj(2, 2, ("X",), purpose="MINE")
+    guard = _obj(2, 3, ("B",), purpose="GUARD")
+    index = CoverIndex([mine])
+    assert index.try_add(guard)
+
+
+def test_cover_index_reset_forgets_removed_objects() -> None:
+    mine = _obj(2, 2, ("A",), purpose="MINE")
+    canopy = _obj(3, 3, ("VV", "VV"))
+    index = CoverIndex([mine])
+    index.reset([])
+    assert index.try_add(canopy)
+
+
+def test_cover_index_accepts_adjacent_resource_piles() -> None:
+    first = _obj(2, 2, ("VA",), purpose="RESOURCE_PILE")
+    second = _obj(3, 2, ("VA",), purpose="RESOURCE_PILE")
+    index = CoverIndex([first])
+    assert index.try_add(second)

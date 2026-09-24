@@ -6,7 +6,7 @@ import collections
 from dataclasses import dataclass, field
 from typing import override
 
-from vcmi_mapgen.models import MapState, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.models import CoverIndex, MapState, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.steps.gate.step import GateResult
@@ -87,7 +87,7 @@ class PickupStep(PipelineStep):
             seal_avoid: set[Tile] = set()
             hard_avoid: set[Tile] = set()
 
-            taken = map_state.taken_tiles(level)
+            cover = CoverIndex(level_objs)
             for zid, zw in sorted(lvl_ws.zones.items()):
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & zw.ts_full
                 forbid = zw.occupied | set(zw.approaches) | zone_seaport_cells
@@ -104,7 +104,7 @@ class PickupStep(PipelineStep):
                     seed=self.seed,
                     bounds=(W, H),
                     entrances=zw.entrances,
-                    taken=taken,
+                    cover=cover,
                 )
                 if level == 1:  # place_scatter always tags l=0; retag the underground level
                     for o in sobjs:
@@ -157,7 +157,7 @@ class PickupStep(PipelineStep):
             level_objs[:] = [o for o in level_objs if id(o) not in gate_ids]
 
             loot_objs, n_loot, loot_zids = LZ.place_loot_zones(
-                zone_records, level_objs, seed=self.seed, bounds=(W, H)
+                zone_records, level_objs, seed=self.seed, bounds=(W, H), fixed=shielded
             )
             if level == 1:  # place_loot_zones always tags l=0; retag the underground level
                 for o in loot_objs:
@@ -202,8 +202,5 @@ class PickupStep(PipelineStep):
             self.zone_records[level] = zone_records
 
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        evicted = map_state.settle(self.objs, TerrainGate(ontology))
-        self.objs = map_state.objs
-        if evicted:
-            print(f"  evicted {len(evicted)} object(s) covering another object's visit tile")
+        map_state.set_objs(self.objs, TerrainGate(ontology))
         self._ctx.provide(PickupIndex(targets=self.targets, zone_records=self.zone_records))

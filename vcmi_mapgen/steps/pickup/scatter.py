@@ -20,7 +20,7 @@ from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.topology import zone_gate_bands
-from vcmi_mapgen.models import Entrance, Identity, JsonValue, PlacedObject, Tile, Zone
+from vcmi_mapgen.models import CoverIndex, Entrance, Identity, JsonValue, PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.gameplay.water import legal_cells, pick_identity
 
@@ -154,7 +154,7 @@ def place_one(
     options: dict[str, JsonValue] | None = None,
     interactive_only: bool = False,
     clear_of: Container[Tile] | None = None,
-    taken: Container[Tile] | None = None,
+    cover: CoverIndex | None = None,
 ) -> bool:
     """Shared placement primitive for both scatter and pocket caches: resolve an identity,
     check its footprint against `reach`/`used`, and if legal append the obj and claim its
@@ -191,10 +191,12 @@ def place_one(
         cells = legal_cells(
             ident, x, y, reach, used, bounds=bounds, interactive_only=interactive_only
         )
-        if cells is None or (taken is not None and any(c in taken for c in cells)):
+        if cells is None:
             return False
-    used.update(cells)
     o = PlacedObject.at(ident, x, y, purpose=purpose)
+    if cover is not None and not cover.try_add(o):
+        return False
+    used.update(cells)
     if purpose == "GUARD":  # absent => VCMI 'compliant' => every creature joins free
         o.options = {"character": "hostile"}
     if options is not None:
@@ -225,7 +227,7 @@ def place_scatter(
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
     entrances: Sequence[Entrance] | None = None,
-    taken: Container[Tile] | None = None,
+    cover: CoverIndex | None = None,
 ) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
@@ -296,7 +298,7 @@ def place_scatter(
                 t[1],
                 art_share=SCATTER_ART_SHARE,
                 bounds=bounds,
-                taken=taken,
+                cover=cover,
             ):
                 placed.append(t)
 

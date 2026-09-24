@@ -7,7 +7,7 @@ from collections.abc import Collection, Container, Mapping, Sequence
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
-from vcmi_mapgen.models import PlacedObject, Tile, Zone
+from vcmi_mapgen.models import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 
 
@@ -92,6 +92,7 @@ def seal_zone_borders(
         return t not in avoid and t not in dead and t in owner and t not in bands
 
     new_objs: list[PlacedObject] = []
+    cover = CoverIndex(objs)
     sealed: set[Tile] = set()
     while pairs:
         cnt: collections.Counter[Tile] = collections.Counter()
@@ -110,7 +111,11 @@ def seal_zone_borders(
             dead.add(pick)
             continue
         ident = rng.choice(pool)
-        new_objs.append(PlacedObject.at(ident, pick[0], pick[1], level=0, purpose=""))
+        decor = PlacedObject.at(ident, pick[0], pick[1], level=0, purpose="")
+        if not cover.try_add(decor):
+            dead.add(pick)
+            continue
+        new_objs.append(decor)
         sealed.add(pick)
         pairs = [p for p in pairs if pick not in p]
 
@@ -137,6 +142,17 @@ def seal_zone_borders(
                 return c
         return cands[0]
 
+    def _stand_guard(cands: Sequence[Tile]) -> PlacedObject | None:
+        first = _pick_guard(cands)
+        for g in [first, *(c for c in cands if c != first)]:
+            gident = rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
+            guard = PlacedObject.at(
+                gident, g[0], g[1], level=0, purpose="GUARD", options={"character": "hostile"}
+            )
+            if cover.try_add(guard):
+                return guard
+        return None
+
     guard_tiles: set[Tile] = set()
     unguarded = 0
     for t, n in pairs:
@@ -146,14 +162,13 @@ def seal_zone_borders(
         if not cands:
             unguarded += 1
             continue
-        g = _pick_guard(cands)
-        gident = rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
-        guard = PlacedObject.at(
-            gident, g[0], g[1], level=0, purpose="GUARD", options={"character": "hostile"}
-        )
+        guard = _stand_guard(cands)
+        if guard is None:
+            unguarded += 1
+            continue
         guard.seal = True
         new_objs.append(guard)  # informational: dup-guard cleanup must
-        guard_tiles.add(g)  # never drop it — it IS the border
+        guard_tiles.add((guard.x, guard.y))  # never drop it — it IS the border
 
     # Band pairs (planned entrance corridors) were left open on purpose but every corridor
     # must have at least one guard so the crossing requires a fight.  If pp_gameplay already
@@ -165,14 +180,12 @@ def seal_zone_borders(
         cands = [c for c in sorted((t, n)) if c not in hard_avoid]
         if not cands:
             continue
-        g = _pick_guard(cands)
-        gident = rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
-        guard = PlacedObject.at(
-            gident, g[0], g[1], level=0, purpose="GUARD", options={"character": "hostile"}
-        )
+        guard = _stand_guard(cands)
+        if guard is None:
+            continue
         guard.seal = True
         new_objs.append(guard)
-        band_guard_tiles.add(g)
+        band_guard_tiles.add((guard.x, guard.y))
 
     guard_tiles |= band_guard_tiles
     return new_objs, sealed, guard_tiles, unguarded

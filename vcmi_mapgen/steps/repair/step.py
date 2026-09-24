@@ -157,6 +157,7 @@ def _repair_one_level(
         bounds=(size, size),
         used_artifacts=seerhut_artifacts,
         pocket_tiles=_pocket_tiles_pkt,
+        existing_objs=objs,
     )
     objs.extend(qobjs)
     targets.extend((o.x, o.y) for o in qobjs)
@@ -437,8 +438,5 @@ class RepairStep(PipelineStep):
 
         # flatten into self.objs
         self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        evicted = map_state.settle(self.objs, TerrainGate(ontology))
-        self.objs = map_state.objs
-        if evicted:
-            print(f"  evicted {len(evicted)} object(s) covering another object's visit tile")
+        map_state.set_objs(self.objs, TerrainGate(ontology))
         self._ctx.provide(RepairResult(log=self.log, pockets=pockets_by_level))

@@ -15,7 +15,7 @@ from operator import itemgetter
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.models import Identity, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.gameplay.water import legal_cells
 from vcmi_mapgen.steps.gate.gates import rnd_monster
@@ -270,6 +270,7 @@ def place_loot_zones(
     objs_existing: list[PlacedObject],
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
+    fixed: Sequence[PlacedObject] = (),
 ) -> tuple[list[PlacedObject], int, set[int]]:
     """Loot-zone access mechanic for small single-entrance zones.
 
@@ -295,6 +296,7 @@ def place_loot_zones(
     ever left on the map.  Returns (objs, n_placements, sealed_zid_set).
     """
     town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == "TOWN"}
+    cover = CoverIndex([*fixed, *objs_existing])
 
     # Pre-compute full tile set of all zones for boundary detection.
     _all_ts: set[Tile] = set()
@@ -478,10 +480,15 @@ def place_loot_zones(
                 for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
             ):
                 continue  # interior tile — left for loot
-            objs[:] = [o for o in objs if not (o.purpose == "GUARD" and o.x == tx and o.y == ty)]
+            kept = [o for o in objs if not (o.purpose == "GUARD" and o.x == tx and o.y == ty)]
+            if len(kept) != len(objs):
+                objs[:] = kept
+                cover.reset([*fixed, *objs_existing, *objs])
             iv = rng.choice(veg_pool)
-            used.add(t)
-            objs.append(PlacedObject.at(iv, tx, ty, purpose=""))
+            decor = PlacedObject.at(iv, tx, ty, purpose="")
+            if cover.try_add(decor):
+                used.add(t)
+                objs.append(decor)
 
     def _close_stray_leaks(
         ts: AbstractSet[Tile],
@@ -535,7 +542,10 @@ def place_loot_zones(
                 if not pool:
                     continue
                 iv = rng.choice(pool)
-                objs.append(PlacedObject.at(iv, nb[0], nb[1], purpose=""))
+                decor = PlacedObject.at(iv, nb[0], nb[1], purpose="")
+                if not cover.try_add(decor):
+                    continue
+                objs.append(decor)
                 nb_zr.used.add(nb)
                 blocked.add(nb)
 
@@ -572,7 +582,9 @@ def place_loot_zones(
             for t in sorted(interior):
                 if rng.random() < 0.5:
                     iv = rng.choice(pool_bg)
-                    objs.append(PlacedObject.at(iv, t[0], t[1], purpose=""))
+                    decor = PlacedObject.at(iv, t[0], t[1], purpose="")
+                    if cover.try_add(decor):
+                        objs.append(decor)
 
         # Hero-strengthening structures: an explicit allow-list (user-mandated), not
         # "every solo-visitable object" -- see _LOOT_HERO_STRUCTURE_TYPES.
@@ -642,6 +654,7 @@ def place_loot_zones(
                     ident=iv,
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 ):
                     placed_at.append(t)
@@ -672,6 +685,7 @@ def place_loot_zones(
                     ident=ai,
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 )
             elif roll < 0.6 and chest_kinds:
@@ -689,6 +703,7 @@ def place_loot_zones(
                     ident=ident,
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 )
             elif pool_rare:
@@ -705,6 +720,7 @@ def place_loot_zones(
                     ident=rng.choice(pool_rare),
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 )
 
@@ -726,6 +742,7 @@ def place_loot_zones(
                 ident=rng.choice(pool_rare),
                 cache=True,
                 bounds=bounds,
+                cover=cover,
                 interactive_only=True,
             )
             if not placed and pool_res:
@@ -741,8 +758,19 @@ def place_loot_zones(
                     t[1],
                     cache=True,
                     bounds=bounds,
+                    cover=cover,
                     interactive_only=True,
                 )
+            if not placed:
+                fillers = ON.decor_pool(
+                    terrain, blocking=True, max_cells=1, exclude_types=_LOOT_EXCL_DECOR
+                )
+                if fillers:
+                    decor = PlacedObject.at(rng.choice(fillers), t[0], t[1], purpose="")
+                    if cover.try_add(decor):
+                        used.add(t)
+                        objs.append(decor)
+                        placed = True
             if not placed:
                 print(
                     f"  WARNING: loot zone fill left tile {t} unclaimed "
@@ -768,6 +796,7 @@ def place_loot_zones(
         # Clear scatter vegetation so the whole interior is available for loot.
         objs_existing[:] = [o for o in objs_existing if (o.x, o.y) not in ts]
         objs[:] = [o for o in objs if (o.x, o.y) not in ts]
+        cover.reset([*fixed, *objs_existing, *objs])
         used.clear()
         # After clearing, all zone tiles are passable (loot zones have no gameplay
         # blockers — no town, no mine).  The stored open_set/reach were computed with
@@ -878,6 +907,7 @@ def place_loot_zones(
                         src.remove(o)
                         for cx, cy, _ in OR.mask_cells(o.mask, o.x, o.y):
                             cleared.add((cx, cy))
+                cover.reset([*fixed, *objs_existing, *objs])
                 for zr in zone_records:
                     zr.used -= cleared
                 used.update(gate_cells)
@@ -886,6 +916,9 @@ def place_loot_zones(
                 # visitable from the exterior (above the VVVV row), not
                 # only from the interior side.
                 gate_obj.visitable_from = ("+++", "+-+", "+++")
+                if not cover.try_add(gate_obj):
+                    used.difference_update(gate_cells)
+                    continue
                 objs.append(gate_obj)
                 gate_tile = t
                 entry_tile = entry_tile_cand
@@ -909,6 +942,7 @@ def place_loot_zones(
                 for dx, dy in _DIRS8
             )
             if not has_ext_access:
+                cover.reset([*fixed, *objs_existing, *objs[:-1]])
                 objs.remove(objs[-1])
                 used.difference_update(gate_cells)
                 continue
@@ -950,6 +984,7 @@ def place_loot_zones(
                 km_t[1],
                 ident=key_ident,
                 bounds=bounds,
+                cover=cover,
             )
             if not placed:
                 for t in sorted(km_zr.reach - km_zr.used):
@@ -965,6 +1000,7 @@ def place_loot_zones(
                         t[1],
                         ident=key_ident,
                         bounds=bounds,
+                        cover=cover,
                     ):
                         placed = True
                         break
@@ -994,6 +1030,7 @@ def place_loot_zones(
                             t[1],
                             ident=gident_km,
                             bounds=bounds,
+                            cover=cover,
                             clear_of=clear_of,
                         ):
                             guard_done = True
@@ -1053,6 +1090,7 @@ def place_loot_zones(
                 int_t[1],
                 ident=mono_ident,
                 bounds=bounds,
+                cover=cover,
             )
             mono_interactive = set(OR.mask_interactive_cells(mono_ident.mask, int_t[0], int_t[1]))
             # Excavate BEFORE the free-tile scan; the corridor is then ordinary floor,
@@ -1077,6 +1115,7 @@ def place_loot_zones(
                 ext_t[1],
                 ident=mono_ident,
                 bounds=bounds,
+                cover=cover,
             )
             if not placed:
                 for t in sorted(ext_zr.reach - ext_zr.used):
@@ -1092,6 +1131,7 @@ def place_loot_zones(
                         t[1],
                         ident=mono_ident,
                         bounds=bounds,
+                        cover=cover,
                     ):
                         placed = True
                         break
@@ -1121,6 +1161,7 @@ def place_loot_zones(
                             t[1],
                             ident=gident_ext,
                             bounds=bounds,
+                            cover=cover,
                             clear_of=clear_of,
                         ):
                             guard_done = True

@@ -281,6 +281,9 @@ def test_loot_zone_fill_claims_every_non_access_tile() -> None:
                     claimed.add((cx, cy))
             if o.purpose in ("QUEST_GATE", "TRANSPORT"):
                 access_interactive |= set(OR.mask_interactive_cells(o.mask, o.x, o.y)) & ts0
+                access_interactive |= {
+                    (cx, cy + 1) for cx, cy in OR.mask_interactive_cells(o.mask, o.x, o.y)
+                } & ts0
         gap = ts0 - claimed - access_interactive
         assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
     assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
@@ -314,6 +317,9 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor() -> None:
                     claimed.add((cx, cy))
             if o.purpose in ("QUEST_GATE", "TRANSPORT"):
                 access_interactive |= set(OR.mask_interactive_cells(o.mask, o.x, o.y)) & ts0
+                access_interactive |= {
+                    (cx, cy + 1) for cx, cy in OR.mask_interactive_cells(o.mask, o.x, o.y)
+                } & ts0
         gap = ts0 - claimed - access_interactive
         assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
     assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
