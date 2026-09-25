@@ -100,12 +100,14 @@ class PortalStep(PipelineStep):
         start = _find_start(self._player_zids, map_state.zones, self._workspace)
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
-                self.size,
-                grids,
-                map_state.zones,
-                objs_by_level,
-                self._targets,
-                self._zone_records,
+                GEO.PortalWorld(
+                    self.size,
+                    grids,
+                    map_state.zones,
+                    objs_by_level,
+                    self._targets,
+                    self._zone_records,
+                ),
                 start,
                 gate_xy,
                 self.seed,

@@ -16,6 +16,7 @@ from __future__ import annotations
 import gzip
 import os
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import final
 
@@ -412,6 +413,7 @@ class H3MParser:
         self.r: Reader = Reader(data, self.f)
         self.templates: list[ObjectTemplate] = []
         self._cur_extra: dict[str, int] = {}
+        self._body_readers: dict[int, Callable[[], None]] = self._object_body_readers()
 
     # -- public entry --------------------------------------------------------
     def parse(self, name: str) -> H3Map:
@@ -465,45 +467,57 @@ class H3MParser:
 
     # -- header sub-sections -------------------------------------------------
     def _read_players(self) -> int:
-        r, f = self.r, self.f
+        r = self.r
         count = 0
         for _ in range(8):
             can_human = r.boolean()
             can_comp = r.boolean()
             if not (can_human or can_comp):
-                if f.level_roe:
-                    r.skip(6)
-                if f.level_ab:
-                    r.skip(6)
-                if f.level_sod:
-                    r.skip(1)
+                self._skip_unplayable_player()
                 continue
             count += 1
-            _ = r.i8()  # aiTactic
-            if f.level_sod:
-                r.skip(1)  # faction selectable
-            _ = r.bitmask_factions()
-            _ = r.boolean()  # isFactionRandom
-            has_main_town = r.boolean()
-            if has_main_town:
-                if f.level_ab:
-                    _ = r.boolean()  # generateHeroAtMainTown
-                    r.skip(1)  # starting town type
-                _ = r.int3()  # posOfMainTown
-            _ = r.boolean()  # hasRandomHero
-            main_hero = r.hero()
-            if main_hero != -1:
-                _ = r.hero_portrait()
-                _ = r.string()  # hero name
-            if f.level_ab:
-                r.skip(1)
-                hero_count = r.u32()
-                for _ in range(hero_count):
-                    _ = r.hero()
-                    _ = r.string()
+            self._read_playable_player()
         return count
 
+    def _skip_unplayable_player(self) -> None:
+        r, f = self.r, self.f
+        if f.level_roe:
+            r.skip(6)
+        if f.level_ab:
+            r.skip(6)
+        if f.level_sod:
+            r.skip(1)
+
+    def _read_playable_player(self) -> None:
+        r, f = self.r, self.f
+        _ = r.i8()  # aiTactic
+        if f.level_sod:
+            r.skip(1)  # faction selectable
+        _ = r.bitmask_factions()
+        _ = r.boolean()  # isFactionRandom
+        has_main_town = r.boolean()
+        if has_main_town:
+            if f.level_ab:
+                _ = r.boolean()  # generateHeroAtMainTown
+                r.skip(1)  # starting town type
+            _ = r.int3()  # posOfMainTown
+        _ = r.boolean()  # hasRandomHero
+        main_hero = r.hero()
+        if main_hero != -1:
+            _ = r.hero_portrait()
+            _ = r.string()  # hero name
+        if f.level_ab:
+            r.skip(1)
+            hero_count = r.u32()
+            for _ in range(hero_count):
+                _ = r.hero()
+                _ = r.string()
+
     def _read_victory_loss(self) -> None:
+        self._read_victory()
+        self._read_loss()
+
+    def _read_victory(self) -> None:
         r = self.r
         # EVictoryConditionType, -1..12 ; raw byte read
         vic = r.i8()
@@ -531,6 +545,9 @@ class H3MParser:
                 _ = r.int3()
             else:
                 raise DesyncError(f"unhandled victory condition {vic}")
+
+    def _read_loss(self) -> None:
+        r = self.r
         loss = r.i8()
         if loss != -1:  # not LOSSSTANDARD
             if loss in {0, 1}:  # LOSSCASTLE
@@ -602,24 +619,40 @@ class H3MParser:
             has_exp = r.boolean()
             if has_exp:
                 _ = r.u32()
-            has_sec = r.boolean()
-            if has_sec:
-                how_many = r.u32()
-                for _ in range(how_many):
-                    _ = r.skill()
-                    _ = r.i8()
+            self._read_optional_secondary_skills()
             self._read_artifacts_of_hero()
-            has_bio = r.boolean()
-            if has_bio:
-                _ = r.string()
+            self._read_optional_string()
             _ = r.i8()  # gender
-            has_spells = r.boolean()
-            if has_spells:
-                _ = r.bitmask_spells()
-            has_prim = r.boolean()
-            if has_prim:
-                for _ in range(PRIMARY_SKILLS):
-                    _ = r.u8()
+            self._read_optional_spells()
+            self._read_optional_primary_skills()
+
+    def _read_optional_string(self) -> None:
+        r = self.r
+        has_string = r.boolean()
+        if has_string:
+            _ = r.string()
+
+    def _read_optional_secondary_skills(self) -> None:
+        r = self.r
+        has_sec = r.boolean()
+        if has_sec:
+            how_many = r.u32()
+            for _ in range(how_many):
+                _ = r.skill()
+                _ = r.i8()
+
+    def _read_optional_spells(self) -> None:
+        r = self.r
+        has_spells = r.boolean()
+        if has_spells:
+            _ = r.bitmask_spells()
+
+    def _read_optional_primary_skills(self) -> None:
+        r = self.r
+        has_prim = r.boolean()
+        if has_prim:
+            for _ in range(PRIMARY_SKILLS):
+                _ = r.u8()
 
     def _read_artifacts_of_hero(self) -> None:
         r, f = self.r, self.f
@@ -728,96 +761,101 @@ class H3MParser:
             )
         return objects
 
+    def _object_body_readers(self) -> dict[int, Callable[[], None]]:
+        groups: list[tuple[tuple[int, ...], Callable[[], None]]] = [
+            ((Obj.EVENT,), self._read_event_obj),
+            ((Obj.HERO, Obj.RANDOM_HERO, Obj.PRISON), self._read_hero_obj),
+            (
+                (
+                    Obj.MONSTER,
+                    Obj.RANDOM_MONSTER,
+                    Obj.RANDOM_MONSTER_L1,
+                    Obj.RANDOM_MONSTER_L2,
+                    Obj.RANDOM_MONSTER_L3,
+                    Obj.RANDOM_MONSTER_L4,
+                    Obj.RANDOM_MONSTER_L5,
+                    Obj.RANDOM_MONSTER_L6,
+                    Obj.RANDOM_MONSTER_L7,
+                ),
+                self._read_monster,
+            ),
+            ((Obj.OCEAN_BOTTLE, Obj.SIGN), self._read_sign),
+            ((Obj.SEER_HUT,), self._read_seer_hut),
+            ((Obj.WITCH_HUT,), self._read_witch_hut),
+            ((Obj.SCHOLAR,), self._read_scholar),
+            ((Obj.GARRISON, Obj.GARRISON2), self._read_garrison),
+            # ARTIFACT(5) and the five random-artifact tiers (65..69).
+            # Class 64 (RANDOM_ART placeholder) carries no body.
+            ((Obj.ARTIFACT, *range(65, 70)), self._read_artifact_obj),
+            ((Obj.SPELL_SCROLL,), self._read_scroll),
+            ((Obj.RANDOM_RESOURCE, Obj.RESOURCE), self._read_resource),
+            ((Obj.RANDOM_TOWN, Obj.TOWN), self._read_town),
+            (
+                (
+                    Obj.CREATURE_GENERATOR1,
+                    Obj.CREATURE_GENERATOR2,
+                    Obj.CREATURE_GENERATOR3,
+                    Obj.CREATURE_GENERATOR4,
+                ),
+                self._read_dwelling,
+            ),
+            (
+                (
+                    Obj.SHRINE_OF_MAGIC_INCANTATION,
+                    Obj.SHRINE_OF_MAGIC_GESTURE,
+                    Obj.SHRINE_OF_MAGIC_THOUGHT,
+                ),
+                self._read_shrine,
+            ),
+            ((Obj.PANDORAS_BOX,), self._read_pandora),
+            ((Obj.GRAIL,), self._read_grail),
+            ((Obj.QUEST_GUARD,), self._read_quest_guard),
+            ((Obj.SHIPYARD,), self._read_shipyard),
+            ((Obj.HERO_PLACEHOLDER,), self._read_hero_placeholder),
+            ((Obj.LIGHTHOUSE,), self._read_lighthouse),
+            (
+                (
+                    Obj.CREATURE_BANK,
+                    Obj.DERELICT_SHIP,
+                    Obj.DRAGON_UTOPIA,
+                    Obj.CRYPT,
+                    Obj.SHIPWRECK,
+                ),
+                self._read_bank,
+            ),
+            ((Obj.BORDER_GATE,), self._read_border_gate),
+        ]
+        readers: dict[int, Callable[[], None]] = {}
+        for classes, reader in groups:
+            for oid in classes:
+                _ = readers.setdefault(oid, reader)
+        return readers
+
     def _read_object_body(self, tmpl: ObjectTemplate) -> None:
         oid = tmpl.obj_class
         sub = tmpl.obj_subclass
 
-        if oid == Obj.EVENT:
-            self._read_event_obj()
-        elif oid in (Obj.HERO, Obj.RANDOM_HERO, Obj.PRISON):
-            self._read_hero_obj()
-        elif oid in (
-            Obj.MONSTER,
-            Obj.RANDOM_MONSTER,
-            Obj.RANDOM_MONSTER_L1,
-            Obj.RANDOM_MONSTER_L2,
-            Obj.RANDOM_MONSTER_L3,
-            Obj.RANDOM_MONSTER_L4,
-            Obj.RANDOM_MONSTER_L5,
-            Obj.RANDOM_MONSTER_L6,
-            Obj.RANDOM_MONSTER_L7,
-        ):
-            self._read_monster()
-        elif oid in (Obj.OCEAN_BOTTLE, Obj.SIGN):
-            self._read_sign()
-        elif oid == Obj.SEER_HUT:
-            self._read_seer_hut()
-        elif oid == Obj.WITCH_HUT:
-            self._read_witch_hut()
-        elif oid == Obj.SCHOLAR:
-            self._read_scholar()
-        elif oid in (Obj.GARRISON, Obj.GARRISON2):
-            self._read_garrison()
-        elif oid == Obj.ARTIFACT or 65 <= oid <= 69:
-            # ARTIFACT(5) and the five random-artifact tiers (65..69).
-            # Class 64 (RANDOM_ART placeholder) carries no body.
-            self._read_artifact_obj()
-        elif oid == Obj.SPELL_SCROLL:
-            self._read_scroll()
-        elif oid in (Obj.RANDOM_RESOURCE, Obj.RESOURCE):
-            self._read_resource()
-        elif oid in (Obj.RANDOM_TOWN, Obj.TOWN):
-            self._read_town()
-        elif oid in (Obj.MINE, Obj.ABANDONED_MINE):
+        if oid in (Obj.MINE, Obj.ABANDONED_MINE):
             if sub < 7:
                 self._read_mine()
             else:
                 self._read_abandoned_mine()
-        elif oid in (
-            Obj.CREATURE_GENERATOR1,
-            Obj.CREATURE_GENERATOR2,
-            Obj.CREATURE_GENERATOR3,
-            Obj.CREATURE_GENERATOR4,
-        ):
-            self._read_dwelling()
-        elif oid in (
-            Obj.SHRINE_OF_MAGIC_INCANTATION,
-            Obj.SHRINE_OF_MAGIC_GESTURE,
-            Obj.SHRINE_OF_MAGIC_THOUGHT,
-        ):
-            self._read_shrine()
-        elif oid == Obj.PANDORAS_BOX:
-            self._read_pandora()
-        elif oid == Obj.GRAIL:
-            self._read_grail()
         elif oid in (
             Obj.RANDOM_DWELLING,
             Obj.RANDOM_DWELLING_LVL,
             Obj.RANDOM_DWELLING_FACTION,
         ):
             self._read_dwelling_random(tmpl)
-        elif oid == Obj.QUEST_GUARD:
-            self._read_quest_guard()
-        elif oid == Obj.SHIPYARD:
-            self._read_shipyard()
-        elif oid == Obj.HERO_PLACEHOLDER:
-            self._read_hero_placeholder()
-        elif oid == Obj.LIGHTHOUSE:
-            self._read_lighthouse()
-        elif oid in (
-            Obj.CREATURE_BANK,
-            Obj.DERELICT_SHIP,
-            Obj.DRAGON_UTOPIA,
-            Obj.CRYPT,
-            Obj.SHIPWRECK,
-        ):
-            self._read_bank()
-        elif oid == Obj.BORDER_GATE:
-            # HotA hacks (sub 1000/1001) excluded; plain generic body for SoD
-            pass
         else:
-            # Generic object: no type-specific body in RoE/AB/SoD.
-            pass
+            reader = self._body_readers.get(oid)
+            if reader is None:
+                # Generic object: no type-specific body in RoE/AB/SoD.
+                return
+            reader()
+
+    def _read_border_gate(self) -> None:
+        # HotA hacks (sub 1000/1001) excluded; plain generic body for SoD
+        pass
 
     # ----- object body readers ----------------------------------------------
     def _read_message_and_guards(self) -> None:
@@ -909,33 +947,37 @@ class H3MParser:
             mission_type = 1 if art != -1 else 0  # ARTIFACT or NONE
 
         if mission_type != 0:
-            reward_type = r.i8()  # 0..10
-            if reward_type == 0:  # NOTHING
-                pass
-            elif reward_type in {1, 2}:  # EXPERIENCE
-                _ = r.u32()
-            elif reward_type in {3, 4}:  # MORALE
-                _ = r.i8()
-            elif reward_type == 5:  # RESOURCES
-                _ = r.resource_id()
-                _ = r.u32()
-            elif reward_type == 6:  # PRIMARY_SKILL
-                _ = r.u8()
-                _ = r.u8()
-            elif reward_type == 7:  # SECONDARY_SKILL
-                _ = r.skill()
-                _ = r.i8()
-            elif reward_type == 8:  # ARTIFACT
-                _ = r.artifact()
-            elif reward_type == 9:  # SPELL
-                _ = r.spell()
-            elif reward_type == 10:  # CREATURE
-                _ = r.creature()
-                _ = r.u16()
-            else:
-                raise DesyncError(f"bad seer hut reward type {reward_type}")
+            self._read_seer_hut_reward()
         else:
             r.skip_zero(1)
+
+    def _read_seer_hut_reward(self) -> None:
+        r = self.r
+        reward_type = r.i8()  # 0..10
+        if reward_type == 0:  # NOTHING
+            pass
+        elif reward_type in {1, 2}:  # EXPERIENCE
+            _ = r.u32()
+        elif reward_type in {3, 4}:  # MORALE
+            _ = r.i8()
+        elif reward_type == 5:  # RESOURCES
+            _ = r.resource_id()
+            _ = r.u32()
+        elif reward_type == 6:  # PRIMARY_SKILL
+            _ = r.u8()
+            _ = r.u8()
+        elif reward_type == 7:  # SECONDARY_SKILL
+            _ = r.skill()
+            _ = r.i8()
+        elif reward_type == 8:  # ARTIFACT
+            _ = r.artifact()
+        elif reward_type == 9:  # SPELL
+            _ = r.spell()
+        elif reward_type == 10:  # CREATURE
+            _ = r.creature()
+            _ = r.u16()
+        else:
+            raise DesyncError(f"bad seer hut reward type {reward_type}")
 
     def _read_quest(self) -> int:
         """Reads a quest (AB+). Returns the mission id (post-resolution)."""
@@ -943,20 +985,24 @@ class H3MParser:
         mission = r.i8()  # 0..10
         if mission == 0:  # NONE
             return mission
-        elif mission == 1:  # PRIMARY_SKILL (level? -> 4 bytes)
+        self._read_quest_mission(mission)
+        _ = r.i32()  # lastDay
+        _ = r.string()  # firstVisit
+        _ = r.string()  # nextVisit
+        _ = r.string()  # completed
+        return mission
+
+    def _read_quest_mission(self, mission: int) -> None:
+        r = self.r
+        if mission == 1:  # PRIMARY_SKILL (level? -> 4 bytes)
             for _ in range(4):
                 _ = r.u8()
         elif mission == 2 or mission in (3, 4):  # LEVEL
             _ = r.u32()
         elif mission == 5:  # ARTIFACT
-            art_number = r.u8()
-            for _ in range(art_number):
-                _ = r.artifact()
+            self._read_quest_artifacts()
         elif mission == 6:  # ARMY
-            type_number = r.u8()
-            for _ in range(type_number):
-                _ = r.creature()
-                _ = r.u16()
+            self._read_quest_army()
         elif mission == 7:  # RESOURCES
             for _ in range(7):
                 _ = r.u32()
@@ -966,11 +1012,19 @@ class H3MParser:
             _ = r.player()
         else:
             raise DesyncError(f"bad quest mission {mission}")
-        _ = r.i32()  # lastDay
-        _ = r.string()  # firstVisit
-        _ = r.string()  # nextVisit
-        _ = r.string()  # completed
-        return mission
+
+    def _read_quest_artifacts(self) -> None:
+        r = self.r
+        art_number = r.u8()
+        for _ in range(art_number):
+            _ = r.artifact()
+
+    def _read_quest_army(self) -> None:
+        r = self.r
+        type_number = r.u8()
+        for _ in range(type_number):
+            _ = r.creature()
+            _ = r.u16()
 
     def _read_witch_hut(self) -> None:
         r, f = self.r, self.f
@@ -1059,9 +1113,7 @@ class H3MParser:
             _ = r.u32()  # quest identifier
         self._cur_extra["owner"] = r.player()  # owner
         _ = r.hero()  # hero type
-        has_name = r.boolean()
-        if has_name:
-            _ = r.string()
+        self._read_optional_string()
         if f.level_sod:
             has_exp = r.boolean()
             if has_exp:
@@ -1071,12 +1123,7 @@ class H3MParser:
         has_portrait = r.boolean()
         if has_portrait:
             _ = r.hero_portrait()
-        has_sec = r.boolean()
-        if has_sec:
-            n = r.u32()
-            for _ in range(n):
-                _ = r.skill()
-                _ = r.i8()
+        self._read_optional_secondary_skills()
         has_garrison = r.boolean()
         if has_garrison:
             self._read_creature_set()
@@ -1084,21 +1131,14 @@ class H3MParser:
         self._read_artifacts_of_hero()
         _ = r.u8()  # patrol radius
         if f.level_ab:
-            has_bio = r.boolean()
-            if has_bio:
-                _ = r.string()
+            self._read_optional_string()
             _ = r.i8()  # gender
         if f.level_sod:
-            has_spells = r.boolean()
-            if has_spells:
-                _ = r.bitmask_spells()
+            self._read_optional_spells()
         elif f.level_ab:
             _ = r.spell()  # single spell
         if f.level_sod:
-            has_prim = r.boolean()
-            if has_prim:
-                for _ in range(PRIMARY_SKILLS):
-                    _ = r.u8()
+            self._read_optional_primary_skills()
         r.skip_zero(16)
 
     def _read_town(self) -> None:

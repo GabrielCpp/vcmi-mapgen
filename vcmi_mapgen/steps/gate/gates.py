@@ -73,16 +73,15 @@ def footprint_cells(
     return allc, blk, approach
 
 
-def fits(
-    ident: Identity,
-    ax: int,
-    ay: int,
-    ts: Container[Tile],
-    occupied: Container[Tile],
-    near: Container[Tile],
-    reserved: Container[Tile],
-    avoid: Container[Tile] = NO_TILES,
-) -> Fit | None:
+@dataclass(frozen=True, slots=True)
+class Clearance:
+    occupied: Container[Tile]
+    near: Container[Tile]
+    reserved: Container[Tile]
+    avoid: Container[Tile] = NO_TILES
+
+
+def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -> Fit | None:
     """Legality: whole footprint in-zone, at least GAP free tiles from every other gameplay
     footprint (`near` = existing cells inflated by GAP), no squatting on an earlier object's
     approach tile (`reserved`), own approach tile in-zone and standable. `avoid` (the
@@ -91,13 +90,18 @@ def fits(
     are guarded from vegetation via `protected_web`, but gameplay placement runs BEFORE
     that web is built, so without this check a town/mine/monster footprint could still
     silently wall off a corridor that vegetation would otherwise have left alone."""
-    allc, blk, approach = footprint_cells(ident, ax, ay)
+    allc, blk, approach = footprint_cells(ident, anchor[0], anchor[1])
     if approach is None:
         return None
     for cell in allc:
-        if cell not in ts or cell in near or cell in reserved or cell in avoid:
+        if cell not in ts or cell in clear.near or cell in clear.reserved or cell in clear.avoid:
             return None
-    if approach not in ts or approach in occupied or approach in blk or approach in avoid:
+    if (
+        approach not in ts
+        or approach in clear.occupied
+        or approach in blk
+        or approach in clear.avoid
+    ):
         return None
     return allc, blk, approach
 
@@ -142,15 +146,21 @@ def mine_gate_stats(force: bool = False) -> GateStats:
     return GateStats(per_1000_tiles=per_1000, n_maps=len(rates))
 
 
-def place_gates(
-    ts0: AbstractSet[Tile],
-    ts1: AbstractSet[Tile],
-    occ0: Iterable[Tile],
-    occ1: Iterable[Tile],
-    appr0: Iterable[Tile] = NO_TILES,
-    appr1: Iterable[Tile] = NO_TILES,
-    seed: int = 1,
-) -> tuple[LevelGates, LevelGates]:
+@dataclass(frozen=True, slots=True)
+class GateSide:
+    ts: AbstractSet[Tile]
+    occ: Iterable[Tile]
+    appr: Iterable[Tile] = NO_TILES
+
+
+def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:
+    for cx, cy in cells:
+        for gx in range(-GAP, GAP + 1):
+            for gy in range(-GAP, GAP + 1):
+                near.add((cx + gx, cy + gy))
+
+
+def place_gates(side0: GateSide, side1: GateSide, seed: int = 1) -> tuple[LevelGates, LevelGates]:
     """Subterranean Gate pairs: one `avtcave` object at the IDENTICAL (x, y) on both levels —
     `kit/reachability.py`'s `_gate_links` already pairs gates by exact-(x, y) match, so no other
     linking is needed. Candidates are tiles walkable on BOTH levels (`ts0 & ts1`); footprint
@@ -175,39 +185,33 @@ def place_gates(
     blk1n: set[Tile] = set()
     appr0n: list[Tile] = []
     appr1n: list[Tile] = []
-    ts_both = ts0 & ts1
+    ts_both = side0.ts & side1.ts
     if not ts_both:
         return (objs0, occ0n, blk0n, appr0n), (objs1, occ1n, blk1n, appr1n)
     st = mine_gate_stats()
-    target = max(2, min(6, round(st.per_1000_tiles * len(ts1) / 1000)))
+    target = max(2, min(6, round(st.per_1000_tiles * len(side1.ts) / 1000)))
     ident = ON.identity_of(GATE_ANIM)
     cands = sorted(ts_both)
     rng.shuffle(cands)
-    occupied = set(occ0) | set(occ1)
+    occupied = set(side0.occ) | set(side1.occ)
     near: set[Tile] = set()
-    for cx, cy in occupied:
-        for gx in range(-GAP, GAP + 1):
-            for gy in range(-GAP, GAP + 1):
-                near.add((cx + gx, cy + gy))
-    reserved = set(appr0) | set(appr1)
+    inflate_gap(near, occupied)
+    reserved = set(side0.appr) | set(side1.appr)
     for c in cands:
         if len(objs0) >= target:
             break
-        fit = fits(ident, c[0], c[1], ts_both, occupied, near, reserved)
+        fit = fits(ident, c, ts_both, Clearance(occupied, near, reserved))
         if fit is None:
             continue
         allc, blk, approach = fit
         occupied.update(allc)
-        for cx, cy in allc:
-            for gx in range(-GAP, GAP + 1):
-                for gy in range(-GAP, GAP + 1):
-                    near.add((cx + gx, cy + gy))
+        inflate_gap(near, allc)
         reserved.add(approach)
         for lvl, objs, occn, blkn, apprn in (
             (0, objs0, occ0n, blk0n, appr0n),
             (1, objs1, occ1n, blk1n, appr1n),
         ):
-            objs.append(PlacedObject.at(ident, c[0], c[1], level=lvl, purpose="TRANSPORT"))
+            objs.append(PlacedObject.at(ident, c, level=lvl, purpose="TRANSPORT"))
             occn.update(allc)
             blkn.update(blk)
             apprn.append(approach)
@@ -216,8 +220,7 @@ def place_gates(
             objs1.append(
                 PlacedObject.at(
                     gident,
-                    approach[0],
-                    approach[1],
+                    approach,
                     level=1,
                     purpose="GUARD",
                     options={"character": "hostile"},

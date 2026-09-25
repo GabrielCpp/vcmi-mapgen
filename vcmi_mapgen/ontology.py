@@ -3750,27 +3750,10 @@ def pool(
     ]
 
 
-def pick(
-    object_class: str,
-    terrain: str | int,
-    rng: Random,
-    *,
-    blocking: bool | None = None,
-    max_cells: int | None = None,
-    exclude_types: Iterable[str] = (),
-) -> Identity | None:
+def pick(object_class: str, terrain: str | int, rng: Random) -> Identity | None:
     """One identity of an object class allowed on a terrain, drawn uniformly with ``rng``.
     None when the class has nothing native to that terrain."""
-    candidates = sorted(
-        pool(
-            object_class,
-            terrain,
-            blocking=blocking,
-            max_cells=max_cells,
-            exclude_types=exclude_types,
-        ),
-        key=lambda i: i.animation,
-    )
+    candidates = sorted(pool(object_class, terrain), key=lambda i: i.animation)
     return rng.choice(candidates) if candidates else None
 
 
@@ -3872,7 +3855,15 @@ def _decode_mask_grid(passability: str, triggers: str) -> Mask:
     MIRRORED vs the art: e.g. a pine clump's blocked trunks, or a sawmill's visit tile, land on the
     wrong side.) '.' marks a tile outside the footprint (not drawn); a passable tile INSIDE the
     active bounding box is 'V' (overhang)."""
+    grid = _storage_mask_grid(passability, triggers)
+    if not any(grid[r][c] == "B" for r in range(6) for c in range(8)):
+        _demote_entrances(grid)
+    grid = [row[::-1] for row in grid[::-1]]  # 180°: rows bottom-to-top, cols right-to-left
+    _fill_overhang(grid)
+    return tuple("".join(row) for row in grid)
 
+
+def _storage_mask_grid(passability: str, triggers: str) -> list[list[str]]:
     def rows(bits: str) -> list[str]:
         return [bits[r * 8 : (r + 1) * 8] for r in range(6)]
 
@@ -3883,12 +3874,17 @@ def _decode_mask_grid(passability: str, triggers: str) -> Mask:
             blocked = P[r][c] == "0"
             visit = T[r][c] == "1"
             grid[r][c] = ("X" if blocked else "A") if visit else ("B" if blocked else ".")
-    if not any(grid[r][c] == "B" for r in range(6) for c in range(8)):
-        for r in range(6):
-            for c in range(8):
-                if grid[r][c] == "X":
-                    grid[r][c] = "A"
-    grid = [row[::-1] for row in grid[::-1]]  # 180°: rows bottom-to-top, cols right-to-left
+    return grid
+
+
+def _demote_entrances(grid: list[list[str]]) -> None:
+    for r in range(6):
+        for c in range(8):
+            if grid[r][c] == "X":
+                grid[r][c] = "A"
+
+
+def _fill_overhang(grid: list[list[str]]) -> None:
     act = [(r, c) for r in range(6) for c in range(8) if grid[r][c] != "."]
     if act:  # passable tiles inside the footprint bbox -> 'V'
         r0, r1 = min(r for r, _ in act), max(r for r, _ in act)
@@ -3897,7 +3893,6 @@ def _decode_mask_grid(passability: str, triggers: str) -> Mask:
             for c in range(c0, c1 + 1):
                 if grid[r][c] == ".":
                     grid[r][c] = "V"
-    return tuple("".join(row) for row in grid)
 
 
 @cache
@@ -4197,24 +4192,8 @@ class Ontology:
             exclude_types=exclude_types,
         )
 
-    def pick(
-        self,
-        object_class: str,
-        terrain: str | int,
-        rng: Random,
-        *,
-        blocking: bool | None = None,
-        max_cells: int | None = None,
-        exclude_types: Iterable[str] = (),
-    ) -> Identity | None:
-        return pick(
-            object_class,
-            terrain,
-            rng,
-            blocking=blocking,
-            max_cells=max_cells,
-            exclude_types=exclude_types,
-        )
+    def pick(self, object_class: str, terrain: str | int, rng: Random) -> Identity | None:
+        return pick(object_class, terrain, rng)
 
     def decor_pool(
         self,

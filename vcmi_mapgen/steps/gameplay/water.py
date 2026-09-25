@@ -12,6 +12,8 @@ import random
 import zlib
 from collections.abc import Container, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
+from typing import final
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
@@ -37,13 +39,15 @@ SEAPORT_SEARCH_HOPS = 2  # near-coastal search depth (s10 diagnosis, 2026-09: th
 # otherwise perfectly placeable shore, even after grouping by
 # shore instead of by land zone
 
+_WATER, _ROCK = 8, 9
+_NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
 
 def pick_identity(
     pool: Iterable[Identity],
     purpose: str,
     st_t: TerrainStats,
     rng: random.Random,
-    allow_random: bool = True,
     art_share: float = 0.45,
 ) -> Identity | None:
     """Identity for a pickup. The H3 convention (user-mandated): favour the editor's RANDOM
@@ -51,13 +55,19 @@ def pick_identity(
     the random-artifact probability for REWARD_PICKUP: high for guarded caches, low for
     unguarded scatter (which draws the fixed LOOT pool — treasure chests, campfires —
     weighted by the corpus mix, where the chest dominates)."""
-    if allow_random and purpose == "RESOURCE_PILE" and rng.random() < 0.6:
+    if purpose == "RESOURCE_PILE" and rng.random() < 0.6:
         return ON.identity_of(RND_RES)
-    if allow_random and purpose == "REWARD_PICKUP" and rng.random() < art_share:
+    if purpose == "REWARD_PICKUP" and rng.random() < art_share:
         anim = rng.choices([a for a, _w, _v in RND_ART], weights=[w for _a, w, _v in RND_ART], k=1)[
             0
         ]
         return ON.identity_of(anim)
+    return _pick_fixed_identity(pool, purpose, st_t, rng)
+
+
+def _pick_fixed_identity(
+    pool: Iterable[Identity], purpose: str, st_t: TerrainStats, rng: random.Random
+) -> Identity | None:
     pool = sorted(
         (i for i in pool if "random" not in (i.type or "").lower()),
         key=lambda i: i.animation,
@@ -68,14 +78,21 @@ def pick_identity(
     return rng.choices(pool, weights=[w.get(i.animation.lower(), 0) + 0.2 for i in pool], k=1)[0]
 
 
+@dataclass(frozen=True, slots=True)
+class CellRules:
+    bounds: tuple[int, int] | None = None
+    interactive_only: bool = False
+
+
+DEFAULT_CELL_RULES = CellRules()
+
+
 def legal_cells(
     ident: Identity,
-    x: int,
-    y: int,
+    anchor: Tile,
     open_set: Container[Tile],
     used: Container[Tile],
-    bounds: tuple[int, int] | None = None,
-    interactive_only: bool = False,
+    rules: CellRules = DEFAULT_CELL_RULES,
 ) -> list[Tile] | None:
     """A pickup/guard placement is legal if its INTERACTIVE cell(s) sit on an unused,
     placement-eligible tile.  V-overlay cells (sprite bleed) may overlap terrain/walls.
@@ -84,11 +101,12 @@ def legal_cells(
     bounds, and only that cell is returned for claiming.  Use this for dense fill passes
     where adjacent pickups' V-cells would otherwise falsely block each other — V cells are
     cosmetic in H3/VCMI and two objects sharing V-cell space is legal."""
+    x, y = anchor
     cells = [(tx, ty) for tx, ty, _b in OR.mask_cells(ident.mask, x, y)]
     interactive = OR.mask_interactive_cells(ident.mask, x, y) or cells
-    check = interactive if interactive_only else cells
-    if bounds is not None:
-        bw, bh = bounds
+    check = interactive if rules.interactive_only else cells
+    if rules.bounds is not None:
+        bw, bh = rules.bounds
         if any(not (0 <= tx < bw and 0 <= ty < bh) for tx, ty in check):
             return None
     if any(c in used for c in check):
@@ -127,26 +145,31 @@ def place_water(
                 break
             if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < 4 for q in placed):
                 continue
-            ident = pick_identity(pool, p, st, rng, allow_random=False)
+            ident = _pick_fixed_identity(pool, p, st, rng)
             if ident is None:
                 break
-            cells = legal_cells(ident, t[0], t[1], ts, used)
+            cells = legal_cells(ident, t, ts, used)
             if cells is None:
                 continue
             solid = tuple(row.replace("V", " ") for row in ident.mask)
             if any((tx, ty) not in ts for tx, ty, _b in OR.mask_cells(solid, t[0], t[1])):
                 continue
             used.update(cells)
-            objs.append(PlacedObject.at(ident, t[0], t[1], purpose=p))
+            objs.append(PlacedObject.at(ident, t, purpose=p))
             placed.append(t)
     return objs
 
 
+@dataclass(frozen=True, slots=True)
+class SeaMap:
+    W: int
+    H: int
+    grid: Sequence[Sequence[int]]
+    zones: Mapping[int, Zone]
+
+
 def ensure_water_seaports(
-    W: int,
-    H: int,
-    grid: Sequence[Sequence[int]],
-    zones: Mapping[int, Zone],
+    sea: SeaMap,
     objs: list[PlacedObject],
     seed: int,
     ontology: Ontology,
@@ -176,22 +199,23 @@ def ensure_water_seaports(
     purpose rather than by accident).
 
     Returns list of new shipyard objects to append to `objs`."""
-    WATER, ROCK = 8, 9
-    NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-    water_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] == WATER}
+    water_tiles = {(x, y) for y in range(sea.H) for x in range(sea.W) if sea.grid[y][x] == _WATER}
     if not water_tiles:
         return []
+    return _SeaportPlanner(sea, water_tiles, objs, seed, ontology).run()
 
-    # land tile → zone id
+
+def _land_zone_of(zones: Mapping[int, Zone]) -> dict[Tile, int]:
     land_zone_of: dict[Tile, int] = {}
     for zid, z in zones.items():
         if TNAME.get(z.terrain_type) in (None, "water", "rock"):
             continue
         for t in z.tiles_set:
             land_zone_of[t] = zid
+    return land_zone_of
 
-    # All blocking/interactive cells of existing objects
+
+def _existing_blocking(objs: Iterable[PlacedObject]) -> set[Tile]:
     existing_blk: set[Tile] = set()
     for o in objs:
         mask_rows = o.mask
@@ -204,12 +228,10 @@ def ensure_water_seaports(
                     tx = ax - (ww - 1 - ci)
                     ty = ay - (hh - 1 - r)
                     existing_blk.add((tx, ty))
+    return existing_blk
 
-    # Every already-placed non-guard structure's own front row (s8 diagnosis, 2026-09:
-    # a seaport landed squarely in an arena's front row, sealing it off -- nothing
-    # checked a new placement against an existing structure's own approach). Guards
-    # are exempt on both sides: their ZoC may still block a front tile, and they have
-    # no "front" of their own worth protecting.
+
+def _structure_fronts(objs: Iterable[PlacedObject]) -> tuple[set[Tile], list[set[Tile]]]:
     structure_blk: set[Tile] = set()
     structure_fronts: list[set[Tile]] = []
     for o in objs:
@@ -224,58 +246,151 @@ def ensure_water_seaports(
         front = OR.front_tiles(mask_rows, o.x, o.y)
         if front:
             structure_fronts.append(front)
+    return structure_blk, structure_fronts
 
-    interactive_tiles: set[Tile] = set()
-    covered_tiles: set[Tile] = set()
 
-    def _register(o: PlacedObject) -> None:
+def _seaport_footprint(
+    ax: int, ay: int, mask: Sequence[str]
+) -> tuple[list[Tile], list[Tile], Tile | None]:
+    allc: list[Tile] = []
+    blk: list[Tile] = []
+    approach: Tile | None = None
+    hh = len(mask)
+    for r, row in enumerate(mask):
+        ww = len(row)
+        for ci, ch in enumerate(row):
+            tx = ax - (ww - 1 - ci)
+            ty = ay - (hh - 1 - r)
+            allc.append((tx, ty))
+            if ch in ("B", "X"):
+                blk.append((tx, ty))
+            if ch == "X":
+                approach = (tx, ty + 1)
+    return allc, blk, approach
+
+
+def _expand_inland(near_coastal: set[Tile], ts_set: AbstractSet[Tile]) -> set[Tile]:
+    for _ in range(SEAPORT_SEARCH_HOPS):
+        for t in list(near_coastal):
+            for dx, dy in _NB4:
+                nb = (t[0] + dx, t[1] + dy)
+                if nb in ts_set:
+                    near_coastal.add(nb)
+    return near_coastal
+
+
+def _water_component(t0: Tile, water_tiles: AbstractSet[Tile]) -> set[Tile]:
+    comp, q = {t0}, [t0]
+    while q:
+        x, y = q.pop()
+        for dx, dy in _NB4:
+            n = (x + dx, y + dy)
+            if n in water_tiles and n not in comp:
+                comp.add(n)
+                q.append(n)
+    return comp
+
+
+@final
+class _SeaportPlanner:
+    def __init__(
+        self,
+        sea: SeaMap,
+        water_tiles: set[Tile],
+        objs: list[PlacedObject],
+        seed: int,
+        ontology: Ontology,
+    ) -> None:
+        self.sea = sea
+        self.water_tiles = water_tiles
+        self.objs = objs
+        self.seed = seed
+        self.ontology = ontology
+
+        # land tile → zone id
+        self.land_zone_of = _land_zone_of(sea.zones)
+
+        # All blocking/interactive cells of existing objects
+        self.existing_blk = _existing_blocking(objs)
+
+        # Every already-placed non-guard structure's own front row (s8 diagnosis, 2026-09:
+        # a seaport landed squarely in an arena's front row, sealing it off -- nothing
+        # checked a new placement against an existing structure's own approach). Guards
+        # are exempt on both sides: their ZoC may still block a front tile, and they have
+        # no "front" of their own worth protecting.
+        self.structure_blk, self.structure_fronts = _structure_fronts(objs)
+
+        self.interactive_tiles: set[Tile] = set()
+        self.covered_tiles: set[Tile] = set()
+        for o in objs:
+            self._register(o)
+
+        self.new_objs: list[PlacedObject] = []
+        # Anchor positions of seaports already in objs (for 20-tile spacing constraint)
+        self.placed_anchors = [(o.x, o.y) for o in objs if o.type == "shipyard"]
+
+    def _register(self, o: PlacedObject) -> None:
         for tile, role in footprint(o):
-            covered_tiles.add(tile)
+            self.covered_tiles.add(tile)
             if role in (Role.VISIT, Role.ENTRANCE, Role.APPROACH):
-                interactive_tiles.add(tile)
+                self.interactive_tiles.add(tile)
 
-    for o in objs:
-        _register(o)
-
-    def _stacks_on_others(ident: Identity, ax: int, ay: int) -> bool:
-        probe = PlacedObject.at(ident, ax, ay, purpose="WATER_TRANSPORT")
+    def _stacks_on_others(self, ident: Identity, ax: int, ay: int) -> bool:
+        probe = PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT")
         for tile, role in footprint(probe):
             if role is Role.APPROACH:
-                if tile in covered_tiles:
+                if tile in self.covered_tiles:
                     return True
-            elif tile in interactive_tiles or (
-                role in (Role.ENTRANCE, Role.VISIT) and tile in covered_tiles
+            elif tile in self.interactive_tiles or (
+                role in (Role.ENTRANCE, Role.VISIT) and tile in self.covered_tiles
             ):
                 return True
         return False
 
-    def _blocks_a_structure_front(cand_blk: AbstractSet[Tile]) -> bool:
-        return any(front <= (structure_blk | cand_blk) for front in structure_fronts)
+    def _blocks_a_structure_front(self, cand_blk: AbstractSet[Tile]) -> bool:
+        return any(front <= (self.structure_blk | cand_blk) for front in self.structure_fronts)
 
-    new_objs: list[PlacedObject] = []
-    # Anchor positions of seaports already in objs (for 20-tile spacing constraint)
-    placed_anchors = [(o.x, o.y) for o in objs if o.type == "shipyard"]
+    def _candidate_ok(
+        self, ts_set: AbstractSet[Tile], ident: Identity, ax: int, ay: int, check_spacing: bool
+    ) -> bool:
+        allc, blk, approach = _seaport_footprint(ax, ay, ident.mask)
+        if any(c not in ts_set for c in allc):
+            return False
+        if approach not in ts_set:
+            return False
+        # Approach tile must not be occupied (dark-green X tile must be accessible)
+        if approach in self.existing_blk:
+            return False
+        if any(c in self.existing_blk for c in blk):
+            return False
+        # At least one BXB cell must be 4-adjacent to water
+        if not any((bx + dx, by + dy) in self.water_tiles for bx, by in blk for dx, dy in _NB4):
+            return False
+        if self._blocks_a_structure_front(set(blk)) or self._stacks_on_others(ident, ax, ay):
+            return False
+        return not (
+            check_spacing
+            and any(
+                (ax - px) ** 2 + (ay - py) ** 2 < SEAPORT_SPACING_SQ
+                for px, py in self.placed_anchors
+            )
+        )
 
-    def _seaport_footprint(
-        ax: int, ay: int, mask: Sequence[str]
-    ) -> tuple[list[Tile], list[Tile], Tile | None]:
-        allc: list[Tile] = []
-        blk: list[Tile] = []
-        approach: Tile | None = None
-        hh = len(mask)
-        for r, row in enumerate(mask):
-            ww = len(row)
-            for ci, ch in enumerate(row):
-                tx = ax - (ww - 1 - ci)
-                ty = ay - (hh - 1 - r)
-                allc.append((tx, ty))
-                if ch in ("B", "X"):
-                    blk.append((tx, ty))
-                if ch == "X":
-                    approach = (tx, ty + 1)
-        return allc, blk, approach
+    def _do_place(self, ident: Identity, ax: int, ay: int) -> PlacedObject:
+        _, blk, _ = _seaport_footprint(ax, ay, ident.mask)
+        self.existing_blk.update(blk)
+        self.structure_blk.update(blk)
+        front = OR.front_tiles(ident.mask, ax, ay)
+        if front:
+            self.structure_fronts.append(front)
+        self.placed_anchors.append((ax, ay))
+        o = PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT")
+        self.new_objs.append(o)
+        self._register(o)
+        return o
 
     def _try_place(
+        self,
         ts_set: AbstractSet[Tile],
         cand_tiles: Iterable[Tile],
         label: str,
@@ -289,60 +404,23 @@ def ensure_water_seaports(
         # NOTE: Python's built-in hash() is salted per-process for str (PYTHONHASHSEED),
         # so seeding from hash(label) would make this non-reproducible across runs even
         # for the identical seed — crc32 is a plain, stable string->int hash.
-        rng = random.Random(seed ^ zlib.crc32(label.encode()) ^ 0x53A9)
+        rng = random.Random(self.seed ^ zlib.crc32(label.encode()) ^ 0x53A9)
         shuffled = list(cand_tiles)
         rng.shuffle(shuffled)
         cap = shuffled[:300]
 
-        def _candidate_ok(ax: int, ay: int, check_spacing: bool) -> bool:
-            allc, blk, approach = _seaport_footprint(ax, ay, ident.mask)
-            if any(c not in ts_set for c in allc):
-                return False
-            if approach not in ts_set:
-                return False
-            # Approach tile must not be occupied (dark-green X tile must be accessible)
-            if approach in existing_blk:
-                return False
-            if any(c in existing_blk for c in blk):
-                return False
-            # At least one BXB cell must be 4-adjacent to water
-            if not any((bx + dx, by + dy) in water_tiles for bx, by in blk for dx, dy in NB4):
-                return False
-            if _blocks_a_structure_front(set(blk)) or _stacks_on_others(ident, ax, ay):
-                return False
-            return not (
-                check_spacing
-                and any(
-                    (ax - px) ** 2 + (ay - py) ** 2 < SEAPORT_SPACING_SQ
-                    for px, py in placed_anchors
-                )
-            )
-
-        def _do_place(ax: int, ay: int) -> PlacedObject:
-            _, blk, _ = _seaport_footprint(ax, ay, ident.mask)
-            existing_blk.update(blk)
-            structure_blk.update(blk)
-            front = OR.front_tiles(ident.mask, ax, ay)
-            if front:
-                structure_fronts.append(front)
-            placed_anchors.append((ax, ay))
-            o = PlacedObject.at(ident, ax, ay, purpose="WATER_TRANSPORT")
-            new_objs.append(o)
-            _register(o)
-            return o
-
         for ax, ay in cap:
-            if _candidate_ok(ax, ay, check_spacing=True):
-                return _do_place(ax, ay)
+            if self._candidate_ok(ts_set, ident, ax, ay, check_spacing=True):
+                return self._do_place(ident, ax, ay)
         if force:
             for ax, ay in cap:
-                if _candidate_ok(ax, ay, check_spacing=False):
-                    return _do_place(ax, ay)
+                if self._candidate_ok(ts_set, ident, ax, ay, check_spacing=False):
+                    return self._do_place(ident, ax, ay)
         return None
 
-    def _has_seaport(ts_set: AbstractSet[Tile]) -> bool:
+    def _has_seaport(self, ts_set: AbstractSet[Tile]) -> bool:
         """True if any existing or new seaport's dock row is in `ts_set`."""
-        for o in objs + new_objs:
+        for o in self.objs + self.new_objs:
             if o.type != "shipyard":
                 continue
             # seaport BXB row at y=o["y"]: cells o["x"]-2..o["x"]
@@ -351,17 +429,17 @@ def ensure_water_seaports(
                 return True
         return False
 
-    def _zone_has_seaport(_zid: int, ts_set: AbstractSet[Tile]) -> bool:
-        return _has_seaport(ts_set)
+    def _zone_has_seaport(self, _zid: int, ts_set: AbstractSet[Tile]) -> bool:
+        return self._has_seaport(ts_set)
 
-    def _shore_clusters(comp: AbstractSet[Tile]) -> list[set[Tile]]:
+    def _shore_clusters(self, comp: AbstractSet[Tile]) -> list[set[Tile]]:
         """Maximal 8-connected clusters of land tiles bordering water component `comp`
         -- the physical shores a seaport actually serves, spanning zone boundaries."""
         shore: set[Tile] = set()
         for wx, wy in comp:
-            for dx, dy in NB4:
+            for dx, dy in _NB4:
                 t = (wx + dx, wy + dy)
-                if t in land_zone_of:
+                if t in self.land_zone_of:
                     shore.add(t)
         DIRS8 = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
         seen: set[Tile] = set()
@@ -384,27 +462,34 @@ def ensure_water_seaports(
             clusters.append(cl)
         return clusters
 
-    def _place_for_shore(shore: AbstractSet[Tile], label: str) -> bool:
+    def _shipyard_ident(self, terrain: str) -> Identity | None:
+        return next(
+            (i for i in self.ontology.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"),
+            None,
+        )
+
+    def _shore_shipyard(self, zids_here: Iterable[int]) -> Identity | None:
+        ident: Identity | None = None
+        for zid in zids_here:
+            terrain = TNAME.get(self.sea.zones[zid].terrain_type)
+            if terrain is None:
+                continue
+            ident = self._shipyard_ident(terrain)
+            if ident is not None:
+                break
+        return ident
+
+    def _place_for_shore(self, shore: AbstractSet[Tile], label: str) -> bool:
         """Ensure this shore (spanning however many zones) has a seaport; candidates are
         drawn from the near-coastal expansion of the WHOLE shore, and `ts_set` is the
         union of every zone the shore touches -- not one zone's own tiles alone."""
-        if _has_seaport(shore):
+        if self._has_seaport(shore):
             return True
-        zids_here = sorted({land_zone_of[t] for t in shore})
+        zids_here = sorted({self.land_zone_of[t] for t in shore})
         ts_set: set[Tile] = set()
         for zid in zids_here:
-            ts_set |= set(zones[zid].tiles_set)
-        ident: Identity | None = None
-        for zid in zids_here:
-            terrain = TNAME.get(zones[zid].terrain_type)
-            if terrain is None:
-                continue
-            ident = next(
-                (i for i in ontology.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"),
-                None,
-            )
-            if ident is not None:
-                break
+            ts_set |= set(self.sea.zones[zid].tiles_set)
+        ident = self._shore_shipyard(zids_here)
         if ident is None:
             print(
                 f"  WARNING: no seaport placed on shore near zone(s) {zids_here} "
@@ -414,14 +499,8 @@ def ensure_water_seaports(
             return False
         # Expand inland (across the whole shore, any of its zones) so the footprint
         # can anchor deep enough for its blocking row to still reach the water edge.
-        near_coastal = set(shore)
-        for _ in range(SEAPORT_SEARCH_HOPS):
-            for t in list(near_coastal):
-                for dx, dy in NB4:
-                    nb = (t[0] + dx, t[1] + dy)
-                    if nb in ts_set:
-                        near_coastal.add(nb)
-        o = _try_place(ts_set, list(near_coastal), label, ident)
+        near_coastal = _expand_inland(set(shore), ts_set)
+        o = self._try_place(ts_set, list(near_coastal), label, ident)
         if not o:
             print(
                 f"  WARNING: no seaport placed on shore near zone(s) {zids_here} "
@@ -430,18 +509,26 @@ def ensure_water_seaports(
             return False
         return True
 
-    def _place_for_zone(zid: int, z: Zone, label: str) -> bool:
+    def _coastal_set(self, ts_set: AbstractSet[Tile]) -> set[Tile]:
+        W, H, grid = self.sea.W, self.sea.H, self.sea.grid
+        return {
+            t
+            for t in ts_set
+            if any(
+                0 <= t[0] + dx < W and 0 <= t[1] + dy < H and grid[t[1] + dy][t[0] + dx] == _WATER
+                for dx, dy in _NB4
+            )
+        }
+
+    def _place_for_zone(self, zid: int, z: Zone, label: str) -> bool:
         """Ensure zone zid has a seaport; restrict to near-coastal tiles only."""
         ts_set = set(z.tiles_set)
-        if _zone_has_seaport(zid, ts_set):
+        if self._zone_has_seaport(zid, ts_set):
             return True
         terrain = TNAME.get(z.terrain_type)
         if terrain is None:
             return False
-        ident = next(
-            (i for i in ontology.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"),
-            None,
-        )
+        ident = self._shipyard_ident(terrain)
         if ident is None:
             print(
                 f"  WARNING: no seaport placed on zone {zid} "
@@ -449,26 +536,13 @@ def ensure_water_seaports(
             )
             return False
         # Coastal = zone tiles adjacent to water
-        coastal_set = {
-            t
-            for t in ts_set
-            if any(
-                0 <= t[0] + dx < W and 0 <= t[1] + dy < H and grid[t[1] + dy][t[0] + dx] == WATER
-                for dx, dy in NB4
-            )
-        }
+        coastal_set = self._coastal_set(ts_set)
         if not coastal_set:
             return False
         # Expand inland so the footprint can anchor deep enough for its blocking row
         # to still reach the water edge.
-        near_coastal = set(coastal_set)
-        for _ in range(SEAPORT_SEARCH_HOPS):
-            for t in list(near_coastal):
-                for dx, dy in NB4:
-                    nb = (t[0] + dx, t[1] + dy)
-                    if nb in ts_set:
-                        near_coastal.add(nb)
-        o = _try_place(ts_set, list(near_coastal), label, ident)
+        near_coastal = _expand_inland(set(coastal_set), ts_set)
+        o = self._try_place(ts_set, list(near_coastal), label, ident)
         if not o:
             print(
                 f"  WARNING: no seaport placed on zone {zid} "
@@ -478,47 +552,49 @@ def ensure_water_seaports(
             return False
         return True
 
-    # ── 1. Water-body guarantee: one seaport per SHORE (not per land zone) ────
-    seen_w: set[Tile] = set()
-    for t0 in sorted(water_tiles):
-        if t0 in seen_w:
-            continue
-        comp, q = {t0}, [t0]
-        while q:
-            x, y = q.pop()
-            for dx, dy in NB4:
-                n = (x + dx, y + dy)
-                if n in water_tiles and n not in comp:
-                    comp.add(n)
-                    q.append(n)
-        seen_w |= comp
-        if len(comp) < SEA_ZONE_MIN_AREA:
-            continue
-
-        for i, shore in enumerate(_shore_clusters(comp)):
+    def _serve_shores(self, comp: AbstractSet[Tile], t0: Tile) -> None:
+        zones = self.sea.zones
+        for i, shore in enumerate(self._shore_clusters(comp)):
             # Skip only if EVERY zone touching this shore is a tiny sliver -- the gate
             # is about not bothering with a sliver zone's own economy, not the shore
             # ring's own tile count (which can be modest even for a huge zone).
-            zids_here = {land_zone_of[t] for t in shore}
+            zids_here = {self.land_zone_of[t] for t in shore}
             if max(zones[zid].area for zid in zids_here) < BORDER_ZONE_MIN_AREA:
                 continue
-            _ = _place_for_shore(shore, f"wb_{t0}_{i}")
+            _ = self._place_for_shore(shore, f"wb_{t0}_{i}")
 
-    # ── 2. Island guarantee ───────────────────────────────────────────────────
-    for zid, z in sorted(zones.items()):
-        terrain = TNAME.get(z.terrain_type)
-        if terrain in (None, "water", "rock") or z.area < ISLAND_MIN_AREA:
-            continue
-        ts_set = set(z.tiles_set)
-        is_island = all(
-            grid[ny][nx] in (WATER, ROCK)
+    def _is_island(self, ts_set: AbstractSet[Tile]) -> bool:
+        W, H, grid = self.sea.W, self.sea.H, self.sea.grid
+        return all(
+            grid[ny][nx] in (_WATER, _ROCK)
             for x, y in ts_set
-            for dx, dy in NB4
+            for dx, dy in _NB4
             for nx, ny in [(x + dx, y + dy)]
             if 0 <= nx < W and 0 <= ny < H and (nx, ny) not in ts_set
         )
-        if not is_island:
-            continue
-        _ = _place_for_zone(zid, z, f"island_{zid}")
 
-    return new_objs
+    def run(self) -> list[PlacedObject]:
+        # ── 1. Water-body guarantee: one seaport per SHORE (not per land zone) ────
+        seen_w: set[Tile] = set()
+        for t0 in sorted(self.water_tiles):
+            if t0 in seen_w:
+                continue
+            comp = _water_component(t0, self.water_tiles)
+            seen_w |= comp
+            if len(comp) < SEA_ZONE_MIN_AREA:
+                continue
+
+            self._serve_shores(comp, t0)
+
+        # ── 2. Island guarantee ───────────────────────────────────────────────────
+        for zid, z in sorted(self.sea.zones.items()):
+            terrain = TNAME.get(z.terrain_type)
+            if terrain in (None, "water", "rock") or z.area < ISLAND_MIN_AREA:
+                continue
+            ts_set = set(z.tiles_set)
+            is_island = self._is_island(ts_set)
+            if not is_island:
+                continue
+            _ = self._place_for_zone(zid, z, f"island_{zid}")
+
+        return self.new_objs

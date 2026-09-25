@@ -12,6 +12,7 @@ sliver-zones.
 import collections
 import functools
 from collections.abc import Collection
+from dataclasses import dataclass
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import terrain_segment as TS
@@ -53,7 +54,8 @@ def _cell(t: int, x: int = 0, y: int = 0) -> Cell:
 _N8 = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
 
-def _neigh8(grid: list[list[int]], x: int, y: int, W: int, H: int, t: int) -> tuple[int, ...]:
+def _neigh8(grid: list[list[int]], x: int, y: int, W: int, H: int) -> tuple[int, ...]:
+    t = grid[y][x]
     return tuple(
         grid[y + dy][x + dx] if 0 <= x + dx < W and 0 <= y + dy < H else t for dx, dy in _N8
     )
@@ -82,7 +84,7 @@ def _learn_terrain_tiler() -> Tiler:
                     c = g[y][x]
                     t = c.t
                     vm = (c.view, c.m)
-                    sig = _neigh8(T, x, y, W, H, t)
+                    sig = _neigh8(T, x, y, W, H)
                     exact[(t, sig)][vm] += 1
                     four[(t, (sig[1], sig[3], sig[4], sig[6]))][vm] += 1
                     if all(v == t for v in sig):
@@ -158,6 +160,81 @@ def keep_patch(tiles: Collection[Tile], min_patch: int = MIN_TERRAIN_PATCH) -> b
     return False
 
 
+_NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+
+@dataclass(frozen=True, slots=True)
+class _Despeckler:
+    ids: list[list[int]]
+    W: int
+    H: int
+    min_patch: int
+    protect: Collection[Tile]
+
+    def components(self) -> list[tuple[list[Tile], int]]:
+        ids, W, H = self.ids, self.W, self.H
+        comp = [[-1] * W for _ in range(H)]
+        comps: list[tuple[list[Tile], int]] = []
+        cid = 0
+        for y in range(H):
+            for x in range(W):
+                if comp[y][x] >= 0:
+                    continue
+                t = ids[y][x]
+                stack, tiles = [(x, y)], [(x, y)]
+                comp[y][x] = cid
+                while stack:
+                    a, b = stack.pop()
+                    for dx, dy in _NB4:
+                        nx, ny = a + dx, b + dy
+                        if 0 <= nx < W and 0 <= ny < H and comp[ny][nx] < 0 and ids[ny][nx] == t:
+                            comp[ny][nx] = cid
+                            stack.append((nx, ny))
+                            tiles.append((nx, ny))
+                comps.append((tiles, t))
+                cid += 1
+        return comps
+
+    def dominant_neighbour(self, tiles: list[Tile], t: int) -> int | None:
+        ids, W, H = self.ids, self.W, self.H
+        nbr_land: collections.Counter[int] = collections.Counter()
+        nbr_all: collections.Counter[int] = collections.Counter()
+        for x, y in tiles:
+            for dx, dy in _NB4:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < W and 0 <= ny < H and ids[ny][nx] != t:
+                    nbr_all[ids[ny][nx]] += 1
+                    if ids[ny][nx] < TS.WATER:
+                        nbr_land[ids[ny][nx]] += 1
+        nbr = nbr_land or nbr_all
+        if nbr:
+            return nbr.most_common(1)[0][0]
+        return None
+
+    def absorb_patches(self) -> bool:
+        changed = False
+        for tiles, t in self.components():
+            if keep_patch(tiles, self.min_patch) or any(tp in self.protect for tp in tiles):
+                continue
+            newt = self.dominant_neighbour(tiles, t)
+            if newt is not None:
+                for x, y in tiles:
+                    self.ids[y][x] = newt
+                changed = True
+        return changed
+
+    def erode_thin(self) -> bool:
+        changed = False
+        for x, y in _thin_tiles(self.ids, self.W, self.H):
+            if (x, y) in self.protect:
+                continue
+            newt = self.dominant_neighbour([(x, y)], self.ids[y][x])
+            if newt is not None:
+                self.ids[y][x] = newt
+                changed = True
+        return changed
+
+
 def despeckle_ids(
     ids: list[list[int]],
     W: int,
@@ -174,64 +251,11 @@ def despeckle_ids(
     can flank rock on both long sides, so a short same-id stretch along it would otherwise
     out-vote to rock and sever a connection the generator built on purpose."""
     ids = [row[:] for row in ids]
-    NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+    despeckler = _Despeckler(ids, W, H, min_patch, protect)
     for _ in range(24):
-        comp = [[-1] * W for _ in range(H)]
-        comps: list[tuple[list[Tile], int]] = []
-        cid = 0
-        for y in range(H):
-            for x in range(W):
-                if comp[y][x] >= 0:
-                    continue
-                t = ids[y][x]
-                stack, tiles = [(x, y)], [(x, y)]
-                comp[y][x] = cid
-                while stack:
-                    a, b = stack.pop()
-                    for dx, dy in NB4:
-                        nx, ny = a + dx, b + dy
-                        if 0 <= nx < W and 0 <= ny < H and comp[ny][nx] < 0 and ids[ny][nx] == t:
-                            comp[ny][nx] = cid
-                            stack.append((nx, ny))
-                            tiles.append((nx, ny))
-                comps.append((tiles, t))
-                cid += 1
-        changed = False
-        for tiles, t in comps:
-            if keep_patch(tiles, min_patch) or any(tp in protect for tp in tiles):
-                continue
-            nbr_land: collections.Counter[int] = collections.Counter()
-            nbr_all: collections.Counter[int] = collections.Counter()
-            for x, y in tiles:
-                for dx, dy in NB4:
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < W and 0 <= ny < H and ids[ny][nx] != t:
-                        nbr_all[ids[ny][nx]] += 1
-                        if ids[ny][nx] < TS.WATER:
-                            nbr_land[ids[ny][nx]] += 1
-            nbr = nbr_land or nbr_all
-            if nbr:
-                newt = nbr.most_common(1)[0][0]
-                for x, y in tiles:
-                    ids[y][x] = newt
-                changed = True
-        for x, y in _thin_tiles(ids, W, H):
-            if (x, y) in protect:
-                continue
-            t = ids[y][x]
-            nbr_land = collections.Counter()
-            nbr_all = collections.Counter()
-            for dx, dy in NB4:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < W and 0 <= ny < H and ids[ny][nx] != t:
-                    nbr_all[ids[ny][nx]] += 1
-                    if ids[ny][nx] < TS.WATER:
-                        nbr_land[ids[ny][nx]] += 1
-            nbr = nbr_land or nbr_all
-            if nbr:
-                ids[y][x] = nbr.most_common(1)[0][0]
-                changed = True
-        if not changed:
+        patched = despeckler.absorb_patches()
+        thinned = despeckler.erode_thin()
+        if not (patched or thinned):
             break
     return ids
 
@@ -245,9 +269,6 @@ def tile_terrain(
     id_grid = despeckle_ids(id_grid, W, H, protect=protect)
     tiler = _learn_terrain_tiler()
     return [
-        [
-            _tile_cell(id_grid[y][x], _neigh8(id_grid, x, y, W, H, id_grid[y][x]), x, y, tiler)
-            for x in range(W)
-        ]
+        [_tile_cell(id_grid[y][x], _neigh8(id_grid, x, y, W, H), x, y, tiler) for x in range(W)]
         for y in range(H)
     ]

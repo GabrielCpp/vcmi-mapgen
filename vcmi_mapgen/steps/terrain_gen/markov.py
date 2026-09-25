@@ -133,14 +133,21 @@ def learn4(level_index: int) -> MarkovModel4:
     return MarkovModel4(full=full, horiz=horiz, vert=vert)
 
 
+@dataclass(frozen=True, slots=True)
+class Gibbs4:
+    M4: MarkovModel4
+    marg: collections.Counter[int]
+
+
 def gibbs(
     grid: list[list[int]],
-    M4: MarkovModel4,
-    marg: collections.Counter[int],
+    model: Gibbs4,
     rnd: random.Random,
     sweeps: int = 5,
     thresh: int = 10,
 ) -> list[list[int]]:
+    M4 = model.M4
+    marg = model.marg
     H = len(grid)
     W = len(grid[0])
     for _ in range(sweeps):
@@ -172,6 +179,6 @@ if __name__ == "__main__":
     W = H = 72
     gen = generate(M, W, H, rnd)  # raster init
     geng = [row[:] for row in gen]
-    _ = gibbs(geng, M4, M.marg, rnd, sweeps=6)  # isotropic smoothing
+    _ = gibbs(geng, Gibbs4(M4, M.marg), rnd, sweeps=6)  # isotropic smoothing
     hist = collections.Counter(t for row in geng for t in row)
     print("  post-Gibbs terrain histogram:", dict(hist.most_common()))

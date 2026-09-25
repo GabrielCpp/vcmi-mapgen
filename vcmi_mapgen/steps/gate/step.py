@@ -96,12 +96,8 @@ class GateStep(PipelineStep):
 
         (gobjs0, gate_occ0, gate_blk0, gate_appr0), (gobjs1, gate_occ1, gate_blk1, gate_appr1) = (
             PG.place_gates(
-                ts0,
-                ts1,
-                set(),
-                set(),
-                appr0=_rim8(zones0),
-                appr1=_rim8(zones1),
+                PG.GateSide(ts0, set(), _rim8(zones0)),
+                PG.GateSide(ts1, set(), _rim8(zones1)),
                 seed=self.seed,
             )
         )

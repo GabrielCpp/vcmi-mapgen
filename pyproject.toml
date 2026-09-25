@@ -24,8 +24,15 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "PL", "RUF"]
-ignore = ["PLR2004", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917"]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "PL", "RUF", "C90"]
+ignore = ["PLR2004", "PLR0911", "PLR0912", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-positional-args = 5
 
 [tool.basedpyright]
 pythonVersion = "3.12"

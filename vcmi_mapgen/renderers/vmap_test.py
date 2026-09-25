@@ -22,7 +22,7 @@ needs_vcmi = pytest.mark.skipif(
 
 
 def _town(ident: Identity, x: int, y: int) -> PlacedObject:
-    return PlacedObject.at(ident, x, y, purpose="TOWN")
+    return PlacedObject.at(ident, (x, y), purpose="TOWN")
 
 
 def _load(z: zipfile.ZipFile, name: str) -> JsonValue:
@@ -122,7 +122,7 @@ def test_vmap_export_game_contracts(tmp_path: Path) -> None:
         )
     }
     objs: list[PlacedObject]
-    objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=3, force_town=True)
+    objs, *_ = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=3, force_town=True))
     town = next(o for o in objs if o.purpose == "TOWN")
     START_BUILDINGS: JsonValue = {
         "allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]

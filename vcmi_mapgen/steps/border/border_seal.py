@@ -2,6 +2,8 @@
 
 import random
 from collections.abc import Collection, Container, Mapping, Sequence
+from dataclasses import dataclass
+from typing import final
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.models import CoverIndex, PlacedObject, Tile, Zone
@@ -9,17 +11,93 @@ from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.vegetation.border_plan import blocking_cells, cross_pairs, zone_owner
 
 
+@dataclass(frozen=True, slots=True)
+class LevelGrid:
+    width: int
+    height: int
+    grid: Sequence[Sequence[int]]
+    zones: Mapping[int, Zone]
+
+
+@dataclass(frozen=True, slots=True)
+class CrossingRules:
+    bands: Container[Tile]
+    hard_avoid: Container[Tile]
+    skip_tiles: Container[Tile] = ()
+
+
+@final
+class _GuardPlacer:
+    def __init__(
+        self,
+        rng: random.Random,
+        objs: list[PlacedObject],
+        hard_avoid: Container[Tile],
+        decor_blk: Container[Tile],
+    ) -> None:
+        self._rng = rng
+        self._hard_avoid = hard_avoid
+        self._cover = CoverIndex(objs)
+        self._decor_blk = decor_blk
+
+    @staticmethod
+    def _covered(t: Tile, n: Tile, g_set: Collection[Tile]) -> bool:
+        return any(
+            max(abs(g[0] - t[0]), abs(g[1] - t[1])) <= 1
+            or max(abs(g[0] - n[0]), abs(g[1] - n[1])) <= 1
+            for g in g_set
+        )
+
+    def _pick_guard(self, cands: Sequence[Tile]) -> Tile:
+        """First candidate whose sprite overlay is clear of decor; else the first."""
+        rnd = rnd_monster(3)
+        for c in cands:
+            if OR.overlay_clear(rnd.mask, c[0], c[1], self._decor_blk):
+                return c
+        return cands[0]
+
+    def _stand_guard(self, cands: Sequence[Tile]) -> PlacedObject | None:
+        first = self._pick_guard(cands)
+        for g in [first, *(c for c in cands if c != first)]:
+            gident = rnd_monster(3 + (1 if self._rng.random() < 0.3 else 0))
+            guard = PlacedObject.at(
+                gident, g, level=0, purpose="GUARD", options={"character": "hostile"}
+            )
+            if self._cover.try_add(guard):
+                return guard
+        return None
+
+    def guard_pairs(
+        self,
+        pairs: Sequence[tuple[Tile, Tile]],
+        fixed: set[Tile],
+        new_objs: list[PlacedObject],
+    ) -> tuple[set[Tile], int]:
+        placed: set[Tile] = set()
+        unguarded = 0
+        for t, n in pairs:
+            if self._covered(t, n, fixed | placed):
+                continue
+            cands = [c for c in sorted((t, n)) if c not in self._hard_avoid]
+            if not cands:
+                unguarded += 1
+                continue
+            guard = self._stand_guard(cands)
+            if guard is None:
+                unguarded += 1
+                continue
+            guard.seal = True
+            new_objs.append(guard)  # informational: dup-guard cleanup must
+            placed.add((guard.x, guard.y))  # never drop it — it IS the border
+        return placed, unguarded
+
+
 def guard_crossings(
-    W: int,
-    H: int,
-    grid: Sequence[Sequence[int]],
-    zones: Mapping[int, Zone],
-    bands: Container[Tile],
+    terrain: LevelGrid,
+    rules: CrossingRules,
     objs: list[PlacedObject],
-    hard_avoid: Container[Tile],
     seed: int,
     level: int,
-    skip_tiles: Container[Tile] = (),
 ) -> tuple[list[PlacedObject], set[Tile], int]:
     """Guard every cross-zone crossing that stays open after the vegetation border plan.
 
@@ -29,82 +107,32 @@ def guard_crossings(
     Guards never stand on `hard_avoid` tiles (gameplay cells, approaches, pickups).
     Returns (new_objs, guard_tiles, n_unguarded_pairs)."""
     rng = random.Random(seed ^ 0x6A4D ^ (level * 7919))
-    owner, _tname = zone_owner(zones)
+    owner, _tname = zone_owner(terrain.zones)
     blocked: set[Tile] = set()
     for o in objs:
         blocked.update(blocking_cells(o))
-    open_all = {(x, y) for y in range(H) for x in range(W) if grid[y][x] < 8} - blocked
-    pairs, band_pairs = cross_pairs(open_all, owner, bands, skip_tiles)
+    grid = terrain.grid
+    open_all = {
+        (x, y) for y in range(terrain.height) for x in range(terrain.width) if grid[y][x] < 8
+    } - blocked
+    pairs, band_pairs = cross_pairs(open_all, owner, rules.bands, rules.skip_tiles)
     new_objs: list[PlacedObject] = []
-    cover = CoverIndex(objs)
 
     # Collect existing gameplay guards from objs (placed by pp_gameplay) so the guard
     # pass below avoids duplicating coverage already provided.
     existing_guards = {(o.x, o.y) for o in objs if o.purpose == "GUARD"}
 
-    def _covered(t: Tile, n: Tile, g_set: Collection[Tile]) -> bool:
-        return any(
-            max(abs(g[0] - t[0]), abs(g[1] - t[1])) <= 1
-            or max(abs(g[0] - n[0]), abs(g[1] - n[1])) <= 1
-            for g in g_set
-        )
-
     # what must stay open gets contested instead: one hostile guard covers every residual
     # crossing within its Chebyshev-1 zone of control
     decor_blk = OR.decor_blocking_cells(objs + new_objs)
+    placer = _GuardPlacer(rng, objs, rules.hard_avoid, decor_blk)
 
-    def _pick_guard(cands: Sequence[Tile]) -> Tile:
-        """First candidate whose sprite overlay is clear of decor; else the first."""
-        rnd = rnd_monster(3)
-        for c in cands:
-            if OR.overlay_clear(rnd.mask, c[0], c[1], decor_blk):
-                return c
-        return cands[0]
-
-    def _stand_guard(cands: Sequence[Tile]) -> PlacedObject | None:
-        first = _pick_guard(cands)
-        for g in [first, *(c for c in cands if c != first)]:
-            gident = rnd_monster(3 + (1 if rng.random() < 0.3 else 0))
-            guard = PlacedObject.at(
-                gident, g[0], g[1], level=0, purpose="GUARD", options={"character": "hostile"}
-            )
-            if cover.try_add(guard):
-                return guard
-        return None
-
-    guard_tiles: set[Tile] = set()
-    unguarded = 0
-    for t, n in pairs:
-        if _covered(t, n, guard_tiles | existing_guards):
-            continue
-        cands = [c for c in sorted((t, n)) if c not in hard_avoid]
-        if not cands:
-            unguarded += 1
-            continue
-        guard = _stand_guard(cands)
-        if guard is None:
-            unguarded += 1
-            continue
-        guard.seal = True
-        new_objs.append(guard)  # informational: dup-guard cleanup must
-        guard_tiles.add((guard.x, guard.y))  # never drop it — it IS the border
+    guard_tiles, unguarded = placer.guard_pairs(pairs, existing_guards, new_objs)
 
     # Band pairs (planned entrance corridors) were left open on purpose but every corridor
     # must have at least one guard so the crossing requires a fight.  If pp_gameplay already
     # placed a guard that covers the pair, skip it; otherwise add one now.
-    band_guard_tiles: set[Tile] = set()
-    for t, n in band_pairs:
-        if _covered(t, n, guard_tiles | existing_guards | band_guard_tiles):
-            continue
-        cands = [c for c in sorted((t, n)) if c not in hard_avoid]
-        if not cands:
-            continue
-        guard = _stand_guard(cands)
-        if guard is None:
-            continue
-        guard.seal = True
-        new_objs.append(guard)
-        band_guard_tiles.add((guard.x, guard.y))
+    band_guard_tiles, _ = placer.guard_pairs(band_pairs, guard_tiles | existing_guards, new_objs)
 
     guard_tiles |= band_guard_tiles
     return new_objs, guard_tiles, unguarded

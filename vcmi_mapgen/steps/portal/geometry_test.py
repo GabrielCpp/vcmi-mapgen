@@ -10,10 +10,8 @@ from vcmi_mapgen.steps.portal import geometry as GEO
 GRASS, ROCK = 2, 9
 
 
-def _obj(
-    typ: str, subtype: str, animation: str, mask: tuple[str, ...], x: int, y: int, purpose: str
-) -> PlacedObject:
-    return PlacedObject.at(Identity(typ, subtype, animation, mask), x, y, purpose=purpose)
+def _obj(ident: Identity, xy: Tile, purpose: str) -> PlacedObject:
+    return PlacedObject.at(ident, xy, purpose=purpose)
 
 
 def _enclave_fixture() -> tuple[int, list[list[int]], dict[int, Zone], set[Tile], set[Tile]]:
@@ -49,10 +47,12 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
     another island's business, a guard in the way does not cut."""
     size = 12
     grid = [[2] * size for _ in range(size)]
-    veg_wall = [_obj("pineTrees", "pineTrees", "avlpn0", ("B",), 6, y, "") for y in range(size)]
+    veg_wall = [
+        _obj(Identity("pineTrees", "pineTrees", "avlpn0", ("B",)), (6, y), "") for y in range(size)
+    ]
     picks = [
-        _obj("resource", "wood", "avtwood0", ("A",), 2, 5, "RESOURCE_PILE"),
-        _obj("resource", "ore", "avtore0", ("A",), 10, 5, "RESOURCE_PILE"),
+        _obj(Identity("resource", "wood", "avtwood0", ("A",)), (2, 5), "RESOURCE_PILE"),
+        _obj(Identity("resource", "ore", "avtore0", ("A",)), (10, 5), "RESOURCE_PILE"),
     ]
     targets = [(2, 5), (10, 5)]
     assert GEO.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
@@ -72,18 +72,13 @@ def test_portal_reward_zone() -> None:
     def run() -> tuple[int, list[PlacedObject], list[Tile]]:
         objs = {
             0: [
-                _obj("town", "s", "X", ("A",), 5, 5, "TOWN"),
-                _obj("mine", "s", "X", ("A",), 31, 31, "MINE"),
+                _obj(Identity("town", "s", "X", ("A",)), (5, 5), "TOWN"),
+                _obj(Identity("mine", "s", "X", ("A",)), (31, 31), "MINE"),
             ]
         }
         targets = {0: [(5, 6)]}
         n = GEO.rescue_unreachable_zones(
-            size,
-            {0: grid},
-            {0: zones},
-            objs,
-            targets,
-            {0: []},
+            GEO.PortalWorld(size, {0: grid}, {0: zones}, objs, targets, {0: []}),
             start=(0, (5, 5)),
             gate_xy=no_gates,
             seed=3,
@@ -131,18 +126,13 @@ def test_portal_reward_zone_never_places_an_artifact() -> None:
     no_gates: set[Tile] = set()
     objs = {
         0: [
-            _obj("town", "s", "X", ("A",), 5, 5, "TOWN"),
-            _obj("mine", "s", "X", ("A",), 31, 31, "MINE"),
+            _obj(Identity("town", "s", "X", ("A",)), (5, 5), "TOWN"),
+            _obj(Identity("mine", "s", "X", ("A",)), (31, 31), "MINE"),
         ]
     }
     targets = {0: [(5, 6)]}
     _ = GEO.rescue_unreachable_zones(
-        size,
-        {0: grid},
-        {0: zones},
-        objs,
-        targets,
-        {0: []},
+        GEO.PortalWorld(size, {0: grid}, {0: zones}, objs, targets, {0: []}),
         start=(0, (5, 5)),
         gate_xy=no_gates,
         seed=3,

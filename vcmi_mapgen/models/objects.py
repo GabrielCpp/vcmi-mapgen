@@ -42,16 +42,15 @@ class PlacedObject:
     def at(
         cls,
         identity: Identity,
-        x: int,
-        y: int,
+        tile: Tile,
         *,
         level: int = 0,
         purpose: str,
         options: dict[str, JsonValue] | None = None,
     ) -> PlacedObject:
         return cls(
-            x=x,
-            y=y,
+            x=tile[0],
+            y=tile[1],
             level=level,
             purpose=purpose,
             type=identity.type,

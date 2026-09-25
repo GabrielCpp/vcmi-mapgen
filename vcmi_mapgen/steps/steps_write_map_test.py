@@ -157,7 +157,7 @@ def test_scatter_piles_stay_out_of_every_guard_zone(pipeline_run: PipelineRun) -
     for level in (0, 1):
         level_objs = [o for o in pipeline_run.state.objs if o.level == level]
         zoc = guard_zoc(level_objs)
-        piles = [o for o in level_objs if o.purpose == "RESOURCE_PILE"]
+        piles = [o for o in level_objs if o.purpose == "RESOURCE_PILE" and not o.cache]
         assert piles
         for o in piles:
             for cell in mask_interactive_cells(o.mask, o.x, o.y):

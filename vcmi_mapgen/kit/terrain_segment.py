@@ -114,16 +114,63 @@ def _flood_fill(terrain_level: list[list[Cell]]) -> list[list[int]]:
     return zone_label
 
 
-def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]]) -> dict[int, Zone]:
-    """Compute per-zone attributes from a finished zone_label."""
-    H = len(terrain_level)
-    W = len(terrain_level[0])
+def _tiles_by_zone(zone_label: list[list[int]], W: int, H: int) -> dict[int, list[Tile]]:
     tiles_by_zone: collections.defaultdict[int, list[Tile]] = collections.defaultdict(list)
     for y in range(H):
         for x in range(W):
             z = zone_label[y][x]
             if z != -1:
                 tiles_by_zone[z].append((x, y))
+    return tiles_by_zone
+
+
+def _boundary_and_adjacent(
+    terrain_level: list[list[Cell]], zone_label: list[list[int]], tiles: list[Tile], zid: int
+) -> tuple[set[Tile], set[int]]:
+    H = len(terrain_level)
+    W = len(terrain_level[0])
+    boundary: set[Tile] = set()
+    adj_zones: set[int] = set()
+    for x, y in tiles:
+        is_bnd = False
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < W and 0 <= ny < H):
+                is_bnd = True
+            else:
+                nt = terrain_level[ny][nx].t
+                nz = zone_label[ny][nx]
+                if nt in (WATER, ROCK):
+                    is_bnd = True
+                elif nz != zid:
+                    is_bnd = True
+                    adj_zones.add(nz)
+        if is_bnd:
+            boundary.add((x, y))
+    return boundary, adj_zones
+
+
+def _chokepoints(terrain_level: list[list[Cell]], boundary: set[Tile]) -> set[Tile]:
+    H = len(terrain_level)
+    W = len(terrain_level[0])
+    chokepoints: set[Tile] = set()
+    for x, y in boundary:
+        passable_count = 0
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < W and 0 <= ny < H and terrain_level[ny][nx].t not in (WATER, ROCK):
+                    passable_count += 1
+        if passable_count <= 10:
+            chokepoints.add((x, y))
+    return chokepoints
+
+
+def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]]) -> dict[int, Zone]:
+    """Compute per-zone attributes from a finished zone_label."""
+    H = len(terrain_level)
+    W = len(terrain_level[0])
+    tiles_by_zone = _tiles_by_zone(zone_label, W, H)
 
     zones: dict[int, Zone] = {}
     for zid, tiles in tiles_by_zone.items():
@@ -133,37 +180,11 @@ def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]])
         cy = sum(y for _, y in tiles) / area
         tiles_set = frozenset(tiles)
 
-        boundary: set[Tile] = set()
-        adj_zones: set[int] = set()
-        for x, y in tiles:
-            is_bnd = False
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                nx, ny = x + dx, y + dy
-                if not (0 <= nx < W and 0 <= ny < H):
-                    is_bnd = True
-                else:
-                    nt = terrain_level[ny][nx].t
-                    nz = zone_label[ny][nx]
-                    if nt in (WATER, ROCK):
-                        is_bnd = True
-                    elif nz != zid:
-                        is_bnd = True
-                        adj_zones.add(nz)
-            if is_bnd:
-                boundary.add((x, y))
+        boundary, adj_zones = _boundary_and_adjacent(terrain_level, zone_label, tiles, zid)
 
         # Chokepoint heuristic: boundary tile where the 5x5 passable neighbourhood
         # is very small (≤ 10 tiles), indicating a tight terrain corridor.
-        chokepoints: set[Tile] = set()
-        for x, y in boundary:
-            passable_count = 0
-            for dy in range(-2, 3):
-                for dx in range(-2, 3):
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < W and 0 <= ny < H and terrain_level[ny][nx].t not in (WATER, ROCK):
-                        passable_count += 1
-            if passable_count <= 10:
-                chokepoints.add((x, y))
+        chokepoints = _chokepoints(terrain_level, boundary)
 
         zones[zid] = Zone(
             terrain_type=t0,
@@ -202,6 +223,32 @@ def segment(terrain_level: list[list[Cell]]) -> tuple[dict[int, Zone], list[list
 # ---------------------------------------------------------------------------
 # Static feature extraction
 # ---------------------------------------------------------------------------
+
+
+def _local_openness(passable: npt.NDArray[np.bool_], H: int, W: int) -> npt.NDArray[np.float32]:
+    # --- local openness: convolution with a radius-3 disk kernel ---
+    # Build kernel
+    kr = 3
+    kernel = np.array(
+        [
+            [1.0 if dx * dx + dy * dy <= kr * kr else 0.0 for dx in range(-kr, kr + 1)]
+            for dy in range(-kr, kr + 1)
+        ],
+        dtype=np.float32,
+    )
+    pass_f: npt.NDArray[np.float32] = passable.astype(np.float32)
+    ones_f = np.ones((H, W), dtype=np.float32)
+    pad_pass = np.pad(pass_f, kr, mode="constant", constant_values=0)
+    pad_ones = np.pad(ones_f, kr, mode="constant", constant_values=0)
+    kH, kW = kernel.shape
+    openness_num = np.zeros((H, W), dtype=np.float32)
+    openness_den = np.zeros((H, W), dtype=np.float32)
+    for ky in range(kH):
+        for kx in range(kW):
+            if kernel[ky, kx]:
+                openness_num += pad_pass[ky : ky + H, kx : kx + W]
+                openness_den += pad_ones[ky : ky + H, kx : kx + W]
+    return openness_num / np.maximum(openness_den, 1.0)
 
 
 def compute_static_features(
@@ -255,29 +302,7 @@ def compute_static_features(
     for zone in zones.values():
         chokepoint_set.update(zone.chokepoints)
 
-    # --- local openness: convolution with a radius-3 disk kernel ---
-    # Build kernel
-    kr = 3
-    kernel = np.array(
-        [
-            [1.0 if dx * dx + dy * dy <= kr * kr else 0.0 for dx in range(-kr, kr + 1)]
-            for dy in range(-kr, kr + 1)
-        ],
-        dtype=np.float32,
-    )
-    pass_f: npt.NDArray[np.float32] = passable.astype(np.float32)
-    ones_f = np.ones((H, W), dtype=np.float32)
-    pad_pass = np.pad(pass_f, kr, mode="constant", constant_values=0)
-    pad_ones = np.pad(ones_f, kr, mode="constant", constant_values=0)
-    kH, kW = kernel.shape
-    openness_num = np.zeros((H, W), dtype=np.float32)
-    openness_den = np.zeros((H, W), dtype=np.float32)
-    for ky in range(kH):
-        for kx in range(kW):
-            if kernel[ky, kx]:
-                openness_num += pad_pass[ky : ky + H, kx : kx + W]
-                openness_den += pad_ones[ky : ky + H, kx : kx + W]
-    openness_arr = openness_num / np.maximum(openness_den, 1.0)
+    openness_arr = _local_openness(passable, H, W)
 
     # --- normalisation constants ---
     max_area = max((z.area for z in zones.values()), default=1) or 1

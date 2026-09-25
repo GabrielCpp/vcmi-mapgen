@@ -2,13 +2,11 @@
 
 from vcmi_mapgen.kit import tiling as ZE
 
+GRASS, DIRT, WATER = 2, 0, 8
+W, H = 24, 14
 
-def test_despeckle_absorbs_tiny_zones() -> None:
-    """Shape-aware sliver rule: a terrain patch (= future zone) survives despeckle only when
-    it has >4 tiles or is a compact 2x2 square; narrow 4-tile shapes and anything smaller are
-    absorbed into the dominant LAND neighbour (water/rock only when no land borders it)."""
-    GRASS, DIRT, WATER = 2, 0, 8
-    W, H = 24, 14
+
+def _speckled_ids() -> list[list[int]]:
     ids = [[GRASS] * W for _ in range(H)]
     for x in range(3, 7):  # 1x4 dirt line — narrow, must be absorbed
         ids[3][x] = DIRT
@@ -28,7 +26,35 @@ def test_despeckle_absorbs_tiny_zones() -> None:
             ids[y][x] = WATER
     for x, y in ((18, 10), (19, 10), (18, 11), (19, 11)):
         ids[y][x] = GRASS
+    return ids
 
+
+def _land_patches(out: list[list[int]]) -> list[list[tuple[int, int]]]:
+    patches: list[list[tuple[int, int]]] = []
+    seen: set[tuple[int, int]] = set()
+    for y in range(H):
+        for x in range(W):
+            if (x, y) in seen or out[y][x] >= WATER:
+                continue
+            t, stack, tiles = out[y][x], [(x, y)], [(x, y)]
+            seen.add((x, y))
+            while stack:
+                a, b = stack.pop()
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = a + dx, b + dy
+                    if 0 <= nx < W and 0 <= ny < H and (nx, ny) not in seen and out[ny][nx] == t:
+                        seen.add((nx, ny))
+                        stack.append((nx, ny))
+                        tiles.append((nx, ny))
+            patches.append(tiles)
+    return patches
+
+
+def test_despeckle_absorbs_tiny_zones() -> None:
+    """Shape-aware sliver rule: a terrain patch (= future zone) survives despeckle only when
+    it has >4 tiles or is a compact 2x2 square; narrow 4-tile shapes and anything smaller are
+    absorbed into the dominant LAND neighbour (water/rock only when no land borders it)."""
+    ids = _speckled_ids()
     out = ZE.despeckle_ids(ids, W, H)
     assert out == ZE.despeckle_ids(ids, W, H), "despeckle must be deterministic"
 
@@ -45,19 +71,5 @@ def test_despeckle_absorbs_tiny_zones() -> None:
     )
 
     # no surviving land patch violates the rule
-    seen: set[tuple[int, int]] = set()
-    for y in range(H):
-        for x in range(W):
-            if (x, y) in seen or out[y][x] >= WATER:
-                continue
-            t, stack, tiles = out[y][x], [(x, y)], [(x, y)]
-            seen.add((x, y))
-            while stack:
-                a, b = stack.pop()
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                    nx, ny = a + dx, b + dy
-                    if 0 <= nx < W and 0 <= ny < H and (nx, ny) not in seen and out[ny][nx] == t:
-                        seen.add((nx, ny))
-                        stack.append((nx, ny))
-                        tiles.append((nx, ny))
-            assert ZE.keep_patch(tiles), f"sliver patch survived: {sorted(tiles)}"
+    for tiles in _land_patches(out):
+        assert ZE.keep_patch(tiles), f"sliver patch survived: {sorted(tiles)}"

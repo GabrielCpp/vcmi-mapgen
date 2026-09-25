@@ -23,7 +23,8 @@ def test_place_scatter_handles_a_zone_with_no_reachable_open_tile() -> None:
         )
     }
     objs, used, reach = SC.place_scatter(
-        ts, zones, 1, "grass", open_set=set(), prot=set(), seed=3, bounds=(30, 24)
+        SC.ScatterZone(ts, zones, 1, "grass", open_set=set(), prot=set()),
+        SC.ScatterConfig(seed=3, bounds=(30, 24)),
     )
     assert objs == []
     assert used == set()

@@ -15,6 +15,7 @@ import argparse
 import os
 import struct
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
 
@@ -91,84 +92,99 @@ def _decode_frame(data: bytes, foff: int) -> Image.Image:
     px = img.load()
     if px is None:
         raise RuntimeError("image has no pixel access")
-    base = foff + 32
-    offs: tuple[int, ...]
+    frame = _Frame(
+        data=data, px=px, palette=palette, base=foff + 32, fw=fw, fh=fh, fleft=fleft, ftop=ftop
+    )
 
     if comp == 0:
-        p = base
-        for y in range(fh):
-            for x in range(fw):
+        frame.decode_raw()
+    elif comp == 1:
+        frame.decode_line_runs()
+    elif comp == 2:
+        frame.decode_line_segments()
+    else:
+        # comp == 3: per-line 32-px blocks, one uint16 offset per block (row-major)
+        frame.decode_block_segments()
+    return img
+
+
+@dataclass(frozen=True, slots=True)
+class _Frame:
+    data: bytes
+    px: "Image.core.PixelAccess"
+    palette: list[tuple[int, int, int, int]]
+    base: int
+    fw: int
+    fh: int
+    fleft: int
+    ftop: int
+
+    def decode_raw(self) -> None:
+        data, px, palette = self.data, self.px, self.palette
+        fleft, ftop = self.fleft, self.ftop
+        p = self.base
+        for y in range(self.fh):
+            for x in range(self.fw):
                 px[fleft + x, ftop + y] = palette[data[p]]
                 p += 1
-        return img
 
-    if comp == 1:
-        offs = struct.unpack_from(f"<{fh}I", data, base)
+    def decode_line_runs(self) -> None:
+        offs: tuple[int, ...] = struct.unpack_from(f"<{self.fh}I", self.data, self.base)
+        for y in range(self.fh):
+            self._line_runs(self.base + offs[y], y)
+
+    def _line_runs(self, p: int, y: int) -> None:
+        data, px, palette = self.data, self.px, self.palette
+        fw, fleft, ftop = self.fw, self.fleft, self.ftop
+        x = 0
+        while x < fw:
+            code, length = data[p], data[p + 1] + 1
+            p += 2
+            if code == 0xFF:
+                for _ in range(length):
+                    if x < fw:
+                        px[fleft + x, ftop + y] = palette[data[p]]
+                    p += 1
+                    x += 1
+            else:
+                c = palette[code]
+                for _ in range(length):
+                    if x < fw:
+                        px[fleft + x, ftop + y] = c
+                    x += 1
+
+    def decode_line_segments(self) -> None:
+        offs: tuple[int, ...] = struct.unpack_from(f"<{self.fh}H", self.data, self.base)
+        for y in range(self.fh):
+            self._segments(self.base + offs[y], 0, self.fw, y)
+
+    def decode_block_segments(self) -> None:
+        fw, fh, base = self.fw, self.fh, self.base
+        blocks = (fw + 31) // 32
+        offs: tuple[int, ...] = struct.unpack_from(f"<{blocks * fh}H", self.data, base)
         for y in range(fh):
-            p, x = base + offs[y], 0
-            while x < fw:
-                code, length = data[p], data[p + 1] + 1
-                p += 2
-                if code == 0xFF:
-                    for _ in range(length):
-                        if x < fw:
-                            px[fleft + x, ftop + y] = palette[data[p]]
-                        p += 1
-                        x += 1
-                else:
-                    c = palette[code]
-                    for _ in range(length):
-                        if x < fw:
-                            px[fleft + x, ftop + y] = c
-                        x += 1
-        return img
+            for b in range(blocks):
+                self._segments(base + offs[y * blocks + b], b * 32, min(b * 32 + 32, fw), y)
 
-    if comp == 2:
-        offs = struct.unpack_from(f"<{fh}H", data, base)
-        for y in range(fh):
-            p, x = base + offs[y], 0
-            while x < fw:
-                seg = data[p]
-                p += 1
-                typ, length = seg >> 5, (seg & 0x1F) + 1
-                if typ == 7:
-                    for _ in range(length):
-                        if x < fw:
-                            px[fleft + x, ftop + y] = palette[data[p]]
-                        p += 1
-                        x += 1
-                else:
-                    c = palette[typ]
-                    for _ in range(length):
-                        if x < fw:
-                            px[fleft + x, ftop + y] = c
-                        x += 1
-        return img
-
-    # comp == 3: per-line 32-px blocks, one uint16 offset per block (row-major)
-    blocks = (fw + 31) // 32
-    offs = struct.unpack_from(f"<{blocks * fh}H", data, base)
-    for y in range(fh):
-        for b in range(blocks):
-            p = base + offs[y * blocks + b]
-            x, xend = b * 32, min(b * 32 + 32, fw)
-            while x < xend:
-                seg = data[p]
-                p += 1
-                typ, length = seg >> 5, (seg & 0x1F) + 1
-                if typ == 7:
-                    for _ in range(length):
-                        if x < xend:
-                            px[fleft + x, ftop + y] = palette[data[p]]
-                        p += 1
-                        x += 1
-                else:
-                    c = palette[typ]
-                    for _ in range(length):
-                        if x < xend:
-                            px[fleft + x, ftop + y] = c
-                        x += 1
-    return img
+    def _segments(self, p: int, x: int, xend: int, y: int) -> None:
+        data, px, palette = self.data, self.px, self.palette
+        fleft, ftop = self.fleft, self.ftop
+        while x < xend:
+            seg = data[p]
+            p += 1
+            typ, length = seg >> 5, (seg & 0x1F) + 1
+            if typ == 7:
+                for _ in range(length):
+                    if x < xend:
+                        px[fleft + x, ftop + y] = palette[data[p]]
+                    p += 1
+                    x += 1
+            else:
+                c = palette[typ]
+                for _ in range(length):
+                    if x < xend:
+                        px[fleft + x, ftop + y] = c
+                    x += 1
 
 
 def parse_def(data: bytes) -> list[list[Image.Image]]:

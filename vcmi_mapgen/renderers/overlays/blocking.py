@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import override
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.models import MapState, PlacedObject
 from vcmi_mapgen.renderers.overlays._tiles import classify_objects
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
@@ -54,25 +54,9 @@ class BlockingOverlay(MapOverlay):
         draw = ImageDraw.Draw(img)
 
         if self._tiers:
-            background, struct_body, struct_visit, solo_visit = classify_objects(state.objs, level)
-            for tiles, color in (
-                (background, _BACKGROUND_COLOR),
-                (struct_body, _STRUCT_BODY_COLOR),
-                (struct_visit | solo_visit, _STRUCT_VISIT_COLOR),
-            ):
-                for tx, ty in tiles:
-                    if 0 <= tx < W and 0 <= ty < H:
-                        _fill_tile(draw, tx, ty, color)
+            _draw_tiers(draw, state.objs, level, W, H)
         else:
-            for o in state.objs:
-                if o.level != level:
-                    continue
-                mask = o.mask
-                if not mask:
-                    continue
-                for tx, ty, blocking in _iter_mask(mask, o.x, o.y):
-                    if blocking and 0 <= tx < W and 0 <= ty < H:
-                        _fill_tile(draw, tx, ty, _COLOR)
+            _draw_flat(draw, state.objs, level, W, H)
 
         # gate blocked tiles (only in subterrain maps)
         for tx, ty in state.gate_blk.get(level, ()):
@@ -80,6 +64,34 @@ class BlockingOverlay(MapOverlay):
                 _fill_tile(draw, tx, ty, _GATE_COLOR)
 
         return img
+
+
+def _draw_tiers(
+    draw: ImageDraw.ImageDraw, objs: Iterable[PlacedObject], level: int, W: int, H: int
+) -> None:
+    background, struct_body, struct_visit, solo_visit = classify_objects(objs, level)
+    for tiles, color in (
+        (background, _BACKGROUND_COLOR),
+        (struct_body, _STRUCT_BODY_COLOR),
+        (struct_visit | solo_visit, _STRUCT_VISIT_COLOR),
+    ):
+        for tx, ty in tiles:
+            if 0 <= tx < W and 0 <= ty < H:
+                _fill_tile(draw, tx, ty, color)
+
+
+def _draw_flat(
+    draw: ImageDraw.ImageDraw, objs: Iterable[PlacedObject], level: int, W: int, H: int
+) -> None:
+    for o in objs:
+        if o.level != level:
+            continue
+        mask = o.mask
+        if not mask:
+            continue
+        for tx, ty, blocking in _iter_mask(mask, o.x, o.y):
+            if blocking and 0 <= tx < W and 0 <= ty < H:
+                _fill_tile(draw, tx, ty, _COLOR)
 
 
 def _iter_mask(mask: Sequence[str], x: int, y: int) -> Iterator[tuple[int, int, bool]]:

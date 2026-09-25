@@ -103,6 +103,32 @@ def _stats_to_json(st: MacroStats) -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
+def _mine_zones(
+    lvl: list[list[Cell]], areas: list[int], terr_share: collections.Counter[int]
+) -> int:
+    zones, _, _ = segment_level(lvl)
+    big = 0
+    for z in zones.values():
+        t = z.terrain_type
+        if 0 <= t < 8:
+            areas.append(z.area)
+            terr_share[t] += z.area
+            if z.area >= 60:
+                big += 1
+    return big
+
+
+def _mine_adjacency(T: list[list[int]], W: int, H: int, adj: collections.Counter[str]) -> None:
+    for y in range(H):
+        for x in range(W):
+            a = T[y][x]
+            for dx, dy in ((1, 0), (0, 1)):
+                if x + dx < W and y + dy < H:
+                    b = T[y + dy][x + dx]
+                    if a != b and 0 <= a < 8 and 0 <= b < 8:
+                        adj[f"{min(a, b)}|{max(a, b)}"] += 1
+
+
 def mine_macro(level: int = 0, force: bool = False) -> MacroStats:
     """Corpus macro stats for terrain level `level` (0 = surface, 1 = underground). The
     underground table is mined independently from `fm["terrain"][1]` of two-level corpus
@@ -131,24 +157,8 @@ def mine_macro(level: int = 0, force: bool = False) -> MacroStats:
         T = [[c.t for c in row] for row in lvl]
         nb = sum(1 for row in T for t in row if t == barrier)
         barrier_fracs.append(nb / max(W * H, 1))
-        zones, _, _ = segment_level(lvl)
-        big = 0
-        for z in zones.values():
-            t = z.terrain_type
-            if 0 <= t < 8:
-                areas.append(z.area)
-                terr_share[t] += z.area
-                if z.area >= 60:
-                    big += 1
-        nzones.append(big)
-        for y in range(H):
-            for x in range(W):
-                a = T[y][x]
-                for dx, dy in ((1, 0), (0, 1)):
-                    if x + dx < W and y + dy < H:
-                        b = T[y + dy][x + dx]
-                        if a != b and 0 <= a < 8 and 0 <= b < 8:
-                            adj[f"{min(a, b)}|{max(a, b)}"] += 1
+        nzones.append(_mine_zones(lvl, areas, terr_share))
+        _mine_adjacency(T, W, H, adj)
     st = MacroStats(
         areas=sorted(areas),
         barrier_fracs=sorted(barrier_fracs),
@@ -181,10 +191,7 @@ def _water_mask(
 
 def carve_corridor(
     land: list[list[bool]],
-    a: Tile,
-    b: Tile,
-    W: int,
-    H: int,
+    span: tuple[Tile, Tile],
     rng: random.Random,
     half_w: int = 1,
     protect: set[Tile] | None = None,
@@ -195,6 +202,9 @@ def carve_corridor(
     boundary-texturing band on both sides, so without protection `_texture_boundaries`'s
     Gibbs resampling — drawing from a rock-heavy corpus conditional — can erode the whole
     tunnel back to rock, disconnecting caverns `_tunnel_mask` had genuinely joined."""
+    a, b = span
+    H = len(land)
+    W = len(land[0])
     x, y = float(a[0]), float(a[1])
     bx, by = b
     for _ in range(8 * (abs(a[0] - bx) + abs(a[1] - by)) + 40):
@@ -229,6 +239,22 @@ def _tunnel_mask(
     undergrounds: tunnels leading to larger patches, not islands."""
     budget = max(1, round(land_frac * W * H))
     n_caverns = max(3, min(8, budget // 90))
+    centers = _cavern_centers(W, H, n_caverns, rng)
+
+    noise = value_noise(W, H, 5, rng)
+    land = [[False] * W for _ in range(H)]
+    protect: set[Tile] = set()
+    avg_r = max(3.0, math.pow(budget / max(n_caverns, 1) / math.pi, 0.5) * 0.7)
+    for cx, cy in centers:
+        r = avg_r * rng.uniform(0.7, 1.4)
+        _paint_cavern(land, noise, (cx, cy), r)
+
+    for i, j in _cavern_edges(centers, n_caverns, rng):
+        carve_corridor(land, (centers[i], centers[j]), rng, protect=protect)
+    return land, protect
+
+
+def _cavern_centers(W: int, H: int, n_caverns: int, rng: random.Random) -> list[Tile]:
     margin = 6
     centers: list[Tile] = []
     tries = 0
@@ -240,20 +266,22 @@ def _tunnel_mask(
             centers.append(p)
     while len(centers) < n_caverns:
         centers.append((rng.randint(margin, W - margin - 1), rng.randint(margin, H - margin - 1)))
+    return centers
 
-    noise = value_noise(W, H, 5, rng)
-    land = [[False] * W for _ in range(H)]
-    protect: set[Tile] = set()
-    avg_r = max(3.0, math.pow(budget / max(n_caverns, 1) / math.pi, 0.5) * 0.7)
-    for cx, cy in centers:
-        r = avg_r * rng.uniform(0.7, 1.4)
-        for y in range(max(0, cy - int(r) - 2), min(H, cy + int(r) + 3)):
-            for x in range(max(0, cx - int(r) - 2), min(W, cx + int(r) + 3)):
-                d = math.pow((x - cx) ** 2 + (y - cy) ** 2, 0.5)
-                wobble = r * (0.75 + 0.35 * noise[y][x])
-                if d <= wobble:
-                    land[y][x] = True
 
+def _paint_cavern(land: list[list[bool]], noise: list[list[float]], center: Tile, r: float) -> None:
+    H = len(land)
+    W = len(land[0])
+    cx, cy = center
+    for y in range(max(0, cy - int(r) - 2), min(H, cy + int(r) + 3)):
+        for x in range(max(0, cx - int(r) - 2), min(W, cx + int(r) + 3)):
+            d = math.pow((x - cx) ** 2 + (y - cy) ** 2, 0.5)
+            wobble = r * (0.75 + 0.35 * noise[y][x])
+            if d <= wobble:
+                land[y][x] = True
+
+
+def _cavern_edges(centers: list[Tile], n_caverns: int, rng: random.Random) -> list[tuple[int, int]]:
     # MST over cavern centers (nearest-unconnected-first) + a few extra loop edges
     connected = {0}
     remaining = set(range(1, len(centers)))
@@ -273,9 +301,7 @@ def _tunnel_mask(
         i, j = rng.sample(range(len(centers)), 2)
         if (i, j) not in edges and (j, i) not in edges:
             edges.append((i, j))
-    for i, j in edges:
-        carve_corridor(land, centers[i], centers[j], W, H, rng, protect=protect)
-    return land, protect
+    return edges
 
 
 def _sample_areas(st: MacroStats, budget: int, rng: random.Random) -> list[int]:
@@ -289,6 +315,28 @@ def _sample_areas(st: MacroStats, budget: int, rng: random.Random) -> list[int]:
     return tgt
 
 
+def _pair_probs(st: MacroStats, lands: list[int]) -> dict[Tile, float]:
+    adj_tot = sum(st.adj.values()) or 1
+    padj: dict[Tile, float] = {}
+    for a in lands:
+        for b in lands:
+            key = f"{min(a, b)}|{max(a, b)}"
+            padj[(a, b)] = (st.adj.get(key, 0) + 0.5) / adj_tot
+    return padj
+
+
+def _knn3(seeds: list[Tile]) -> list[list[int]]:
+    n = len(seeds)
+    knn: list[list[int]] = []
+    for i in range(n):
+        d = sorted(
+            range(n),
+            key=lambda j: (seeds[i][0] - seeds[j][0]) ** 2 + (seeds[i][1] - seeds[j][1]) ** 2,
+        )
+        knn.append([j for j in d[1:4]])
+    return knn
+
+
 def _assign_terrains(
     seeds: list[Tile], st: MacroStats, rng: random.Random, iters: int = 400
 ) -> list[int]:
@@ -299,20 +347,8 @@ def _assign_terrains(
     share = st.terr_share
     lands = sorted(share)
     wsum = sum(share.values())
-    adj_tot = sum(st.adj.values()) or 1
-    padj: dict[Tile, float] = {}
-    for a in lands:
-        for b in lands:
-            key = f"{min(a, b)}|{max(a, b)}"
-            padj[(a, b)] = (st.adj.get(key, 0) + 0.5) / adj_tot
-
-    knn: list[list[int]] = []
-    for i in range(n):
-        d = sorted(
-            range(n),
-            key=lambda j: (seeds[i][0] - seeds[j][0]) ** 2 + (seeds[i][1] - seeds[j][1]) ** 2,
-        )
-        knn.append([j for j in d[1:4]])
+    padj = _pair_probs(st, lands)
+    knn = _knn3(seeds)
 
     def draw() -> int:
         r = rng.random() * wsum
@@ -345,8 +381,6 @@ def _assign_terrains(
 
 
 def _grow(
-    W: int,
-    H: int,
     land: list[list[bool]],
     seeds: list[Tile],
     caps: list[int],
@@ -354,6 +388,8 @@ def _grow(
 ) -> list[list[int]]:
     """Multi-source Dijkstra with jittered costs; a zone stops claiming at its capacity.
     Leftover pockets (all reachable zones full) are attached to the nearest assigned zone."""
+    H = len(land)
+    W = len(land[0])
     noise = value_noise(W, H, 5, rng)
     cost = [[1.0 + JITTER * (noise[y][x] + 1.0) / 2.0 for x in range(W)] for y in range(H)]
     label = [[-1] * W for _ in range(H)]
@@ -393,6 +429,25 @@ def _grow(
 # ---------------------------------------------------------------------------
 
 
+def _border_band(grid: list[list[int]]) -> list[list[bool]]:
+    H = len(grid)
+    W = len(grid[0])
+    band = [[False] * W for _ in range(H)]
+    for y in range(H):
+        for x in range(W):
+            t = grid[y][x]
+            if any(
+                0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] != t
+                for dx in (-1, 0, 1)
+                for dy in (-1, 0, 1)
+            ):
+                for dy in range(-BAND, BAND + 1):
+                    for dx in range(-BAND, BAND + 1):
+                        if 0 <= x + dx < W and 0 <= y + dy < H:
+                            band[y + dy][x + dx] = True
+    return band
+
+
 def _texture_boundaries(
     grid: list[list[int]],
     rng: random.Random,
@@ -412,19 +467,7 @@ def _texture_boundaries(
     W = len(grid[0])
     M4 = MT.learn4(level)
     M = MT.learn(level)
-    band = [[False] * W for _ in range(H)]
-    for y in range(H):
-        for x in range(W):
-            t = grid[y][x]
-            if any(
-                0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] != t
-                for dx in (-1, 0, 1)
-                for dy in (-1, 0, 1)
-            ):
-                for dy in range(-BAND, BAND + 1):
-                    for dx in range(-BAND, BAND + 1):
-                        if 0 <= x + dx < W and 0 <= y + dy < H:
-                            band[y + dy][x + dx] = True
+    band = _border_band(grid)
     tiles = [
         (x, y)
         for y in range(1, H - 1)
@@ -453,14 +496,36 @@ def _texture_boundaries(
 # ---------------------------------------------------------------------------
 
 
+def _spread_seeds(land: list[list[bool]], budget: int, n: int, rng: random.Random) -> list[Tile]:
+    H = len(land)
+    W = len(land[0])
+    land_tiles = [(x, y) for y in range(H) for x in range(W) if land[y][x]]
+    seeds: list[Tile] = []
+    tries = 0
+    mind2 = (0.7 * math.pow(budget / max(n, 1), 0.5)) ** 2
+    while len(seeds) < n and tries < n * 200:
+        p = land_tiles[rng.randrange(len(land_tiles))]
+        tries += 1
+        if all((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 >= mind2 for q in seeds):
+            seeds.append(p)
+    while len(seeds) < n:
+        seeds.append(land_tiles[rng.randrange(len(land_tiles))])
+    return seeds
+
+
+@dataclass(frozen=True, slots=True)
+class MacroOptions:
+    water: float | None = None
+    texture: bool = True
+    water_mode: str = "normal"
+    level: int = 0
+
+
 def generate(
     W: int,
     H: int,
     seed: int = 3,
-    water: float | None = None,
-    texture: bool = True,
-    water_mode: str = "normal",
-    level: int = 0,
+    options: MacroOptions | None = None,
     protect_out: set[Tile] | None = None,
 ) -> list[list[int]]:
     """Macro terrain grid (H rows x W cols of terrain ids) for terrain level `level` (0 =
@@ -476,6 +541,10 @@ def generate(
     reassign to a barrier code, or a thin corridor can be eroded back into rock after
     `generate()` already built it connected.
     Deterministic in `seed`."""
+    opts = MacroOptions() if options is None else options
+    water = opts.water
+    water_mode = opts.water_mode
+    level = opts.level
     rng = random.Random(seed)
     st = mine_macro(level=level)
     barrier = WATER if level == 0 else ROCK
@@ -497,22 +566,11 @@ def generate(
     budget = sum(1 for row in land for v in row if v)
 
     caps = _sample_areas(st, budget, rng)
-    n = len(caps)
-    land_tiles = [(x, y) for y in range(H) for x in range(W) if land[y][x]]
-    seeds: list[Tile] = []
-    tries = 0
-    mind2 = (0.7 * math.pow(budget / max(n, 1), 0.5)) ** 2
-    while len(seeds) < n and tries < n * 200:
-        p = land_tiles[rng.randrange(len(land_tiles))]
-        tries += 1
-        if all((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 >= mind2 for q in seeds):
-            seeds.append(p)
-    while len(seeds) < n:
-        seeds.append(land_tiles[rng.randrange(len(land_tiles))])
+    seeds = _spread_seeds(land, budget, len(caps), rng)
     caps.sort(reverse=True)  # biggest zones get the best-spread seeds
     terrs = _assign_terrains(seeds, st, rng)
 
-    label = _grow(W, H, land, seeds, caps, rng)
+    label = _grow(land, seeds, caps, rng)
     grid = [
         [
             barrier if not land[y][x] else terrs[label[y][x]] if label[y][x] >= 0 else terrs[0]
@@ -520,7 +578,7 @@ def generate(
         ]
         for y in range(H)
     ]
-    if texture:
+    if opts.texture:
         _ = _texture_boundaries(grid, rng, level=level, protect=protect)
     if protect_out is not None:
         protect_out |= protect
@@ -562,7 +620,12 @@ def main() -> None:
     head = f"macro stats (level {args.level}): {len(st.areas)} corpus zones"
     tail = f"median area {median_area}, median {barrier_name} frac {median_frac:.2f}"
     print(f"{head}, {tail}")
-    grid = generate(args.size, args.size, seed=args.seed, water=args.water, level=args.level)
+    grid = generate(
+        args.size,
+        args.size,
+        seed=args.seed,
+        options=MacroOptions(water=args.water, level=args.level),
+    )
     print("generated:", report(grid))
     img = Image.new("RGB", (args.size * _TILE, args.size * _TILE))
     for y, row in enumerate(grid):

@@ -104,6 +104,31 @@ def _start_seed(
     return _approaches(start, blocked, W, H), start
 
 
+def _gate_groups(
+    fm: OBJ.FaithfulMap,
+) -> collections.defaultdict[tuple[str, int | str | None, int], list[PlacedObject]]:
+    by_key: collections.defaultdict[tuple[str, int | str | None, int], list[PlacedObject]] = (
+        collections.defaultdict(list)
+    )
+    for o in fm.objects:
+        if o.type == "subterraneanGate":
+            by_key[("sg", o.x, o.y)].append(o)
+        elif o.type == "monolithTwoWay":
+            by_key[("m2", o.subtype, 0)].append(o)
+    return by_key
+
+
+def _end_approaches(ends: list[PlacedObject], grids: Mapping[int, Grid]) -> list[set[LevelTile]]:
+    appr: list[set[LevelTile]] = []
+    for o in ends:
+        level = o.level
+        if level not in grids:
+            continue
+        blocked, W, H = grids[level]
+        appr.append({(x, y, level) for x, y in _approaches(o, blocked, W, H)})
+    return appr
+
+
 def _gate_links(
     fm: OBJ.FaithfulMap, grids: Mapping[int, Grid]
 ) -> collections.defaultdict[LevelTile, set[LevelTile]]:
@@ -113,23 +138,10 @@ def _gate_links(
     Stepping onto any end
     teleports the hero to the others. Returns trigger map: reaching any (x,y,l) approach
     tile of an end enqueues every partner end's approach tiles (x,y,l')."""
-    by_key: collections.defaultdict[tuple[str, int | str | None, int], list[PlacedObject]] = (
-        collections.defaultdict(list)
-    )
-    for o in fm.objects:
-        if o.type == "subterraneanGate":
-            by_key[("sg", o.x, o.y)].append(o)
-        elif o.type == "monolithTwoWay":
-            by_key[("m2", o.subtype, 0)].append(o)
+    by_key = _gate_groups(fm)
     trigger: collections.defaultdict[LevelTile, set[LevelTile]] = collections.defaultdict(set)
     for ends in by_key.values():
-        appr: list[set[LevelTile]] = []
-        for o in ends:
-            level = o.level
-            if level not in grids:
-                continue
-            blocked, W, H = grids[level]
-            appr.append({(x, y, level) for x, y in _approaches(o, blocked, W, H)})
+        appr = _end_approaches(ends, grids)
         for i in range(len(appr)):
             for j in range(len(appr)):
                 if i != j:
@@ -138,16 +150,11 @@ def _gate_links(
     return trigger
 
 
-def traverse(fm: OBJ.FaithfulMap, em: ZoneMap | None = None) -> ReachabilityReport:
-    """Return a reachability report for the realized (possibly two-level) map.
-    BFS walks passable land from the start town, descending/ascending through
-    subterranean-gate pairs, so cavern objects are reachable only if the surface
-    gate is reachable and the cavern is connected to it."""
-    grids = {level: passable_grid(fm, level) for level in range(len(fm.terrain))}
-    blocked, W, H = grids[0]
-    seed, start = _start_seed(fm, blocked, W, H)
-    trigger = _gate_links(fm, grids)
-
+def _walk(
+    seed: set[Tile],
+    trigger: Mapping[LevelTile, set[LevelTile]],
+    grids: Mapping[int, Grid],
+) -> set[LevelTile]:
     reached: set[LevelTile] = {(x, y, 0) for x, y in seed}
     q = collections.deque(reached)
     while q:
@@ -162,26 +169,37 @@ def traverse(fm: OBJ.FaithfulMap, em: ZoneMap | None = None) -> ReachabilityRepo
             if 0 <= nx < lw and 0 <= ny < lh and not bl[ny][nx] and (nx, ny, level) not in reached:
                 reached.add((nx, ny, level))
                 q.append((nx, ny, level))
+    return reached
 
-    def obj_reachable(o: PlacedObject) -> bool:
-        level = o.level
-        for ax, ay in _a_cells(o):
-            if (ax, ay, level) in reached:
+
+def _obj_reachable(o: PlacedObject, reached: set[LevelTile]) -> bool:
+    level = o.level
+    for ax, ay in _a_cells(o):
+        if (ax, ay, level) in reached:
+            return True
+        for dx, dy in NB4:
+            if (ax + dx, ay + dy, level) in reached:
                 return True
-            for dx, dy in NB4:
-                if (ax + dx, ay + dy, level) in reached:
-                    return True
-        return False
+    return False
 
+
+def _unreachable_towns_and_mines(
+    fm: OBJ.FaithfulMap, reached: set[LevelTile]
+) -> tuple[list[LevelTile], list[LevelTile]]:
     bad_towns: list[LevelTile] = []
     bad_mines: list[LevelTile] = []
     for o in fm.objects:
         pp = OBJ.type_to_purpose(o.type)
-        if pp == "TOWN" and not obj_reachable(o):
+        if pp == "TOWN" and not _obj_reachable(o, reached):
             bad_towns.append((o.x, o.y, o.level))
-        elif pp == "MINE" and not obj_reachable(o):
+        elif pp == "MINE" and not _obj_reachable(o, reached):
             bad_mines.append((o.x, o.y, o.level))
+    return bad_towns, bad_mines
 
+
+def _zone_coverage(
+    em: ZoneMap | None, reached: set[LevelTile]
+) -> tuple[int | None, int | None, list[int]]:
     zones_reached: int | None = None
     zones_total: int | None = None
     bad_zones: list[int] = []
@@ -191,6 +209,22 @@ def traverse(fm: OBJ.FaithfulMap, em: ZoneMap | None = None) -> ReachabilityRepo
         seen_z = {zone[y][x] for (x, y, level) in reached if level == 0}
         zones_reached, zones_total = len(seen_z), total
         bad_zones = sorted(set(range(total)) - seen_z)
+    return zones_reached, zones_total, bad_zones
+
+
+def traverse(fm: OBJ.FaithfulMap, em: ZoneMap | None = None) -> ReachabilityReport:
+    """Return a reachability report for the realized (possibly two-level) map.
+    BFS walks passable land from the start town, descending/ascending through
+    subterranean-gate pairs, so cavern objects are reachable only if the surface
+    gate is reachable and the cavern is connected to it."""
+    grids = {level: passable_grid(fm, level) for level in range(len(fm.terrain))}
+    blocked, W, H = grids[0]
+    seed, start = _start_seed(fm, blocked, W, H)
+    trigger = _gate_links(fm, grids)
+
+    reached = _walk(seed, trigger, grids)
+    bad_towns, bad_mines = _unreachable_towns_and_mines(fm, reached)
+    zones_reached, zones_total, bad_zones = _zone_coverage(em, reached)
 
     n_passable = sum(not blocked[y][x] for y in range(H) for x in range(W))
     cavern_reached = sum(1 for (_x, _y, level) in reached if level == 1) if len(grids) > 1 else None

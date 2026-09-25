@@ -3,7 +3,7 @@
 from vcmi_mapgen.kit.topology import plan_entrances
 from vcmi_mapgen.models import Tile, Zone
 from vcmi_mapgen.steps.border import border_seal as BS
-from vcmi_mapgen.steps.vegetation.border_plan import seal_borders
+from vcmi_mapgen.steps.vegetation.border_plan import BorderPlan, seal_borders
 
 S, GRASS = 20, 2
 
@@ -44,13 +44,14 @@ def test_border_plan_closes_or_guards() -> None:
     web_pair = {(9, 2), (10, 2)}
     avoid = bands | web_pair
 
-    plan_objs, sealed = seal_borders(ts1 | ts2, zones, [], bands, avoid, frozenset[Tile](), 3, 0)
-    again = seal_borders(ts1 | ts2, zones, [], bands, avoid, frozenset[Tile](), 3, 0)
+    border_plan = BorderPlan(ts1 | ts2, zones, bands, avoid, frozenset[Tile]())
+    plan_objs, sealed = seal_borders(border_plan, [], 3, 0)
+    again = seal_borders(border_plan, [], 3, 0)
     assert again == (plan_objs, sealed), "deterministic"
     assert sealed and not (sealed & avoid), "seals never land on protected tiles"
 
     guards, guard_tiles, n_open = BS.guard_crossings(
-        S, S, grid, zones, bands, plan_objs, set[Tile](), 3, 0
+        BS.LevelGrid(S, S, grid, zones), BS.CrossingRules(bands, set[Tile]()), plan_objs, 3, 0
     )
     assert guard_tiles & web_pair, "the unsealable web crossing gets a back-path guard"
     assert n_open == 0

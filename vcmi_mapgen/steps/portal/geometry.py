@@ -5,16 +5,42 @@ import random
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
+from typing import final
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
-from vcmi_mapgen.steps.gate.gates import GAP, Fit, fits, rnd_monster
-from vcmi_mapgen.steps.pickup.scatter import place_one
+from vcmi_mapgen.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
+from vcmi_mapgen.steps.pickup.scatter import PlaceSpec, PlaceTarget, place_one
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
+
+
+def _bfs8(open_set: Container[Tile], root: Tile) -> set[Tile]:
+    seen = {root}
+    queue = collections.deque([root])
+    while queue:
+        x, y = queue.popleft()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                n = (x + dx, y + dy)
+                if n in open_set and n not in seen:
+                    seen.add(n)
+                    queue.append(n)
+    return seen
+
+
+def _walk_and_hard_cells(objs: Sequence[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
+    walk: set[Tile] = set()
+    hard: set[Tile] = set()
+    for o in objs:
+        soft = o.purpose in ("RESOURCE_PILE", "REWARD_PICKUP", "GUARD")
+        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
+            if blk and not soft:
+                (hard if o.purpose else walk).add((cx, cy))
+    return walk, hard
 
 
 def unreachable_targets(
@@ -29,43 +55,32 @@ def unreachable_targets(
     and every other object blocks. A target that no land path could reach even through
     vegetation sits on another island and is left out, because a boat or portal serves it."""
     land = {(x, y) for y in range(size) for x in range(size) if grid[y][x] < 8}
-    walk: set[Tile] = set()
-    hard: set[Tile] = set()
-    for o in objs:
-        soft = o.purpose in ("RESOURCE_PILE", "REWARD_PICKUP", "GUARD")
-        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
-            if blk and not soft:
-                (hard if o.purpose else walk).add((cx, cy))
+    walk, hard = _walk_and_hard_cells(objs)
     open_set = land - walk - hard
     targets_in = [t for t in targets if t in open_set]
     if not targets_in:
         return []
     root = targets_in[0]
-    seen = {root}
-    queue = collections.deque([root])
-    while queue:
-        x, y = queue.popleft()
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                n = (x + dx, y + dy)
-                if n in open_set and n not in seen:
-                    seen.add(n)
-                    queue.append(n)
+    seen = _bfs8(open_set, root)
     bad = [t for t in targets_in if t not in seen]
     if not bad:
         return []
     through_veg = land - hard
-    reach = {root}
-    queue = collections.deque([root])
-    while queue:
-        x, y = queue.popleft()
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                n = (x + dx, y + dy)
-                if n in through_veg and n not in reach:
-                    reach.add(n)
-                    queue.append(n)
+    reach = _bfs8(through_veg, root)
     return [t for t in bad if t in reach]
+
+
+def _entry_reach(passable: Container[Tile], entry: Tile) -> set[Tile]:
+    reach: set[Tile] = {entry} if entry in passable else set()
+    q = [entry]
+    while q:
+        x, y = q.pop()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            n = (x + dx, y + dy)
+            if n in passable and n not in reach:
+                reach.add(n)
+                q.append(n)
+    return reach
 
 
 def place_reward_zone(
@@ -93,16 +108,7 @@ def place_reward_zone(
     area = len(ts)
 
     # reach: what the portal's entry tile actually opens up (4-connected within passable)
-    passable = zr.passable
-    reach: set[Tile] = {entry} if entry in passable else set()
-    q = [entry]
-    while q:
-        x, y = q.pop()
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            n = (x + dx, y + dy)
-            if n in passable and n not in reach:
-                reach.add(n)
-                q.append(n)
+    reach = _entry_reach(zr.passable, entry)
     if not reach:
         return []
 
@@ -117,18 +123,10 @@ def place_reward_zone(
         if n_res <= 0:
             break
         if place_one(
-            objs,
-            used,
-            reach,
-            rng,
-            st,
-            "RESOURCE_PILE",
-            pool_res,
+            PlaceTarget(objs, used, reach, rng, st, bounds=bounds, cover=cover),
+            PlaceSpec("RESOURCE_PILE", pool_res, cache=True),
             t[0],
             t[1],
-            cache=True,
-            bounds=bounds,
-            cover=cover,
         ):
             n_res -= 1
             val += 2
@@ -142,18 +140,10 @@ def place_reward_zone(
         gident = rnd_monster(lvl)
         for t in sorted(reach - used, key=partial(_centre_key, cx=cx, cy=cy)):
             if place_one(
-                objs,
-                used,
-                reach,
-                rng,
-                st,
-                "GUARD",
-                None,
+                PlaceTarget(objs, used, reach, rng, st, bounds=bounds, cover=cover),
+                PlaceSpec("GUARD", None, ident=gident),
                 t[0],
                 t[1],
-                ident=gident,
-                bounds=bounds,
-                cover=cover,
             ):
                 break
     return objs
@@ -185,38 +175,49 @@ def _outskirts_key(t: Tile, towns: Sequence[Tile]) -> tuple[float, Tile]:
     return (-min((t[0] - tx) ** 2 + (t[1] - ty) ** 2 for tx, ty in towns), t)
 
 
-def _guard_spot(
-    appr: Tile,
-    own_cells: Container[Tile],
-    gident: Identity,
-    grid: Sequence[Sequence[int]],
-    st: _LevelState,
-    W: int,
-    H: int,
-) -> Tile | None:
-    """First legal tile Chebyshev-1 from the near end's visitable cell (a monster's
-    zone of control covers all 8 neighbours, so stepping INTO the portal forces the
-    fight); None when the surroundings can't seat one."""
-    for dx, dy in ((0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1)):
-        g = (appr[0] + dx, appr[1] + dy)
-        if (
-            not (0 <= g[0] < W and 0 <= g[1] < H)
-            or grid[g[1]][g[0]] >= 8
-            or g in st.occupied
-            or g in own_cells
-            or g in st.reserved
-        ):
-            continue
-        if all(
-            0 <= gx < W
-            and 0 <= gy < H
-            and grid[gy][gx] < 8
-            and (gx, gy) not in st.occupied
-            and (gx, gy) not in own_cells
-            for gx, gy in OR.mask_interactive_cells(gident.mask, g[0], g[1])
-        ):
-            return g
-    return None
+@dataclass(frozen=True, slots=True)
+class PortalWorld:
+    size: int
+    grids: Mapping[int, Sequence[Sequence[int]]]
+    zones_by_level: Mapping[int, Mapping[int, Zone]]
+    objs_by_level: Mapping[int, list[PlacedObject]]
+    targets_by_level: Mapping[int, list[Tile]]
+    zone_records_by_level: Mapping[int, Sequence[ZoneRecord]]
+
+
+@dataclass(frozen=True, slots=True)
+class _Enclave:
+    lvl: int
+    zid: int
+    terrain: str
+    ts: set[Tile]
+    cx: float
+    cy: float
+
+
+def _portal_end(lvl: int, ident: Identity, node: Tile) -> PlacedObject:
+    return PlacedObject.at(ident, node, level=lvl, purpose="TRANSPORT")
+
+
+def _level_state(objs: Sequence[PlacedObject], targets: Sequence[Tile]) -> _LevelState:
+    game_cells: set[Tile] = set()
+    veg_blk: set[Tile] = set()
+    for o in objs:
+        cells = list(OR.mask_cells(o.mask, o.x, o.y))
+        if not o.purpose:
+            veg_blk.update((cx, cy) for cx, cy, b in cells if b)
+        else:
+            game_cells.update((cx, cy) for cx, cy, _b in cells)
+    near = set(veg_blk)
+    for cx, cy in game_cells:
+        for gx in range(-GAP, GAP + 1):
+            for gy in range(-GAP, GAP + 1):
+                near.add((cx + gx, cy + gy))
+    return _LevelState(
+        occupied=game_cells | veg_blk,
+        near=near,
+        reserved=set(targets),
+    )
 
 
 def _terrain_reach(
@@ -256,12 +257,7 @@ def _terrain_reach(
 
 
 def rescue_unreachable_zones(
-    size: int,
-    grids: Mapping[int, Sequence[Sequence[int]]],
-    zones_by_level: Mapping[int, Mapping[int, Zone]],
-    objs_by_level: Mapping[int, list[PlacedObject]],
-    targets_by_level: Mapping[int, list[Tile]],
-    zone_records_by_level: Mapping[int, Sequence[ZoneRecord]],
+    world: PortalWorld,
     start: tuple[int, Tile],
     gate_xy: Container[Tile],
     seed: int,
@@ -281,189 +277,261 @@ def rescue_unreachable_zones(
     with decoration), and `traverse`'s monolith-network links count it reachable. Mutates
     `objs_by_level`/`targets_by_level`/zone records in place; returns the pair count."""
 
-    reached = _terrain_reach(grids, gate_xy, start)
-    W = H = size
+    reached = _terrain_reach(world.grids, gate_xy, start)
+    cands = _candidates(world, reached)
+    if not cands:
+        return 0
+    return _PortalRescue(world, reached, seed).run(cands)
 
+
+def _is_coastal(grid: Sequence[Sequence[int]], ts: set[Tile], size: int) -> bool:
+    W = H = size
+    return any(
+        0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] == 8
+        for (x, y) in ts
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+    )
+
+
+def _candidates(
+    world: PortalWorld, reached: Container[tuple[int, int, int]]
+) -> list[tuple[int, int, int, str]]:
     cands: list[tuple[int, int, int, str]] = []
-    for lvl in sorted(zones_by_level):
-        grid = grids[lvl]
-        for zid, z in sorted(zones_by_level[lvl].items()):
+    for lvl in sorted(world.zones_by_level):
+        grid = world.grids[lvl]
+        for zid, z in sorted(world.zones_by_level[lvl].items()):
             terrain = TNAME.get(z.terrain_type)
             if terrain is None or terrain in ("water", "rock") or z.area < PORTAL_MIN_AREA:
                 continue
             ts = set(z.tiles_set)
             if any((x, y, lvl) in reached for (x, y) in ts):
                 continue
-            if lvl == 0 and any(
-                0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] == 8
-                for (x, y) in ts
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
-            ):
+            if lvl == 0 and _is_coastal(grid, ts, world.size):
                 continue  # coastal: boat-reachable by design
             cands.append((-z.area, lvl, zid, terrain))
     cands.sort()
-    if not cands:
-        return 0
+    return cands
 
-    # per-level placement state, built once from everything already on the map: gameplay
-    # footprints (whole cells, GAP-inflated exactly like place_zone/place_gates) plus
-    # vegetation blocking cells (a teleporter must not sit buried in a tree), plus the
-    # level's named targets as reserved doorways.
-    state: dict[int, _LevelState] = {}
-    for lvl, objs in objs_by_level.items():
-        game_cells: set[Tile] = set()
-        veg_blk: set[Tile] = set()
-        for o in objs:
-            cells = list(OR.mask_cells(o.mask, o.x, o.y))
-            if not o.purpose:
-                veg_blk.update((cx, cy) for cx, cy, b in cells if b)
-            else:
-                game_cells.update((cx, cy) for cx, cy, _b in cells)
-        near = set(veg_blk)
-        for cx, cy in game_cells:
-            for gx in range(-GAP, GAP + 1):
-                for gy in range(-GAP, GAP + 1):
-                    near.add((cx + gx, cy + gy))
-        state[lvl] = _LevelState(
-            occupied=game_cells | veg_blk,
-            near=near,
-            reserved=set(targets_by_level[lvl]),
-        )
 
-    zr_by = {
-        lvl: {zr.zid: zr for zr in (zone_records_by_level.get(lvl) or ())} for lvl in zones_by_level
-    }
-    towns = {
-        lvl: [(o.x, o.y) for o in objs if o.purpose == "TOWN"]
-        for lvl, objs in objs_by_level.items()
-    }
+@final
+class _PortalRescue:
+    def __init__(
+        self, world: PortalWorld, reached: Container[tuple[int, int, int]], seed: int
+    ) -> None:
+        self.world = world
+        self.reached = reached
+        self.seed = seed
+        # per-level placement state, built once from everything already on the map: gameplay
+        # footprints (whole cells, GAP-inflated exactly like place_zone/place_gates) plus
+        # vegetation blocking cells (a teleporter must not sit buried in a tree), plus the
+        # level's named targets as reserved doorways.
+        self.state: dict[int, _LevelState] = {}
+        for lvl, objs in world.objs_by_level.items():
+            self.state[lvl] = _level_state(objs, world.targets_by_level[lvl])
 
-    cover_by = {lvl: CoverIndex(objs) for lvl, objs in objs_by_level.items()}
+        self.zr_by: dict[int, dict[int, ZoneRecord]] = {
+            lvl: {zr.zid: zr for zr in (world.zone_records_by_level.get(lvl) or ())}
+            for lvl in world.zones_by_level
+        }
+        self.towns: dict[int, list[Tile]] = {
+            lvl: [(o.x, o.y) for o in objs if o.purpose == "TOWN"]
+            for lvl, objs in world.objs_by_level.items()
+        }
 
-    def portal_end(lvl: int, ident: Identity, node: Tile) -> PlacedObject:
-        return PlacedObject.at(ident, node[0], node[1], level=lvl, purpose="TRANSPORT")
+        self.cover_by: dict[int, CoverIndex] = {
+            lvl: CoverIndex(objs) for lvl, objs in world.objs_by_level.items()
+        }
 
-    def emit_end(lvl: int, ident: Identity, node: Tile, fit: Fit) -> Tile:
+    def _emit_end(self, lvl: int, ident: Identity, node: Tile, fit: Fit) -> Tile:
         allc, _blk, approach = fit
-        end = portal_end(lvl, ident, node)
-        cover_by[lvl].add(end)
-        objs_by_level[lvl].append(end)
-        st = state[lvl]
+        end = _portal_end(lvl, ident, node)
+        self.cover_by[lvl].add(end)
+        self.world.objs_by_level[lvl].append(end)
+        st = self.state[lvl]
         st.occupied.update(allc)
         for cx, cy in allc:
             for gx in range(-GAP, GAP + 1):
                 for gy in range(-GAP, GAP + 1):
                     st.near.add((cx + gx, cy + gy))
         st.reserved.add(approach)
-        targets_by_level[lvl].append(approach)
+        self.world.targets_by_level[lvl].append(approach)
         return approach
 
-    n_placed = 0
-    rescued: list[str] = []
-    for _na, lvl, zid, terrain in cands:
-        if n_placed >= MAX_PORTALS:
-            print(
-                f"  portals: cap {MAX_PORTALS} reached, "
-                + f"{len(cands) - n_placed} unreachable zone(s) left decoration-filled"
-            )
-            break
-        z = zones_by_level[lvl][zid]
-        ts = set(z.tiles_set)
-        st = state[lvl]
-        ident = ON.identity_of(PORTAL_ANIMS[n_placed % len(PORTAL_ANIMS)])
-        cx, cy = z.centroid
+    def _guard_spot(
+        self, lvl: int, appr: Tile, own_cells: Container[Tile], gident: Identity
+    ) -> Tile | None:
+        """First legal tile Chebyshev-1 from the near end's visitable cell (a monster's
+        zone of control covers all 8 neighbours, so stepping INTO the portal forces the
+        fight); None when the surroundings can't seat one."""
+        grid = self.world.grids[lvl]
+        st = self.state[lvl]
+        W = H = self.world.size
+        for dx, dy in ((0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1)):
+            g = (appr[0] + dx, appr[1] + dy)
+            if (
+                not (0 <= g[0] < W and 0 <= g[1] < H)
+                or grid[g[1]][g[0]] >= 8
+                or g in st.occupied
+                or g in own_cells
+                or g in st.reserved
+            ):
+                continue
+            if all(
+                0 <= gx < W
+                and 0 <= gy < H
+                and grid[gy][gx] < 8
+                and (gx, gy) not in st.occupied
+                and (gx, gy) not in own_cells
+                for gx, gy in OR.mask_interactive_cells(gident.mask, g[0], g[1])
+            ):
+                return g
+        return None
 
-        far_fit: Fit | None = None
-        far_node: Tile | None = None
-        for t in sorted(ts, key=partial(_centre_key, cx=cx, cy=cy)):
-            fit = fits(ident, t[0], t[1], ts, st.occupied, st.near, st.reserved)
-            if fit and cover_by[lvl].accepts(portal_end(lvl, ident, t)):
-                far_fit, far_node = fit, t
+    def run(self, cands: Sequence[tuple[int, int, int, str]]) -> int:
+        n_placed = 0
+        rescued: list[str] = []
+        for _na, lvl, zid, terrain in cands:
+            if n_placed >= MAX_PORTALS:
+                print(
+                    f"  portals: cap {MAX_PORTALS} reached, "
+                    + f"{len(cands) - n_placed} unreachable zone(s) left decoration-filled"
+                )
                 break
-        if far_fit is None or far_node is None:
-            continue
+            label = self._rescue(lvl, zid, terrain, n_placed)
+            if label is None:
+                continue
+            n_placed += 1
+            rescued.append(label)
 
+        if n_placed:
+            print(
+                f"  special reward zones: {n_placed} rescued via guarded portals "
+                + f"[{', '.join(rescued)}]"
+            )
+        return n_placed
+
+    def _far_end(self, zone: _Enclave, ident: Identity) -> tuple[Tile, Fit] | None:
+        st = self.state[zone.lvl]
+        for t in sorted(zone.ts, key=partial(_centre_key, cx=zone.cx, cy=zone.cy)):
+            fit = fits(ident, t, zone.ts, Clearance(st.occupied, st.near, st.reserved))
+            if fit and self.cover_by[zone.lvl].accepts(_portal_end(zone.lvl, ident, t)):
+                return t, fit
+        return None
+
+    def _hosts(self, zone: _Enclave) -> list[tuple[float, int, int]]:
+        lvl = zone.lvl
         hosts: list[tuple[float, int, int]] = []
-        for hzid, hz in sorted(zones_by_level[lvl].items()):
-            if hzid == zid or TNAME.get(hz.terrain_type) in (None, "water", "rock"):
+        for hzid, hz in sorted(self.world.zones_by_level[lvl].items()):
+            if hzid == zone.zid or TNAME.get(hz.terrain_type) in (None, "water", "rock"):
                 continue
             if hz.area < MIN_AREA:
                 continue
-            if not any((x, y, lvl) in reached for (x, y) in hz.tiles_set):
+            if not any((x, y, lvl) in self.reached for (x, y) in hz.tiles_set):
                 continue
             hx, hy = hz.centroid
-            hosts.append(((hx - cx) ** 2 + (hy - cy) ** 2, -hz.area, hzid))
+            hosts.append(((hx - zone.cx) ** 2 + (hy - zone.cy) ** 2, -hz.area, hzid))
         hosts.sort()
+        return hosts
 
-        gident = rnd_monster(min(7, 4 + len(ts) // 60))
-        near_fit: Fit | None = None
-        near_node: Tile | None = None
-        gtile: Tile | None = None
+    def _near_in_host(
+        self, zone: _Enclave, hzid: int, ident: Identity, gident: Identity
+    ) -> tuple[Tile, Fit, Tile] | None:
+        lvl = zone.lvl
+        st = self.state[lvl]
+        hts = set(self.world.zones_by_level[lvl][hzid].tiles_set)
+        tl = self.towns[lvl]
+        if tl:  # outskirts: value sits outward
+            order = sorted(hts, key=partial(_outskirts_key, towns=tl))
+        else:
+            order = sorted(hts, key=partial(_centre_key, cx=zone.cx, cy=zone.cy))
+
+        for t in order:
+            fit = fits(ident, t, hts, Clearance(st.occupied, st.near, st.reserved))
+            if fit is None or not self.cover_by[lvl].accepts(_portal_end(lvl, ident, t)):
+                continue
+            g = self._guard_spot(lvl, fit[2], set(fit[0]), gident)
+            if g is None:  # a portal must be guardable — skip
+                continue  # candidates with no room for the guard
+            return t, fit, g
+        return None
+
+    def _near_end(
+        self,
+        zone: _Enclave,
+        ident: Identity,
+        gident: Identity,
+        hosts: Sequence[tuple[float, int, int]],
+    ) -> tuple[Tile, Fit, Tile] | None:
         for _d, _ha, hzid in hosts[:3]:
-            hts = set(zones_by_level[lvl][hzid].tiles_set)
-            tl = towns[lvl]
-            if tl:  # outskirts: value sits outward
-                order = sorted(hts, key=partial(_outskirts_key, towns=tl))
-            else:
-                order = sorted(hts, key=partial(_centre_key, cx=cx, cy=cy))
+            near = self._near_in_host(zone, hzid, ident, gident)
+            if near:
+                return near
+        return None
 
-            for t in order:
-                fit = fits(ident, t[0], t[1], hts, st.occupied, st.near, st.reserved)
-                if fit is None or not cover_by[lvl].accepts(portal_end(lvl, ident, t)):
-                    continue
-                g = _guard_spot(fit[2], set(fit[0]), gident, grids[lvl], st, W, H)
-                if g is None:  # a portal must be guardable — skip
-                    continue  # candidates with no room for the guard
-                near_fit, near_node, gtile = fit, t, g
-                break
-            if near_fit:
-                break
-        if near_fit is None or near_node is None or gtile is None:
-            continue
-
-        guard = PlacedObject.at(
-            gident,
-            gtile[0],
-            gtile[1],
-            level=lvl,
-            purpose="GUARD",
-            options={"character": "hostile"},
-        )
-        far_appr = emit_end(lvl, ident, far_node, far_fit)
-        _ = emit_end(lvl, ident, near_node, near_fit)
-        if not cover_by[lvl].try_add(guard):
-            continue
-        objs_by_level[lvl].append(guard)
-        st.occupied.add(gtile)
-
+    def _reward(self, zone: _Enclave, far_fit: Fit, far_appr: Tile) -> int:
+        lvl = zone.lvl
+        st = self.state[lvl]
+        W = H = self.world.size
         # the reward upgrade: the portal makes the zone special
-        zr = zr_by[lvl].get(zid)
+        zr = self.zr_by[lvl].get(zone.zid)
         if zr is None:  # zone skipped by the level pass (bare
-            free = set(ts) - st.occupied  # terrain): synth a minimal record
+            free = set(zone.ts) - st.occupied  # terrain): synth a minimal record
             zr = ZoneRecord(
-                zid=zid,
-                terrain=terrain,
-                ts=frozenset(ts),
+                zid=zone.zid,
+                terrain=zone.terrain,
+                ts=frozenset(zone.ts),
                 open_set=free,
                 passable=free,
                 reach=set(),
                 used=set(),
             )
         zr.used.update(far_fit[0])  # the monolith's own cells
-        robjs = place_reward_zone(zr, far_appr, seed=seed, bounds=(W, H), cover=cover_by[lvl])
+        robjs = place_reward_zone(
+            zr, far_appr, seed=self.seed, bounds=(W, H), cover=self.cover_by[lvl]
+        )
         for o in robjs:
             o.level = lvl
-        objs_by_level[lvl].extend(robjs)
-        targets_by_level[lvl].extend((o.x, o.y) for o in robjs)
+        self.world.objs_by_level[lvl].extend(robjs)
+        self.world.targets_by_level[lvl].extend((o.x, o.y) for o in robjs)
         st.occupied.update(
             (cx2, cy2) for o in robjs for cx2, cy2, _b in OR.mask_cells(o.mask, o.x, o.y)
         )
+        return len(robjs)
 
-        n_placed += 1
-        rescued.append(f"L{lvl}z{zid}({len(ts)}t,{len(robjs)}obj)")
+    def _rescue(self, lvl: int, zid: int, terrain: str, n_placed: int) -> str | None:
+        z = self.world.zones_by_level[lvl][zid]
+        ts = set(z.tiles_set)
+        st = self.state[lvl]
+        ident = ON.identity_of(PORTAL_ANIMS[n_placed % len(PORTAL_ANIMS)])
+        cx, cy = z.centroid
+        zone = _Enclave(lvl=lvl, zid=zid, terrain=terrain, ts=ts, cx=cx, cy=cy)
 
-    if n_placed:
-        print(
-            f"  special reward zones: {n_placed} rescued via guarded portals [{', '.join(rescued)}]"
+        far = self._far_end(zone, ident)
+        if far is None:
+            return None
+        far_node, far_fit = far
+
+        hosts = self._hosts(zone)
+
+        gident = rnd_monster(min(7, 4 + len(ts) // 60))
+        near = self._near_end(zone, ident, gident, hosts)
+        if near is None:
+            return None
+        near_node, near_fit, gtile = near
+
+        guard = PlacedObject.at(
+            gident,
+            gtile,
+            level=lvl,
+            purpose="GUARD",
+            options={"character": "hostile"},
         )
-    return n_placed
+        far_appr = self._emit_end(lvl, ident, far_node, far_fit)
+        _ = self._emit_end(lvl, ident, near_node, near_fit)
+        if not self.cover_by[lvl].try_add(guard):
+            return None
+        self.world.objs_by_level[lvl].append(guard)
+        st.occupied.add(gtile)
+
+        n_robjs = self._reward(zone, far_fit, far_appr)
+        return f"L{lvl}z{zid}({len(ts)}t,{n_robjs}obj)"

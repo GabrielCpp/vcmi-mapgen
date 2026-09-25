@@ -8,10 +8,16 @@ from typing import override
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.models import MapState, PlacedObject, Tile
 from vcmi_mapgen.ontology import Ontology
-from vcmi_mapgen.pipeline import LevelWorkspace, PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.pipeline import (
+    LevelWorkspace,
+    PipelineStep,
+    PlacementWorkspace,
+    ProviderRegistry,
+    ZoneWorkspace,
+)
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.steps.vegetation import sample as PP
-from vcmi_mapgen.steps.vegetation.border_plan import seal_borders
+from vcmi_mapgen.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.steps.vegetation.islands import open_islands
 from vcmi_mapgen.validate import TerrainGate
 
@@ -21,6 +27,49 @@ class VegetationResult:
     """Diagnostic log lines for the CLI to print."""
 
     log: list[str] = field(default_factory=list)
+
+
+def _mine_attract(
+    zw: ZoneWorkspace, ts: frozenset[Tile], forbid: frozenset[Tile]
+) -> frozenset[Tile]:
+    mine_cells = {
+        (mcx, mcy)
+        for o in zw.gobjs
+        if o.purpose == "MINE"
+        for mcx, mcy, mblk in OR.mask_cells(o.mask, o.x, o.y)
+        if mblk
+    }
+    return (
+        frozenset(
+            t
+            for t in ts
+            if t not in forbid
+            and 2 <= min(max(abs(t[0] - mx), abs(t[1] - my)) for mx, my in mine_cells) <= 3
+        )
+        if mine_cells
+        else frozenset[Tile]()
+    )
+
+
+def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> None:
+    land: set[Tile] = set()
+    anchors: set[Tile] = set(lvl_ws.seaport_blk | lvl_ws.seaport_appr)
+    for zw in lvl_ws.zones.values():
+        land |= zw.ts_full
+        anchors |= zw.prot | set(zw.approaches)
+    blocking = {
+        (cx, cy)
+        for o in map_state.objs
+        if o.level == level
+        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y)
+        if blk
+    }
+    islands = open_islands(land, blocking, anchors)
+    if islands:
+        first = min(min(c) for c in islands)
+        raise ValueError(
+            f"VegetationStep: L{level} has {len(islands)} walled-off pocket(s) at {first}"
+        )
 
 
 class VegetationStep(PipelineStep):
@@ -78,43 +127,23 @@ class VegetationStep(PipelineStep):
                 # Seaport footprint in this zone must be excluded from vegetation
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & ts_full
                 forbid = map_state.taken_tiles(level) | zone_seaport_cells
-                mine_cells = {
-                    (mcx, mcy)
-                    for o in zw.gobjs
-                    if o.purpose == "MINE"
-                    for mcx, mcy, mblk in OR.mask_cells(o.mask, o.x, o.y)
-                    if mblk
-                }
-                # annulus 2..3: greenery frames the mine without sprite canopies overhanging
-                # its visual
-                attract = (
-                    frozenset(
-                        t
-                        for t in ts
-                        if t not in forbid
-                        and 2
-                        <= min(max(abs(t[0] - mx), abs(t[1] - my)) for mx, my in mine_cells)
-                        <= 3
-                    )
-                    if mine_cells
-                    else frozenset[Tile]()
-                )
+                attract = _mine_attract(zw, ts, forbid)
                 # zone-isolation border belt: the whole 8-connected rim minus the planned
                 # entrance bands (those sit in `prot` as hard zeros) gets the +BORDER_W
                 # vegetation bias — both zones densify their own side, so the border reads
                 # as a ~2-thick ridge.
                 border = frozenset(zw.rim8 - zw.ent_bands - forbid)
                 zobjs, blocked, _ = PP.sample_zone(
-                    ts,
-                    zones,
-                    zid,
+                    PP.ZoneRef(ts, zones, zid),
                     model,
                     seed=self.seed,
-                    prot=zw.prot,
-                    forbid=forbid,
-                    attract=attract,
-                    border=border,
-                    impassable=zw.gblocked,
+                    opts=PP.SampleOptions(
+                        prot=zw.prot,
+                        forbid=forbid,
+                        attract=attract,
+                        border=border,
+                        impassable=zw.gblocked,
+                    ),
                 )
                 if level == 1:  # sample_zone always tags l=0; retag the underground level
                     for o in zobjs:
@@ -140,24 +169,7 @@ class VegetationStep(PipelineStep):
         for level, lvl_ws in self._workspace.levels.items():
             self._seal_level(ontology, map_state, level, lvl_ws, pre_taken[level])
         for level, lvl_ws in self._workspace.levels.items():
-            land: set[Tile] = set()
-            anchors: set[Tile] = set(lvl_ws.seaport_blk | lvl_ws.seaport_appr)
-            for zw in lvl_ws.zones.values():
-                land |= zw.ts_full
-                anchors |= zw.prot | set(zw.approaches)
-            blocking = {
-                (cx, cy)
-                for o in map_state.objs
-                if o.level == level
-                for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y)
-                if blk
-            }
-            islands = open_islands(land, blocking, anchors)
-            if islands:
-                first = min(min(c) for c in islands)
-                raise ValueError(
-                    f"VegetationStep: L{level} has {len(islands)} walled-off pocket(s) at {first}"
-                )
+            _check_islands(map_state, level, lvl_ws)
         self._ctx.provide(VegetationResult(log=self.log))
 
     def _seal_level(
@@ -182,7 +194,10 @@ class VegetationStep(PipelineStep):
             avoid |= set(zw.approaches)
         level_objs = [o for o in map_state.objs if o.level == level]
         sealers, sealed = seal_borders(
-            land, map_state.zones[level], level_objs, bands, avoid, web, self.seed, level
+            BorderPlan(land, map_state.zones[level], bands, avoid, web),
+            level_objs,
+            self.seed,
+            level,
         )
         if not sealers:
             return

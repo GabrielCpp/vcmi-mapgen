@@ -135,6 +135,38 @@ def zone_gate_bands(
     return out
 
 
+def _pair_fronts(zones: Mapping[int, Zone]) -> collections.defaultdict[tuple[int, int], set[Tile]]:
+    owner: dict[Tile, int] = {}
+    for zz, z in zones.items():
+        for t in z.tiles_set:
+            owner[t] = zz
+    fronts: collections.defaultdict[tuple[int, int], set[Tile]] = collections.defaultdict(
+        set
+    )  # ordered pair (a, b) -> a-side tiles
+    for t, zz in owner.items():
+        for dx, dy in NB4:
+            o = owner.get((t[0] + dx, t[1] + dy))
+            if o is not None and o != zz:
+                fronts[(zz, o)].add(t)
+    return fronts
+
+
+def _pair_reps(
+    Ta: list[Tile], Tb: list[Tile], long_front: int, max_entrances: int, min_sep: int
+) -> list[tuple[Tile, Tile]]:
+    mx = sum(t[0] for t in Ta) / len(Ta)
+    my = sum(t[1] for t in Ta) / len(Ta)
+    rep_a = min(Ta, key=lambda t: ((t[0] - mx) ** 2 + (t[1] - my) ** 2, t))
+    rep_b = min(Tb, key=lambda t: ((t[0] - rep_a[0]) ** 2 + (t[1] - rep_a[1]) ** 2, t))
+    reps = [(rep_a, rep_b)]
+    if len(Ta) >= long_front and max_entrances >= 2:
+        rep_a2 = max(Ta, key=lambda t: (max(abs(t[0] - rep_a[0]), abs(t[1] - rep_a[1])), t))
+        if max(abs(rep_a2[0] - rep_a[0]), abs(rep_a2[1] - rep_a[1])) >= min_sep:
+            rep_b2 = min(Tb, key=lambda t: ((t[0] - rep_a2[0]) ** 2 + (t[1] - rep_a2[1]) ** 2, t))
+            reps.append((rep_a2, rep_b2))
+    return reps
+
+
 def plan_entrances(
     zones: Mapping[int, Zone],
     entrance_w: int = ENTRANCE_W,
@@ -159,18 +191,7 @@ def plan_entrances(
     Returns {zid: [(rep, frozenset(band), other_zid), ...]} — the (rep, band) pairs are
     drop-in for every `zone_gate_bands` consumer. Pure geometry, rng-free, deterministic
     (all argmin/argmax tie-break on the tile tuple)."""
-    owner: dict[Tile, int] = {}
-    for zz, z in zones.items():
-        for t in z.tiles_set:
-            owner[t] = zz
-    fronts: collections.defaultdict[tuple[int, int], set[Tile]] = collections.defaultdict(
-        set
-    )  # ordered pair (a, b) -> a-side tiles
-    for t, zz in owner.items():
-        for dx, dy in NB4:
-            o = owner.get((t[0] + dx, t[1] + dy))
-            if o is not None and o != zz:
-                fronts[(zz, o)].add(t)
+    fronts = _pair_fronts(zones)
 
     out: dict[int, list[Entrance]] = {zid: [] for zid in zones}
     for a, b in sorted(fronts):
@@ -180,18 +201,7 @@ def plan_entrances(
         Tb = sorted(fronts.get((b, a), ()))
         if not Ta or not Tb:
             continue
-        mx = sum(t[0] for t in Ta) / len(Ta)
-        my = sum(t[1] for t in Ta) / len(Ta)
-        rep_a = min(Ta, key=lambda t: ((t[0] - mx) ** 2 + (t[1] - my) ** 2, t))
-        rep_b = min(Tb, key=lambda t: ((t[0] - rep_a[0]) ** 2 + (t[1] - rep_a[1]) ** 2, t))
-        reps = [(rep_a, rep_b)]
-        if len(Ta) >= long_front and max_entrances >= 2:
-            rep_a2 = max(Ta, key=lambda t: (max(abs(t[0] - rep_a[0]), abs(t[1] - rep_a[1])), t))
-            if max(abs(rep_a2[0] - rep_a[0]), abs(rep_a2[1] - rep_a[1])) >= min_sep:
-                rep_b2 = min(
-                    Tb, key=lambda t: ((t[0] - rep_a2[0]) ** 2 + (t[1] - rep_a2[1]) ** 2, t)
-                )
-                reps.append((rep_a2, rep_b2))
+        reps = _pair_reps(Ta, Tb, long_front, max_entrances, min_sep)
         for ra, rb in reps[:max_entrances]:
             band_a = frozenset(
                 sorted(Ta, key=lambda t: (max(abs(t[0] - ra[0]), abs(t[1] - ra[1])), t))[
@@ -273,6 +283,42 @@ def _blocked_neighbours(t: Tile, reach: Container[Tile]) -> int:
     return sum(1 for dx, dy in NB8 if (t[0] + dx, t[1] + dy) not in reach)
 
 
+def _in_open_field(reach: Container[Tile], m: Tile) -> bool:
+    return all((m[0] + ddx, m[1] + ddy) in reach for ddx in range(-2, 3) for ddy in range(-2, 3))
+
+
+def _doorway_cavity(
+    reach: Container[Tile],
+    exclude: set[Tile],
+    doorway: tuple[Tile, Tile],
+    max_dim: int,
+    max_tiles: int,
+) -> set[Tile]:
+    pocket: set[Tile] = set()
+    seen = set(exclude)
+    for src in doorway:
+        for ddx, ddy in NB8:
+            s = (src[0] + ddx, src[1] + ddy)
+            if s in seen or s not in reach:
+                continue
+            comp = _bounded_fill(reach, exclude, s, max_dim, max_tiles)
+            if comp is None:  # leaked: the open-field side of the doorway
+                seen.add(s)
+                continue
+            seen |= comp
+            pocket |= comp
+    return pocket
+
+
+def _pocket_fits(pocket: set[Tile], max_dim: int, max_tiles: int) -> bool:
+    if not pocket or len(pocket) > max_tiles:
+        return False
+    return not (
+        max(px for px, _ in pocket) - min(px for px, _ in pocket) >= max_dim
+        or max(py for _, py in pocket) - min(py for _, py in pocket) >= max_dim
+    )
+
+
 def find_pockets(
     reach: Collection[Tile], max_dim: int = POCKET_MAX_DIM, max_tiles: int = POCKET_MAX_TILES
 ) -> dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]]:
@@ -311,32 +357,11 @@ def find_pockets(
                 continue  # each unordered pair considered once
             # Cheap skip for the bulk of any open field: with no blocking tile within
             # Chebyshev 2 of EITHER doorway tile, no bounded component can exist.
-            if all(
-                (m1[0] + ddx, m1[1] + ddy) in reach for ddx in range(-2, 3) for ddy in range(-2, 3)
-            ) and all(
-                (m2[0] + ddx, m2[1] + ddy) in reach for ddx in range(-2, 3) for ddy in range(-2, 3)
-            ):
+            if _in_open_field(reach, m1) and _in_open_field(reach, m2):
                 continue
             exclude = {m1, m2}
-            pocket: set[Tile] = set()
-            seen = set(exclude)
-            for src in (m1, m2):
-                for ddx, ddy in NB8:
-                    s = (src[0] + ddx, src[1] + ddy)
-                    if s in seen or s not in reach:
-                        continue
-                    comp = _bounded_fill(reach, exclude, s, max_dim, max_tiles)
-                    if comp is None:  # leaked: the open-field side of the doorway
-                        seen.add(s)
-                        continue
-                    seen |= comp
-                    pocket |= comp
-            if not pocket or len(pocket) > max_tiles:
-                continue
-            if (
-                max(px for px, _ in pocket) - min(px for px, _ in pocket) >= max_dim
-                or max(py for _, py in pocket) - min(py for _, py in pocket) >= max_dim
-            ):
+            pocket = _doorway_cavity(reach, exclude, (m1, m2), max_dim, max_tiles)
+            if not _pocket_fits(pocket, max_dim, max_tiles):
                 continue
             b1, b2 = _blocked_neighbours(m1, reach), _blocked_neighbours(m2, reach)
             guard_tile = m1 if b1 >= b2 else m2

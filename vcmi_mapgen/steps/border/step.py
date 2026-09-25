@@ -7,7 +7,12 @@ from typing import final, override
 
 from vcmi_mapgen.models import MapState, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.ontology import Ontology
-from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.pipeline import (
+    LevelWorkspace,
+    PipelineStep,
+    PlacementWorkspace,
+    ProviderRegistry,
+)
 from vcmi_mapgen.steps.border import border_seal as BS
 from vcmi_mapgen.steps.pickup.step import PickupIndex
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
@@ -19,6 +24,22 @@ class BorderResult:
     """Diagnostic log lines for the CLI to print."""
 
     log: list[str] = field(default_factory=list)
+
+
+def _loot_tiles(zone_records: list[ZoneRecord]) -> set[Tile]:
+    loot_ts: set[Tile] = set()
+    for zr in zone_records:
+        if zr.loot_zone:
+            loot_ts |= zr.ts
+    return loot_ts
+
+
+def _entrance_bands(lvl_ws: LevelWorkspace) -> set[Tile]:
+    bands: set[Tile] = set()
+    for ents in lvl_ws.entrance_plan.values():
+        for _r, b, _o in ents:
+            bands |= b
+    return bands
 
 
 @final
@@ -65,25 +86,14 @@ class BorderStep(PipelineStep):
         for level in sorted(self._grids):
             lvl_ws = self._workspace.levels[level]
             zone_records = self._zone_records[level]
-            loot_ts: set[Tile] = set()
-            for zr in zone_records:
-                if zr.loot_zone:
-                    loot_ts |= zr.ts
-            bands: set[Tile] = set()
-            for ents in lvl_ws.entrance_plan.values():
-                for _r, b, _o in ents:
-                    bands |= b
+            loot_ts = _loot_tiles(zone_records)
+            bands = _entrance_bands(lvl_ws)
             new_objs, guard_tiles, n_open = BS.guard_crossings(
-                W,
-                H,
-                self._grids[level],
-                map_state.zones[level],
-                bands,
+                BS.LevelGrid(W, H, self._grids[level], map_state.zones[level]),
+                BS.CrossingRules(bands, lvl_ws.hard_avoid, skip_tiles=loot_ts),
                 objs_by_level[level],
-                lvl_ws.hard_avoid,
                 self.seed,
                 level,
-                skip_tiles=loot_ts,
             )
             if level == 1:
                 for o in new_objs:

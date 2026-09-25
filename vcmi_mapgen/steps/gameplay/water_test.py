@@ -35,7 +35,8 @@ def _water_and_land_zone() -> tuple[int, int, Grid, dict[int, Zone]]:
     coastline can leave its 3x3-footprint anchor just out of that search's 1-hop reach)."""
 
     WATER = 8
-    grid = MT.generate(40, 40, seed=2, water_mode="islands", level=0, texture=False)
+    opts = MT.MacroOptions(water_mode="islands", level=0, texture=False)
+    grid = MT.generate(40, 40, seed=2, options=opts)
     H, W = len(grid), len(grid[0])
     water_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] == WATER}
     land_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] != WATER}
@@ -96,14 +97,14 @@ def _synthetic_sea_and_land(sea_tiles: int) -> tuple[int, int, Grid, dict[int, Z
 def test_sea_zone_below_50_tiles_gets_no_seaport() -> None:
 
     W, H, grid, zones = _synthetic_sea_and_land(sea_tiles=40)
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
     assert not objs, "a water body under 50 tiles must not get a seaport"
 
 
 def test_sea_zone_50_or_more_gets_a_seaport() -> None:
 
     W, H, grid, zones = _synthetic_sea_and_land(sea_tiles=55)
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
     assert objs, "a water body of 55 tiles must get a seaport"
 
 
@@ -120,7 +121,7 @@ def test_island_below_50_tiles_gets_no_seaport() -> None:
     for x, y in zone_tiles:
         grid[y][x] = 2
     zones = {0: _zone(zone_tiles, 5, 3)}
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
     assert not objs, "a 40-tile island must not get a seaport (threshold is 50)"
 
 
@@ -133,7 +134,7 @@ def test_island_50_or_more_tiles_gets_a_seaport() -> None:
     for x, y in zone_tiles:
         grid[y][x] = 2
     zones = {0: _zone(zone_tiles, 4, 3)}
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
     assert objs, "a 54-tile island must get a seaport"
 
 
@@ -172,7 +173,8 @@ def _two_islands_one_split_thin(
     NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
     DIRS8 = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
 
-    grid = MT.generate(size, size, seed=seed, water_mode="islands", level=0, texture=False)
+    opts = MT.MacroOptions(water_mode="islands", level=0, texture=False)
+    grid = MT.generate(size, size, seed=seed, options=opts)
     H, W = len(grid), len(grid[0])
     water_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] == WATER}
     land_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] != WATER}
@@ -224,7 +226,7 @@ def test_seaport_placement_analyzes_the_whole_shore_not_one_zone_at_a_time() -> 
     touches."""
 
     W, H, grid, zones, lm_b = _two_islands_one_split_thin()
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
     placed_in_lm_b = [o for o in objs if (o.x, o.y) in lm_b]
     assert placed_in_lm_b, "the second shore (split across many thin zones) got no seaport at all"
 
@@ -262,7 +264,9 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row() -> None:
     front = OR.front_tiles(arena.mask, arena.x, arena.y)
     assert front == {(1, 3), (2, 3), (3, 3)}, "fixture assumption broke: unexpected front tiles"
 
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [arena], seed=3, ontology=Ontology())
+    objs = WT.ensure_water_seaports(
+        WT.SeaMap(W, H, grid, zones), [arena], seed=3, ontology=Ontology()
+    )
     for o in objs:
         blk = {(cx, cy) for cx, cy, b in OR.mask_cells(o.mask, o.x, o.y) if b}
         assert not front <= blk, (
@@ -280,7 +284,7 @@ def test_seaport_spacing_is_30_tiles() -> None:
 def test_ensure_water_seaports_places_at_least_one() -> None:
 
     W, H, grid, zones = _water_and_land_zone()
-    objs = WT.ensure_water_seaports(W, H, grid, zones, [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
     assert objs, "a land zone bordering a >= _WATER_BODY_MIN water body must get a seaport"
 
 
@@ -318,7 +322,9 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch: pytest.M
     monkeypatch.setattr(random, "Random", RecordingRandom)
 
     map_seed = 2
-    _ = WT.ensure_water_seaports(W, H, grid, zones, [], seed=map_seed, ontology=Ontology())
+    _ = WT.ensure_water_seaports(
+        WT.SeaMap(W, H, grid, zones), [], seed=map_seed, ontology=Ontology()
+    )
 
     assert crc_calls, (
         "_ensure_water_seaports never called zlib.crc32 — did the seaport RNG regress "

@@ -27,8 +27,8 @@ def test_pickup_layer_legal_and_deterministic() -> None:
     # synthetic open field with a sealed-off pocket-ish structure: a web cross + nooks
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     open_set = set(ts)
-    o1 = CA.place_pickups(ts, zones, 1, "grass", open_set, prot, seed=6)
-    o2 = CA.place_pickups(ts, zones, 1, "grass", open_set, prot, seed=6)
+    o1 = CA.place_pickups(CA.PickupZone(ts, zones, 1, "grass", open_set, prot), seed=6)
+    o2 = CA.place_pickups(CA.PickupZone(ts, zones, 1, "grass", open_set, prot), seed=6)
     assert o1 == o2, "pickup layer must be seed-deterministic"
     assert o1, "a 720-tile grass zone should hold pickups"
 
@@ -45,7 +45,7 @@ def test_pickup_layer_legal_and_deterministic() -> None:
             assert (o.x, o.y) not in prot, "guards must not sit on the mandatory web"
             continue
         cells = legal_cells(
-            Identity(o.type, o.subtype, o.animation, o.mask), o.x, o.y, open_set, no_used
+            Identity(o.type, o.subtype, o.animation, o.mask), (o.x, o.y), open_set, no_used
         )
         assert cells is not None, "footprint must lie on open tiles"
         assert used.isdisjoint(cells), "pickups must not overlap each other"
@@ -157,7 +157,7 @@ def test_scatter_places_resource_piles() -> None:
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     piles: list[PlacedObject] = []
     for seed in range(1, 10):
-        objs = CA.place_pickups(ts, zones, 1, "grass", set(ts), prot, seed=seed)
+        objs = CA.place_pickups(CA.PickupZone(ts, zones, 1, "grass", set(ts), prot), seed=seed)
         piles += [o for o in objs if o.purpose == "RESOURCE_PILE"]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"
@@ -249,13 +249,12 @@ def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_
 
 def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None:
     """s2-z1 diagnosis (2026-09): a pocket declared right by the castle got guarded,
-    and that guard's zone-of-control (its interactive cell + all 8 neighbours -- in
-    H3, standing next to a wandering monster forces combat) happened to seal the
-    ONLY isthmus connecting the town to its own force_town sawmill, even though the
-    sawmill already carries its own dedicated level-1 guard. Fixture: two open rooms
-    joined by a single 3-tile isthmus (6,4)-(8,4), with a legitimate 1-tile pocket
-    (mouth (7,3)/(7,4)) whose only guardable candidate sits AT (7,4), squarely on the
-    isthmus. TOWN is in the left room, a sawmill MINE in the right room."""
+    and that guard happened to seal the ONLY isthmus connecting the town to its own
+    force_town sawmill, even though the sawmill already carries its own dedicated
+    level-1 guard. Only the tile a guard stands on blocks; its zone of control does not
+    (user-mandated 2026-09). Fixture: two open rooms joined by a single 3-tile isthmus
+    (6,4)-(8,4), with a 1-tile pocket above it at (7,2)/(7,3). TOWN is in the left room,
+    a sawmill MINE in the right room."""
 
     left = {(x, y) for x in range(6) for y in range(9)}
     right = {(x, y) for x in range(9, 15) for y in range(9)}
@@ -276,21 +275,28 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None
     )
 
     objs, _n_pockets, _depth = CA.place_pocket_caches(
-        [zr], seed=3, bounds=(20, 20), existing_objs=[town, mine], home_zids={0}
+        [zr],
+        seed=3,
+        bounds=(20, 20),
+        context=CA.PocketContext(existing_objs=[town, mine], home_zids={0}),
     )
 
-    NB8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-    guard_zoc: set[Tile] = set()
-    for o in objs:
-        if o.purpose != "GUARD":
-            continue
-        for ix, iy in OR.mask_interactive_cells(o.mask, o.x, o.y):
-            guard_zoc.add((ix, iy))
-            for dx, dy in NB8:
-                guard_zoc.add((ix + dx, iy + dy))
-    assert not (guard_zoc & isthmus), (
-        f"a new pocket guard's ZoC {guard_zoc} still crosses the isthmus {isthmus} -- "
-        "town cut off from its own starting mine"
+    stands = {
+        c for o in objs if o.purpose == "GUARD" for c in OR.mask_interactive_cells(o.mask, o.x, o.y)
+    }
+    open_tiles = ts - stands
+    seen = {(0, 8)}
+    frontier = [(0, 8)]
+    while frontier:
+        x, y = frontier.pop()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                n = (x + dx, y + dy)
+                if n in open_tiles and n not in seen:
+                    seen.add(n)
+                    frontier.append(n)
+    assert (14, 8) in seen, (
+        f"pocket guards standing on {stands} cut the town off from its own starting mine"
     )
 
 

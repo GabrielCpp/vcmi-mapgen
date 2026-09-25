@@ -40,12 +40,13 @@ from vcmi_mapgen.models import Entrance, Identity, JsonValue, PlacedObject, Tile
 # (footprint_cells/fits/GAP) and rnd_monster; Gameplay/Pickup/Repair import them from there rather
 # than duplicating them or inventing a generic shared module (see steps/gate/gates.py).
 from vcmi_mapgen.steps.gate.gates import (
-    GAP,
     MIN_AREA_STATS,
     NO_TILES,
+    Clearance,
     Fit,
     LevelGates,
     fits,
+    inflate_gap,
     rnd_monster,
 )
 
@@ -339,6 +340,138 @@ def _stats_to_json(st: TerrainStats) -> dict[str, JsonValue]:
     }
 
 
+def _cached_stats(path: Path, force: bool) -> dict[str, TerrainStats] | None:
+    if not force and path.exists():
+        st = jv.as_object(jv.loads(path.read_text()))
+        if st.get("_version") == STATS_VERSION:
+            return {k: _stats_from_json(v) for k, v in st.items() if k != "_version"}
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class Covariates:
+    ed: Mapping[Tile, int]
+    gd: Mapping[Tile, int]
+    op: Mapping[Tile, int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _CorpusLevel:
+    fm: OR.FaithfulMap
+    level: int
+    zones: Mapping[int, Zone]
+    guards: AbstractSet[Tile]
+
+
+def _accumulate_water(aw: _TerrainAcc, fm: OR.FaithfulMap, level: int) -> None:
+    wtiles = {
+        (x, y) for y, row in enumerate(fm.terrain[level]) for x, c in enumerate(row) if c.t == 8
+    }
+    if not wtiles:
+        return
+    aw.tiles += len(wtiles)
+    for o in fm.objects:
+        if o.level != level or (o.x, o.y) not in wtiles:
+            continue
+        p = OR.purpose_of(o)
+        if p in ALL_PURPOSES:
+            aw.counts[p] += 1
+            anim = o.animation.lower().removesuffix(".def")
+            if anim:
+                aw.anim_w[p][anim] += 1
+
+
+def _zone_blocked(
+    zone_objs: Iterable[PlacedObject], ts: AbstractSet[Tile]
+) -> tuple[set[Tile], set[Tile]]:
+    veg_blocked: set[Tile] = set()
+    all_blocked: set[Tile] = set()
+    for o in zone_objs:
+        is_decor = OR.purpose_of(o) == "DECORATION"
+        anim = o.animation.lower().removesuffix(".def")
+        for cx, cy, blk in OR.mask_cells(ON.mask_of(anim), o.x, o.y):
+            if blk and (cx, cy) in ts:
+                all_blocked.add((cx, cy))
+                if is_decor:
+                    veg_blocked.add((cx, cy))
+    return veg_blocked, all_blocked
+
+
+def _count_zone_obj(
+    a: _TerrainAcc, o: PlacedObject, cov: Covariates, guards: AbstractSet[Tile]
+) -> None:
+    p = OR.purpose_of(o)
+    if p not in ALL_PURPOSES:
+        return
+    t = (o.x, o.y)
+    a.counts[p] += 1
+    anim = o.animation.lower().removesuffix(".def")
+    if anim:
+        a.anim_w[p][anim] += 1
+    a.e[p][min(cov.ed[t], EB - 1)] += 1
+    a.g[p][_gbin(cov.gd.get(t, 12))] += 1
+    op = cov.op
+    if op is not None and t in op:
+        a.o[p][_obin(op[t])] += 1
+    if p in ("RESOURCE_PILE", "REWARD_PICKUP", "MINE"):
+        a.guardable[p] += 1
+        if any(max(abs(t[0] - gx), abs(t[1] - gy)) <= 3 for gx, gy in guards):
+            a.guarded[p] += 1
+
+
+def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> None:
+    ts = set(z.tiles_set)
+    a.tiles += len(ts)
+    ed = edge_dist(ts)
+    fronts = zone_fronts(ts, cl.zones, zid)
+    front_union = set[Tile]().union(*fronts.values()) if fronts else set[Tile]()
+    gd = gate_dist(ts, front_union or zone_gates(ts, cl.zones, zid))
+    zone_objs = [o for o in cl.fm.objects if o.level == cl.level and (o.x, o.y) in ts]
+    veg_blocked, all_blocked = _zone_blocked(zone_objs, ts)
+    a.border_tiles += len(front_union)
+    a.border_open += sum(1 for t in front_union if t not in all_blocked)
+    op = openness(ts - veg_blocked)
+    for t in ts:
+        a.tiles_e[min(ed[t], EB - 1)] += 1
+        a.tiles_g[_gbin(gd.get(t, 12))] += 1
+        if t in op:
+            a.tiles_o[_obin(op[t])] += 1
+    cov = Covariates(ed, gd, op)
+    for o in zone_objs:
+        _count_zone_obj(a, o, cov, cl.guards)
+
+
+def _accumulate_map(acc: dict[str, _TerrainAcc], fm: OR.FaithfulMap, level: int) -> None:
+    zones, _zl, _ = segment_level(fm.terrain[level])
+    guards = {(o.x, o.y) for o in fm.objects if o.level == level and OR.purpose_of(o) == "GUARD"}
+    _accumulate_water(acc["water"], fm, level)
+    cl = _CorpusLevel(fm, level, zones, guards)
+    for zid, z in zones.items():
+        terr = TNAME.get(z.terrain_type)
+        if terr not in acc or z.area < MIN_AREA_STATS:
+            continue
+        _accumulate_zone(acc[terr], cl, zid, z)
+
+
+def _finish_stats(a: _TerrainAcc) -> TerrainStats:
+    return TerrainStats(
+        tiles=a.tiles,
+        counts=dict(a.counts),
+        anim_w={p: dict(c) for p, c in a.anim_w.items()},
+        e=dict(a.e),
+        g=dict(a.g),
+        o=dict(a.o),
+        tiles_e=a.tiles_e,
+        tiles_g=a.tiles_g,
+        tiles_o=a.tiles_o,
+        border_open_frac=(a.border_open / a.border_tiles if a.border_tiles else 0.5),
+        guard_frac={
+            p: (a.guarded[p] / a.guardable[p] if a.guardable[p] else 0.0)
+            for p in ("RESOURCE_PILE", "REWARD_PICKUP", "MINE")
+        },
+    )
+
+
 def mine_gameplay(level: int = 0, force: bool = False) -> dict[str, TerrainStats]:
     """Corpus statistics for the FULL L3 intensity fit, per terrain, for terrain level `level`
     (0 = surface, 1 = underground):
@@ -359,10 +492,9 @@ def mine_gameplay(level: int = 0, force: bool = False) -> dict[str, TerrainStats
     distinct: smaller, sparser zones), matching `macro_topo.mine_macro`'s precedent.
     """
     path = Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
-    if not force and path.exists():
-        st = jv.as_object(jv.loads(path.read_text()))
-        if st.get("_version") == STATS_VERSION:
-            return {k: _stats_from_json(v) for k, v in st.items() if k != "_version"}
+    cached = _cached_stats(path, force)
+    if cached is not None:
+        return cached
     acc = {t: _TerrainAcc() for t in MINED_TERR}
     for nm in OR.all_map_names():
         try:
@@ -371,91 +503,8 @@ def mine_gameplay(level: int = 0, force: bool = False) -> dict[str, TerrainStats
             continue
         if level >= len(fm.terrain):
             continue
-        zones, _zl, _ = segment_level(fm.terrain[level])
-        guards = {
-            (o.x, o.y) for o in fm.objects if o.level == level and OR.purpose_of(o) == "GUARD"
-        }
-        wtiles = {
-            (x, y) for y, row in enumerate(fm.terrain[level]) for x, c in enumerate(row) if c.t == 8
-        }
-        if wtiles:
-            aw = acc["water"]
-            aw.tiles += len(wtiles)
-            for o in fm.objects:
-                if o.level != level or (o.x, o.y) not in wtiles:
-                    continue
-                p = OR.purpose_of(o)
-                if p in ALL_PURPOSES:
-                    aw.counts[p] += 1
-                    anim = o.animation.lower().removesuffix(".def")
-                    if anim:
-                        aw.anim_w[p][anim] += 1
-        for zid, z in zones.items():
-            terr = TNAME.get(z.terrain_type)
-            if terr not in acc or z.area < MIN_AREA_STATS:
-                continue
-            a = acc[terr]
-            ts = set(z.tiles_set)
-            a.tiles += len(ts)
-            ed = edge_dist(ts)
-            fronts = zone_fronts(ts, zones, zid)
-            front_union = set[Tile]().union(*fronts.values()) if fronts else set[Tile]()
-            gd = gate_dist(ts, front_union or zone_gates(ts, zones, zid))
-            veg_blocked: set[Tile] = set()
-            all_blocked: set[Tile] = set()
-            zone_objs = [o for o in fm.objects if o.level == level and (o.x, o.y) in ts]
-            for o in zone_objs:
-                is_decor = OR.purpose_of(o) == "DECORATION"
-                anim = o.animation.lower().removesuffix(".def")
-                for cx, cy, blk in OR.mask_cells(ON.mask_of(anim), o.x, o.y):
-                    if blk and (cx, cy) in ts:
-                        all_blocked.add((cx, cy))
-                        if is_decor:
-                            veg_blocked.add((cx, cy))
-            a.border_tiles += len(front_union)
-            a.border_open += sum(1 for t in front_union if t not in all_blocked)
-            op = openness(ts - veg_blocked)
-            for t in ts:
-                a.tiles_e[min(ed[t], EB - 1)] += 1
-                a.tiles_g[_gbin(gd.get(t, 12))] += 1
-                if t in op:
-                    a.tiles_o[_obin(op[t])] += 1
-            for o in zone_objs:
-                p = OR.purpose_of(o)
-                if p not in ALL_PURPOSES:
-                    continue
-                t = (o.x, o.y)
-                a.counts[p] += 1
-                anim = o.animation.lower().removesuffix(".def")
-                if anim:
-                    a.anim_w[p][anim] += 1
-                a.e[p][min(ed[t], EB - 1)] += 1
-                a.g[p][_gbin(gd.get(t, 12))] += 1
-                if t in op:
-                    a.o[p][_obin(op[t])] += 1
-                if p in ("RESOURCE_PILE", "REWARD_PICKUP", "MINE"):
-                    a.guardable[p] += 1
-                    if any(max(abs(t[0] - gx), abs(t[1] - gy)) <= 3 for gx, gy in guards):
-                        a.guarded[p] += 1
-    result = {
-        t: TerrainStats(
-            tiles=a.tiles,
-            counts=dict(a.counts),
-            anim_w={p: dict(c) for p, c in a.anim_w.items()},
-            e=dict(a.e),
-            g=dict(a.g),
-            o=dict(a.o),
-            tiles_e=a.tiles_e,
-            tiles_g=a.tiles_g,
-            tiles_o=a.tiles_o,
-            border_open_frac=(a.border_open / a.border_tiles if a.border_tiles else 0.5),
-            guard_frac={
-                p: (a.guarded[p] / a.guardable[p] if a.guardable[p] else 0.0)
-                for p in ("RESOURCE_PILE", "REWARD_PICKUP", "MINE")
-            },
-        )
-        for t, a in acc.items()
-    }
+        _accumulate_map(acc, fm, level)
+    result = {t: _finish_stats(a) for t, a in acc.items()}
     path.parent.mkdir(parents=True, exist_ok=True)
     payload: dict[str, JsonValue] = {"_version": STATS_VERSION}
     for t, tst in result.items():
@@ -492,15 +541,11 @@ _SPIRAL: list[Tile] = sorted(
 
 
 def intensity_weights(
-    ts: Iterable[Tile],
-    purpose: str,
-    st_t: TerrainStats,
-    ed: Mapping[Tile, int],
-    gd: Mapping[Tile, int],
-    op: Mapping[Tile, int] | None = None,
+    ts: Iterable[Tile], purpose: str, st_t: TerrainStats, cov: Covariates
 ) -> dict[Tile, float]:
     """Per-tile placement intensity  w(u) = exp(th_e + th_g (+ th_o))  from the L3 fit."""
     th = theta_covariates(st_t, purpose)
+    ed, gd, op = cov.ed, cov.gd, cov.op
     w: dict[Tile, float] = {}
     for t in sorted(ts):
         s = th["e"][min(ed[t], EB - 1)] + th["g"][_gbin(gd.get(t, 12))]
@@ -534,23 +579,31 @@ class Ledger:
     gold: int
 
 
+@dataclass(frozen=True, slots=True)
+class ZoneOptions:
+    seed: int = 1
+    coastal: AbstractSet[Tile] = NO_TILES
+    force_town: bool = False
+    ledger: Ledger | None = None
+    has_water: bool = False
+    level: int = 0
+    has_subterrain: bool = False
+    avoid: AbstractSet[Tile] = NO_TILES
+    preoccupied: AbstractSet[Tile] = NO_TILES
+    preblocked: AbstractSet[Tile] = NO_TILES
+    preapproaches: Iterable[Tile] = ()
+    entrances: Sequence[Entrance] | None = None
+
+
+DEFAULT_ZONE_OPTIONS = ZoneOptions()
+
+
 def place_zone(
     ts: AbstractSet[Tile],
     zones: Mapping[int, Zone],
     zid: int,
     terrain: str,
-    seed: int = 1,
-    coastal: AbstractSet[Tile] = NO_TILES,
-    force_town: bool = False,
-    ledger: Ledger | None = None,
-    has_water: bool = False,
-    level: int = 0,
-    has_subterrain: bool = False,
-    avoid: AbstractSet[Tile] = NO_TILES,
-    preoccupied: AbstractSet[Tile] = NO_TILES,
-    preblocked: AbstractSet[Tile] = NO_TILES,
-    preapproaches: Iterable[Tile] = (),
-    entrances: Sequence[Entrance] | None = None,
+    opts: ZoneOptions = DEFAULT_ZONE_OPTIONS,
 ) -> LevelGates:
     """Gameplay objects for one zone. Returns (objs, occupied, blocked, approaches):
     `occupied` = every footprint cell (no vegetation there), `blocked` = the impassable
@@ -602,188 +655,284 @@ def place_zone(
     zone-edge guard pass guards the planned entrance reps directly (prob
     ENTRANCE_GUARD_PROB, single-side ownership zid < other) instead of hunting
     pocket-mouths inside wide-open borders."""
-    st = mine_gameplay(level=level)[terrain]
-    dens = {p: c / max(st.tiles, 1) for p, c in st.counts.items()}
-    area = len(ts)
-    rng = random.Random(seed ^ (zid * 40503) ^ 0x5EED)
+    return _ZonePlacer(ts, zones, zid, terrain, opts).run()
 
-    def stoch(x: float, base_cap: int) -> int:
-        n = int(x) + (1 if rng.random() < x - int(x) else 0)
+
+def _mine_variants(ids: list[Identity], mine_w: Mapping[str, int]) -> list[Identity]:
+    """Terrain-faithful sprite variants: mine DEFs carry a baked-in terrain apron
+    (avmgogr0 grass vs avmgold0 dirt), so keep only the variants mapmakers actually
+    use on THIS terrain (>= 20% of the top variant's corpus weight — drops the rare
+    cross-terrain leakage that put dirt-apron mines on grass)."""
+    ws = {i.animation.lower(): mine_w.get(i.animation.lower(), 0) for i in ids}
+    top = max(ws.values(), default=0)
+    if top > 0:
+        keep = [i for i in ids if ws[i.animation.lower()] >= 0.2 * top]
+        return keep or ids
+    return ids
+
+
+def _rest_mines(
+    mines: Mapping[str, list[Identity]], used_res: AbstractSet[str], ledger: Ledger | None
+) -> dict[str, list[Identity]]:
+    gold_ok = ledger is None or ledger.gold < max(0, ledger.towns - 1)
+    return {
+        res: ids
+        for res, ids in mines.items()
+        if res not in used_res
+        and ids
+        and res not in ("abandoned", "mine")  # both abandoned-mine variants
+        and (res != "goldMine" or gold_ok)
+    }
+
+
+def _band_union(gate_bands: Sequence[tuple[Tile, AbstractSet[Tile]]]) -> set[Tile]:
+    return set[Tile]().union(*(b for _r, b in gate_bands)) if gate_bands else set[Tile]()
+
+
+def _rim_reserved(
+    ts: AbstractSet[Tile], zones: Mapping[int, Zone], zid: int, band_union: AbstractSet[Tile]
+) -> frozenset[Tile]:
+    # reserve the whole 8-connected rim, not just the bands: a gameplay APPROACH tile
+    # sitting on the border is a permanently-walkable hole neither the border bias nor
+    # the seal pass may touch (diagonal contact included — corner-cutting is a legal
+    # hero move in H3, so a diagonal-only touch tile leaks exactly like a front tile).
+    others: set[Tile] = set()
+    for zz, z2 in zones.items():
+        if zz != zid:
+            others.update(z2.tiles_set)
+    rim8 = {t for t in ts if any((t[0] + dx, t[1] + dy) in others for dx, dy in NB8)}
+    return frozenset(rim8 | band_union)
+
+
+def _tie_dwellings(objs: list[PlacedObject]) -> None:
+    # tie the zone's RANDOM dwellings to its town: VCMI's `sameAsTown` link makes the
+    # dwelling resolve to the town's (lobby-picked) faction at game start, so the creatures
+    # around a random town are its own. Instance names are minted only at export, so the
+    # marker carries the town's coordinates; `renderers.vmap.VmapRenderer._build_document`
+    # swaps in the instanceName.
+    town = next((o for o in objs if o.purpose == "TOWN"), None)
+    if town is not None:
+        for o in objs:
+            if (o.type or "").startswith("randomDwelling"):
+                if o.options is None:
+                    o.options = {}
+                o.options["sameAsTown"] = [town.x, town.y, town.level]
+
+
+class _ZonePlacer:
+    def __init__(
+        self,
+        ts: AbstractSet[Tile],
+        zones: Mapping[int, Zone],
+        zid: int,
+        terrain: str,
+        opts: ZoneOptions,
+    ) -> None:
+        self.ts: AbstractSet[Tile] = ts
+        self.zones: Mapping[int, Zone] = zones
+        self.zid: int = zid
+        self.terrain: str = terrain
+        self.opts: ZoneOptions = opts
+        self.st: TerrainStats = mine_gameplay(level=opts.level)[terrain]
+        self.dens: dict[str, float] = {
+            p: c / max(self.st.tiles, 1) for p, c in self.st.counts.items()
+        }
+        self.area: int = len(ts)
+        self.rng: random.Random = random.Random(opts.seed ^ (zid * 40503) ^ 0x5EED)
+        # FIXED identities from the ontology pools: corpus frequency sqrt-damped and repeats
+        # penalized, so rare visitables (star axis, gardens, libraries) actually show up
+        self.used_anims: set[str] = set()
+        self.wanted: list[tuple[str, Identity]] = []  # (purpose, ident), placement order
+        self.ed: dict[Tile, int] = {}
+        self.gate_bands: list[tuple[Tile, frozenset[Tile]]] = []
+        self.ent_reserved: frozenset[Tile] = NO_TILES
+        self.gd: dict[Tile, int] = {}
+        self.tiles_sorted: list[Tile] = []
+        self.wcache: dict[str, dict[Tile, float]] = {}
+        self.objs: list[PlacedObject] = []
+        self.occupied: set[Tile] = set(opts.preoccupied)
+        self.blocked: set[Tile] = set(opts.preblocked)
+        self.approaches: list[Tile] = list(opts.preapproaches)
+        self.near: set[Tile] = set()  # occupied inflated by GAP (separation zone)
+        self.town_center: tuple[float, float] | None = None  # set once the zone's town settles
+        self.town_mines_left: int = 0
+
+    def _stoch(self, x: float, base_cap: int) -> int:
+        n = int(x) + (1 if self.rng.random() < x - int(x) else 0)
         return min(n, scaled_cap(base_cap, x))
 
-    n_town = (
-        1
-        if (
-            force_town
-            or (area >= TOWN_MIN_AREA and rng.random() < min(1.0, dens.get("TOWN", 0) * area))
+    def _draw_counts(self) -> tuple[int, int, int, int, int]:
+        dens, area, opts, rng = self.dens, self.area, self.opts, self.rng
+        n_town = (
+            1
+            if (
+                opts.force_town
+                or (area >= TOWN_MIN_AREA and rng.random() < min(1.0, dens.get("TOWN", 0) * area))
+            )
+            else 0
         )
-        else 0
-    )
-    n_mine = stoch(dens.get("MINE", 0) * area, CAPS["MINE"])
-    if n_town:  # a town always brings its economy pair
-        n_mine = max(n_mine, 2)
-    n_dwell = stoch(dens.get("DWELLING", 0) * area, CAPS["DWELLING"])
-    n_visit = stoch(sum(dens.get(p, 0) for p in VISIT_PURPOSES) * area, CAPS["VISIT"])
-    n_bank = stoch(dens.get("BANK", 0) * area, CAPS["BANK"])
-    if ledger is not None and n_town and not force_town:
-        ledger.towns += 1  # player towns are pre-counted by build
+        n_mine = self._stoch(dens.get("MINE", 0) * area, CAPS["MINE"])
+        if n_town:  # a town always brings its economy pair
+            n_mine = max(n_mine, 2)
+        n_dwell = self._stoch(dens.get("DWELLING", 0) * area, CAPS["DWELLING"])
+        n_visit = self._stoch(sum(dens.get(p, 0) for p in VISIT_PURPOSES) * area, CAPS["VISIT"])
+        n_bank = self._stoch(dens.get("BANK", 0) * area, CAPS["BANK"])
+        if opts.ledger is not None and n_town and not opts.force_town:
+            opts.ledger.towns += 1  # player towns are pre-counted by build
+        return n_town, n_mine, n_dwell, n_visit, n_bank
 
-    # FIXED identities from the ontology pools: corpus frequency sqrt-damped and repeats
-    # penalized, so rare visitables (star axis, gardens, libraries) actually show up
-    used_anims: set[str] = set()
-
-    def pick(pool: Iterable[Identity], purpose: str | None = None) -> Identity | None:
+    def _pick(self, pool: Iterable[Identity], purpose: str | None = None) -> Identity | None:
         pool = sorted(
             (i for i in pool if "random" not in (i.type or "").lower()),
             key=lambda i: i.animation,
         )
         if not pool:
             return None
-        w = st.anim_w.get(purpose, {}) if purpose else {}
+        w = self.st.anim_w.get(purpose, {}) if purpose else {}
         weights = [
             (w.get(i.animation.lower(), 0) ** 0.5 + 0.3)
-            * (0.05 if i.animation.lower() in used_anims else 1.0)
+            * (0.05 if i.animation.lower() in self.used_anims else 1.0)
             for i in pool
         ]
-        ident = rng.choices(pool, weights=weights, k=1)[0]
-        used_anims.add(ident.animation.lower())
+        ident = self.rng.choices(pool, weights=weights, k=1)[0]
+        self.used_anims.add(ident.animation.lower())
         return ident
 
-    wanted: list[tuple[str, Identity]] = []  # (purpose, ident), placement order
-    if n_town:
+    def _town_wanted(self) -> None:
         # PLAYER start towns are ALWAYS randomTown: VCMI resolves an owned random town to
         # the faction the player picked in the lobby (CGTownInstance::randomizeFaction) —
         # a concrete start town would silently override the player's choice. Neutral
         # towns keep the corpus-conventional random/fixed split.
         ident = (
             ON.identity_of(RND_TOWN)
-            if force_town or rng.random() < RANDOM_SHARE
-            else pick(ON.pool("TOWN", terrain), "TOWN")
+            if self.opts.force_town or self.rng.random() < RANDOM_SHARE
+            else self._pick(ON.pool("TOWN", self.terrain), "TOWN")
         )
         if ident:
-            wanted.append(("TOWN", ident))
-    # mines: wood + ore guaranteed first (the H3 economy convention), then DISTINCT further
-    # resource types without replacement — a zone gets a gold mine AND a gem pond, not three
-    # sawmills (corpus zones rarely duplicate a mine type). With a map `ledger`, globally
-    # MISSING basic resources are drawn first (all six minerals covered map-wide) and gold
-    # is rationed to towns - 1 (gold mines pay off only on multi-town maps).
-    mine_w = st.anim_w.get("MINE", {})
+            self.wanted.append(("TOWN", ident))
 
-    def _mine_variants(ids: list[Identity]) -> list[Identity]:
-        """Terrain-faithful sprite variants: mine DEFs carry a baked-in terrain apron
-        (avmgogr0 grass vs avmgold0 dirt), so keep only the variants mapmakers actually
-        use on THIS terrain (>= 20% of the top variant's corpus weight — drops the rare
-        cross-terrain leakage that put dirt-apron mines on grass)."""
-        ws = {i.animation.lower(): mine_w.get(i.animation.lower(), 0) for i in ids}
-        top = max(ws.values(), default=0)
-        if top > 0:
-            keep = [i for i in ids if ws[i.animation.lower()] >= 0.2 * top]
-            return keep or ids
-        return ids
-
-    mines = {res: _mine_variants(ids) for res, ids in ON.mines_by_resource(terrain).items()}
-    mine_idents: list[Identity | None] = []
-    used_res: set[str] = set()
-    if n_mine >= 2:
-        for res in ("sawmill", "orePit"):
-            if mines.get(res):
-                mine_idents.append(pick(mines[res], "MINE"))
-                used_res.add(res)
-                if ledger is not None:
-                    ledger.missing.discard(res)
-    while len(mine_idents) < n_mine:
-        gold_ok = ledger is None or ledger.gold < max(0, ledger.towns - 1)
-        rest = {
-            res: ids
-            for res, ids in mines.items()
-            if res not in used_res
-            and ids
-            and res not in ("abandoned", "mine")  # both abandoned-mine variants
-            and (res != "goldMine" or gold_ok)
-        }
-        if not rest:
-            break
-        missing = (ledger.missing & set(rest)) if ledger is not None else set[str]()
-        keys = sorted(missing) if missing else sorted(rest)
-        rw = [sum(mine_w.get(i.animation.lower(), 0) for i in rest[k]) + 0.2 for k in keys]
-        res = rng.choices(keys, weights=rw, k=1)[0]
-        mine_idents.append(pick(rest[res], "MINE"))
+    def _take_mine(
+        self,
+        ids: list[Identity],
+        res: str,
+        used_res: set[str],
+        mine_idents: list[Identity | None],
+    ) -> None:
+        mine_idents.append(self._pick(ids, "MINE"))
         used_res.add(res)
+        ledger = self.opts.ledger
         if ledger is not None:
             ledger.missing.discard(res)
             if res == "goldMine":
                 ledger.gold += 1
-    wanted += [("MINE", i) for i in mine_idents if i]
-    # dwellings are mostly random (generic or by level, skewed low); fixed dwellings are
-    # the deliberate exception in real maps
-    pool_dw = ON.pool("DWELLING", terrain)
-    for _ in range(n_dwell):
-        if rng.random() < 0.8:
-            anim = (
-                RND_DWELL
-                if rng.random() < 0.3
-                else rng.choices(RND_DWELL_L, weights=(22, 18, 15, 13, 12, 10, 10), k=1)[0]
+
+    def _draw_resource(self, rest: Mapping[str, list[Identity]], mine_w: Mapping[str, int]) -> str:
+        ledger = self.opts.ledger
+        missing = (ledger.missing & set(rest)) if ledger is not None else set[str]()
+        keys = sorted(missing) if missing else sorted(rest)
+        rw = [sum(mine_w.get(i.animation.lower(), 0) for i in rest[k]) + 0.2 for k in keys]
+        return self.rng.choices(keys, weights=rw, k=1)[0]
+
+    def _mine_wanted(self, n_mine: int) -> None:
+        # mines: wood + ore guaranteed first (the H3 economy convention), then DISTINCT further
+        # resource types without replacement — a zone gets a gold mine AND a gem pond, not three
+        # sawmills (corpus zones rarely duplicate a mine type). With a map `ledger`, globally
+        # MISSING basic resources are drawn first (all six minerals covered map-wide) and gold
+        # is rationed to towns - 1 (gold mines pay off only on multi-town maps).
+        mine_w = self.st.anim_w.get("MINE", {})
+        mines = {
+            res: _mine_variants(ids, mine_w)
+            for res, ids in ON.mines_by_resource(self.terrain).items()
+        }
+        mine_idents: list[Identity | None] = []
+        used_res: set[str] = set()
+        if n_mine >= 2:
+            for res in ("sawmill", "orePit"):
+                if mines.get(res):
+                    self._take_mine(mines[res], res, used_res, mine_idents)
+        while len(mine_idents) < n_mine:
+            rest = _rest_mines(mines, used_res, self.opts.ledger)
+            if not rest:
+                break
+            res = self._draw_resource(rest, mine_w)
+            self._take_mine(rest[res], res, used_res, mine_idents)
+        self.wanted += [("MINE", i) for i in mine_idents if i]
+
+    def _dwell_wanted(self, n_dwell: int) -> None:
+        # dwellings are mostly random (generic or by level, skewed low); fixed dwellings are
+        # the deliberate exception in real maps
+        rng = self.rng
+        pool_dw = ON.pool("DWELLING", self.terrain)
+        for _ in range(n_dwell):
+            if rng.random() < 0.8:
+                anim = (
+                    RND_DWELL
+                    if rng.random() < 0.3
+                    else rng.choices(RND_DWELL_L, weights=(22, 18, 15, 13, 12, 10, 10), k=1)[0]
+                )
+                ident = ON.identity_of(anim)
+            else:
+                ident = self._pick(pool_dw, "DWELLING")
+            if ident:
+                self.wanted.append(("DWELLING", ident))
+
+    def _bank_wanted(self, n_bank: int) -> None:
+        # creature banks (utopias, conservatories, crypts, pyramids) — corpus density, no
+        # approach guard: the bank IS the fight, its reward is its own
+        for _ in range(n_bank):
+            ident = self._pick(ON.pool("BANK", self.terrain), "BANK")
+            if ident:
+                self.wanted.append(("BANK", ident))
+
+    def _visit_wanted(self, n_visit: int) -> None:
+        opts, terrain = self.opts, self.terrain
+        vw = [self.st.counts.get(p, 0) + 0.2 for p in VISIT_PURPOSES]
+        for _ in range(n_visit):
+            p = self.rng.choices(VISIT_PURPOSES, weights=vw, k=1)[0]
+            pool = (
+                _info_pool(terrain, opts.has_water, opts.has_subterrain)
+                if p == "INFO"
+                else ON.pool(p, terrain)
             )
-            ident = ON.identity_of(anim)
+            ident = self._pick(pool, p)
+            if ident:
+                self.wanted.append((p, ident))
+
+    def _collect_wanted(self) -> None:
+        n_town, n_mine, n_dwell, n_visit, n_bank = self._draw_counts()
+        if n_town:
+            self._town_wanted()
+        self._mine_wanted(n_mine)
+        self._dwell_wanted(n_dwell)
+        self._bank_wanted(n_bank)
+        self._visit_wanted(n_visit)
+        self.town_mines_left = 2 if n_town else 0  # sawmill + ore pit anchor NEAR the town
+
+    def _prepare(self) -> None:
+        # anchor sampling from the fitted per-purpose intensity (the L3 fit applied).
+        # Gates are corpus-wide BANDS of the contact front (not 1-tile corridors) — gate
+        # distance is measured from the whole open band, matching the v5 corpus mining.
+        ts, opts = self.ts, self.opts
+        self.ed = edge_dist(ts)
+        if opts.entrances is not None:
+            self.gate_bands = [(rep, band) for rep, band, _other in opts.entrances]
+            band_union = _band_union(self.gate_bands)
+            self.ent_reserved = _rim_reserved(ts, self.zones, self.zid, band_union)
         else:
-            ident = pick(pool_dw, "DWELLING")
-        if ident:
-            wanted.append(("DWELLING", ident))
-    # creature banks (utopias, conservatories, crypts, pyramids) — corpus density, no
-    # approach guard: the bank IS the fight, its reward is its own
-    for _ in range(n_bank):
-        ident = pick(ON.pool("BANK", terrain), "BANK")
-        if ident:
-            wanted.append(("BANK", ident))
-    vw = [st.counts.get(p, 0) + 0.2 for p in VISIT_PURPOSES]
-    for _ in range(n_visit):
-        p = rng.choices(VISIT_PURPOSES, weights=vw, k=1)[0]
-        pool = (
-            _info_pool(terrain, has_water, has_subterrain) if p == "INFO" else ON.pool(p, terrain)
+            self.gate_bands = zone_gate_bands(
+                ts, self.zones, self.zid, open_frac=self.st.border_open_frac
+            )
+            band_union = _band_union(self.gate_bands)
+        self.gd = gate_dist(ts, band_union)
+        self.tiles_sorted = sorted(ts)
+        inflate_gap(self.near, opts.preoccupied)
+
+    def _clearance(self) -> Clearance:
+        return Clearance(
+            self.occupied, self.near, set(self.approaches) | self.ent_reserved, self.opts.avoid
         )
-        ident = pick(pool, p)
-        if ident:
-            wanted.append((p, ident))
 
-    if not wanted:
-        return [], set(), set(), []
-
-    # anchor sampling from the fitted per-purpose intensity (the L3 fit applied).
-    # Gates are corpus-wide BANDS of the contact front (not 1-tile corridors) — gate
-    # distance is measured from the whole open band, matching the v5 corpus mining.
-    ed = edge_dist(ts)
-    if entrances is not None:
-        gate_bands = [(rep, band) for rep, band, _other in entrances]
-        band_union = set[Tile]().union(*(b for _r, b in gate_bands)) if gate_bands else set[Tile]()
-        # reserve the whole 8-connected rim, not just the bands: a gameplay APPROACH tile
-        # sitting on the border is a permanently-walkable hole neither the border bias nor
-        # the seal pass may touch (diagonal contact included — corner-cutting is a legal
-        # hero move in H3, so a diagonal-only touch tile leaks exactly like a front tile).
-        others: set[Tile] = set()
-        for zz, z2 in zones.items():
-            if zz != zid:
-                others.update(z2.tiles_set)
-        rim8 = {t for t in ts if any((t[0] + dx, t[1] + dy) in others for dx, dy in NB8)}
-        ent_reserved = frozenset(rim8 | band_union)
-    else:
-        gate_bands = zone_gate_bands(ts, zones, zid, open_frac=st.border_open_frac)
-        band_union = set[Tile]().union(*(b for _r, b in gate_bands)) if gate_bands else set[Tile]()
-        ent_reserved = NO_TILES
-    gd = gate_dist(ts, band_union)
-    tiles_sorted = sorted(ts)
-    wcache: dict[str, dict[Tile, float]] = {}
-
-    objs: list[PlacedObject] = []
-    occupied = set(preoccupied)
-    blocked = set(preblocked)
-    approaches = list(preapproaches)
-    near: set[Tile] = set()  # occupied inflated by GAP (separation zone)
-    for cx2, cy2 in preoccupied:
-        for gx in range(-GAP, GAP + 1):
-            for gy in range(-GAP, GAP + 1):
-                near.add((cx2 + gx, cy2 + gy))
-
-    def emit(purpose: str, ident: Identity, x: int, y: int) -> None:
+    def _emit(self, purpose: str, ident: Identity, x: int, y: int) -> None:
         options: dict[str, JsonValue] | None = None
         if purpose == "GUARD":  # absent => VCMI 'compliant' => every creature joins free
             options = {"character": "hostile"}
@@ -799,37 +948,31 @@ def place_zone(
                 },
                 "possibleSpells": CORE_SPELLS,  # mage guild teaches from the full pool
             }
-        objs.append(PlacedObject.at(ident, x, y, purpose=purpose, options=options))
+        self.objs.append(PlacedObject.at(ident, (x, y), purpose=purpose, options=options))
 
-    def settle(purpose: str, ident: Identity, fit: Fit, node: Tile) -> Tile:
+    def _settle(self, purpose: str, ident: Identity, fit: Fit, node: Tile) -> Tile:
         allc, blk, approach = fit
-        occupied.update(allc)
-        blocked.update(blk)
-        for cx2, cy2 in allc:  # inflate: keep the next object GAP away
-            for gx in range(-GAP, GAP + 1):
-                for gy in range(-GAP, GAP + 1):
-                    near.add((cx2 + gx, cy2 + gy))
-        approaches.append(approach)
-        emit(purpose, ident, node[0], node[1])
+        self.occupied.update(allc)
+        self.blocked.update(blk)
+        inflate_gap(self.near, allc)  # inflate: keep the next object GAP away
+        self.approaches.append(approach)
+        self._emit(purpose, ident, node[0], node[1])
         return approach
 
-    def seal_cell(ident: Identity, x: int, y: int) -> None:
+    def _seal_cell(self, ident: Identity, x: int, y: int) -> None:
         """Register a 1-cell blocking decoration exactly like `settle` (occupied/blocked/
         GAP-inflated near) but with no approach tile — used to close off a mine's unguarded
         side entrances so its single guard cannot be bypassed. Purpose "MINE_SEAL" (not
         "DECORATION") so it stays distinguishable from ordinary rigid gameplay: it is
         deliberately GAP-adjacent to the mine it seals and has no visitable approach."""
-        occupied.add((x, y))
-        blocked.add((x, y))
-        for gx in range(-GAP, GAP + 1):
-            for gy in range(-GAP, GAP + 1):
-                near.add((x + gx, y + gy))
-        emit("MINE_SEAL", ident, x, y)
+        self.occupied.add((x, y))
+        self.blocked.add((x, y))
+        inflate_gap(self.near, [(x, y)])
+        self._emit("MINE_SEAL", ident, x, y)
 
-    town_center: tuple[float, float] | None = None  # set once the zone's town settles
-    town_mines_left = 2 if n_town else 0  # sawmill + ore pit anchor NEAR the town
-    for purpose, ident in wanted:
-        if purpose == "TOWN" and force_town:
+    def _candidates(self, purpose: str, ident: Identity) -> tuple[Sequence[Tile], Sequence[Tile]]:
+        ts, area = self.ts, self.area
+        if purpose == "TOWN" and self.opts.force_town:
             # PLAYER start town: anchored so the footprint CENTER sits on the zone
             # centroid (masks anchor bottom-right, hence the +(w-1)/2 offset). The scan is
             # exhaustive nearest-first over the whole zone — the town is GUARANTEED to
@@ -839,119 +982,131 @@ def place_zone(
             ccx = sum(t[0] for t in ts) / area + (mw - 1) / 2.0
             ccy = sum(t[1] for t in ts) / area + (mh - 1) / 2.0
             cands = sorted(ts, key=lambda t: ((t[0] - ccx) ** 2 + (t[1] - ccy) ** 2, t))
-            spiral: Sequence[Tile] = ()  # already exhaustive: no nudge needed
-        elif purpose == "MINE" and town_mines_left > 0 and town_center is not None:
+            return cands, ()  # already exhaustive: no nudge needed
+        if purpose == "MINE" and self.town_mines_left > 0 and self.town_center is not None:
             # the town's economy pair (sawmill + ore pit, first two MINE entries): an
             # exhaustive nearest-first scan around the town — as close as legality (GAP,
             # approach) admits, guaranteed to place whenever the zone fits it at all
-            town_mines_left -= 1
-            tcx, tcy = town_center
-            cands = sorted(ts, key=lambda t: ((t[0] - tcx) ** 2 + (t[1] - tcy) ** 2, t))
-            spiral = ()
-        else:
-            if purpose not in wcache:
-                wcache[purpose] = intensity_weights(ts, purpose, st, ed, gd)
-            wmap = wcache[purpose]
-            weights = [wmap[t] for t in tiles_sorted]
-            cands = rng.choices(tiles_sorted, weights=weights, k=80)
-            spiral = _SPIRAL[:25]
-        for sampled in cands:
-            node = sampled
-            fit = fits(
-                ident,
-                node[0],
-                node[1],
-                ts,
-                occupied,
-                near,
-                set(approaches) | ent_reserved,
-                avoid=avoid,
+            self.town_mines_left -= 1
+            tcx, tcy = self.town_center
+            return sorted(ts, key=lambda t: ((t[0] - tcx) ** 2 + (t[1] - tcy) ** 2, t)), ()
+        if purpose not in self.wcache:
+            self.wcache[purpose] = intensity_weights(
+                ts, purpose, self.st, Covariates(self.ed, self.gd)
             )
-            if fit is None:  # nudge: try a tight spiral at the sample
-                for dx, dy in spiral:
-                    fit = fits(
-                        ident,
-                        node[0] + dx,
-                        node[1] + dy,
-                        ts,
-                        occupied,
-                        near,
-                        set(approaches) | ent_reserved,
-                        avoid=avoid,
-                    )
-                    if fit:
-                        node = (node[0] + dx, node[1] + dy)
-                        break
-            if fit and purpose == "MINE":
-                behind = [
-                    (fit[2][0], fit[2][1] + k) for k in range(1, 3 if _walk_on_only(ident) else 2)
-                ]
-                if any(t not in ts or t in occupied or t in fit[1] or t in avoid for t in behind):
-                    fit = None
+        wmap = self.wcache[purpose]
+        weights = [wmap[t] for t in self.tiles_sorted]
+        return self.rng.choices(self.tiles_sorted, weights=weights, k=80), _SPIRAL[:25]
+
+    def _fit_near(
+        self, ident: Identity, sampled: Tile, spiral: Sequence[Tile]
+    ) -> tuple[Fit | None, Tile]:
+        node = sampled
+        fit = fits(ident, node, self.ts, self._clearance())
+        if fit is None:  # nudge: try a tight spiral at the sample
+            for dx, dy in spiral:
+                fit = fits(ident, (node[0] + dx, node[1] + dy), self.ts, self._clearance())
+                if fit:
+                    node = (node[0] + dx, node[1] + dy)
+                    break
+        return fit, node
+
+    def _mine_front_blocked(self, ident: Identity, fit: Fit) -> bool:
+        behind = [(fit[2][0], fit[2][1] + k) for k in range(1, 3 if _walk_on_only(ident) else 2)]
+        return any(
+            t not in self.ts or t in self.occupied or t in fit[1] or t in self.opts.avoid
+            for t in behind
+        )
+
+    def _place_one(self, purpose: str, ident: Identity) -> None:
+        cands, spiral = self._candidates(purpose, ident)
+        for sampled in cands:
+            fit, node = self._fit_near(ident, sampled, spiral)
+            if fit and purpose == "MINE" and self._mine_front_blocked(ident, fit):
+                fit = None
             if fit:
-                approach = settle(purpose, ident, fit, node)
-                if purpose == "MINE":
-                    if _walk_on_only(ident):
-                        approach = (approach[0], approach[1] + 1)
-                        approaches.append(approach)
-                    approaches.append((approach[0], approach[1] + 1))
-                if purpose == "TOWN":  # the economy pair anchors around this
-                    mh = len(ident.mask)
-                    mw = max(len(r) for r in ident.mask)
-                    town_center = (node[0] - (mw - 1) / 2.0, node[1] - (mh - 1) / 2.0)
-                # every mine gets a guard ON the approach (fight to flip), strength ~
-                # resource rarity (user-mandated: mines must always be guarded, never left
-                # open) — and its 4 other approach-grid tiles (visitableFrom's W/E/SW/SE)
-                # are sealed with a blocking decoration so the guard actually gates the
-                # mine instead of being trivially walked around from the side.
-                if purpose == "MINE":
-                    subtype = str(ident.subtype)
-                    lvl = MINE_GUARD_LVL.get(subtype, 3)
-                    # sawmill/orePit are the town's starting economy pair — always exactly
-                    # level 1, never bumped (unlike the rarer mines below).
-                    if subtype not in ("sawmill", "orePit") and rng.random() < 0.25:
-                        lvl += 1
-                    gident = rnd_monster(lvl)
-                    emit("GUARD", gident, approach[0], approach[1])
-                    occupied.add(approach)  # no vegetation/pickup may stack there
-                    ex, ey = approach[0], approach[1] - 1  # the entrance ('X') cell
-                    seal_pool = ON.decor_pool(
-                        terrain, blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
-                    )
-                    if seal_pool:
-                        for sx, sy in (
-                            (ex - 1, ey),
-                            (ex + 1, ey),
-                            (ex - 1, ey + 1),
-                            (ex + 1, ey + 1),
-                        ):
-                            if (
-                                (sx, sy) in ts
-                                and (sx, sy) not in occupied
-                                and (sx, sy) not in avoid
-                                and (sx, sy) not in ent_reserved
-                            ):
-                                seal_cell(rng.choice(seal_pool), sx, sy)
+                self._commit(purpose, ident, fit, node)
                 break
 
-    # a shipyard on the shore of a coastal zone (mined WATER_TRANSPORT density, boosted for
-    # the coastal-only condition) — makes the adjacent water actually navigable
-    if coastal and rng.random() < min(0.8, dens.get("WATER_TRANSPORT", 0) * area * 3):
-        pool = [i for i in ON.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"] or [
+    def _commit(self, purpose: str, ident: Identity, fit: Fit, node: Tile) -> None:
+        approach = self._settle(purpose, ident, fit, node)
+        if purpose == "MINE":
+            if _walk_on_only(ident):
+                approach = (approach[0], approach[1] + 1)
+                self.approaches.append(approach)
+            self.approaches.append((approach[0], approach[1] + 1))
+        if purpose == "TOWN":  # the economy pair anchors around this
+            mh = len(ident.mask)
+            mw = max(len(r) for r in ident.mask)
+            self.town_center = (node[0] - (mw - 1) / 2.0, node[1] - (mh - 1) / 2.0)
+        # every mine gets a guard ON the approach (fight to flip), strength ~
+        # resource rarity (user-mandated: mines must always be guarded, never left
+        # open) — and its 4 other approach-grid tiles (visitableFrom's W/E/SW/SE)
+        # are sealed with a blocking decoration so the guard actually gates the
+        # mine instead of being trivially walked around from the side.
+        if purpose == "MINE":
+            self._guard_mine(ident, approach)
+
+    def _guard_mine(self, ident: Identity, approach: Tile) -> None:
+        subtype = str(ident.subtype)
+        lvl = MINE_GUARD_LVL.get(subtype, 3)
+        # sawmill/orePit are the town's starting economy pair — always exactly
+        # level 1, never bumped (unlike the rarer mines below).
+        if subtype not in ("sawmill", "orePit") and self.rng.random() < 0.25:
+            lvl += 1
+        gident = rnd_monster(lvl)
+        self._emit("GUARD", gident, approach[0], approach[1])
+        self.occupied.add(approach)  # no vegetation/pickup may stack there
+        ex, ey = approach[0], approach[1] - 1  # the entrance ('X') cell
+        seal_pool = ON.decor_pool(
+            self.terrain, blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
+        )
+        if seal_pool:
+            for sx, sy in (
+                (ex - 1, ey),
+                (ex + 1, ey),
+                (ex - 1, ey + 1),
+                (ex + 1, ey + 1),
+            ):
+                if (
+                    (sx, sy) in self.ts
+                    and (sx, sy) not in self.occupied
+                    and (sx, sy) not in self.opts.avoid
+                    and (sx, sy) not in self.ent_reserved
+                ):
+                    self._seal_cell(self.rng.choice(seal_pool), sx, sy)
+
+    def _place_shipyard(self) -> None:
+        pool = [i for i in ON.pool("WATER_TRANSPORT", self.terrain) if i.type == "shipyard"] or [
             ON.identity_of("avxshyd0")
         ]
         ident = pool[0]
-        cand = sorted(coastal)
-        rng.shuffle(cand)
+        cand = sorted(self.opts.coastal)
+        self.rng.shuffle(cand)
         for c in cand[:150]:
-            fit = fits(
-                ident, c[0], c[1], ts, occupied, near, set(approaches) | ent_reserved, avoid=avoid
-            )
+            fit = fits(ident, c, self.ts, self._clearance())
             if fit:
-                _ = settle("WATER_TRANSPORT", ident, fit, c)
+                _ = self._settle("WATER_TRANSPORT", ident, fit, c)
                 break
 
-    if entrances is not None:
+    def _edge_guard_level(self, per: int) -> int:
+        if self.opts.force_town:
+            return 1
+        return min(7, 1 + self.area // per + (1 if self.rng.random() < 0.4 else 0))
+
+    def _guard_clear(self, gident: Identity, t: Tile) -> bool:
+        return all(
+            c in self.ts and c not in self.occupied
+            for c in OR.mask_interactive_cells(gident.mask, t[0], t[1])
+        )
+
+    def _emit_guard_at(self, gident: Identity, target: Tile) -> None:
+        self._emit("GUARD", gident, target[0], target[1])
+        self.occupied.update(
+            (tx, ty) for tx, ty, _b in OR.mask_cells(gident.mask, target[0], target[1])
+        )
+
+    def _guard_entrances(self, entrances: Sequence[Entrance]) -> None:
         # zone-edge guards, ISOLATION model: each planned entrance is a genuine chokepoint
         # (the rest of the border densifies into a vegetation ridge — see pp_sample's
         # `border` bias), so the rep itself is worth guarding, at a higher probability and
@@ -959,31 +1114,18 @@ def place_zone(
         # LOWER zid of the pair emits (single-side ownership — the two sides planned the
         # same aligned crossing, and pp_map's dup-guard cleanup stays as a backstop).
         for rep, band, other in sorted(entrances):
-            if zid >= other:
+            if self.zid >= other:
                 continue
-            if rng.random() > ENTRANCE_GUARD_PROB:
+            if self.rng.random() > ENTRANCE_GUARD_PROB:
                 continue
-            lvl = 1 if force_town else min(7, 1 + area // 200 + (1 if rng.random() < 0.4 else 0))
-            gident = rnd_monster(lvl)
-            cands = [t for t in [rep, *sorted(band)] if t in ts and t not in occupied]
-            target = next(
-                (
-                    t
-                    for t in cands
-                    if all(
-                        c in ts and c not in occupied
-                        for c in OR.mask_interactive_cells(gident.mask, t[0], t[1])
-                    )
-                ),
-                None,
-            )
+            gident = rnd_monster(self._edge_guard_level(200))
+            cands = [t for t in [rep, *sorted(band)] if t in self.ts and t not in self.occupied]
+            target = next((t for t in cands if self._guard_clear(gident, t)), None)
             if target is None:
                 continue
-            emit("GUARD", gident, target[0], target[1])
-            occupied.update(
-                (tx, ty) for tx, ty, _b in OR.mask_cells(gident.mask, target[0], target[1])
-            )
-    else:
+            self._emit_guard_at(gident, target)
+
+    def _guard_pocket_mouths(self) -> None:
         # zone-edge guards: gate bands are deliberately WIDE corpus-open borders (see
         # zone_gate_bands), so most crossings have no real bottleneck at all — guarding an
         # arbitrary "least open" tile inside a wide band never actually blocks anything (the hero
@@ -993,43 +1135,43 @@ def place_zone(
         # A gate band tile that is ALSO one of those mouths sits inside a narrow niche that
         # happens to open onto the neighbouring zone — that is worth guarding; a gate band tile
         # that is not is just open ground, and stays unguarded.
-        pocket_mouths = find_pockets(ts)
-        for rep, band in sorted(gate_bands):
-            cands = [t for t in band if t in ts and t not in occupied and t in pocket_mouths]
+        pocket_mouths = find_pockets(self.ts)
+        for rep, band in sorted(self.gate_bands):
+            cands = [
+                t for t in band if t in self.ts and t not in self.occupied and t in pocket_mouths
+            ]
             if not cands:
                 continue
             target = min(cands, key=lambda t: ((t[0] - rep[0]) ** 2 + (t[1] - rep[1]) ** 2, t))
-            if rng.random() > 0.65:
+            if self.rng.random() > 0.65:
                 continue
-            lvl = 1 if force_town else min(7, 1 + area // 250 + (1 if rng.random() < 0.4 else 0))
-            gident = rnd_monster(lvl)
+            gident = rnd_monster(self._edge_guard_level(250))
             # only the interactive cell needs to be free/in-zone -- the mask's decorative
             # overlay cells may bleed past the zone edge or over already-blocked scenery, same
             # relaxation as the pickup layer's cache guards (see pp_pickup.put).
-            if not all(
-                c in ts and c not in occupied
-                for c in OR.mask_interactive_cells(gident.mask, target[0], target[1])
-            ):
+            if not self._guard_clear(gident, target):
                 continue
-            emit("GUARD", gident, target[0], target[1])
-            occupied.update(
-                (tx, ty) for tx, ty, _b in OR.mask_cells(gident.mask, target[0], target[1])
-            )
+            self._emit_guard_at(gident, target)
 
-    # tie the zone's RANDOM dwellings to its town: VCMI's `sameAsTown` link makes the
-    # dwelling resolve to the town's (lobby-picked) faction at game start, so the creatures
-    # around a random town are its own. Instance names are minted only at export, so the
-    # marker carries the town's coordinates; `renderers.vmap.VmapRenderer._build_document`
-    # swaps in the instanceName.
-    town = next((o for o in objs if o.purpose == "TOWN"), None)
-    if town is not None:
-        for o in objs:
-            if (o.type or "").startswith("randomDwelling"):
-                if o.options is None:
-                    o.options = {}
-                o.options["sameAsTown"] = [town.x, town.y, town.level]
-
-    return objs, occupied, blocked, approaches
+    def run(self) -> LevelGates:
+        self._collect_wanted()
+        if not self.wanted:
+            return [], set(), set(), []
+        self._prepare()
+        for purpose, ident in self.wanted:
+            self._place_one(purpose, ident)
+        # a shipyard on the shore of a coastal zone (mined WATER_TRANSPORT density, boosted for
+        # the coastal-only condition) — makes the adjacent water actually navigable
+        if self.opts.coastal and self.rng.random() < min(
+            0.8, self.dens.get("WATER_TRANSPORT", 0) * self.area * 3
+        ):
+            self._place_shipyard()
+        if self.opts.entrances is not None:
+            self._guard_entrances(self.opts.entrances)
+        else:
+            self._guard_pocket_mouths()
+        _tie_dwellings(self.objs)
+        return self.objs, self.occupied, self.blocked, self.approaches
 
 
 # purposes deliberately NOT reproduced by the generator (the audit's whitelist)

@@ -38,9 +38,16 @@ class TerrainGrids:
     tunnel_protect: frozenset[Tile] = frozenset()
 
 
-def _gate_anchor_points(
-    W: int, H: int, seed: int, n_sites: int = 8, margin: int = 8, pad: int = 4
-) -> list[Tile]:
+@dataclass(frozen=True, slots=True)
+class _GateLayout:
+    n_sites: int = 8
+    margin: int = 8
+    pad: int = 4
+
+
+def _gate_anchor_points(W: int, H: int, seed: int, layout: _GateLayout | None = None) -> list[Tile]:
+    lay = _GateLayout() if layout is None else layout
+    n_sites, margin, pad = lay.n_sites, lay.margin, lay.pad
     rng = random.Random(seed ^ 0xA7E5)
     cols = max(1, round(math.pow(n_sites, 0.5)))
     rows = -(-n_sites // cols)
@@ -68,12 +75,12 @@ def _gate_site_cells(ax: int, ay: int, pad: int = 4) -> set[Tile]:
 def _carve_gate_sites(
     grid0: list[list[int]],
     grid1: list[list[int]] | None,
-    W: int,
-    H: int,
     anchors: list[Tile],
     seed: int,
     pad: int = 4,
 ) -> set[Tile]:
+    H = len(grid0)
+    W = len(grid0[0])
     land0 = collections.Counter(
         grid0[y][x] for y in range(H) for x in range(W) if grid0[y][x] != TSG.WATER
     )
@@ -101,18 +108,26 @@ def _carve_gate_sites(
                 grid1[y][x] = fill1
         if land1_before:
             tx, ty = min(land1_before, key=lambda t: (t[0] - ax) ** 2 + (t[1] - ay) ** 2)
-            land_bool = [
-                [grid1[y][x] not in (TSG.WATER, TSG.ROCK) for x in range(W)] for y in range(H)
-            ]
-            MTOPO.carve_corridor(
-                land_bool, (ax, ay), (tx, ty), W, H, rng, half_w=1, protect=protect1
-            )
-            for y in range(H):
-                for x in range(W):
-                    if land_bool[y][x] and grid1[y][x] in (TSG.WATER, TSG.ROCK):
-                        grid1[y][x] = fill1
+            _tunnel_underground(grid1, ((ax, ay), (tx, ty)), fill1, rng, protect1)
         land1_before.add((ax, ay))
     return protect1
+
+
+def _tunnel_underground(
+    grid1: list[list[int]],
+    span: tuple[Tile, Tile],
+    fill1: int,
+    rng: random.Random,
+    protect1: set[Tile],
+) -> None:
+    H = len(grid1)
+    W = len(grid1[0])
+    land_bool = [[grid1[y][x] not in (TSG.WATER, TSG.ROCK) for x in range(W)] for y in range(H)]
+    MTOPO.carve_corridor(land_bool, span, rng, half_w=1, protect=protect1)
+    for y in range(H):
+        for x in range(W):
+            if land_bool[y][x] and grid1[y][x] in (TSG.WATER, TSG.ROCK):
+                grid1[y][x] = fill1
 
 
 class TerrainStep(PipelineStep):
@@ -164,9 +179,7 @@ class TerrainStep(PipelineStep):
             W,
             H,
             seed=self.seed,
-            water=self.water,
-            water_mode=self.water_mode,
-            level=0,
+            options=MTOPO.MacroOptions(water=self.water, water_mode=self.water_mode, level=0),
         )
 
         tunnel_protect_cells: set[Tile] = set()
@@ -176,11 +189,11 @@ class TerrainStep(PipelineStep):
                 W,
                 H,
                 seed=self.seed ^ 0x51E9,
-                level=1,
+                options=MTOPO.MacroOptions(level=1),
                 protect_out=tunnel_protect_cells,
             )
             gate_anchors = _gate_anchor_points(W, H, self.seed)
-            tunnel_protect_cells |= _carve_gate_sites(grid0, grid1, W, H, gate_anchors, self.seed)
+            tunnel_protect_cells |= _carve_gate_sites(grid0, grid1, gate_anchors, self.seed)
         tunnel_protect = frozenset(tunnel_protect_cells)
 
         raw_grids = {0: grid0}

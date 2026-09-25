@@ -65,16 +65,7 @@ def dedup_nearby_guards(objs: list[PlacedObject]) -> tuple[list[PlacedObject], i
         for ax, ay, _ in OR.mask_cells(o.mask, o.x, o.y)
     ]
 
-    def _rank(o: PlacedObject) -> int:
-        if any(max(abs(o.x - mx), abs(o.y - my)) <= 1 for mx, my in mine_cells) or any(
-            max(abs(o.x - ax), abs(o.y - ay)) <= 1 for ax, ay in access_cells
-        ):
-            return 0
-        if o.pocket_guard:
-            return 1
-        return 2
-
-    ranks = {ia: _rank(oa) for ia, oa in guards}
+    ranks = {ia: _guard_rank(oa, mine_cells, access_cells) for ia, oa in guards}
     for a in range(len(guards)):
         ia, oa = guards[a]
         if ia in drop:
@@ -84,41 +75,43 @@ def dedup_nearby_guards(objs: list[PlacedObject]) -> tuple[list[PlacedObject], i
             if ib in drop:
                 continue
             if max(abs(oa.x - ob.x), abs(oa.y - ob.y)) <= 2:
-                ra, rb = ranks[ia], ranks[ib]
-                if ra < rb:
-                    drop.add(ib)
-                elif rb < ra:
-                    drop.add(ia)
-                elif ra == 0:
-                    continue  # both gate a mine/access object — never drop either
-                else:
-                    # randomMonsterLevelN sorts by N lexically (levels 1..7)
-                    drop.add(ib if str(oa.type) >= str(ob.type) else ia)
+                loser = _conflict_loser(guards[a], guards[b], ranks)
+                if loser is not None:
+                    drop.add(loser)
     if drop:
         objs = [o for i, o in enumerate(objs) if i not in drop]
     return objs, len(drop)
 
 
-def place_level_loot(
-    level: int,
-    size: int,
-    objs: list[PlacedObject],
-    targets: list[Tile],
+def _guard_rank(o: PlacedObject, mine_cells: list[Tile], access_cells: list[Tile]) -> int:
+    if any(max(abs(o.x - mx), abs(o.y - my)) <= 1 for mx, my in mine_cells) or any(
+        max(abs(o.x - ax), abs(o.y - ay)) <= 1 for ax, ay in access_cells
+    ):
+        return 0
+    if o.pocket_guard:
+        return 1
+    return 2
+
+
+def _conflict_loser(
+    ga: tuple[int, PlacedObject], gb: tuple[int, PlacedObject], ranks: dict[int, int]
+) -> int | None:
+    ia, oa = ga
+    ib, ob = gb
+    ra, rb = ranks[ia], ranks[ib]
+    if ra < rb:
+        return ib
+    if rb < ra:
+        return ia
+    if ra == 0:
+        return None  # both gate a mine/access object — never drop either
+    # randomMonsterLevelN sorts by N lexically (levels 1..7)
+    return ib if str(oa.type) >= str(ob.type) else ia
+
+
+def _precompute_pockets(
     zone_records: list[ZoneRecord],
-    seed: int,
-    seerhut_artifacts: set[str],
-    border_guards: frozenset[Tile],
-    home_zids: set[int],
-) -> tuple[list[PlacedObject], int, dict[Tile, float]]:
-    """Seer-hut quests, guarded pocket caches and nearby-guard dedup for ONE level. Returns
-    (objs, n_pockets, pocket_depth_by_tile)."""
-    # L4a' Seer Hut quests: one fixed named artifact + a seer hut whose mission gates on it
-    # (VCMI RMG convention — "add seer hut with quest to the map like the vcmi generator
-    # does"). Runs before pocket caches so its two footprints are already claimed in
-    # `zone_records` when pocket geometry is judged.
-    # Pre-compute global pocket geometry ONCE, shared by both the seer-hut quest pass
-    # (artifact restricted to ≥3-tile pockets) and the pocket-cache pass (avoids a
-    # second expensive find_pockets call on the same data).
+) -> tuple[dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]], set[Tile]]:
     _global_true_pkt: set[Tile] = set()
     for _zr_pkt in zone_records:
         _global_true_pkt |= _zr_pkt.passable
@@ -127,42 +120,7 @@ def place_level_loot(
     for _g_pkt, (_pt_pkt, _mf_pkt) in _raw_pkt.items():
         if len(_pt_pkt) >= 3:
             _pocket_tiles_pkt |= set(_pt_pkt)
-    qobjs, n_quests = CA.place_seer_hut_quests(
-        zone_records,
-        seed=seed,
-        bounds=(size, size),
-        used_artifacts=seerhut_artifacts,
-        pocket_tiles=_pocket_tiles_pkt,
-        existing_objs=objs,
-    )
-    objs.extend(qobjs)
-    targets.extend((o.x, o.y) for o in qobjs)
-    if n_quests:
-        print(f"  L{level} seer hut quests: {n_quests}")
-
-    # L4b guarded pocket caches: ONE global, zone-independent pass over this level's whole
-    # reachable field now that every zone's terrain/vegetation/scatter AND the map-level
-    # repair passes above are finalized (user-mandated 2026-07-04 — see
-    # steps.loot.caches.place_pocket_caches docstring for the rationale).
-    cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
-        zone_records,
-        seed=seed,
-        bounds=(size, size),
-        border_guards=border_guards,
-        precomputed_pockets=_raw_pkt,
-        existing_objs=objs,
-        home_zids=home_zids,
-    )
-    objs.extend(cobjs)
-    targets.extend((o.x, o.y) for o in cobjs)
-    ck = collections.Counter(o.purpose for o in cobjs)
-    print(
-        f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "
-        + f"art={ck.get('REWARD_PICKUP', 0)} guard={ck.get('GUARD', 0)}"
-    )
-
-    objs, _ndrop = dedup_nearby_guards(objs)
-    return objs, n_pockets, pocket_depth_by_tile
+    return _raw_pkt, _pocket_tiles_pkt
 
 
 @final
@@ -199,6 +157,65 @@ class LootStep(PipelineStep):
         self._player_zids = ctx.require(GameplayIndex).player_zids
         self._workspace = ctx.require(PlacementWorkspace)
 
+    def _place_level_loot(
+        self,
+        level: int,
+        objs: list[PlacedObject],
+        seerhut_artifacts: set[str],
+        home_zids: set[int],
+    ) -> tuple[list[PlacedObject], int, dict[Tile, float]]:
+        """Seer-hut quests, guarded pocket caches and nearby-guard dedup for ONE level. Returns
+        (objs, n_pockets, pocket_depth_by_tile)."""
+        size, seed = self.size, self.seed
+        targets = self._targets[level]
+        zone_records = self._zone_records[level]
+        border_guards = self._workspace.levels[level].guard_tiles
+        # L4a' Seer Hut quests: one fixed named artifact + a seer hut whose mission gates on it
+        # (VCMI RMG convention — "add seer hut with quest to the map like the vcmi generator
+        # does"). Runs before pocket caches so its two footprints are already claimed in
+        # `zone_records` when pocket geometry is judged.
+        # Pre-compute global pocket geometry ONCE, shared by both the seer-hut quest pass
+        # (artifact restricted to ≥3-tile pockets) and the pocket-cache pass (avoids a
+        # second expensive find_pockets call on the same data).
+        _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(zone_records)
+        qobjs, n_quests = CA.place_seer_hut_quests(
+            zone_records,
+            seed=seed,
+            bounds=(size, size),
+            used_artifacts=seerhut_artifacts,
+            context=CA.SeerHutContext(pocket_tiles=_pocket_tiles_pkt, existing_objs=objs),
+        )
+        objs.extend(qobjs)
+        targets.extend((o.x, o.y) for o in qobjs)
+        if n_quests:
+            print(f"  L{level} seer hut quests: {n_quests}")
+
+        # L4b guarded pocket caches: ONE global, zone-independent pass over this level's whole
+        # reachable field now that every zone's terrain/vegetation/scatter AND the map-level
+        # repair passes above are finalized (user-mandated 2026-07-04 — see
+        # steps.loot.caches.place_pocket_caches docstring for the rationale).
+        cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
+            zone_records,
+            seed=seed,
+            bounds=(size, size),
+            context=CA.PocketContext(
+                border_guards=border_guards,
+                precomputed_pockets=_raw_pkt,
+                existing_objs=objs,
+                home_zids=home_zids,
+            ),
+        )
+        objs.extend(cobjs)
+        targets.extend((o.x, o.y) for o in cobjs)
+        ck = collections.Counter(o.purpose for o in cobjs)
+        print(
+            f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "
+            + f"art={ck.get('REWARD_PICKUP', 0)} guard={ck.get('GUARD', 0)}"
+        )
+
+        objs, _ndrop = dedup_nearby_guards(objs)
+        return objs, n_pockets, pocket_depth_by_tile
+
     @override
     def run(self, ontology: Ontology, map_state: MapState) -> None:
         objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._zone_records}
@@ -210,16 +227,8 @@ class LootStep(PipelineStep):
         pockets_by_level: Pockets = {}
         for level in sorted(objs_by_level):
             home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
-            objs, _n, depth = place_level_loot(
-                level,
-                self.size,
-                objs_by_level[level],
-                self._targets[level],
-                self._zone_records[level],
-                self.seed,
-                seerhut_artifacts,
-                self._workspace.levels[level].guard_tiles,
-                home_zids,
+            objs, _n, depth = self._place_level_loot(
+                level, objs_by_level[level], seerhut_artifacts, home_zids
             )
             if level == 1:
                 for o in objs:

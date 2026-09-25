@@ -153,13 +153,7 @@ def loot_zone_tiles(
     """Tiles belonging to a 'loot zone' (small, town-free, single-boundary-cluster
     zone reached via a gate/monolith access pair) -- the same detection
     steps.pickup.loot_zones uses, so pocket detection doesn't double-count them."""
-    town_tiles: set[Tile] = set()
-    for o in objs:
-        if o.level == level and o.purpose == "TOWN":
-            mask = o.mask
-            if mask:
-                for cx, cy, _ in OR.mask_cells(mask, o.x, o.y):
-                    town_tiles.add((cx, cy))
+    town_tiles = _town_tiles(objs, level)
 
     all_ts: set[Tile] = set()
     for z in zones.values():
@@ -172,23 +166,38 @@ def loot_zone_tiles(
             continue
         ext_ts = all_ts - ts
         boundary = {t for t in ts if any((t[0] + dx, t[1] + dy) in ext_ts for dx, dy in NB8)}
-        seen: set[Tile] = set()
-        n_clusters = 0
-        for s in sorted(boundary):
-            if s in seen:
-                continue
-            n_clusters += 1
-            if n_clusters > 1:
-                break
-            q = collections.deque[Tile]([s])
-            seen.add(s)
-            while q:
-                cx, cy = q.popleft()
-                for dx, dy in NB8:
-                    nb = (cx + dx, cy + dy)
-                    if nb in boundary and nb not in seen:
-                        seen.add(nb)
-                        q.append(nb)
-        if n_clusters == 1:
+        if _boundary_clusters(boundary) == 1:
             loot |= ts
     return loot
+
+
+def _town_tiles(objs: Iterable[PlacedObject], level: int) -> set[Tile]:
+    town_tiles: set[Tile] = set()
+    for o in objs:
+        if o.level == level and o.purpose == "TOWN":
+            mask = o.mask
+            if mask:
+                for cx, cy, _ in OR.mask_cells(mask, o.x, o.y):
+                    town_tiles.add((cx, cy))
+    return town_tiles
+
+
+def _boundary_clusters(boundary: set[Tile]) -> int:
+    seen: set[Tile] = set()
+    n_clusters = 0
+    for s in sorted(boundary):
+        if s in seen:
+            continue
+        n_clusters += 1
+        if n_clusters > 1:
+            break
+        q = collections.deque[Tile]([s])
+        seen.add(s)
+        while q:
+            cx, cy = q.popleft()
+            for dx, dy in NB8:
+                nb = (cx + dx, cy + dy)
+                if nb in boundary and nb not in seen:
+                    seen.add(nb)
+                    q.append(nb)
+    return n_clusters

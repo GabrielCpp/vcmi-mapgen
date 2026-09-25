@@ -15,6 +15,7 @@ import collections
 import random
 from collections.abc import Collection, Container, Mapping, Sequence
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
@@ -22,7 +23,7 @@ from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.topology import zone_gate_bands
 from vcmi_mapgen.models import CoverIndex, Entrance, Identity, JsonValue, PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.gameplay import mines as PG
-from vcmi_mapgen.steps.gameplay.water import legal_cells, pick_identity
+from vcmi_mapgen.steps.gameplay.water import CellRules, legal_cells, pick_identity
 
 CAPS = {"RESOURCE_PILE": 16, "REWARD_PICKUP": 8}  # base floors; caps scale (scatter only --
 # pocket guards/caches are deterministic, see place_pickups)
@@ -157,70 +158,62 @@ def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Ti
     return set(web_dist(open_set, prot))
 
 
-def place_one(
-    objs: list[PlacedObject],
-    used: set[Tile],
-    reach: AbstractSet[Tile],
-    rng: random.Random,
-    st: PG.TerrainStats,
-    purpose: str,
-    pool: Sequence[Identity] | None,
-    x: int,
-    y: int,
-    ident: Identity | None = None,
-    art_share: float = 0.45,
-    cache: bool = False,
-    bounds: tuple[int, int] | None = None,
-    options: dict[str, JsonValue] | None = None,
-    interactive_only: bool = False,
-    clear_of: Container[Tile] | None = None,
-    cover: CoverIndex | None = None,
-) -> bool:
-    """Shared placement primitive for both scatter and pocket caches: resolve an identity,
-    check its footprint against `reach`/`used`, and if legal append the obj and claim its
-    cells. Returns whether it landed.
+@dataclass(frozen=True, slots=True)
+class PlaceTarget:
+    objs: list[PlacedObject]
+    used: set[Tile]
+    reach: AbstractSet[Tile]
+    rng: random.Random
+    st: PG.TerrainStats
+    bounds: tuple[int, int] | None = None
+    cover: CoverIndex | None = None
 
-    interactive_only: passed to legal_cells — only the A-cell is checked/claimed so adjacent
-    pickups' V-cells never block each other (use for dense fill passes)."""
-    ident = ident or pick_identity(pool or (), purpose, st, rng, art_share=art_share)
-    if ident is None:
-        return False
-    if purpose == "GUARD":
-        # a guard's mask carries decorative overlay cells (H3's monster sprites always
-        # bleed into surrounding scenery) alongside its one interactive cell -- at a
-        # genuine chokepoint the surroundings are mostly blocked/unreachable BY
-        # DEFINITION, so requiring the whole footprint free (like legal_cells does) means the
-        # guard can almost never actually land on the neck. Only the interactive cell has
-        # to be free & reachable; the rest may fall outside `reach`, overlap terrain, or
-        # overlap another object's cells -- V cells are pure non-blocking sprite extent,
-        # and the pocket the guard seals is BY DESIGN packed with caches up/left of the
-        # mouth. Rejecting on `used` overlap silently dropped the guard from 31 of 39
-        # earned pockets on a real 72x72 build (every nook north/west of its mouth),
-        # leaving the treasure free -- the exact opposite of the cache grammar.
-        interactive = OR.mask_interactive_cells(ident.mask, x, y)
-        if not interactive or not all(c in reach and c not in used for c in interactive):
-            return False
-        if clear_of is not None and not OR.overlay_clear(ident.mask, x, y, clear_of):
-            return False
-        cells = [(tx, ty) for tx, ty, _b in OR.mask_cells(ident.mask, x, y)]
-        if bounds is not None:
-            bw, bh = bounds
-            if any(not (0 <= tx < bw and 0 <= ty < bh) for tx, ty in cells):
-                return False
-    else:
-        cells = legal_cells(
-            ident, x, y, reach, used, bounds=bounds, interactive_only=interactive_only
-        )
-        if cells is None:
-            return False
-    o = PlacedObject.at(ident, x, y, purpose=purpose)
-    if cover is not None and not cover.try_add(o):
-        return False
-    used.update(cells)
-    if purpose == "GUARD":  # absent => VCMI 'compliant' => every creature joins free
+
+@dataclass(frozen=True, slots=True)
+class PlaceSpec:
+    purpose: str
+    pool: Sequence[Identity] | None = None
+    ident: Identity | None = None
+    art_share: float = 0.45
+    cache: bool = False
+    options: dict[str, JsonValue] | None = None
+    interactive_only: bool = False
+    clear_of: Container[Tile] | None = None
+
+
+def _guard_cells(
+    target: PlaceTarget, spec: PlaceSpec, ident: Identity, x: int, y: int
+) -> list[Tile] | None:
+    # a guard's mask carries decorative overlay cells (H3's monster sprites always
+    # bleed into surrounding scenery) alongside its one interactive cell -- at a
+    # genuine chokepoint the surroundings are mostly blocked/unreachable BY
+    # DEFINITION, so requiring the whole footprint free (like legal_cells does) means the
+    # guard can almost never actually land on the neck. Only the interactive cell has
+    # to be free & reachable; the rest may fall outside `reach`, overlap terrain, or
+    # overlap another object's cells -- V cells are pure non-blocking sprite extent,
+    # and the pocket the guard seals is BY DESIGN packed with caches up/left of the
+    # mouth. Rejecting on `used` overlap silently dropped the guard from 31 of 39
+    # earned pockets on a real 72x72 build (every nook north/west of its mouth),
+    # leaving the treasure free -- the exact opposite of the cache grammar.
+    interactive = OR.mask_interactive_cells(ident.mask, x, y)
+    if not interactive or not all(c in target.reach and c not in target.used for c in interactive):
+        return None
+    if spec.clear_of is not None and not OR.overlay_clear(ident.mask, x, y, spec.clear_of):
+        return None
+    if spec.interactive_only:
+        return interactive
+    cells = [(tx, ty) for tx, ty, _b in OR.mask_cells(ident.mask, x, y)]
+    if target.bounds is not None:
+        bw, bh = target.bounds
+        cells = [(tx, ty) for tx, ty in cells if 0 <= tx < bw and 0 <= ty < bh]
+    return cells
+
+
+def _apply_options(o: PlacedObject, ident: Identity, spec: PlaceSpec, rng: random.Random) -> None:
+    if spec.purpose == "GUARD":  # absent => VCMI 'compliant' => every creature joins free
         o.options = {"character": "hostile"}
-    if options is not None:
-        o.options = options
+    if spec.options is not None:
+        o.options = spec.options
     elif ident.type == "pandoraBox":  # absent => legal but permanently empty reward
         o.options = _pandora_reward(rng)
     elif ident.type == "spellScroll":
@@ -231,26 +224,83 @@ def place_one(
         # pool, so move it across before overwriting it.
         o.options = {"spell": ident.subtype}
         o.subtype = "object"
-    if cache:  # a guarded-pocket pickup, not open scatter — informational marker only,
+
+
+def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
+    """Shared placement primitive for both scatter and pocket caches: resolve an identity,
+    check its footprint against `reach`/`used`, and if legal append the obj and claim its
+    cells. Returns whether it landed.
+
+    interactive_only: passed to legal_cells — only the A-cell is checked/claimed so adjacent
+    pickups' V-cells never block each other (use for dense fill passes)."""
+    rng = target.rng
+    ident = spec.ident or pick_identity(
+        spec.pool or (), spec.purpose, target.st, rng, art_share=spec.art_share
+    )
+    if ident is None:
+        return False
+    if spec.purpose == "GUARD":
+        cells = _guard_cells(target, spec, ident, x, y)
+    else:
+        cells = legal_cells(
+            ident,
+            (x, y),
+            target.reach,
+            target.used,
+            CellRules(bounds=target.bounds, interactive_only=spec.interactive_only),
+        )
+    if cells is None:
+        return False
+    o = PlacedObject.at(ident, (x, y), purpose=spec.purpose)
+    if target.cover is not None and not target.cover.try_add(o):
+        return False
+    target.used.update(cells)
+    _apply_options(o, ident, spec, rng)
+    if spec.cache:  # a guarded-pocket pickup, not open scatter — informational marker only,
         o.cache = True  # ignored by the vmap exporter, used by tests
-    objs.append(o)
+    target.objs.append(o)
     return True
 
 
+@dataclass(frozen=True, slots=True)
+class ScatterZone:
+    ts: AbstractSet[Tile]
+    zones: Mapping[int, Zone]
+    zid: int
+    terrain: str
+    open_set: AbstractSet[Tile]
+    prot: Collection[Tile]
+    entrances: Sequence[Entrance] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ScatterConfig:
+    seed: int = 1
+    bounds: tuple[int, int] | None = None
+    cover: CoverIndex | None = None
+    reach_in: set[Tile] | None = None
+    used_in: set[Tile] | None = None
+    avoid: AbstractSet[Tile] = _NO_AVOID
+
+
+_DEFAULT_SCATTER_CONFIG = ScatterConfig()
+
+
+def _stoch(rng: random.Random, x: float, cap: int) -> int:
+    n = int(x) + (1 if rng.random() < x - int(x) else 0)
+    return min(n, cap)
+
+
+def _scatter_gate_dist(zone: ScatterZone, st: PG.TerrainStats) -> dict[Tile, int]:
+    if zone.entrances is not None:  # isolation plan: gd measures from the
+        bands = [(r, b) for r, b, _o in zone.entrances]  # planned narrow crossings
+    else:
+        bands = zone_gate_bands(zone.ts, zone.zones, zone.zid, open_frac=st.border_open_frac)
+    return PG.gate_dist(zone.ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
+
+
 def place_scatter(
-    ts: AbstractSet[Tile],
-    zones: Mapping[int, Zone],
-    zid: int,
-    terrain: str,
-    open_set: AbstractSet[Tile],
-    prot: Collection[Tile],
-    seed: int = 1,
-    bounds: tuple[int, int] | None = None,
-    entrances: Sequence[Entrance] | None = None,
-    cover: CoverIndex | None = None,
-    reach_in: set[Tile] | None = None,
-    used_in: set[Tile] | None = None,
-    avoid: AbstractSet[Tile] = _NO_AVOID,
+    zone: ScatterZone, config: ScatterConfig = _DEFAULT_SCATTER_CONFIG
 ) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
@@ -262,67 +312,50 @@ def place_scatter(
     Guarded pocket caches are NOT placed here — see `place_pocket_caches`, which must run
     once for the WHOLE map after every zone's scatter is done (a genuine pocket must be
     judged against true global passability, not one zone's reach alone)."""
-    st = PG.mine_gameplay()[terrain]
-    rng = random.Random(seed ^ (zid * 92821) ^ 0x9C4)
+    ts = zone.ts
+    st = PG.mine_gameplay()[zone.terrain]
+    rng = random.Random(config.seed ^ (zone.zid * 92821) ^ 0x9C4)
     area = len(ts)
     dens = {p: st.counts.get(p, 0) / max(st.tiles, 1) for p in PG.PICKUP_PURPOSES}
 
-    def stoch(x: float, cap: int) -> int:
-        n = int(x) + (1 if rng.random() < x - int(x) else 0)
-        return min(n, cap)
-
-    n_res = stoch(
+    n_res = _stoch(
+        rng,
         dens["RESOURCE_PILE"] * area,
         PG.scaled_cap(CAPS["RESOURCE_PILE"], dens["RESOURCE_PILE"] * area),
     )
 
-    dweb = web_dist(open_set, prot)
-    reach = set(dweb) if reach_in is None else reach_in  # reachable open tiles only
-    op = PG.openness(open_set)
+    dweb = web_dist(zone.open_set, zone.prot)
+    reach = set(dweb) if config.reach_in is None else config.reach_in  # reachable open tiles only
+    op = PG.openness(zone.open_set)
     ed = edge_dist(ts)
-    if entrances is not None:  # isolation plan: gd measures from the
-        bands = [(r, b) for r, b, _o in entrances]  # planned narrow crossings
-    else:
-        bands = zone_gate_bands(ts, zones, zid, open_frac=st.border_open_frac)
-    gd = PG.gate_dist(ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
+    gd = _scatter_gate_dist(zone, st)
 
-    pool_res = ON.pool("RESOURCE_PILE", terrain)
+    pool_res = ON.pool("RESOURCE_PILE", zone.terrain)
 
     objs: list[PlacedObject] = []
-    used: set[Tile] = set() if used_in is None else used_in
+    used: set[Tile] = set() if config.used_in is None else config.used_in
+    target = PlaceTarget(objs, used, reach, rng, st, bounds=config.bounds, cover=config.cover)
 
     # Open-field scatter is resource piles only — artifacts are reserved for pockets
     # and loot zones where a guard or gate makes them genuinely earned.
     def scatter(purpose: str, pool: Sequence[Identity], n: int, min_sep: int) -> None:
         if n <= 0:
             return
-        wmap = PG.intensity_weights(reach, purpose, st, ed, gd, op=op)
+        wmap = PG.intensity_weights(reach, purpose, st, PG.Covariates(ed, gd, op))
         cands = sorted(reach)
         if not cands:  # zone has no reachable open tile
             return
         weights = [wmap[t] for t in cands]
+        spec = PlaceSpec(purpose, pool, art_share=SCATTER_ART_SHARE)
         placed: list[Tile] = []
         for t in rng.choices(cands, weights=weights, k=60 * n):
             if len(placed) >= n:
                 break
-            if t in used or t in avoid:
+            if t in used or t in config.avoid:
                 continue
             if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < min_sep for q in placed):
                 continue
-            if place_one(
-                objs,
-                used,
-                reach,
-                rng,
-                st,
-                purpose,
-                pool,
-                t[0],
-                t[1],
-                art_share=SCATTER_ART_SHARE,
-                bounds=bounds,
-                cover=cover,
-            ):
+            if place_one(target, spec, t[0], t[1]):
                 placed.append(t)
 
     scatter("RESOURCE_PILE", pool_res, n_res, min_sep=3)

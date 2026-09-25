@@ -231,6 +231,82 @@ def pair_denominator(ts: Collection[Tile]) -> list[int]:
     return D
 
 
+type _Pos = collections.defaultdict[Tile, collections.Counter[str]]
+
+
+def _count_stacked(a: _Acc, ca: collections.Counter[str]) -> None:
+    for cat_a, n_a in ca.items():
+        for cat_b, n_b in ca.items():
+            n = n_a * n_b - (n_a if cat_a == cat_b else 0)
+            if n > 0:
+                a.pairN[f"{cat_a}|{cat_b}"][0] += n
+
+
+def _count_rings(a: _Acc, pos: _Pos, p: Tile, ca: collections.Counter[str]) -> None:
+    for r in range(1, RMAX + 1):
+        for dx, dy in OFFS[r]:
+            cb = pos.get((p[0] + dx, p[1] + dy))
+            if not cb:
+                continue
+            for cat_a, n_a in ca.items():
+                for cat_b, n_b in cb.items():
+                    a.pairN[f"{cat_a}|{cat_b}"][r] += n_a * n_b
+
+
+def _count_cells(a: _Acc, ts: set[Tile], pos: _Pos) -> None:
+    xs = [x for x, _ in ts]
+    ys2 = [y for _, y in ts]
+    for cy0 in range(min(ys2), max(ys2) - CELL + 2, CELL):
+        for cx0 in range(min(xs), max(xs) - CELL + 2, CELL):
+            cell_tiles = [(cx0 + dx, cy0 + dy) for dy in range(CELL) for dx in range(CELL)]
+            if all(t in ts for t in cell_tiles):
+                n = sum(sum(pos[t].values()) for t in cell_tiles if t in pos)
+                a.cells_n += 1
+                a.cells_sum += n
+                a.cells_sum2 += n * n
+
+
+def _count_blocked(a: _Acc, anchors: list[tuple[int, int, str, str]], ts: set[Tile]) -> None:
+    blocked: set[Tile] = set()
+    for x, y, _c, anim in anchors:
+        for cx, cy, blk in OR.mask_cells(ON.mask_of(anim), x, y):
+            if blk and (cx, cy) in ts:
+                blocked.add((cx, cy))
+    a.blocked += len(blocked)
+    a.runs.update(run_lengths(ts, ts - blocked))
+
+
+def _accumulate_zone(a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
+    anchors = _anchors_of_zone(fm, ts)
+    edist = edge_dist(ts)
+
+    a.nzones += 1
+    a.tiles += len(ts)
+    a.nanch += len(anchors)
+    for t in ts:
+        a.tiles_per_ebin[min(edist[t], EBINS - 1)] += 1
+    pos: _Pos = collections.defaultdict(collections.Counter)  # (x,y) -> cat counts
+    for x, y, cat, anim in anchors:
+        a.anch[cat][min(edist[(x, y)], EBINS - 1)] += 1
+        a.anim_w[cat][anim] += 1
+        pos[(x, y)][cat] += 1
+
+    # pair counts: ordered (a,b) pairs per ring, incl. r=0 stacking
+    for p, ca in pos.items():
+        _count_stacked(a, ca)
+        _count_rings(a, pos, p, ca)
+    D = pair_denominator(ts)
+    for r in range(RMAX + 1):
+        a.pairD[r] += D[r]
+
+    # coarse-cell anchor counts -> overdispersion (Fisher index) for the Cox field:
+    # only cells FULLY inside the zone, so cell area is constant
+    _count_cells(a, ts, pos)
+
+    # budget target + corpus veg-only run lengths
+    _count_blocked(a, anchors, ts)
+
+
 def mine(nmaps: int = 159, force: bool = False) -> dict[str, VegStats]:
     """One corpus pass -> per-terrain stats; cached in data/pp/veg_<terrain>.json."""
     os.makedirs(PP_DIR, exist_ok=True)
@@ -253,117 +329,62 @@ def mine(nmaps: int = 159, force: bool = False) -> dict[str, VegStats]:
             terr = TNAME.get(z.terrain_type)
             if terr not in acc or z.area < MIN_AREA:
                 continue
-            a = acc[terr]
-            ts = set(z.tiles_set)
-            anchors = _anchors_of_zone(fm, ts)
-            edist = edge_dist(ts)
-
-            a.nzones += 1
-            a.tiles += len(ts)
-            a.nanch += len(anchors)
-            for t in ts:
-                a.tiles_per_ebin[min(edist[t], EBINS - 1)] += 1
-            pos: collections.defaultdict[Tile, collections.Counter[str]] = collections.defaultdict(
-                collections.Counter
-            )  # (x,y) -> cat counts
-            for x, y, cat, anim in anchors:
-                a.anch[cat][min(edist[(x, y)], EBINS - 1)] += 1
-                a.anim_w[cat][anim] += 1
-                pos[(x, y)][cat] += 1
-
-            # pair counts: ordered (a,b) pairs per ring, incl. r=0 stacking
-            for p, ca in pos.items():
-                for cat_a, n_a in ca.items():
-                    for cat_b, n_b in ca.items():
-                        n = n_a * n_b - (n_a if cat_a == cat_b else 0)
-                        if n > 0:
-                            a.pairN[f"{cat_a}|{cat_b}"][0] += n
-                for r in range(1, RMAX + 1):
-                    for dx, dy in OFFS[r]:
-                        cb = pos.get((p[0] + dx, p[1] + dy))
-                        if not cb:
-                            continue
-                        for cat_a, n_a in ca.items():
-                            for cat_b, n_b in cb.items():
-                                a.pairN[f"{cat_a}|{cat_b}"][r] += n_a * n_b
-            D = pair_denominator(ts)
-            for r in range(RMAX + 1):
-                a.pairD[r] += D[r]
-
-            # coarse-cell anchor counts -> overdispersion (Fisher index) for the Cox field:
-            # only cells FULLY inside the zone, so cell area is constant
-            xs = [x for x, _ in ts]
-            ys2 = [y for _, y in ts]
-            for cy0 in range(min(ys2), max(ys2) - CELL + 2, CELL):
-                for cx0 in range(min(xs), max(xs) - CELL + 2, CELL):
-                    cell_tiles = [(cx0 + dx, cy0 + dy) for dy in range(CELL) for dx in range(CELL)]
-                    if all(t in ts for t in cell_tiles):
-                        n = sum(sum(pos[t].values()) for t in cell_tiles if t in pos)
-                        a.cells_n += 1
-                        a.cells_sum += n
-                        a.cells_sum2 += n * n
-
-            # budget target + corpus veg-only run lengths
-            blocked: set[Tile] = set()
-            for x, y, _c, anim in anchors:
-                for cx, cy, blk in OR.mask_cells(ON.mask_of(anim), x, y):
-                    if blk and (cx, cy) in ts:
-                        blocked.add((cx, cy))
-            a.blocked += len(blocked)
-            a.runs.update(run_lengths(ts, ts - blocked))
+            _accumulate_zone(acc[terr], fm, set(z.tiles_set))
         if (i + 1) % 40 == 0:
             print(f"  mined {i + 1}/{len(names)} maps")
 
     out: dict[str, VegStats] = {}
     for terr, a in acc.items():
-        tot_tiles = max(a.tiles, 1)
-        lam: dict[str, list[float]] = {}
-        for cat, per_e in a.anch.items():
-            lam[cat] = [
-                (per_e[e] + 0.25) / (a.tiles_per_ebin[e] + 0.5) for e in range(EBINS)
-            ]  # Laplace-smoothed
-        lam_tot = {cat: sum(a.anch[cat]) / tot_tiles for cat in a.anch}
-        g: dict[str, list[float]] = {}
-        for key, N in a.pairN.items():
-            ca, cb = key.split("|")
-            la, lb = lam_tot.get(ca, 0), lam_tot.get(cb, 0)
-            if la <= 0 or lb <= 0:
-                continue
-            g[key] = [
-                (N[r] / a.pairD[r]) / (la * lb) if a.pairD[r] else 0.0 for r in range(RMAX + 1)
-            ]
-        mean_blk = {
-            cat: (
-                sum(
-                    sum(1 for row in ON.mask_of(an) for ch in row if ch in "BX") * c
-                    for an, c in cnt.items()
-                )
-                / max(sum(cnt.values()), 1)
-            )
-            for cat, cnt in a.anim_w.items()
-        }
-        runs_tot = sum(a.runs.values()) or 1
-        out[terr] = VegStats(
-            terrain=terr,
-            nzones=a.nzones,
-            tiles=a.tiles,
-            nanchors=a.nanch,
-            tiles_per_ebin=a.tiles_per_ebin,
-            anch=dict(a.anch),
-            lam=lam,
-            lam_tot=lam_tot,
-            g=g,
-            pairN=dict(a.pairN),
-            pairD=a.pairD,
-            anim_w={c: dict(v) for c, v in a.anim_w.items()},
-            mean_blk_cells=mean_blk,
-            cell=CellStats(size=CELL, n=a.cells_n, sum=a.cells_sum, sum2=a.cells_sum2),
-            veg_blocked_frac=a.blocked / tot_tiles,
-            runs={str(k): v / runs_tot for k, v in sorted(a.runs.items())[:12]},
-        )
+        out[terr] = _finalize(terr, a)
         _ = Path(paths[terr]).write_text(json.dumps(_stats_to_json(out[terr])))
     print(f"mined {len(names)} maps -> {PP_DIR}/veg_<terrain>.json")
     return out
+
+
+def _finalize(terr: str, a: _Acc) -> VegStats:
+    tot_tiles = max(a.tiles, 1)
+    lam: dict[str, list[float]] = {}
+    for cat, per_e in a.anch.items():
+        lam[cat] = [
+            (per_e[e] + 0.25) / (a.tiles_per_ebin[e] + 0.5) for e in range(EBINS)
+        ]  # Laplace-smoothed
+    lam_tot = {cat: sum(a.anch[cat]) / tot_tiles for cat in a.anch}
+    g: dict[str, list[float]] = {}
+    for key, N in a.pairN.items():
+        ca, cb = key.split("|")
+        la, lb = lam_tot.get(ca, 0), lam_tot.get(cb, 0)
+        if la <= 0 or lb <= 0:
+            continue
+        g[key] = [(N[r] / a.pairD[r]) / (la * lb) if a.pairD[r] else 0.0 for r in range(RMAX + 1)]
+    mean_blk = {
+        cat: (
+            sum(
+                sum(1 for row in ON.mask_of(an) for ch in row if ch in "BX") * c
+                for an, c in cnt.items()
+            )
+            / max(sum(cnt.values()), 1)
+        )
+        for cat, cnt in a.anim_w.items()
+    }
+    runs_tot = sum(a.runs.values()) or 1
+    return VegStats(
+        terrain=terr,
+        nzones=a.nzones,
+        tiles=a.tiles,
+        nanchors=a.nanch,
+        tiles_per_ebin=a.tiles_per_ebin,
+        anch=dict(a.anch),
+        lam=lam,
+        lam_tot=lam_tot,
+        g=g,
+        pairN=dict(a.pairN),
+        pairD=a.pairD,
+        anim_w={c: dict(v) for c, v in a.anim_w.items()},
+        mean_blk_cells=mean_blk,
+        cell=CellStats(size=CELL, n=a.cells_n, sum=a.cells_sum, sum2=a.cells_sum2),
+        veg_blocked_frac=a.blocked / tot_tiles,
+        runs={str(k): v / runs_tot for k, v in sorted(a.runs.items())[:12]},
+    )
 
 
 def load(terrain: str) -> VegStats:
@@ -393,14 +414,14 @@ def theta_local(
     rint: int = 2,
     base_r: int = 4,
     min_pairs: int = 30,
-    lo: float = -1.5,
-    hi: float = 1.5,
+    clip: tuple[float, float] = (-1.5, 1.5),
 ) -> dict[str, list[float]]:
     """LOCAL pair potentials, background-normalized:  theta[a][b][r] = log(g(r) / g(base_r)),
     r <= rint. The raw g(r) > 1 at ALL ranges because zones mix dense forest masses with
     clearings (large-scale inhomogeneity); fitting that as pair attraction makes the Gibbs
     process explosive. Dividing by the mid-range g isolates the genuinely LOCAL clumping /
     stacking excess; the large-scale part is carried by the Cox log-field (`cox_sigma`)."""
+    lo, hi = clip
     th: dict[str, list[float]] = {}
     for key, gr in stats.g.items():
         N = stats.pairN[key]

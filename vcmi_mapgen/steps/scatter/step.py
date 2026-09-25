@@ -61,19 +61,23 @@ class ScatterStep(PipelineStep):
                 zw = lvl_ws.zones[zr.zid]
                 used = set(zr.used) | taken
                 piles, _u, _r = SC.place_scatter(
-                    zw.ts,
-                    map_state.zones[level],
-                    zr.zid,
-                    zw.terrain,
-                    zw.open_set - (zw.rim8 - zw.ent_bands),
-                    zw.prot,
-                    seed=self.seed,
-                    bounds=(self.size, self.size),
-                    entrances=zw.entrances,
-                    cover=cover,
-                    reach_in=set(zr.reach),
-                    used_in=used,
-                    avoid=zoc,
+                    SC.ScatterZone(
+                        zw.ts,
+                        map_state.zones[level],
+                        zr.zid,
+                        zw.terrain,
+                        zw.open_set - (zw.rim8 - zw.ent_bands),
+                        zw.prot,
+                        entrances=zw.entrances,
+                    ),
+                    SC.ScatterConfig(
+                        seed=self.seed,
+                        bounds=(self.size, self.size),
+                        cover=cover,
+                        reach_in=set(zr.reach),
+                        used_in=used,
+                        avoid=zoc,
+                    ),
                 )
                 for o in piles:
                     o.level = level

@@ -36,8 +36,8 @@ def test_gameplay_layer_legal_and_deterministic() -> None:
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {1: _zone(ts, 14.5, 11.5)}
-    o1 = PG.place_zone(ts, zones, 1, "grass", seed=4)
-    o2 = PG.place_zone(ts, zones, 1, "grass", seed=4)
+    o1 = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=4))
+    o2 = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=4))
     assert o1 == o2, "gameplay placement must be seed-deterministic"
     objs, occupied, blocked, approaches = o1
     assert objs, "a 720-tile grass zone should hold gameplay"
@@ -112,7 +112,7 @@ def test_forced_town_sits_on_zone_centroid() -> None:
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {1: _zone(ts, 14.5, 11.5)}
-    objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=4, force_town=True)
+    objs, *_ = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=4, force_town=True))
     towns = [o for o in objs if o.purpose == "TOWN"]
     assert towns, "force_town guarantees a town in a 720-tile zone"
     t = towns[0]
@@ -137,7 +137,7 @@ def test_town_zone_gets_wood_and_ore_next_to_town() -> None:
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {1: _zone(ts, 14.5, 11.5)}
     for seed in (1, 4, 9):
-        objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=seed, force_town=True)
+        objs, *_ = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=seed, force_town=True))
         towns = [o for o in objs if o.purpose == "TOWN"]
         assert towns, f"seed {seed}: forced town missing"
         subs = {o.subtype for o in objs if o.purpose == "MINE"}
@@ -161,14 +161,14 @@ def test_mine_ledger_covers_basics_and_rations_gold() -> None:
     # legitimately raises the quota — the INVARIANT is what must hold)
     for seed in range(1, 8):
         ledger = PG.Ledger(missing=set(PG.BASIC_MINE_RES), towns=1, gold=0)
-        objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=seed, ledger=ledger)
+        objs, *_ = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=seed, ledger=ledger))
         n_gold = sum(1 for o in objs if o.purpose == "MINE" and o.subtype == "goldMine")
         assert n_gold == ledger.gold <= max(0, ledger.towns - 1), (
             f"seed {seed}: gold {n_gold} exceeds quota (towns={ledger.towns})"
         )
     # missing basics are drawn FIRST: a fresh ledger shrinks by every mine the zone placed
     ledger = PG.Ledger(missing=set(PG.BASIC_MINE_RES), towns=1, gold=0)
-    objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=3, ledger=ledger)
+    objs, *_ = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=3, ledger=ledger))
     n_mines = sum(1 for o in objs if o.purpose == "MINE")
     assert len(ledger.missing) <= max(0, len(PG.BASIC_MINE_RES) - n_mines), (
         "every placed mine must come from the missing set while it is non-empty"
@@ -186,7 +186,7 @@ def test_banks_placed_on_land_and_legal() -> None:
     zones = {1: _zone(ts, 22.0, 19.5)}
     banks: list[PlacedObject] = []
     for seed in range(1, 12):
-        objs, *_ = PG.place_zone(ts, zones, 1, "grass", seed=seed)
+        objs, *_ = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=seed))
         banks += [o for o in objs if o.purpose == "BANK"]
     assert banks, "a 1800-tile grass zone must produce banks across a dozen seeds"
     for b in banks:
@@ -208,7 +208,7 @@ def test_mine_sprites_match_terrain() -> None:
         zones[1].terrain_type = tt
         mw = st[terrain].anim_w["MINE"]
         for seed in range(1, 8):
-            objs, *_ = PG.place_zone(ts, zones, 1, terrain, seed=seed)
+            objs, *_ = PG.place_zone(ts, zones, 1, terrain, PG.ZoneOptions(seed=seed))
             for m in (o for o in objs if o.purpose == "MINE"):
                 w = mw.get(m.animation.lower(), 0)
                 assert w > 0, (
@@ -246,8 +246,12 @@ def test_entrance_guard_single_side() -> None:
 
     n_guarded = 0
     for seed in range(1, 7):
-        objs1, *_ = PG.place_zone(ts1, zones, 1, "grass", seed=seed, entrances=plan[1])
-        objs2, *_ = PG.place_zone(ts2, zones, 2, "grass", seed=seed, entrances=plan[2])
+        objs1, *_ = PG.place_zone(
+            ts1, zones, 1, "grass", PG.ZoneOptions(seed=seed, entrances=plan[1])
+        )
+        objs2, *_ = PG.place_zone(
+            ts2, zones, 2, "grass", PG.ZoneOptions(seed=seed, entrances=plan[2])
+        )
         g1 = [o for o in objs1 if o.purpose == "GUARD" and (o.x, o.y) in crossing1]
         g2 = [o for o in objs2 if o.purpose == "GUARD" and (o.x, o.y) in crossing2]
         assert len(g1) <= 1, "at most one guard per planned entrance"
