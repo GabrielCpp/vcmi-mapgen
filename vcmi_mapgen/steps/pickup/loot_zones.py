@@ -2,7 +2,7 @@
 zones — a global, per-level pass that runs once every zone's scatter is placed.
 
 Also owns `solo_visit_pool`/`shrine_spell_level`, needed by
-`steps.repair.caches.place_pocket_caches` too — Pickup is the first step in pipeline order
+`steps.loot.caches.place_pocket_caches` too — Pickup is the first step in pipeline order
 to need them.
 """
 
@@ -35,13 +35,13 @@ _LOOT_COLORS = [  # (border_gate_anim, keymaster_anim); index == VCMI subtype 0-
 ]
 _LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 _LOOT_EXCL_DECOR = frozenset({"LAKE", "FROZEN_LAKE", "RIVER_DELTA", "KELP", "REEF", "LAKE_2"})
-# Visitable structures excluded from pocket caches (steps.repair.caches still uses this).
+# Visitable structures excluded from pocket caches (steps.loot.caches still uses this).
 FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})  # Fountain of Fortune, Idol of Fortune
 # REWARD_PICKUP types excluded from loot zone art/chest fill (pool_art + pool_chest).
 _LOOT_ART_EXCL_TYPES = frozenset({"leanTo", "wagon", "warriorTomb", "denOfThieves"})
 # chest-type fill is an explicit allow-list, not "everything but an artifact": scholar,
 # corpse and a spell scroll are REWARD_PICKUP too but are not a chest and were never meant
-# to be loot-zone content. Shared with steps.repair.caches' pocket fill -- don't widen
+# to be loot-zone content. Shared with steps.loot.caches' pocket fill -- don't widen
 # this one for loot-zone-only needs (see _LOOT_ZONE_CHEST_EXTRA_TYPES below instead).
 LOOT_CHEST_TYPES = frozenset({"treasureChest", "campfire", "pandoraBox"})
 # Loot-zone-only chest-tier additions on top of LOOT_CHEST_TYPES (user-mandated

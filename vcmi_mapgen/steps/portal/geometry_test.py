@@ -1,11 +1,11 @@
-"""Reliability tests for steps.repair.geometry (G2 repair, island fill, portal rescue)."""
+"""Reliability tests for steps.portal.geometry (target reachability, portal rescue)."""
 
 from dataclasses import replace
 
 from vcmi_mapgen.kit import reachability as TR
 from vcmi_mapgen.kit.objects import FaithfulMap
 from vcmi_mapgen.models import Cell, Identity, PlacedObject, Tile, Zone
-from vcmi_mapgen.steps.repair import geometry as GEO
+from vcmi_mapgen.steps.portal import geometry as GEO
 
 GRASS, ROCK = 2, 9
 
@@ -44,8 +44,9 @@ def _enclave_fixture() -> tuple[int, list[list[int]], dict[int, Zone], set[Tile]
     return size, grid, zones, inner, ts1
 
 
-def test_g2_repair_carves_vegetation_only() -> None:
-    """A vegetation wall between two pickups gets carved; gameplay walls do not."""
+def test_unreachable_targets_reports_vegetation_walls_only() -> None:
+    """A vegetation wall between two pickups cuts them off, a gameplay wall makes them
+    another island's business, a guard in the way does not cut."""
     size = 12
     grid = [[2] * size for _ in range(size)]
     veg_wall = [_obj("pineTrees", "pineTrees", "avlpn0", ("B",), 6, y, "") for y in range(size)]
@@ -53,20 +54,17 @@ def test_g2_repair_carves_vegetation_only() -> None:
         _obj("resource", "wood", "avtwood0", ("A",), 2, 5, "RESOURCE_PILE"),
         _obj("resource", "ore", "avtore0", ("A",), 10, 5, "RESOURCE_PILE"),
     ]
-    objs, removed = GEO.g2_repair(size, grid, veg_wall + picks, [(2, 5), (10, 5)])
-    assert removed >= 1, "the veg wall must be carved"
-    _, removed2 = GEO.g2_repair(size, grid, objs, [(2, 5), (10, 5)])
-    assert removed2 == 0, "after repair the map must be G2-clean"
+    targets = [(2, 5), (10, 5)]
+    assert GEO.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
+    assert GEO.unreachable_targets(size, grid, picks, targets) == []
     hard_wall = [replace(o, purpose="DWELLING") for o in veg_wall]
-    objs3, removed3 = GEO.g2_repair(size, grid, hard_wall + picks, [(2, 5), (10, 5)])
-    assert removed3 == 0 and len(objs3) == len(hard_wall) + len(picks)
+    assert GEO.unreachable_targets(size, grid, hard_wall + picks, targets) == []
 
 
 def test_portal_reward_zone() -> None:
     """A rock-enclosed zone becomes a SPECIAL REWARD zone: a same-subtype two-way monolith
     pair bridges it (far end inside, near end in the reachable host zone with a hostile
-    guard adjacent), cache-tagged loot fills it, traverse counts it reachable, and
-    fill_open_islands no longer buries it in decoration."""
+    guard adjacent), cache-tagged loot fills it, and traverse counts it reachable."""
     size, grid, zones, inner, ts1 = _enclave_fixture()
 
     no_gates: set[Tile] = set()
@@ -123,9 +121,6 @@ def test_portal_reward_zone() -> None:
     )
     rep = TR.traverse(fm)
     assert rep.unreachable_mines == [], "the enclosed mine must be reachable via portal"
-
-    _objs3, _nrec, nfill = GEO.fill_open_islands(size, grid, list(objs), list(targets), seed=3)
-    assert nfill == 0, f"rescued zone must not be decoration-filled, filled {nfill} tiles"
 
 
 def test_portal_reward_zone_never_places_an_artifact() -> None:

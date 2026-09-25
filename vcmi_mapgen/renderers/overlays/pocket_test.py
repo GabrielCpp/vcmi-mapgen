@@ -24,7 +24,7 @@ def _tinted_tiles(img: Image.Image) -> set[Tile]:
 
 def test_overlay_renders_exactly_the_tiles_it_was_given() -> None:
     """PocketOverlay performs no detection of its own -- it paints exactly the tiles
-    in the `pockets` dict it was constructed with (RepairStep's ctx["pockets"]),
+    in the `pockets` dict it was constructed with (LootStep's LootResult.pockets),
     nothing more, nothing less."""
     state = MapState(size=6)
     pockets: dict[int, dict[Tile, float]] = {0: {(2, 3): 0.0, (2, 4): 1.0}}

@@ -9,14 +9,18 @@ from vcmi_mapgen.models import MapState
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.steps import (
+    BorderStep,
     GameplayStep,
     GateStep,
+    LootStep,
     PickupStep,
-    RepairStep,
+    PortalStep,
+    ScatterStep,
     SegmentStep,
     TerrainStep,
     VegetationStep,
 )
+from vcmi_mapgen.steps.pickup.scatter import guard_zoc
 from vcmi_mapgen.validate import terrain_violations
 
 SIZE = 48
@@ -56,7 +60,10 @@ def _steps() -> list[tuple[str, PipelineStep]]:
         ("gameplay", GameplayStep(seed=SEED, players=PLAYERS, size=SIZE, subterrain=True)),
         ("vegetation", VegetationStep(seed=SEED)),
         ("pickup", PickupStep(seed=SEED, size=SIZE)),
-        ("repair", RepairStep(seed=SEED, size=SIZE, subterrain=True)),
+        ("border", BorderStep(seed=SEED, size=SIZE)),
+        ("portal", PortalStep(seed=SEED, size=SIZE)),
+        ("loot", LootStep(seed=SEED, size=SIZE)),
+        ("scatter", ScatterStep(seed=SEED, size=SIZE)),
     ]
 
 
@@ -118,16 +125,11 @@ def test_gameplay_writes_objs_and_player_towns(
     assert len(after.player_towns) > 0
 
 
-@pytest.mark.parametrize("name", ["vegetation", "pickup"])
+@pytest.mark.parametrize("name", ["vegetation", "border", "loot", "scatter"])
 def test_placement_steps_change_objs(
     transitions: dict[str, tuple[Snapshot, Snapshot]], name: str
 ) -> None:
     before, after = transitions[name]
-    assert after.objs != before.objs
-
-
-def test_repair_writes_objs(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:
-    before, after = transitions["repair"]
     assert after.objs != before.objs
 
 
@@ -149,3 +151,14 @@ def test_no_guard_stands_on_a_mine_visit_tile(pipeline_run: PipelineRun) -> None
         if o.purpose == "GUARD" and (o.level, (o.x, o.y)) in visit
     ]
     assert guards == []
+
+
+def test_scatter_piles_stay_out_of_every_guard_zone(pipeline_run: PipelineRun) -> None:
+    for level in (0, 1):
+        level_objs = [o for o in pipeline_run.state.objs if o.level == level]
+        zoc = guard_zoc(level_objs)
+        piles = [o for o in level_objs if o.purpose == "RESOURCE_PILE"]
+        assert piles
+        for o in piles:
+            for cell in mask_interactive_cells(o.mask, o.x, o.y):
+                assert cell not in zoc, f"pile at {cell} sits in a guard's zone of control"

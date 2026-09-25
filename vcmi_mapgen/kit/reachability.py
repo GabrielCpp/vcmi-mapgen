@@ -109,7 +109,7 @@ def _gate_links(
 ) -> collections.defaultdict[LevelTile, set[LevelTile]]:
     """Teleport networks. Subterranean gates come in pairs sharing (x, y) across levels;
     two-way monoliths network ALL ends of the same subtype (H3 semantics — used by
-    steps.repair.geometry to rescue otherwise-unreachable zones as guarded reward zones).
+    steps.portal.geometry to rescue otherwise-unreachable zones as guarded reward zones).
     Stepping onto any end
     teleports the hero to the others. Returns trigger map: reaching any (x,y,l) approach
     tile of an end enqueues every partner end's approach tiles (x,y,l')."""

@@ -11,7 +11,7 @@ from typing import override
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import NB8, edge_dist
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.kit.topology import plan_entrances
+from vcmi_mapgen.kit.topology import geodesic_path, plan_entrances
 from vcmi_mapgen.models import Entrance, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import (
@@ -36,7 +36,7 @@ MIN_AREA = 25  # vegetate even smallish zones (the stats floor stays 60 in veget
 
 @dataclass
 class GameplayIndex:
-    """Which zones host a player town — RepairStep's (`_find_start`) and the CLI's
+    """Which zones host a player town — BorderStep's (`_find_start`) and the CLI's
     input. Read via ``ctx.require(GameplayIndex)`` (GameplayStep always runs when
     generate does; a stopped-early --stop-after run reads it with ``ctx.get(...,
     GameplayIndex())`` instead)."""
@@ -250,6 +250,16 @@ def _run_level_gameplay(
                     seaport_blk.add((_scx, _scy))
             seaport_appr.add((_so.x - 1, _so.y + 1))
 
+    for appr in seaport_appr:
+        for zw in zone_cache.values():
+            if appr not in zw.ts_full or appr in zw.prot:
+                continue
+            free = zw.ts - zw.gblocked - seaport_blk
+            path = geodesic_path(
+                appr, min(zw.prot, key=lambda t: abs(t[0] - appr[0]) + abs(t[1] - appr[1])), free
+            )
+            if path:
+                zw.prot = zw.prot | frozenset(path)
     return (
         objs,
         zone_cache,
@@ -281,7 +291,7 @@ class GameplayStep(PipelineStep):
     folded-in ``PlacementWorkspace`` (created here via ``get_or_create`` — the first of
     the four steps that share it), and ``self.workspace.levels[level]`` (a
     ``LevelWorkspace`` with a ``ZoneWorkspace`` per zone, ``ridge``, and
-    ``town_of_zone`` for RepairStep — ``guard_tiles``/``seal_avoid``/``hard_avoid`` come
+    ``town_of_zone`` for BorderStep — ``guard_tiles``/``seal_avoid``/``hard_avoid`` come
     from later steps' own border-seal pass, not from here). ``ledger`` is purely
     internal bookkeeping across this step's own zones, never read by anything else, so
     it stays a local instance attribute, not a published value.

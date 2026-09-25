@@ -1,7 +1,7 @@
 # steps/ — the PipelineStep contract
 
 One subpackage per step (`terrain_gen/`, `segment/`, `gate/`, `gameplay/`, `vegetation/`,
-`pickup/`, `repair/`), each holding a `step.py` with one `PipelineStep` subclass. See
+`pickup/`, `border/`, `portal/`, `loot/`, `scatter/`), each holding a `step.py` with one `PipelineStep` subclass. See
 `vcmi-mapgen-pipeline` for `PipelineStep`/`Pipeline`/`ProviderRegistry` themselves
 (in `pipeline.py`); this file is the contract a new or changed step must satisfy.
 
@@ -29,8 +29,8 @@ of step, it is a sign one of two things happened:
    **Fix:** merge the two steps.
 2. **A genuinely shared, cross-step value with no map-level meaning of its own** — e.g.
    `TerrainGrids` (post-despeckle terrain-code grids + tunnel-protect corridor cells,
-   needed by `SegmentStep`/`GameplayStep`/`RepairStep`) or `PlacementWorkspace` (the
-   `Gameplay→Vegetation→Pickup→Repair` shared workspace). This data is real and does need
+   needed by `SegmentStep`/`GameplayStep`) or `PlacementWorkspace` (the
+   `Gameplay→Vegetation→Pickup→Border` shared workspace). This data is real and does need
    to cross steps — but the step that *computes* it also has real map-level work to do
    (`TerrainStep` writes `map_state.cells`/`surfs`; `GameplayStep` writes
    `map_state.objs`/`player_towns`), so it is published as a side effect of an
@@ -50,11 +50,11 @@ Never a raw string-keyed `ctx["key"] = value` entry. Instead:
      the wrong order, never something to work around).
    - `ctx.get(SomeResult, SomeResult())` when the producing step might not be in the
      pipeline at all (e.g. `GateStep` only runs for subterrain maps — `GameplayStep`/
-     `PickupStep`/`RepairStep` read `GateResult`'s empty default instead of erroring).
+     `PickupStep`/`BorderStep` read `GateResult`'s empty default instead of erroring).
    - `ctx.get_or_create(SomeType, SomeType)` for the one shape where the *first* demander
      creates the value and every later demander mutates that SAME instance further
      (`PlacementWorkspace`: `GameplayStep` creates it, `VegetationStep`/`PickupStep`/
-     `RepairStep` each mutate it in place).
+     `BorderStep` each mutate it in place).
 
 This is the entire contract: type-keyed, memoized-per-run, no string keys, no step that
 exists solely to populate one. `MapState` vs. registry placement follows

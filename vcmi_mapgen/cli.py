@@ -28,6 +28,7 @@ from vcmi_mapgen.renderers import PngRenderer, VmapRenderer
 from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.renderers.overlays import (
     BlockingOverlay,
+    GridOverlay,
     GuardOverlay,
     MapOverlay,
     PassageOverlay,
@@ -36,16 +37,22 @@ from vcmi_mapgen.renderers.overlays import (
     ZoneOverlay,
 )
 from vcmi_mapgen.steps import (
+    BorderStep,
     GameplayStep,
     GateStep,
+    LootStep,
     PickupStep,
-    RepairStep,
+    PortalStep,
+    ScatterStep,
     SegmentStep,
     TerrainStep,
     VegetationStep,
 )
+from vcmi_mapgen.steps.border.step import BorderResult
 from vcmi_mapgen.steps.gameplay.step import GameplayIndex
-from vcmi_mapgen.steps.repair.step import RepairResult
+from vcmi_mapgen.steps.loot.step import LootResult
+from vcmi_mapgen.steps.portal.step import PortalResult
+from vcmi_mapgen.steps.vegetation.step import VegetationResult
 
 ROOT = project_root()
 ONTOLOGY = Ontology()
@@ -57,9 +64,13 @@ GENERATE_STOP_POINTS = (
     "gameplay",
     "vegetation",
     "pickup",
+    "border",
+    "portal",
+    "loot",
+    "scatter",
 )
 
-# Every factory takes `pockets` (RepairStep's RepairResult.pockets) uniformly, even
+# Every factory takes `pockets` (LootStep's LootResult.pockets) uniformly, even
 # though only PocketOverlay uses it -- it's disposable analysis, not a MapState fact
 # (see vcmi_mapgen/models/AGENTS.md), so it must reach the overlay through its own
 # constructor rather than the overlay reading/recomputing it off MapState.
@@ -90,6 +101,10 @@ def _guard(_pockets: Pockets) -> MapOverlay:
     return GuardOverlay()
 
 
+def _grid(_pockets: Pockets) -> MapOverlay:
+    return GridOverlay()
+
+
 def _tile_type(_pockets: Pockets) -> MapOverlay:
     return TileTypeOverlay()
 
@@ -101,8 +116,9 @@ _OVERLAY_FACTORIES: dict[str, Callable[[Pockets], MapOverlay]] = {
     "pocket": _pocket,
     "guard": _guard,
     "tile_type": _tile_type,
+    "grid": _grid,
 }
-DEFAULT_OVERLAYS = "zone,blocking,guard,pocket"
+DEFAULT_OVERLAYS = "zone,blocking,guard,pocket,grid"
 _RENDERER_CHOICES = ("png", "vmap")
 _DEFAULT_RENDERERS = "png,vmap"
 
@@ -116,9 +132,11 @@ def parse_overlays(spec: str, pockets: Pockets) -> list[MapOverlay]:
             f"unknown overlay(s): {', '.join(unknown)} "
             + f"(choices: {', '.join(_OVERLAY_FACTORIES)}, or 'none')"
         )
-    overlays = [_OVERLAY_FACTORIES[n](pockets) for n in names]
+    overlays = [_OVERLAY_FACTORIES[n](pockets) for n in names if n != "grid"]
     if "zone" in names:
         overlays.append(ZoneOverlay(fill=False))
+    if "grid" in names:
+        overlays.append(GridOverlay())
     return overlays
 
 
@@ -178,7 +196,10 @@ def _generate_steps(args: Args, water_mode: str) -> list[tuple[str, PipelineStep
     )
     steps.append(("vegetation", VegetationStep(seed=args.seed)))
     steps.append(("pickup", PickupStep(seed=args.seed, size=args.size)))
-    steps.append(("repair", RepairStep(seed=args.seed, size=args.size, subterrain=args.subterrain)))
+    steps.append(("border", BorderStep(seed=args.seed, size=args.size)))
+    steps.append(("portal", PortalStep(seed=args.seed, size=args.size)))
+    steps.append(("loot", LootStep(seed=args.seed, size=args.size)))
+    steps.append(("scatter", ScatterStep(seed=args.seed, size=args.size)))
     return steps
 
 
@@ -194,9 +215,13 @@ def cmd_generate(args: Args) -> None:
             break
     map_state = pipeline.run()
 
-    repair_result = pipeline.ctx.get(RepairResult, RepairResult())
-    for line in repair_result.log:
+    for line in (
+        *pipeline.ctx.get(VegetationResult, VegetationResult()).log,
+        *pipeline.ctx.get(BorderResult, BorderResult()).log,
+        *pipeline.ctx.get(PortalResult, PortalResult()).log,
+    ):
         print(f"  {line}")
+    loot_result = pipeline.ctx.get(LootResult, LootResult())
 
     objs = map_state.objs
     veg_n = sum(1 for o in objs if not o.purpose)
@@ -219,7 +244,7 @@ def cmd_generate(args: Args) -> None:
             png1 = png_renderer.save(map_state, f"ppmap_s{args.seed}_L1.png", level=1)
             print(f"  {png1}")
 
-        overlays = parse_overlays(args.overlays, repair_result.pockets)
+        overlays = parse_overlays(args.overlays, loot_result.pockets)
         if overlays:
             overlay_renderer = PngRenderer(overlays=overlays)
             ov_img = overlay_renderer.render(map_state, level=0)
@@ -307,7 +332,7 @@ def main() -> None:
         default=None,
         dest="stop_after",
         help="stop the pipeline early, right after the named step (debug), "
-        + "instead of running the full pipeline through RepairStep",
+        + "instead of running the full pipeline through ScatterStep",
     )
     _ = pg.set_defaults(func=cmd_generate)
 

@@ -93,26 +93,26 @@ class MapState:
     size: int = 72
     subterrain: bool = False
     water_mode: str = "normal"
-    grids: dict[int, list] = field(default_factory=dict)   # level -> 2D terrain-code grid
+    grids: dict[int, list] = field(default_factory=dict)  # level -> 2D terrain-code grid
 
     # Set by TileStep
-    cells: dict[int, list] = field(default_factory=dict)   # level -> 2D cell-dict grid
-    surfs: dict[int, list] = field(default_factory=dict)   # level -> 2D tile-string grid
+    cells: dict[int, list] = field(default_factory=dict)  # level -> 2D cell-dict grid
+    surfs: dict[int, list] = field(default_factory=dict)  # level -> 2D tile-string grid
 
     # Set by SegmentStep
-    zones: dict[int, dict] = field(default_factory=dict)   # level -> zone dict
+    zones: dict[int, dict] = field(default_factory=dict)  # level -> zone dict
 
     # Set by GateStep
-    gate_objs: list = field(default_factory=list)          # pre-placed gate objects
+    gate_objs: list = field(default_factory=list)  # pre-placed gate objects
     gate_occ: dict[int, frozenset] = field(default_factory=dict)
     gate_blk: dict[int, frozenset] = field(default_factory=dict)
     gate_appr: dict[int, tuple] = field(default_factory=dict)
 
     # Set by GameplayStep / PickupStep / VegetationStep
-    objs: list = field(default_factory=list)               # all placed objects, all levels
+    objs: list = field(default_factory=list)  # all placed objects, all levels
     targets: dict[int, set] = field(default_factory=dict)  # level -> target tiles
     zone_records: dict[int, dict] = field(default_factory=dict)
-    player_zids: list = field(default_factory=list)        # [(level, zid), ...]
+    player_zids: list = field(default_factory=list)  # [(level, zid), ...]
     player_towns: list = field(default_factory=list)
 
     # Cross-step budget tracking
@@ -309,8 +309,7 @@ and produce output.
 
 ```python
 class PngRenderer:
-    def __init__(self, out_dir: str | None = None):
-        ...
+    def __init__(self, out_dir: str | None = None): ...
 
     def render(self, state: MapState, level: int = 0, title: str = "") -> Image:
         """Return a PIL Image for the given level."""
@@ -325,8 +324,9 @@ class PngRenderer:
 
 ```python
 class VmapRenderer:
-    def render(self, state: MapState, path: str, name: str = "pp-map",
-               teams_spec: str = "ffa") -> str:
+    def render(
+        self, state: MapState, path: str, name: str = "pp-map", teams_spec: str = "ffa"
+    ) -> str:
         """Write a .vmap file. Returns the path."""
 ```
 

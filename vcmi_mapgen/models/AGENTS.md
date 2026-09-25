@@ -27,7 +27,7 @@ A field does **not** belong on `MapState` merely because a renderer wants to rea
 The test is: is this a fact the map itself carries, or is it an arbitrary, disposable
 piece of analysis computed *from* the map at one point in the pipeline? Pocket geometry
 is the concrete example that got this rule written down: which tiles form a sealed
-nook, and at what depth, is something `steps.repair.caches.place_pocket_caches` computes
+nook, and at what depth, is something `steps.loot.caches.place_pocket_caches` computes
 once, from the map's geometry, for its own purposes (guard placement, loot fill) — it is
 not a property VCMI's own map format has any notion of. That kind of data goes into the
 pipeline's `ctx` dict (see `pipeline.py`'s `Pipeline`), and whichever renderer/overlay

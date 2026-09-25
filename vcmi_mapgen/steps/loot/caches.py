@@ -671,7 +671,7 @@ def place_pocket_caches(
             ):
                 continue
             # _place_one always appends -- objs[-1] is the guard just placed.
-            # Tag it for steps.repair.step.dedup_nearby_guards's priority tiers.
+            # Tag it for steps.loot.step.dedup_nearby_guards's priority tiers.
             objs[-1].pocket_guard = True
             placed_mouths.append(guard_tile)
             if protect_pairs:

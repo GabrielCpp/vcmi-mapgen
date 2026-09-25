@@ -72,9 +72,9 @@ def test_protected_web_covers_gate_bands() -> None:
 
 @needs_stats
 def test_border_bias_densifies_front() -> None:
-    """Zone isolation: with BOTH zones sampling under the `border=` bias, the only aligned
-    open crossings left between them are the planned entrance band — each single side is
-    only a partial ridge (Geyer saturation caps clumping), but the seal is 2-thick."""
+    """Zone isolation: with BOTH zones sampling under the `border=` bias, the aligned
+    open crossings outside the planned entrance band shrink. Each single side is only a
+    partial ridge (Geyer saturation caps clumping), so the border plan closes the rest."""
     ts1 = {(x, y) for x in range(14) for y in range(12)}
     ts2 = {(x, y) for x in range(14, 28) for y in range(12)}
     zones = {1: _zone(ts1, 6.5, 5.5), 2: _zone(ts2, 20.5, 5.5, 2)}
@@ -102,9 +102,11 @@ def test_border_bias_densifies_front() -> None:
         open_all = (ts1 - blk1) | (ts2 - blk2)
         crossings = {t for t in f1 if t in open_all and (t[0] + 1, t[1]) in open_all}
         assert crossings, "the planned entrance must stay open"
-        assert crossings <= b1, (
-            f"every crossing must be a planned entrance, leaks: {sorted(crossings - b1)}"
-        )
+        plain1, *_ = zone_pass(1, ts1, seed, border_bias=False)
+        plain2, *_ = zone_pass(2, ts2, seed, border_bias=False)
+        plain_open = (ts1 - plain1) | (ts2 - plain2)
+        plain_cross = {t for t in f1 if t in plain_open and (t[0] + 1, t[1]) in plain_open}
+        assert len(crossings - b1) < len(plain_cross - b1), "the bias must close crossings"
         # the bias densifies the front vs the unbiased sampler on the same seed
         blk_plain, *_ = zone_pass(1, ts1, seed, border_bias=False)
         assert len(blk1 & border1) > len(blk_plain & border1), "border bias must densify the front"

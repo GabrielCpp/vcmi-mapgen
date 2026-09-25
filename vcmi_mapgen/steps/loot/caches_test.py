@@ -1,4 +1,4 @@
-"""Reliability tests for steps.repair.caches (pocket caches, seer-hut quests, place_pickups)."""
+"""Reliability tests for steps.loot.caches (pocket caches, seer-hut quests, place_pickups)."""
 
 import os
 import re
@@ -10,7 +10,7 @@ from vcmi_mapgen.kit.topology import find_pockets
 from vcmi_mapgen.models import Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.gameplay.water import legal_cells
-from vcmi_mapgen.steps.repair import caches as CA
+from vcmi_mapgen.steps.loot import caches as CA
 from vcmi_mapgen.steps.vegetation import stats as PS
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))

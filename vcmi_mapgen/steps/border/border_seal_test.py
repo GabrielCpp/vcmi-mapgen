@@ -1,16 +1,14 @@
-"""Reliability tests for steps.repair.border_seal (residual border-leak seal)."""
+"""Reliability tests for the border plan (vegetation) and the border guards (border)."""
 
 from vcmi_mapgen.kit.topology import plan_entrances
 from vcmi_mapgen.models import Tile, Zone
-from vcmi_mapgen.steps.repair import border_seal as BS
+from vcmi_mapgen.steps.border import border_seal as BS
+from vcmi_mapgen.steps.vegetation.border_plan import seal_borders
+
+S, GRASS = 20, 2
 
 
-def test_seal_zone_borders_closes_or_guards() -> None:
-    """Every cross-zone 8-adjacent open crossing outside the planned entrance bands is
-    either SEALED with a blocking decoration or contested by a back-path GUARD's zone of
-    control — an unguardable-and-unsealable free crossing must not survive."""
-    S, GRASS = 20, 2
-    grid = [[GRASS] * S for _ in range(S)]
+def _zones() -> tuple[dict[int, Zone], set[Tile], set[Tile]]:
     ts1 = {(x, y) for x in range(10) for y in range(S)}
     ts2 = {(x, y) for x in range(10, S) for y in range(S)}
     zones = {
@@ -29,25 +27,33 @@ def test_seal_zone_borders_closes_or_guards() -> None:
             tiles_set=frozenset(ts2),
         ),
     }
+    return zones, ts1, ts2
+
+
+def test_border_plan_closes_or_guards() -> None:
+    """Every cross-zone 8-adjacent open crossing outside the planned entrance bands is
+    either SEALED with a blocking decoration or contested by a back-path GUARD's zone of
+    control. An unguardable and unsealable free crossing must not survive."""
+    zones, ts1, ts2 = _zones()
+    grid = [[GRASS] * S for _ in range(S)]
     plan = plan_entrances(zones)
     bands: set[Tile] = set()
     for ents in plan.values():
         for _r, b, _o in ents:
             bands |= set(b)
-    # two facing unsealable tiles (a protected-web crossing) must earn a guard, not a seal
     web_pair = {(9, 2), (10, 2)}
     avoid = bands | web_pair
 
-    new_objs, sealed, guard_tiles, n_open = BS.seal_zone_borders(
-        S, S, grid, zones, plan, [], avoid, set[Tile](), 3, 0
-    )
-    again = BS.seal_zone_borders(S, S, grid, zones, plan, [], avoid, set[Tile](), 3, 0)
-    assert again[:2] == (new_objs, sealed), "deterministic"
-
+    plan_objs, sealed = seal_borders(ts1 | ts2, zones, [], bands, avoid, frozenset[Tile](), 3, 0)
+    again = seal_borders(ts1 | ts2, zones, [], bands, avoid, frozenset[Tile](), 3, 0)
+    assert again == (plan_objs, sealed), "deterministic"
     assert sealed and not (sealed & avoid), "seals never land on protected tiles"
+
+    guards, guard_tiles, n_open = BS.guard_crossings(
+        S, S, grid, zones, bands, plan_objs, set[Tile](), 3, 0
+    )
     assert guard_tiles & web_pair, "the unsealable web crossing gets a back-path guard"
     assert n_open == 0
-    guards = [o for o in new_objs if o.purpose == "GUARD"]
     assert all(o.seal and o.options == {"character": "hostile"} for o in guards)
 
     open_all = (ts1 | ts2) - sealed

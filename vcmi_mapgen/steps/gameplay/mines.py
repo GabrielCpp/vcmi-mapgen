@@ -882,15 +882,19 @@ def place_zone(
                     if fit:
                         node = (node[0] + dx, node[1] + dy)
                         break
-            if fit and purpose == "MINE" and _walk_on_only(ident):
-                below = (fit[2][0], fit[2][1] + 1)
-                if below not in ts or below in occupied or below in fit[1] or below in avoid:
+            if fit and purpose == "MINE":
+                behind = [
+                    (fit[2][0], fit[2][1] + k) for k in range(1, 3 if _walk_on_only(ident) else 2)
+                ]
+                if any(t not in ts or t in occupied or t in fit[1] or t in avoid for t in behind):
                     fit = None
             if fit:
                 approach = settle(purpose, ident, fit, node)
-                if purpose == "MINE" and _walk_on_only(ident):
-                    approach = (approach[0], approach[1] + 1)
-                    approaches.append(approach)
+                if purpose == "MINE":
+                    if _walk_on_only(ident):
+                        approach = (approach[0], approach[1] + 1)
+                        approaches.append(approach)
+                    approaches.append((approach[0], approach[1] + 1))
                 if purpose == "TOWN":  # the economy pair anchors around this
                     mh = len(ident.mask)
                     mw = max(len(r) for r in ident.mask)

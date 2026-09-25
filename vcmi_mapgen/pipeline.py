@@ -85,7 +85,6 @@ class LevelWorkspace:
     zones: dict[int, ZoneWorkspace] = field(default_factory=dict)  # zid -> ZoneWorkspace
     entrance_plan: dict[int, list[Entrance]] = field(default_factory=dict)
     ridge: frozenset[Tile] = frozenset()
-    seal_avoid: set[Tile] = field(default_factory=set)
     hard_avoid: set[Tile] = field(default_factory=set)
     guard_tiles: frozenset[Tile] = frozenset()
     # seaport blocking/approach cells (set by GameplayStep) — vegetation must forbid them

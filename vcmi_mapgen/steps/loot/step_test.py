@@ -1,7 +1,7 @@
-"""Reliability tests for steps.repair.step's nearby-guard dedup pass."""
+"""Reliability tests for steps.loot.step's nearby-guard dedup pass."""
 
 from vcmi_mapgen.models import PlacedObject
-from vcmi_mapgen.steps.repair.step import dedup_nearby_guards
+from vcmi_mapgen.steps.loot.step import dedup_nearby_guards
 
 
 def _guard(

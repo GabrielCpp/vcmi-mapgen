@@ -2,7 +2,7 @@
 
 from vcmi_mapgen.kit import topology as ZF
 from vcmi_mapgen.models import Tile, Zone
-from vcmi_mapgen.steps.repair.caches import dedupe_pockets
+from vcmi_mapgen.steps.loot.caches import dedupe_pockets
 
 
 def _zone(ts: set[Tile], centroid: tuple[float, float], area: int, terrain_type: int) -> Zone:
@@ -120,7 +120,7 @@ def _open_field_with_room(
 def _top_pocket(reach: set[Tile]) -> tuple[Tile, frozenset[Tile], frozenset[Tile]]:
     """find_pockets alone can return several overlapping raw candidates for the SAME
     physical nook (e.g. the true outer doorway, and an inner partition of the room that
-    is technically also a valid-but-smaller 2-tile doorway) -- `steps.repair.caches.
+    is technically also a valid-but-smaller 2-tile doorway) -- `steps.loot.caches.
     dedupe_pockets` blob-merges those and keeps the best one, exactly as the real
     pipeline always calls it. Asserts exactly one physical nook was found and returns
     its (guard_tile, pocket, mouth_fs)."""

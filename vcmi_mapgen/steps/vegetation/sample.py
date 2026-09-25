@@ -154,6 +154,22 @@ def build_model(terrain: str) -> VegModel:
     )
 
 
+def _band_component(rep: Tile, band: AbstractSet[Tile]) -> set[Tile]:
+    """The 4-connected part of `band` containing `rep`. A diagonal-only band tile would be
+    a protected fragment that no walkable path reaches."""
+    if rep not in band:
+        return set()
+    comp = {rep}
+    stack = [rep]
+    while stack:
+        x, y = stack.pop()
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if n in band and n not in comp:
+                comp.add(n)
+                stack.append(n)
+    return comp
+
+
 def protected_web(
     ts: AbstractSet[Tile],
     zones: Mapping[int, Zone],
@@ -228,8 +244,8 @@ def protected_web(
         prot.update(path)
         connected.append(best_r)
         remaining.remove(best_r)
-    for _r, band in gate_bands:  # the whole passage stays open
-        prot.update(t for t in band if t in ts_free)
+    for rep, band in gate_bands:
+        prot.update(_band_component(rep, band & ts_free))
     return prot - set(avoid)
 
 
@@ -257,6 +273,7 @@ def sample_zone(
     forbid: AbstractSet[Tile] = _NO_TILES,
     attract: Collection[Tile] = _NO_TILES,
     border: Collection[Tile] = _NO_TILES,
+    impassable: AbstractSet[Tile] = _NO_TILES,
 ) -> tuple[list[PlacedObject], set[Tile], AbstractSet[Tile]]:
     """Birth/death MH over decoration configurations in one zone. Returns
     (objects, blocked_set, prot) with objects = list[PlacedObject] on level 0.
@@ -268,7 +285,10 @@ def sample_zone(
     `border` tiles carry a +BORDER_W log-intensity bonus — the zone-isolation lever: the
     zone's contact front (minus its planned entrance bands, which sit in `prot` as hard
     zeros) densifies into a vegetation ridge with corpus-correct species/clumping, leaving
-    only the planned entrances open."""
+    only the planned entrances open.
+    `impassable` tiles (gameplay footprints) count as walls for connectivity. A birth is
+    refused when its blocking cells would cut any open 4-neighbour off from the protected
+    web, so no walled-off open ground ever forms."""
     A = len(model.cats)
     if A == 0:
         return [], set(), set()
@@ -291,9 +311,14 @@ def sample_zone(
     seedt = min(ts, key=lambda t: (t[0] - round(cx)) ** 2 + (t[1] - round(cy)) ** 2)
     if prot is None:
         prot = protected_web(ts, zones, zid, edist, seedt)
-    protm = np.zeros((H, W), dtype=bool)
+    protm: NDArray[np.bool_] = np.zeros((H, W), dtype=np.bool_)
     for x, y in prot:
         protm[y - y0, x - x0] = True
+
+    solid: NDArray[np.bool_] = np.logical_not(inz)
+    for x, y in impassable:
+        if 0 <= x - x0 < W and 0 <= y - y0 < H:
+            solid[y - y0, x - x0] = True
 
     L: NDArray[np.float64] = model.L
     T: NDArray[np.float64] = model.T
@@ -371,6 +396,85 @@ def sample_zone(
             return None
         return cells
 
+    def frees_connected(cells: list[Tile]) -> bool:
+        """Whether every tile freed by removing `cells` reaches the protected web through open
+        tiles or other freed tiles."""
+        freed = {
+            (bx, by)
+            for bx, by in cells
+            if blkcnt[by - y0, bx - x0] == 1 and not solid[by - y0, bx - x0]
+        }
+        linked: set[Tile] = set()
+        for start in freed:
+            if start in linked:
+                continue
+            seen = {start}
+            queue = collections.deque([start])
+            found = bool(cast(np.bool_, protm[start[1] - y0, start[0] - x0]))
+            while queue and not found:
+                ux, uy = queue.popleft()
+                for m in ((ux + 1, uy), (ux - 1, uy), (ux, uy + 1), (ux, uy - 1)):
+                    mlx, mly = m[0] - x0, m[1] - y0
+                    if (
+                        m in seen
+                        or not (0 <= mlx < W and 0 <= mly < H)
+                        or solid[mly, mlx]
+                        or (blkcnt[mly, mlx] > 0 and m not in freed)
+                    ):
+                        continue
+                    if protm[mly, mlx] or m in linked:
+                        found = True
+                        break
+                    seen.add(m)
+                    queue.append(m)
+            if not found:
+                return False
+            linked |= seen
+        return True
+
+    def keeps_connected(cells: list[Tile]) -> bool:
+        """Whether every open 4-neighbour of `cells` still reaches the protected web once
+        `cells` are blocked."""
+        walls = set(cells)
+        linked: set[Tile] = set()
+        for bx, by in cells:
+            for nx, ny in ((bx + 1, by), (bx - 1, by), (bx, by + 1), (bx, by - 1)):
+                n = (nx, ny)
+                lx, ly = nx - x0, ny - y0
+                if (
+                    n in walls
+                    or n in linked
+                    or not (0 <= lx < W and 0 <= ly < H)
+                    or solid[ly, lx]
+                    or blkcnt[ly, lx] > 0
+                ):
+                    continue
+                seen = {n}
+                queue = collections.deque([n])
+                found = bool(cast(np.bool_, protm[ly, lx]))
+                while queue and not found:
+                    cx_, cy_ = queue.popleft()
+                    for mx, my in ((cx_ + 1, cy_), (cx_ - 1, cy_), (cx_, cy_ + 1), (cx_, cy_ - 1)):
+                        m = (mx, my)
+                        mlx, mly = mx - x0, my - y0
+                        if (
+                            m in seen
+                            or m in walls
+                            or not (0 <= mlx < W and 0 <= mly < H)
+                            or solid[mly, mlx]
+                            or blkcnt[mly, mlx] > 0
+                        ):
+                            continue
+                        if protm[mly, mlx] or m in linked:
+                            found = True
+                            break
+                        seen.add(m)
+                        queue.append(m)
+                if not found:
+                    return False
+                linked |= seen
+        return True
+
     total = steps_per_tile * Nt
     cat_correct_at = {int(total * f) for f in (0.2, 0.35, 0.5)}
     cov_correct_at = {int(total * f) for f in (0.65, 0.8)}
@@ -399,7 +503,7 @@ def sample_zone(
                 * _f(cox, y - y0, x - x0)
             )
             acc = lam_star * Nt / ((len(objs) + 1) * _f(qc, c))
-            if rng.random() < acc:
+            if rng.random() < acc and keeps_connected(cells):
                 objs.append((x, y, c, ii))
                 ncat[c] += 1
                 C[c, y - y0 + RINT, x - x0 + RINT] += 1
@@ -424,7 +528,9 @@ def sample_zone(
                 * _f(cox, y - y0, x - x0)
             )
             acc = (n * _f(qc, c)) / max(lam_star * Nt, 1e-300)
-            if rng.random() < acc:
+            if rng.random() < acc and frees_connected(
+                [(x + dx, y + dy) for dx, dy in model.iblk[c][ii]]
+            ):
                 objs[j] = objs[-1]
                 _ = objs.pop()
                 ncat[c] -= 1

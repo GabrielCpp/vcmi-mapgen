@@ -1,12 +1,11 @@
-"""PickupStep — unguarded scatter loot per zone, then the global loot-zone access pass."""
+"""PickupStep — the global loot-zone access pass."""
 
 from __future__ import annotations
 
-import collections
 from dataclasses import dataclass, field
 from typing import override
 
-from vcmi_mapgen.models import CoverIndex, MapState, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.models import MapState, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.steps.gate.step import GateResult
@@ -17,7 +16,7 @@ from vcmi_mapgen.validate import TerrainGate
 
 @dataclass
 class PickupIndex:
-    """Per-level repair targets + zone records — RepairStep's input (and mutated
+    """Per-level repair targets + zone records — BorderStep's input (and mutated
     further in place by it: this is the same object PickupStep computed, not a fresh
     snapshot each demand)."""
 
@@ -26,8 +25,7 @@ class PickupIndex:
 
 
 class PickupStep(PipelineStep):
-    """Resources/artifacts scattered over the finished open field (L4a), then the global,
-    per-level loot-zone access pass (gate+keymaster / sealed+monolith).
+    """The global, per-level loot-zone access pass (gate+keymaster / sealed+monolith).
 
     Config:
         seed       RNG seed.
@@ -37,14 +35,14 @@ class PickupStep(PipelineStep):
     ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx): the
     folded-in ``PlacementWorkspace`` (reads each zone's ``blocked``/``open_set``/
     ``passable`` written by VegetationStep plus the gameplay fields GameplayStep wrote,
-    and writes ``reach``/``used`` back per zone and ``seal_avoid``/``hard_avoid`` per
-    level for RepairStep), ``GateResult`` (GateStep's output, defaults to empty when
+    and writes ``reach``/``used`` back per zone and ``hard_avoid`` per
+    level for BorderStep), ``GateResult`` (GateStep's output, defaults to empty when
     there is no GateStep).
 
-    Produces: replaces ``map_state.objs`` (the full, repartitioned scatter +
+    Produces: replaces ``map_state.objs`` (the full, repartitioned
     loot-zone list, underground tagged ``l=1`` — this REPLACES the prior value, it
     doesn't just append to it). Into ctx: ``PickupIndex`` (targets/zone_records, the
-    list-of-dicts shape RepairStep expects).
+    list-of-dicts shape BorderStep expects).
     """
 
     def __init__(self, seed: int = 3, size: int = 72) -> None:
@@ -84,48 +82,20 @@ class PickupStep(PipelineStep):
             level_objs = objs_by_level[level]
             targets: list[Tile] = []
             zone_records: list[ZoneRecord] = []
-            seal_avoid: set[Tile] = set()
             hard_avoid: set[Tile] = set()
 
-            cover = CoverIndex(level_objs)
             for zid, zw in sorted(lvl_ws.zones.items()):
-                zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & zw.ts_full
-                forbid = zw.occupied | set(zw.approaches) | zone_seaport_cells
-
-                # scatter loot never sits on the rim: a pickup there is a walkable,
-                # unsealable hole
-                sobjs, sused, reach = SC.place_scatter(
-                    zw.ts,
-                    map_state.zones[level],
-                    zid,
-                    zw.terrain,
-                    zw.open_set - (zw.rim8 - zw.ent_bands),
-                    zw.prot,
-                    seed=self.seed,
-                    bounds=(W, H),
-                    entrances=zw.entrances,
-                    cover=cover,
-                )
-                if level == 1:  # place_scatter always tags l=0; retag the underground level
-                    for o in sobjs:
-                        o.level = 1
-                level_objs.extend(sobjs)
-
-                zw.reach = frozenset(reach)
-                zw.used = frozenset(sused)
+                reach = SC.scatter_reach(zw.open_set - (zw.rim8 - zw.ent_bands), zw.prot)
 
                 targets.extend(zw.approaches)
-                targets.extend((o.x, o.y) for o in sobjs)
                 # every planned crossing must survive repair: its rep is a named G2
-                # target, so g2_repair verifies the entrance stayed connected once the
+                # target, so the reachability check verifies the entrance stayed connected once the
                 # level is finalized
                 targets.extend(r for r, _b, _o in zw.entrances)
                 # Seaport approach tile must stay reachable (hero boards ship from there)
                 targets.extend(t for t in (lvl_ws.seaport_appr & zw.ts_full))
-                seal_avoid |= zw.prot | forbid | sused | set(zw.approaches)
-                hard_avoid |= set(zw.occupied) | sused | set(zw.approaches)
 
-                # RepairStep mutates open_set/passable in place (.add/.discard) — these
+                # BorderStep mutates open_set/passable in place (.add/.discard) — these
                 # must be plain sets, not the workspace's frozensets.
                 zone_records.append(
                     ZoneRecord(
@@ -135,13 +105,8 @@ class PickupStep(PipelineStep):
                         open_set=set(zw.open_set),
                         passable=set(zw.passable),
                         reach=reach,
-                        used=sused,
+                        used=set(),
                     )
-                )
-                pk = collections.Counter(o.purpose for o in sobjs)
-                print(
-                    f"  L{level} zone {zid:>3} {zw.terrain:<8} {len(zw.ts_full):>5} tiles: "
-                    + f"scatter res={pk.get('RESOURCE_PILE', 0)} art={pk.get('REWARD_PICKUP', 0)}"
                 )
 
             # place_loot_zones clears every object under a newly-sealed loot zone by
@@ -166,8 +131,8 @@ class PickupStep(PipelineStep):
             level_objs.extend(loot_objs)
             # Only add EXTERIOR loot zone objects to targets (keymaster, exterior monolith).
             # Interior objects (gate, interior monolith) are reachable via teleportation/
-            # gate, not via physical traversal — adding them causes g2_repair to carve a
-            # hole in the loot zone seal to make them physically reachable.
+            # gate, not via physical traversal. Counting them would fail the portal reachability
+            # check, since no walking path reaches them.
             loot_interior_tiles: set[Tile] = set()
             for zr in zone_records:
                 if zr.zid in loot_zids:
@@ -175,10 +140,6 @@ class PickupStep(PipelineStep):
             targets.extend(
                 (o.x, o.y) for o in loot_objs if o.purpose and (o.x, o.y) not in loot_interior_tiles
             )
-            # Remove any stale scatter targets from loot zone interiors — scatter loot was
-            # placed inside those zones before place_loot_zones cleared it; without this,
-            # g2_repair sees those now-open positions as unreachable targets and carves a
-            # path through the seal.
             targets[:] = [t for t in targets if t not in loot_interior_tiles]
             # Mark sealed loot zones so place_pocket_caches excludes them from its
             # detection universe — their interiors would otherwise appear as pockets and
@@ -196,7 +157,10 @@ class PickupStep(PipelineStep):
                     else f"  L{level} loot zones: 1 gate+key pair placed zones=[{zid_str}]"
                 )
 
-            lvl_ws.seal_avoid = seal_avoid
+            for zr in zone_records:
+                zw = lvl_ws.zones[zr.zid]
+                hard_avoid |= set(zw.occupied) | set(zw.approaches)
+
             lvl_ws.hard_avoid = hard_avoid
             self.targets[level] = targets
             self.zone_records[level] = zone_records

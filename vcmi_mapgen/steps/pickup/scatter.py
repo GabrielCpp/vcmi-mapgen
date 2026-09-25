@@ -6,7 +6,7 @@ applies: resource piles/artifacts lying in the open along routes are ALWAYS free
 that sits in open terrain and can be walked around).
 
 Also owns `_place_one` (the placement primitive shared with
-`steps.repair.caches.place_pocket_caches`/`place_seer_hut_quests` and
+`steps.loot.caches.place_pocket_caches`/`place_seer_hut_quests` and
 `steps.pickup.loot_zones.place_loot_zones` — Pickup is the first step in pipeline order to
 need it) and its pandoraBox-reward helpers.
 """
@@ -122,6 +122,9 @@ def _pandora_reward(rng: random.Random) -> dict[str, JsonValue]:
     }
 
 
+_NO_AVOID: frozenset[Tile] = frozenset()
+
+
 def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, int]:
     """4-connected BFS steps from the protected web through the open field. Tiles absent
     from the result are UNREACHABLE (sealed by vegetation) — nothing may be placed there."""
@@ -135,6 +138,23 @@ def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, 
                 d[n] = d[(x, y)] + 1
                 q.append(n)
     return d
+
+
+def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
+    """Every tile inside some guard's zone of control: the interactive cell plus its 8
+    neighbours. A hero stepping on one of them fights the guard."""
+    zoc: set[Tile] = set()
+    for o in objs:
+        if o.purpose != "GUARD" or not o.mask:
+            continue
+        for ix, iy in OR.mask_interactive_cells(o.mask, o.x, o.y):
+            zoc.add((ix, iy))
+            zoc.update((ix + dx, iy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+    return zoc
+
+
+def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Tile]:
+    return set(web_dist(open_set, prot))
 
 
 def place_one(
@@ -228,6 +248,9 @@ def place_scatter(
     bounds: tuple[int, int] | None = None,
     entrances: Sequence[Entrance] | None = None,
     cover: CoverIndex | None = None,
+    reach_in: set[Tile] | None = None,
+    used_in: set[Tile] | None = None,
+    avoid: AbstractSet[Tile] = _NO_AVOID,
 ) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
@@ -254,7 +277,7 @@ def place_scatter(
     )
 
     dweb = web_dist(open_set, prot)
-    reach = set(dweb)  # reachable open tiles only
+    reach = set(dweb) if reach_in is None else reach_in  # reachable open tiles only
     op = PG.openness(open_set)
     ed = edge_dist(ts)
     if entrances is not None:  # isolation plan: gd measures from the
@@ -266,7 +289,7 @@ def place_scatter(
     pool_res = ON.pool("RESOURCE_PILE", terrain)
 
     objs: list[PlacedObject] = []
-    used: set[Tile] = set()
+    used: set[Tile] = set() if used_in is None else used_in
 
     # Open-field scatter is resource piles only — artifacts are reserved for pockets
     # and loot zones where a guard or gate makes them genuinely earned.
@@ -282,7 +305,7 @@ def place_scatter(
         for t in rng.choices(cands, weights=weights, k=60 * n):
             if len(placed) >= n:
                 break
-            if t in used:
+            if t in used or t in avoid:
                 continue
             if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < min_sep for q in placed):
                 continue

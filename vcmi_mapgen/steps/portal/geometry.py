@@ -1,10 +1,6 @@
-"""Map-level G2 repair, open-island fill, and unreachable-zone portal rescue — Repair-only.
-
-These were always pp_map-private helpers (not addressed through any pp_* layer module).
-"""
+"""Portal rescue of unreachable zones and the target reachability check."""
 
 import collections
-import heapq
 import random
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
@@ -12,7 +8,7 @@ from functools import partial
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
+from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
 from vcmi_mapgen.steps.gate.gates import GAP, Fit, fits, rnd_monster
@@ -21,243 +17,55 @@ from vcmi_mapgen.steps.pickup.scatter import place_one
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 
 
-def g2_repair(
+def unreachable_targets(
     size: int,
     grid: Sequence[Sequence[int]],
-    objs: list[PlacedObject],
+    objs: Sequence[PlacedObject],
     targets: Sequence[Tile],
-    costly: Container[Tile] = (),
-) -> tuple[list[PlacedObject], int]:
-    """Map-level G2 validity gate + repair: every target tile (gameplay approach, pickup)
-    must be reachable from every other across zone borders. Pickups/monsters count as
-    passable (they are removable); vegetation is carvable; gameplay bodies and water/rock
-    are not. Unreachable targets get a least-vegetation corridor carved to them (Dijkstra:
-    open=1, veg-blocked=40) and the intersecting VEGETATION objects are deleted.
-    `costly` (the zone-border ridge) prices vegetation there at 400 instead of 40, so a
-    repair corridor prefers routing through a planned entrance over punching a fresh hole
-    through the isolation ridge (still carvable as a last resort — repair never fails).
-    Returns (objs, removed_count)."""
-    W = H = size
-    land = {(x, y) for y in range(H) for x in range(W) if grid[y][x] < 8}
+) -> list[Tile]:
+    """Targets a hero on foot cannot reach from the first open target.
 
-    def veg_cells() -> tuple[collections.defaultdict[Tile, list[int]], set[Tile]]:
-        cells: collections.defaultdict[Tile, list[int]] = collections.defaultdict(
-            list
-        )  # blocking cell -> [veg obj idx]
-        hard: set[Tile] = set()  # gameplay bodies: never carved
-        for i, o in enumerate(objs):
-            purpose = o.purpose
-            removable_pickup = purpose in ("RESOURCE_PILE", "REWARD_PICKUP", "GUARD")
-            for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
-                if not blk or removable_pickup:
-                    continue
-                if not purpose:
-                    cells[(cx, cy)].append(i)
-                else:
-                    hard.add((cx, cy))
-        return cells, hard
-
-    removed: set[int] = set()
-    for _round in range(6):
-        cells, hard = veg_cells()
-        open_set = land - set(cells) - hard
-        targets_in = [t for t in targets if t in open_set]
-        if not targets_in:
-            break
-        root = targets_in[0]
-        seen = {root}
-        q = collections.deque([root])
-        while q:
-            x, y = q.popleft()
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    n = (x + dx, y + dy)
-                    if n in open_set and n not in seen:
-                        seen.add(n)
-                        q.append(n)
-        bad = [t for t in targets_in if t not in seen]
-        if not bad:
-            break
-        # one Dijkstra over the whole field (veg priced high, gameplay/water = wall), then
-        # carve to the first bad target that is land-connectable at all — targets on OTHER
-        # ISLANDS are legitimately boat-reachable only and must not abort the repair loop
-        dist: dict[Tile, float] = {root: 0.0}
-        prev: dict[Tile, Tile] = {}
-        heap: list[tuple[float, Tile]] = [(0.0, root)]
-        while heap:
-            d, u = heapq.heappop(heap)
-            if d > dist.get(u, 1e18):
-                continue
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    n = (u[0] + dx, u[1] + dy)
-                    if n not in land or n in hard:
-                        continue
-                    nd = d + ((400.0 if n in costly else 40.0) if n in cells else 1.0)
-                    if nd < dist.get(n, 1e18):
-                        dist[n] = nd
-                        prev[n] = u
-                        heapq.heappush(heap, (nd, n))
-        tgt = next((t for t in bad if t in prev), None)
-        if tgt is None:
-            break  # all remaining bad targets are off-island
-        node = tgt
-        while node != root:
-            for i in cells.get(node, ()):
-                removed.add(i)
-            node = prev[node]
-    if removed:
-        objs = [o for i, o in enumerate(objs) if i not in removed]
-    return objs, len(removed)
-
-
-def fill_open_islands(
-    size: int,
-    grid: Sequence[Sequence[int]],
-    objs: list[PlacedObject],
-    targets: Sequence[Tile],
-    seed: int = 1,
-    boat_ok: bool = True,
-    costly: Container[Tile] = (),
-) -> tuple[list[PlacedObject], int, int]:
-    """User-mandated: no empty, unreachable open ground. `g2_repair` above only guards
-    NAMED targets (gameplay approaches, pickups) — ordinary open tiles that vegetation
-    happened to wall off entirely are invisible to it, and `pp_pickup` deliberately never
-    scatters onto them (its own `_web_dist` reach check), so they end up walkable-looking
-    yet permanently unreachable AND empty. Any open-set component that touches no `targets`
-    tile is such an island: cheaply reconnect it (<=3 vegetation cells carved, reusing
-    g2_repair's Dijkstra) when possible, else fill its own tiles with blocking decoration so
-    the gap reads as a deliberate obstacle instead of an oversight.
-
-    `boat_ok` (surface only) tolerates a component that touches its OWN target and nothing
-    else: on the surface this is a legitimate boat-only island (a mine/pickup meant to be
-    reached by ship, per `g2_repair`'s "targets on OTHER ISLANDS are legitimately boat-reachable
-    only" convention) — carving land through vegetation to it would be wrong, and there is no
-    boat mechanic to fall back on if this exemption didn't exist. The underground level has no
-    boats at all (`--subterrain`'s classic-sparse scope never places a shipyard there), so a
-    component merely touching its own stranded target is NOT legitimate down there — it is
-    exactly the same disconnected pocket as an empty one, just unlucky enough to have a mine
-    dropped inside it before the corridor/vegetation fixes ran. Callers pass `boat_ok=False`
-    for the underground level so every non-mainland component gets repaired regardless of
-    what it touches, forcing (uncapped) reconnection rather than the cheap-or-fill fallback
-    whenever giving up would strand a real gameplay object.
-
-    `costly` (the zone-border ridge) prices vegetation there at 400 instead of 40 — a
-    reconnection corridor must route around the isolation ridge (through a planned
-    entrance), not through it; a pocket only reachable by breaching the ridge gets filled.
-    Returns (objs, n_reconnected, n_filled)."""
-    rng = random.Random(seed ^ 0xF17)
-    W = H = size
-    land = {(x, y) for y in range(H) for x in range(W) if grid[y][x] < 8}
-    terrain_of = {(x, y): TNAME.get(grid[y][x]) for (x, y) in land}
-
-    cells: collections.defaultdict[Tile, list[int]] = collections.defaultdict(
-        list
-    )  # blocking cell -> [veg obj idx]
-    hard: set[Tile] = set()  # gameplay/pickup bodies: never carved/filled
-    for i, o in enumerate(objs):
+    Guards and pickups count as passable, since a hero fights or collects them. Vegetation
+    and every other object blocks. A target that no land path could reach even through
+    vegetation sits on another island and is left out, because a boat or portal serves it."""
+    land = {(x, y) for y in range(size) for x in range(size) if grid[y][x] < 8}
+    walk: set[Tile] = set()
+    hard: set[Tile] = set()
+    for o in objs:
+        soft = o.purpose in ("RESOURCE_PILE", "REWARD_PICKUP", "GUARD")
         for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
-            if not blk:
-                continue
-            if not o.purpose:
-                cells[(cx, cy)].append(i)
-            else:
-                hard.add((cx, cy))
-    open_set = land - set(cells) - hard
-    reach_targets = {t for t in targets if t in open_set}
-
-    seen: set[Tile] = set()
-    comps: list[set[Tile]] = []
-    for t0 in sorted(open_set):
-        if t0 in seen:
-            continue
-        comp, q = {t0}, [t0]
-        while q:
-            x, y = q.pop()
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            if blk and not soft:
+                (hard if o.purpose else walk).add((cx, cy))
+    open_set = land - walk - hard
+    targets_in = [t for t in targets if t in open_set]
+    if not targets_in:
+        return []
+    root = targets_in[0]
+    seen = {root}
+    queue = collections.deque([root])
+    while queue:
+        x, y = queue.popleft()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
                 n = (x + dx, y + dy)
-                if n in open_set and n not in comp:
-                    comp.add(n)
-                    q.append(n)
-        seen |= comp
-        comps.append(comp)
-
-    if boat_ok:
-        islands = [c for c in comps if not (c & reach_targets)]
-    else:
-        mainland = max(comps, key=len) if comps else None
-        islands = [c for c in comps if c is not mainland]
-    if not islands:
-        return objs, 0, 0
-
-    removed: set[int] = set()
-    filled_tiles: list[Tile] = []
-    for comp in islands:
-        # a target INSIDE this very component (its own stranded gameplay approach) must never
-        # be buried under filler decoration — only vegetation-only pockets are fair game to fill
-        has_own_target = bool(comp & reach_targets)
-        root = sorted(comp)[0]
-        dist: dict[Tile, float] = {root: 0.0}
-        prev: dict[Tile, Tile] = {}
-        best: Tile | None = None
-        heap: list[tuple[float, Tile]] = [(0.0, root)]
-        # search targets OUTSIDE this component: reconnecting to one's own stranded target
-        # would just find itself immediately (dist 0) without ever leaving the pocket
-        outside_targets = reach_targets - comp
-        while heap:
-            d, u = heapq.heappop(heap)
-            if d > dist.get(u, 1e18):
-                continue
-            if u in outside_targets:
-                best = u
-                break
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                n = (u[0] + dx, u[1] + dy)
-                if n not in land or n in hard:
-                    continue
-                nd = d + ((400.0 if n in costly else 40.0) if n in cells else 1.0)
-                if nd < dist.get(n, 1e18):
-                    dist[n] = nd
-                    prev[n] = u
-                    heapq.heappush(heap, (nd, n))
-        # cheap carve only (<=3 veg cells) normally; a component stranding a real gameplay
-        # target is worth an uncapped carve — losing map-wide mine/town reachability is worse
-        # than a long corridor of felled trees.
-        cap = 1e18 if has_own_target else 120.0
-        if best is not None and dist[best] <= cap:
-            node = best
-            while node != root:
-                for i in cells.get(node, ()):
-                    removed.add(i)
-                node = prev[node]
-            continue
-        if has_own_target:
-            continue  # never bury a stranded gameplay approach under filler decor
-        filled_tiles.extend(comp)
-
-    if removed:
-        objs = [o for i, o in enumerate(objs) if i not in removed]
-    n_filled = 0
-    cover = CoverIndex(objs)
-    if filled_tiles:
-        by_terrain: collections.defaultdict[str | None, list[Tile]] = collections.defaultdict(list)
-        for t in filled_tiles:
-            by_terrain[terrain_of.get(t)].append(t)
-        for terrain, tiles in by_terrain.items():
-            if terrain is None:
-                continue
-            pool = ON.decor_pool(
-                terrain, blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
-            )
-            if not pool:
-                continue
-            for x, y in tiles:
-                ident = rng.choice(pool)
-                decor = PlacedObject.at(ident, x, y, level=0, purpose="")
-                if cover.try_add(decor):
-                    objs.append(decor)
-                    n_filled += 1
-    return objs, len(removed), n_filled
+                if n in open_set and n not in seen:
+                    seen.add(n)
+                    queue.append(n)
+    bad = [t for t in targets_in if t not in seen]
+    if not bad:
+        return []
+    through_veg = land - hard
+    reach = {root}
+    queue = collections.deque([root])
+    while queue:
+        x, y = queue.popleft()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                n = (x + dx, y + dy)
+                if n in through_veg and n not in reach:
+                    reach.add(n)
+                    queue.append(n)
+    return [t for t in bad if t in reach]
 
 
 def place_reward_zone(

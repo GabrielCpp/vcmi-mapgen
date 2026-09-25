@@ -143,33 +143,36 @@ class ZoneWorkspace:
     """One zone's handoff data, mutated in place as Gameplay -> Vegetation -> Pickup ->
     Repair each run. Not a MapState field: this is step-collaboration bookkeeping, not a
     map-level fact anything outside these four steps needs to read."""
+
     terrain: str = ""
-    ts: frozenset = frozenset()          # set by GameplayStep
+    ts: frozenset = frozenset()  # set by GameplayStep
     ts_full: frozenset = frozenset()
     occupied: frozenset = frozenset()
     gblocked: frozenset = frozenset()
     approaches: tuple = ()
-    prot: frozenset = frozenset()         # protected web
+    prot: frozenset = frozenset()  # protected web
     rim8: frozenset = frozenset()
     ent_bands: frozenset = frozenset()
-    blocked: frozenset = frozenset()      # set by VegetationStep
+    blocked: frozenset = frozenset()  # set by VegetationStep
     open_set: frozenset = frozenset()
     passable: frozenset = frozenset()
-    reach: frozenset = frozenset()        # set by PickupStep
+    reach: frozenset = frozenset()  # set by PickupStep
     used: frozenset = frozenset()
+
 
 @dataclass
 class LevelWorkspace:
-    zones: dict[int, ZoneWorkspace] = field(default_factory=dict)   # zid -> ZoneWorkspace
+    zones: dict[int, ZoneWorkspace] = field(default_factory=dict)  # zid -> ZoneWorkspace
     entrance_plan: dict = field(default_factory=dict)
     ridge: frozenset = frozenset()
     seal_avoid: set = field(default_factory=set)
     hard_avoid: set = field(default_factory=set)
     guard_tiles: frozenset = frozenset()
 
+
 class PlacementWorkspace:
     def __init__(self):
-        self.levels: dict[int, LevelWorkspace] = {}   # level -> LevelWorkspace
+        self.levels: dict[int, LevelWorkspace] = {}  # level -> LevelWorkspace
 ```
 
 Field names/shape are a starting proposal — adjustable during implementation as long as the

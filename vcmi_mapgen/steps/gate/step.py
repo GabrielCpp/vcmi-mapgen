@@ -19,7 +19,7 @@ from vcmi_mapgen.steps.gate import gates as PG
 
 @dataclass
 class GateResult:
-    """Gate objects/occupancy/approach cells — GameplayStep's/PickupStep's/RepairStep's
+    """Gate objects/occupancy/approach cells — GameplayStep's/PickupStep's/BorderStep's
     input. Read via ``ctx.get(GateResult, GateResult())`` (never ``require``): a map
     without --subterrain has no GateStep, so its consumers must see the empty default,
     not an error."""
@@ -72,7 +72,7 @@ class GateStep(PipelineStep):
     Produces:
       - ``gate_blk``    — blocked tile sets per level, written directly onto MapState.
       - ``GateResult``  — gate_objs/gate_occ/gate_appr, published into ctx (GameplayStep's/
-        PickupStep's/RepairStep's input; each defaults to empty when no GateStep ran).
+        PickupStep's/BorderStep's input; each defaults to empty when no GateStep ran).
     """
 
     def __init__(self, seed: int = 3) -> None:

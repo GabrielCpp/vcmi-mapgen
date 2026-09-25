@@ -12,7 +12,7 @@ metadata:
 # VCMI map-generator — pipeline & step architecture
 
 Two otherwise-unrelated pipelines — the procedural generator (`terrain_gen -> tile ->
-segment -> gate? -> gameplay -> vegetation -> pickup -> repair`) and the identity-rebuild
+segment -> gate? -> gameplay -> vegetation -> pickup -> border -> portal -> loot -> scatter`) and the identity-rebuild
 engine (`extract_template -> rebuild_map/deform_warp -> verify? -> fm_document`) — share
 one step contract and one hand-wired builder. Read `vcmi-mapgen-maps` for what each step
 domain-wise implements; this skill is about how they're wired together.
@@ -63,9 +63,9 @@ reason to widen the schema.
 
 ## `PlacementWorkspace` is a separate, deliberate exception
 
-`GameplayStep`/`VegetationStep`/`PickupStep`/`RepairStep` share a `PlacementWorkspace`
+`GameplayStep`/`VegetationStep`/`PickupStep`/`BorderStep`/`PortalStep`/`LootStep` share a `PlacementWorkspace`
 (constructor-injected by reference, holding `LevelWorkspace`/`ZoneWorkspace` per level/zone)
-that they mutate in place across the four steps — `GameplayStep` populates
+that they mutate in place across those steps — `GameplayStep` populates
 `zw.occupied/gobjs/prot/...`, `VegetationStep` fills `zw.open_set/blocked/passable`,
 `PickupStep` writes `zw.reach/used`. This is **not** the `inject()` channel and not
 `MapState` — it's a third, narrower pattern for exactly this one tightly-coupled step

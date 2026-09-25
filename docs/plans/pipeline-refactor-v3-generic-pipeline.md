@@ -86,16 +86,16 @@ A small helper on the base class avoids repeating the same pull-and-check dance 
 step's `inject()`:
 
 ```python
-    def _require(self, ctx: dict, key: str, expected_type) -> object:
-        if key not in ctx:
-            raise MissingContextKeyError(f"{type(self).__name__}.inject(): "
-                                          f"ctx has no {key!r}")
-        value = ctx[key]
-        if not isinstance(value, expected_type):
-            raise MissingContextKeyError(
-                f"{type(self).__name__}.inject(): ctx[{key!r}] is "
-                f"{type(value).__name__}, expected {expected_type.__name__}")
-        return value
+def _require(self, ctx: dict, key: str, expected_type) -> object:
+    if key not in ctx:
+        raise MissingContextKeyError(f"{type(self).__name__}.inject(): ctx has no {key!r}")
+    value = ctx[key]
+    if not isinstance(value, expected_type):
+        raise MissingContextKeyError(
+            f"{type(self).__name__}.inject(): ctx[{key!r}] is "
+            f"{type(value).__name__}, expected {expected_type.__name__}"
+        )
+    return value
 ```
 
 ## `Pipeline`
