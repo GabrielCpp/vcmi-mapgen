@@ -152,7 +152,7 @@ def loot_zone_tiles(
 ) -> set[Tile]:
     """Tiles belonging to a 'loot zone' (small, town-free, single-boundary-cluster
     zone reached via a gate/monolith access pair) -- the same detection
-    steps.pickup.loot_zones uses, so pocket detection doesn't double-count them."""
+    steps.gated.placer uses, so pocket detection doesn't double-count them."""
     town_tiles = _town_tiles(objs, level)
 
     all_ts: set[Tile] = set()

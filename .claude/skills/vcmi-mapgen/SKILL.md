@@ -40,13 +40,13 @@ subcommand (the step contract, `MapState`, `PipelineBuilder`).
   - `cli.py` — the CLI (`extract` / `inspect` / `features` / `rebuild` / `run` / `generate` /
     `render-ontology`), a thin layer over `pipeline_builder.py`.
   - `pipeline.py` — `MapState` (the narrow, render-only view of a finished map),
-    the Gameplay/Vegetation/Pickup/Repair collaboration workspaces, and the `PipelineStep`
+    the `PlacementWorkspace` shared by the placement steps, and the `PipelineStep`
     base contract every step (both the procedural generator and the identity-rebuild
     engine) is built from. `pipeline_builder.py` — `PipelineBuilder`, which hand-wires each
     subcommand's step sequence (constructor args for compile-time-known config, `inject()`
     for values an earlier step produced). See `vcmi-mapgen-pipeline` for the contract itself.
-  - `steps/` — one subpackage per step: `terrain_gen/tile/segment/gate/gameplay/
-    vegetation/pickup/repair` (procedural generation) and `extract_template/rebuild_map/
+  - `steps/` — one subpackage per step: `terrain_gen/segment/gate/towns/vegetation/
+    gameplay/gated/treasure/border/portal/loot/scatter` (procedural generation) and `extract_template/rebuild_map/
     verify/fm_document/deform_warp` (identity-rebuild).
   - `terrain_segment.py` — same-terrain flood-fill segmentation + interior-depth features.
   - `kit/objects.py`, `ontology.py` — corpus loader, object identity, purpose.

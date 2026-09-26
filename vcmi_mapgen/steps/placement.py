@@ -1,34 +1,19 @@
-"""Unguarded scatter loot over the finished open field (L4a) — Pickup-only.
-
-Runs AFTER vegetation — the open field is known, so the classic H3 treasure grammar
-applies: resource piles/artifacts lying in the open along routes are ALWAYS free
-(user-mandated: a guard only belongs at a genuine chokepoint, never planted beside loot
-that sits in open terrain and can be walked around).
-
-Also owns `_place_one` (the placement primitive shared with
-`steps.loot.caches.place_pocket_caches`/`place_seer_hut_quests` and
-`steps.pickup.loot_zones.place_loot_zones` — Pickup is the first step in pipeline order to
-need it) and its pandoraBox-reward helpers.
-"""
+"""Placement primitives shared by every step that places objects over the open field:
+the reachability BFS, a guard's zone of control, the guard spacing rule, ``place_one``
+and the pandoraBox reward helpers."""
 
 import collections
 import random
-from collections.abc import Collection, Container, Mapping, Sequence
+from collections.abc import Collection, Container, Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.geometry import edge_dist
-from vcmi_mapgen.kit.topology import zone_gate_bands
-from vcmi_mapgen.models import CoverIndex, Entrance, Identity, JsonValue, PlacedObject, Tile, Zone
+from vcmi_mapgen.models import CoverIndex, Identity, JsonValue, PlacedObject, Tile
 from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.gameplay.water import CellRules, legal_cells, pick_identity
 
-CAPS = {"RESOURCE_PILE": 16, "REWARD_PICKUP": 8}  # base floors; caps scale (scatter only --
-# pocket guards/caches are deterministic, see place_pickups)
-SCATTER_ART_SHARE = 0.15  # unguarded scatter: mostly LOOT (chests/campfires); the
-# tiered random artifacts live behind cache guards instead
+GUARD_SPACING = 2
 
 PANDORA_CREATURES = (
     "pikeman",
@@ -123,9 +108,6 @@ def _pandora_reward(rng: random.Random) -> dict[str, JsonValue]:
     }
 
 
-_NO_AVOID: frozenset[Tile] = frozenset()
-
-
 def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, int]:
     """4-connected BFS steps from the protected web through the open field. Tiles absent
     from the result are UNREACHABLE (sealed by vegetation) — nothing may be placed there."""
@@ -152,6 +134,13 @@ def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
             zoc.add((ix, iy))
             zoc.update((ix + dx, iy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
     return zoc
+
+
+def guard_spaced(t: Tile, guards: Iterable[Tile]) -> bool:
+    """True when no guard in ``guards`` stands within Chebyshev ``GUARD_SPACING`` of ``t``.
+    Every step that places a guard refuses a tile this rejects, so no two guards crowd one
+    crossing."""
+    return all(max(abs(t[0] - g[0]), abs(t[1] - g[1])) > GUARD_SPACING for g in guards)
 
 
 def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Tile]:
@@ -260,103 +249,3 @@ def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
         o.cache = True  # ignored by the vmap exporter, used by tests
     target.objs.append(o)
     return True
-
-
-@dataclass(frozen=True, slots=True)
-class ScatterZone:
-    ts: AbstractSet[Tile]
-    zones: Mapping[int, Zone]
-    zid: int
-    terrain: str
-    open_set: AbstractSet[Tile]
-    prot: Collection[Tile]
-    entrances: Sequence[Entrance] | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ScatterConfig:
-    seed: int = 1
-    bounds: tuple[int, int] | None = None
-    cover: CoverIndex | None = None
-    reach_in: set[Tile] | None = None
-    used_in: set[Tile] | None = None
-    avoid: AbstractSet[Tile] = _NO_AVOID
-
-
-_DEFAULT_SCATTER_CONFIG = ScatterConfig()
-
-
-def _stoch(rng: random.Random, x: float, cap: int) -> int:
-    n = int(x) + (1 if rng.random() < x - int(x) else 0)
-    return min(n, cap)
-
-
-def _scatter_gate_dist(zone: ScatterZone, st: PG.TerrainStats) -> dict[Tile, int]:
-    if zone.entrances is not None:  # isolation plan: gd measures from the
-        bands = [(r, b) for r, b, _o in zone.entrances]  # planned narrow crossings
-    else:
-        bands = zone_gate_bands(zone.ts, zone.zones, zone.zid, open_frac=st.border_open_frac)
-    return PG.gate_dist(zone.ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
-
-
-def place_scatter(
-    zone: ScatterZone, config: ScatterConfig = _DEFAULT_SCATTER_CONFIG
-) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
-    """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
-    routes — user-mandated to always be free, never guarded, since it can just be walked
-    around). Returns (objs, used, reach): `used` and `reach` (this zone's own BFS-reachable
-    open tiles) are handed to `place_pocket_caches` so the global pocket pass knows which
-    tiles this zone already spent on scatter and can treat the rest as this zone's share of
-    the whole map's reachable field.
-
-    Guarded pocket caches are NOT placed here — see `place_pocket_caches`, which must run
-    once for the WHOLE map after every zone's scatter is done (a genuine pocket must be
-    judged against true global passability, not one zone's reach alone)."""
-    ts = zone.ts
-    st = PG.mine_gameplay()[zone.terrain]
-    rng = random.Random(config.seed ^ (zone.zid * 92821) ^ 0x9C4)
-    area = len(ts)
-    dens = {p: st.counts.get(p, 0) / max(st.tiles, 1) for p in PG.PICKUP_PURPOSES}
-
-    n_res = _stoch(
-        rng,
-        dens["RESOURCE_PILE"] * area,
-        PG.scaled_cap(CAPS["RESOURCE_PILE"], dens["RESOURCE_PILE"] * area),
-    )
-
-    dweb = web_dist(zone.open_set, zone.prot)
-    reach = set(dweb) if config.reach_in is None else config.reach_in  # reachable open tiles only
-    op = PG.openness(zone.open_set)
-    ed = edge_dist(ts)
-    gd = _scatter_gate_dist(zone, st)
-
-    pool_res = ON.pool("RESOURCE_PILE", zone.terrain)
-
-    objs: list[PlacedObject] = []
-    used: set[Tile] = set() if config.used_in is None else config.used_in
-    target = PlaceTarget(objs, used, reach, rng, st, bounds=config.bounds, cover=config.cover)
-
-    # Open-field scatter is resource piles only — artifacts are reserved for pockets
-    # and loot zones where a guard or gate makes them genuinely earned.
-    def scatter(purpose: str, pool: Sequence[Identity], n: int, min_sep: int) -> None:
-        if n <= 0:
-            return
-        wmap = PG.intensity_weights(reach, purpose, st, PG.Covariates(ed, gd, op))
-        cands = sorted(reach)
-        if not cands:  # zone has no reachable open tile
-            return
-        weights = [wmap[t] for t in cands]
-        spec = PlaceSpec(purpose, pool, art_share=SCATTER_ART_SHARE)
-        placed: list[Tile] = []
-        for t in rng.choices(cands, weights=weights, k=60 * n):
-            if len(placed) >= n:
-                break
-            if t in used or t in config.avoid:
-                continue
-            if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < min_sep for q in placed):
-                continue
-            if place_one(target, spec, t[0], t[1]):
-                placed.append(t)
-
-    scatter("RESOURCE_PILE", pool_res, n_res, min_sep=3)
-    return objs, used, reach

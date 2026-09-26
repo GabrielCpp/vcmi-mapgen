@@ -1,4 +1,4 @@
-"""Map-generation primitives: the Gameplay/Vegetation/Pickup/Repair collaboration
+"""Map-generation primitives: the placement steps' collaboration
 workspaces, the PipelineStep contract, and the generic Pipeline engine that runs an
 ordered list of steps against a shared ProviderRegistry. ``MapState`` itself lives in
 ``vcmi_mapgen.models`` (see that package's AGENTS.md) — it is a plain data model, not a
@@ -58,9 +58,9 @@ __all__ = [
 
 @dataclass
 class ZoneWorkspace:
-    """One zone's handoff data, mutated in place as Gameplay -> Vegetation -> Pickup ->
-    Repair each run. Not a MapState field: this is step-collaboration bookkeeping, not a
-    map-level fact anything outside these four steps needs to read."""
+    """One zone's handoff data, mutated in place as Towns -> Vegetation -> Gameplay ->
+    Gated each run. Not a MapState field: this is step-collaboration bookkeeping, not a
+    map-level fact anything outside the placement steps needs to read."""
 
     terrain: str = ""
     ts: frozenset[Tile] = frozenset()  # set by GameplayStep
@@ -76,7 +76,8 @@ class ZoneWorkspace:
     blocked: frozenset[Tile] = frozenset()  # set by VegetationStep
     open_set: frozenset[Tile] = frozenset()
     passable: frozenset[Tile] = frozenset()
-    reach: frozenset[Tile] = frozenset()  # set by PickupStep
+    planned: list[PlacedObject] = field(default_factory=list)
+    reach: frozenset[Tile] = frozenset()
     used: frozenset[Tile] = frozenset()
 
 
@@ -96,9 +97,9 @@ class LevelWorkspace:
 
 
 class PlacementWorkspace:
-    """Inter-step collaboration object for Gameplay/Vegetation/Pickup/Repair. Created by
-    whichever of those four steps runs first (``ctx.get_or_create(PlacementWorkspace,
-    PlacementWorkspace)``) and mutated in place by each of the other three in turn —
+    """Inter-step collaboration object for the placement steps. Created by
+    whichever of those steps runs first (``ctx.get_or_create(PlacementWorkspace,
+    PlacementWorkspace)``) and mutated in place by each later one in turn —
     ``MapState`` stays generic map-layer truth only, this is the one shared, progressively
     -built object every other cross-step value would need if it weren't a single
     computed-once value (see ``vcmi_mapgen/steps/AGENTS.md``)."""

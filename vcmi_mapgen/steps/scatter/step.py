@@ -9,8 +9,9 @@ from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.models import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
-from vcmi_mapgen.steps.pickup import scatter as SC
-from vcmi_mapgen.steps.pickup.step import PickupIndex
+from vcmi_mapgen.steps.placement import guard_zoc
+from vcmi_mapgen.steps.scatter import scatter as SC
+from vcmi_mapgen.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
 
 
@@ -23,7 +24,7 @@ class ScatterStep(PipelineStep):
         seed       RNG seed.
         size       Map side length in tiles (square).
 
-    inject(ctx): ``PickupIndex`` (zone records), the shared ``PlacementWorkspace``.
+    inject(ctx): ``ZoneIndex`` (zone records), the shared ``PlacementWorkspace``.
 
     Produces: appends the piles to ``map_state.objs``.
     """
@@ -32,28 +33,28 @@ class ScatterStep(PipelineStep):
         self.seed: int = seed
         self.size: int = size
         self.objs: list[PlacedObject] = []
-        self._pickup: PickupIndex = PickupIndex()
+        self._zones: ZoneIndex = ZoneIndex()
         self._workspace: PlacementWorkspace = PlacementWorkspace()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
-        self._pickup = ctx.require(PickupIndex)
+        self._zones = ctx.require(ZoneIndex)
         self._workspace = ctx.require(PlacementWorkspace)
 
     @override
     def run(self, ontology: Ontology, map_state: MapState) -> None:
-        by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._pickup.zone_records}
+        by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._zones.zone_records}
         for o in map_state.objs:
             if o.level in by_level:
                 by_level[o.level].append(o)
 
-        for level, zone_records in self._pickup.zone_records.items():
+        for level, zone_records in self._zones.zone_records.items():
             level_objs = by_level[level]
             taken: set[Tile] = {
                 (cx, cy) for o in level_objs for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y)
             }
             cover = CoverIndex(level_objs)
-            zoc = SC.guard_zoc(level_objs)
+            zoc = guard_zoc(level_objs)
             lvl_ws = self._workspace.levels[level]
             for zr in zone_records:
                 if zr.loot_zone:
@@ -90,4 +91,4 @@ class ScatterStep(PipelineStep):
                     + f"scatter res={pk.get('RESOURCE_PILE', 0)}"
                 )
 
-        map_state.set_objs([*map_state.objs, *self.objs], TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(ontology))

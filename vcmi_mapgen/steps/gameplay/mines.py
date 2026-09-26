@@ -33,7 +33,7 @@ from vcmi_mapgen.kit.geometry import NB8, edge_dist
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
-from vcmi_mapgen.kit.topology import find_pockets, zone_fronts, zone_gate_bands, zone_gates
+from vcmi_mapgen.kit.topology import zone_fronts, zone_gate_bands, zone_gates
 from vcmi_mapgen.models import Entrance, Identity, JsonValue, PlacedObject, Tile, Zone
 
 # Gate is the first step in pipeline order to need footprint-fitting helpers
@@ -44,7 +44,6 @@ from vcmi_mapgen.steps.gate.gates import (
     NO_TILES,
     Clearance,
     Fit,
-    LevelGates,
     fits,
     inflate_gap,
     rnd_monster,
@@ -186,10 +185,6 @@ RANDOM_SHARE = 0.7  # towns: random vs fixed split
 # guarded (user-reported bug: unguarded mines), valuable mines scaling higher still. The
 # town's own economy pair (sawmill/orePit) is guarded at level 1 specifically (user-mandated
 # — a trivial early fight, not a level-3+ wall in front of every town's starting economy).
-ENTRANCE_GUARD_PROB = 0.85  # a planned zone entrance is a genuine chokepoint (the rest of
-#                             the border is a vegetation ridge), so it is usually guarded —
-#                             vs 0.65 for the legacy wide-open border convention.
-
 MINE_GUARD_LVL = {
     "sawmill": 1,
     "orePit": 1,
@@ -597,6 +592,22 @@ class ZoneOptions:
 
 DEFAULT_ZONE_OPTIONS = ZoneOptions()
 
+CORE_PURPOSES = ("TOWN", "MINE")
+
+
+@dataclass(frozen=True, slots=True)
+class ZonePlan:
+    """One zone's pre-vegetation placement: the towns, mines and their guards and seals
+    placed now, plus the attractions (dwellings, banks, visitables) whose spots are
+    planned now and emitted after vegetation, in draw order. ``occupied``, ``blocked``
+    and ``approaches`` already include the planned footprints."""
+
+    objs: list[PlacedObject]
+    occupied: set[Tile]
+    blocked: set[Tile]
+    approaches: list[Tile]
+    planned: list[PlacedObject] = field(default_factory=list)
+
 
 def place_zone(
     ts: AbstractSet[Tile],
@@ -604,11 +615,12 @@ def place_zone(
     zid: int,
     terrain: str,
     opts: ZoneOptions = DEFAULT_ZONE_OPTIONS,
-) -> LevelGates:
-    """Gameplay objects for one zone. Returns (objs, occupied, blocked, approaches):
-    `occupied` = every footprint cell (no vegetation there), `blocked` = the impassable
-    subset (the walkable web must route around these; approach tiles are never in it).
-    objs carry purpose. Deterministic in `seed`.
+) -> ZonePlan:
+    """Towns and mines for one zone, as a `ZonePlan`: `occupied` = every footprint cell
+    (no vegetation there), `blocked` = the impassable subset (the walkable web must route
+    around these; approach tiles are never in it), `planned` = the dwellings, banks and
+    visitables whose spots are reserved now and emitted after vegetation. objs carry
+    purpose. Deterministic in `seed`.
 
     Anchors are SAMPLED FROM THE FITTED INTENSITY (towns deep and gate-far, mines mid-depth,
     shrines near routes — whatever the corpus says), not from uniform spread nodes; the GAP
@@ -617,12 +629,10 @@ def place_zone(
     Conventions (user-mandated, matching real H3 mapmaking): towns/dwellings are mostly the
     editor's RANDOM classes; a zone with a town always gets a sawmill + ore pit placed NEXT
     TO the town (the start economy); mines get a guard on their approach with the corpus
-    guardedness probability (strength ~ resource rarity); every zone gate — the corpus-wide
-    open band into the neighbouring zone — gets a random monster at its centre with prob
-    0.65 (strength ~ zone size); creature BANKS (utopias, conservatories, crypts) place like
-    visitables but carry no extra guard (the bank IS the fight); a coastal zone may get a
-    shipyard on the shore (`coastal` = zone tiles touching water). `force_town=True`
-    guarantees the zone a town (a designated PLAYER zone).
+    guardedness probability (strength ~ resource rarity); creature BANKS (utopias,
+    conservatories, crypts) place like visitables but carry no extra guard (the bank IS the
+    fight); a coastal zone may get a shipyard on the shore (`coastal` = zone tiles touching
+    water). `force_town=True` guarantees the zone a town (a designated PLAYER zone).
 
     `ledger` (optional, shared across the whole map, zones visited in sorted-zid order)
     makes mine types a MAP-level economy: a `Ledger` of `missing` (set of BASIC_MINE_RES not yet
@@ -651,10 +661,8 @@ def place_zone(
     `entrances` (this zone's `kit.topology.plan_entrances` entries, `[(rep, band, other_zid)]`)
     switches the border model from corpus-open gate bands to the map-level ISOLATION plan:
     the planned narrow bands replace `zone_gate_bands` for the gate-distance covariate, no
-    gameplay footprint may squat on a band (the crossing must stay walkable), and the
-    zone-edge guard pass guards the planned entrance reps directly (prob
-    ENTRANCE_GUARD_PROB, single-side ownership zid < other) instead of hunting
-    pocket-mouths inside wide-open borders."""
+    and no gameplay footprint may squat on a band (the crossing must stay walkable).
+    BorderStep guards the entrances."""
     return _ZonePlacer(ts, zones, zid, terrain, opts).run()
 
 
@@ -704,7 +712,7 @@ def _rim_reserved(
     return frozenset(rim8 | band_union)
 
 
-def _tie_dwellings(objs: list[PlacedObject]) -> None:
+def tie_dwellings(objs: Iterable[PlacedObject]) -> None:
     # tie the zone's RANDOM dwellings to its town: VCMI's `sameAsTown` link makes the
     # dwelling resolve to the town's (lobby-picked) faction at game start, so the creatures
     # around a random town are its own. Instance names are minted only at export, so the
@@ -743,6 +751,8 @@ class _ZonePlacer:
         # penalized, so rare visitables (star axis, gardens, libraries) actually show up
         self.used_anims: set[str] = set()
         self.wanted: list[tuple[str, Identity]] = []  # (purpose, ident), placement order
+        self.deferred: tuple[tuple[str, Identity], ...] = ()
+        self.planned: list[PlacedObject] = []
         self.ed: dict[Tile, int] = {}
         self.gate_bands: list[tuple[Tile, frozenset[Tile]]] = []
         self.ent_reserved: frozenset[Tile] = NO_TILES
@@ -906,6 +916,8 @@ class _ZonePlacer:
         self._dwell_wanted(n_dwell)
         self._bank_wanted(n_bank)
         self._visit_wanted(n_visit)
+        self.deferred = tuple(w for w in self.wanted if w[0] not in CORE_PURPOSES)
+        self.wanted = [w for w in self.wanted if w[0] in CORE_PURPOSES]
         self.town_mines_left = 2 if n_town else 0  # sawmill + ore pit anchor NEAR the town
 
     def _prepare(self) -> None:
@@ -1018,15 +1030,49 @@ class _ZonePlacer:
             for t in behind
         )
 
-    def _place_one(self, purpose: str, ident: Identity) -> None:
+    def _find_spot(self, purpose: str, ident: Identity) -> tuple[Fit, Tile] | None:
         cands, spiral = self._candidates(purpose, ident)
         for sampled in cands:
             fit, node = self._fit_near(ident, sampled, spiral)
             if fit and purpose == "MINE" and self._mine_front_blocked(ident, fit):
                 fit = None
             if fit:
-                self._commit(purpose, ident, fit, node)
-                break
+                return fit, node
+        return None
+
+    def _place_one(self, purpose: str, ident: Identity) -> None:
+        spot = self._find_spot(purpose, ident)
+        if spot is not None:
+            self._commit(purpose, ident, spot[0], spot[1])
+
+    def _scan_spot(
+        self, purpose: str, ident: Identity, *, tight: bool = False
+    ) -> tuple[Fit, Tile] | None:
+        wmap = self.wcache[purpose]
+        clear = self._clearance()
+        if tight:
+            clear = Clearance(clear.occupied, clear.occupied, clear.reserved, clear.avoid)
+        for t in sorted(self.tiles_sorted, key=lambda t: (-wmap[t], t)):
+            fit = fits(ident, t, self.ts, clear)
+            if fit is not None:
+                return fit, t
+        return None
+
+    def _plan_one(self, purpose: str, ident: Identity) -> None:
+        spot = (
+            self._find_spot(purpose, ident)
+            or self._scan_spot(purpose, ident)
+            or self._scan_spot(purpose, ident, tight=True)
+        )
+        if spot is None:
+            print(f"  zone {self.zid}: no spot for {purpose} {ident.animation}")
+            return
+        (allc, blk, approach), node = spot
+        self.occupied.update(allc)
+        self.blocked.update(blk)
+        inflate_gap(self.near, allc)
+        self.approaches.append(approach)
+        self.planned.append(PlacedObject.at(ident, node, purpose=purpose))
 
     def _commit(self, purpose: str, ident: Identity, fit: Fit, node: Tile) -> None:
         approach = self._settle(purpose, ident, fit, node)
@@ -1089,89 +1135,22 @@ class _ZonePlacer:
                 _ = self._settle("WATER_TRANSPORT", ident, fit, c)
                 break
 
-    def _edge_guard_level(self, per: int) -> int:
-        if self.opts.force_town:
-            return 1
-        return min(7, 1 + self.area // per + (1 if self.rng.random() < 0.4 else 0))
-
-    def _guard_clear(self, gident: Identity, t: Tile) -> bool:
-        return all(
-            c in self.ts and c not in self.occupied
-            for c in OR.mask_interactive_cells(gident.mask, t[0], t[1])
-        )
-
-    def _emit_guard_at(self, gident: Identity, target: Tile) -> None:
-        self._emit("GUARD", gident, target[0], target[1])
-        self.occupied.update(
-            (tx, ty) for tx, ty, _b in OR.mask_cells(gident.mask, target[0], target[1])
-        )
-
-    def _guard_entrances(self, entrances: Sequence[Entrance]) -> None:
-        # zone-edge guards, ISOLATION model: each planned entrance is a genuine chokepoint
-        # (the rest of the border densifies into a vegetation ridge — see pp_sample's
-        # `border` bias), so the rep itself is worth guarding, at a higher probability and
-        # a slightly steeper strength ramp than the old wide-border convention. Only the
-        # LOWER zid of the pair emits (single-side ownership — the two sides planned the
-        # same aligned crossing, and pp_map's dup-guard cleanup stays as a backstop).
-        for rep, band, other in sorted(entrances):
-            if self.zid >= other:
-                continue
-            if self.rng.random() > ENTRANCE_GUARD_PROB:
-                continue
-            gident = rnd_monster(self._edge_guard_level(200))
-            cands = [t for t in [rep, *sorted(band)] if t in self.ts and t not in self.occupied]
-            target = next((t for t in cands if self._guard_clear(gident, t)), None)
-            if target is None:
-                continue
-            self._emit_guard_at(gident, target)
-
-    def _guard_pocket_mouths(self) -> None:
-        # zone-edge guards: gate bands are deliberately WIDE corpus-open borders (see
-        # zone_gate_bands), so most crossings have no real bottleneck at all — guarding an
-        # arbitrary "least open" tile inside a wide band never actually blocks anything (the hero
-        # just walks around it through the rest of the band). A crossing only deserves a guard
-        # when it is a genuine chokepoint: `find_pockets(ts)` finds every tile from which one
-        # guard's zone of control seals a bounded (<=16-tile) pocket of this zone's own shape.
-        # A gate band tile that is ALSO one of those mouths sits inside a narrow niche that
-        # happens to open onto the neighbouring zone — that is worth guarding; a gate band tile
-        # that is not is just open ground, and stays unguarded.
-        pocket_mouths = find_pockets(self.ts)
-        for rep, band in sorted(self.gate_bands):
-            cands = [
-                t for t in band if t in self.ts and t not in self.occupied and t in pocket_mouths
-            ]
-            if not cands:
-                continue
-            target = min(cands, key=lambda t: ((t[0] - rep[0]) ** 2 + (t[1] - rep[1]) ** 2, t))
-            if self.rng.random() > 0.65:
-                continue
-            gident = rnd_monster(self._edge_guard_level(250))
-            # only the interactive cell needs to be free/in-zone -- the mask's decorative
-            # overlay cells may bleed past the zone edge or over already-blocked scenery, same
-            # relaxation as the pickup layer's cache guards (see pp_pickup.put).
-            if not self._guard_clear(gident, target):
-                continue
-            self._emit_guard_at(gident, target)
-
-    def run(self) -> LevelGates:
+    def run(self) -> ZonePlan:
         self._collect_wanted()
-        if not self.wanted:
-            return [], set(), set(), []
+        if not self.wanted and not self.deferred:
+            return ZonePlan([], set(), set(), [])
         self._prepare()
         for purpose, ident in self.wanted:
             self._place_one(purpose, ident)
+        for purpose, ident in self.deferred:
+            self._plan_one(purpose, ident)
         # a shipyard on the shore of a coastal zone (mined WATER_TRANSPORT density, boosted for
         # the coastal-only condition) — makes the adjacent water actually navigable
         if self.opts.coastal and self.rng.random() < min(
             0.8, self.dens.get("WATER_TRANSPORT", 0) * self.area * 3
         ):
             self._place_shipyard()
-        if self.opts.entrances is not None:
-            self._guard_entrances(self.opts.entrances)
-        else:
-            self._guard_pocket_mouths()
-        _tie_dwellings(self.objs)
-        return self.objs, self.occupied, self.blocked, self.approaches
+        return ZonePlan(self.objs, self.occupied, self.blocked, self.approaches, self.planned)
 
 
 # purposes deliberately NOT reproduced by the generator (the audit's whitelist)

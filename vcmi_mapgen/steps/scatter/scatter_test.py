@@ -1,7 +1,7 @@
-"""Reliability tests for steps.pickup.scatter (unguarded L4a resource/artifact scatter)."""
+"""Reliability tests for steps.scatter.scatter (unguarded resource piles)."""
 
 from vcmi_mapgen.models import Zone
-from vcmi_mapgen.steps.pickup import scatter as SC
+from vcmi_mapgen.steps.scatter import scatter as SC
 
 
 def test_place_scatter_handles_a_zone_with_no_reachable_open_tile() -> None:

@@ -28,13 +28,15 @@ Everything is **learned from real maps** (`maps/`, 159 classic `.h3m` maps) and
    Subterranean Gate pairs.
 2. **Terrain** — corpus-learned transition tiles (shores, terrain edges) so
    coastlines and terrain borders look hand-drawn.
-3. **Gameplay layer** — towns, mines, dwellings and shrines placed with
-   corpus-fitted densities; every town gets its sawmill and ore pit; gold mines
-   scale with the number of towns; a protected walkable web guarantees every
-   object stays reachable (validated, not hoped for).
+3. **Towns and mines** — towns and mines placed with corpus-fitted densities;
+   every town gets its sawmill and ore pit; gold mines scale with the number of
+   towns; a protected walkable web guarantees every object stays reachable
+   (validated, not hoped for).
 4. **Vegetation** — a corpus-fitted Gibbs marked point process scatters trees,
    rocks and lakes with the same clustering statistics as the real maps.
-5. **Loot** — unguarded scatter along routes, guarded caches in pockets with a
+5. **Attractions** — dwellings, banks and shrines settle next to the vegetation,
+   on spots that keep the walkable field in one piece.
+6. **Loot** — unguarded scatter along routes, guarded caches in pockets with a
    monster on the mouth; guard level scales with the guarded value.
 
 ## Requirements
@@ -79,10 +81,15 @@ vcmi_mapgen/        the Python package (generator + renderer + data pipeline)
                         growth, water, borders, despeckle + H3-correct transition views)
     segment/            same-terrain flood-fill zone segmentation
     gate/               Subterranean Gate pairs (--subterrain)
-    gameplay/           towns/mines/dwellings placement (corpus densities) + water bodies
+    towns/              towns, mines and their guards (corpus densities) + water bodies
     vegetation/         corpus-fitted Gibbs marked point process (trees, rocks, lakes)
-    pickup/             loot: unguarded scatter + the loot-zone access mechanic
-    repair/             G2 repair, island fill, portal rescue, pocket caches, border seal
+    gameplay/           dwellings, banks and visitables, placed next to vegetation
+    gated/              loot-zone access: Border Gate + Keymaster or a monolith pair, sealed
+    treasure/           the treasure inside each sealed loot zone
+    border/             guards on zone entrances and on every crossing vegetation left open
+    portal/             rescue portals for any target still unreachable
+    loot/               seer-hut quests and guarded pocket caches
+    scatter/            free resource piles along the routes
   renderers/          PngRenderer (H3 sprites) / VmapRenderer (playable .vmap export) /
                       ontology_render.py (render-ontology catalog dump)
   readers/            VmapReader (read back a generated/authored .vmap)

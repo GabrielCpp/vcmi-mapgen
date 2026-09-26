@@ -10,11 +10,11 @@ from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.models import MapState, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
-from vcmi_mapgen.steps.gameplay.step import GameplayIndex
 from vcmi_mapgen.steps.gate.step import GateResult
-from vcmi_mapgen.steps.pickup.step import PickupIndex
 from vcmi_mapgen.steps.portal import geometry as GEO
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
+from vcmi_mapgen.steps.towns.step import TownsIndex
+from vcmi_mapgen.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
 
 
@@ -57,11 +57,12 @@ class PortalStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
 
-    inject(ctx): ``PickupIndex`` (targets/zone_records, mutated in place), ``TerrainGrids``,
-    ``GameplayIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
+    inject(ctx): ``ZoneIndex`` (targets/zone_records, mutated in place), ``TerrainGrids``,
+    ``TownsIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
     defaults to empty when there is no GateStep.
 
-    Produces: replaces ``map_state.objs`` and provides ``PortalResult``.
+    Produces: appends the portals and their guards to ``map_state.objs`` and provides
+    ``PortalResult``.
     """
 
     def __init__(self, seed: int = 3, size: int = 72) -> None:
@@ -80,12 +81,12 @@ class PortalStep(PipelineStep):
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
-        pickup = ctx.require(PickupIndex)
-        self._targets = pickup.targets
-        self._zone_records = pickup.zone_records
+        zones = ctx.require(ZoneIndex)
+        self._targets = zones.targets
+        self._zone_records = zones.zone_records
         self._grids = ctx.require(TerrainGrids).grids
         self._workspace = ctx.require(PlacementWorkspace)
-        self._player_zids = ctx.require(GameplayIndex).player_zids
+        self._player_zids = ctx.require(TownsIndex).player_zids
         self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
 
     @override
@@ -126,6 +127,9 @@ class PortalStep(PipelineStep):
 
         for o in objs_by_level.get(1, []):
             o.level = 1
-        self.objs = [o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl]]
-        map_state.set_objs(self.objs, TerrainGate(ontology))
+        before = {id(o) for o in map_state.objs}
+        self.objs = [
+            o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl] if id(o) not in before
+        ]
+        map_state.add_objs(self.objs, TerrainGate(ontology))
         self._ctx.provide(PortalResult(log=self.log))

@@ -5,9 +5,12 @@
 # to list them. Add your own repo-specific (non-agent) targets below the include.
 include .agents/agents.mk
 
-.PHONY: check
+.PHONY: check sweep
 check:
 	uv run ruff check vcmi_mapgen
 	uv run ruff format --check vcmi_mapgen
 	uv run basedpyright
-	uv run pytest -q
+	uv run python -m pytest -q -n auto --dist loadfile
+
+sweep:
+	uv run python -m pytest -q -n auto -m slow

@@ -1,4 +1,4 @@
-"""Reliability tests for steps.gameplay.step (GameplayStep orchestration)."""
+"""Reliability tests for steps.towns.step (TownsStep orchestration)."""
 
 import contextlib
 import io
@@ -6,10 +6,10 @@ import io
 from vcmi_mapgen.models import MapState
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import Pipeline
-from vcmi_mapgen.steps import GameplayStep, GateStep, SegmentStep, TerrainStep
+from vcmi_mapgen.steps import GateStep, SegmentStep, TerrainStep, TownsStep
 
 
-def _run_gameplay(seed: int, size: int = 48, players: int = 2, subterrain: bool = True) -> MapState:
+def _run_towns(seed: int, size: int = 48, players: int = 2, subterrain: bool = True) -> MapState:
 
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
@@ -21,7 +21,7 @@ def _run_gameplay(seed: int, size: int = 48, players: int = 2, subterrain: bool 
         if subterrain:
             _ = pipeline.add_step(GateStep(seed=seed))
         _ = pipeline.add_step(
-            GameplayStep(seed=seed, players=players, size=size, subterrain=subterrain)
+            TownsStep(seed=seed, players=players, size=size, subterrain=subterrain)
         )
         map_state = pipeline.run()
     return map_state
@@ -31,10 +31,10 @@ def test_player_towns_top_up_from_spare_when_a_forced_placement_fails() -> None:
     """seed=1/size=48/subterrain tries to force a town into player zone (1, 0) (level 1)
     and fails (no legal anchor — logged as a WARNING), leaving only 1 of 2 requested
     player towns resolved from town_of_zone. Legacy build() topped the count back up to
-    `players` from any other neutral TOWN object already on the map; GameplayStep.run()
+    `players` from any other neutral TOWN object already on the map; TownsStep.run()
     dropped that fallback when the Pass-2 loot/vegetation logic was split out into its own
     steps, silently handing player 2 no start town at all. Regression for that fix."""
-    state = _run_gameplay(seed=1)
+    state = _run_towns(seed=1)
     town_objs = [o for o in state.objs if o.purpose == "TOWN"]
     assert len(town_objs) == 2, (
         "fixture assumption broke: expected exactly 2 TOWN objects on this seed/size "
@@ -53,5 +53,5 @@ def test_player_towns_top_up_from_spare_when_a_forced_placement_fails() -> None:
 def test_player_towns_never_exceeds_players_requested() -> None:
     """The top-up fallback must still cap at `players` — it must not hand out every spare
     neutral town on the map to a request for fewer players."""
-    state = _run_gameplay(seed=1, players=1)
+    state = _run_towns(seed=1, players=1)
     assert len(state.player_towns) <= 1

@@ -4,28 +4,31 @@ from dataclasses import dataclass
 
 import pytest
 
-from vcmi_mapgen.kit.objects import mask_interactive_cells
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.kit.objects import mask_cells, mask_interactive_cells
+from vcmi_mapgen.models import MapState, PlacedObject, Tile
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.steps import (
     BorderStep,
     GameplayStep,
+    GatedStep,
     GateStep,
     LootStep,
-    PickupStep,
     PortalStep,
     ScatterStep,
     SegmentStep,
     TerrainStep,
+    TownsStep,
+    TreasureStep,
     VegetationStep,
 )
-from vcmi_mapgen.steps.pickup.scatter import guard_zoc
+from vcmi_mapgen.steps.placement import guard_spaced, guard_zoc
 from vcmi_mapgen.validate import terrain_violations
 
 SIZE = 48
 SEED = 7
 PLAYERS = 2
+VEGETATION_TOUCH_FLOOR = 0.8
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,21 +52,23 @@ def _snapshot(state: MapState) -> Snapshot:
     )
 
 
-def _steps() -> list[tuple[str, PipelineStep]]:
+def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
     return [
         (
             "terrain_gen",
-            TerrainStep(size=SIZE, seed=SEED, water_mode="normal", subterrain=True),
+            TerrainStep(size=SIZE, seed=seed, water_mode="normal", subterrain=True),
         ),
         ("segment", SegmentStep()),
-        ("gate", GateStep(seed=SEED)),
-        ("gameplay", GameplayStep(seed=SEED, players=PLAYERS, size=SIZE, subterrain=True)),
-        ("vegetation", VegetationStep(seed=SEED)),
-        ("pickup", PickupStep(seed=SEED, size=SIZE)),
-        ("border", BorderStep(seed=SEED, size=SIZE)),
-        ("portal", PortalStep(seed=SEED, size=SIZE)),
-        ("loot", LootStep(seed=SEED, size=SIZE)),
-        ("scatter", ScatterStep(seed=SEED, size=SIZE)),
+        ("gate", GateStep(seed=seed)),
+        ("towns", TownsStep(seed=seed, players=PLAYERS, size=SIZE, subterrain=True)),
+        ("vegetation", VegetationStep(seed=seed)),
+        ("gameplay", GameplayStep(seed=seed)),
+        ("gated", GatedStep(seed=seed, size=SIZE)),
+        ("treasure", TreasureStep(seed=seed, size=SIZE)),
+        ("border", BorderStep(seed=seed, size=SIZE)),
+        ("portal", PortalStep(seed=seed, size=SIZE)),
+        ("loot", LootStep(seed=seed, size=SIZE)),
+        ("scatter", ScatterStep(seed=seed, size=SIZE)),
     ]
 
 
@@ -73,6 +78,10 @@ class PipelineRun:
     state: MapState
     transitions: dict[str, tuple[Snapshot, Snapshot]]
 
+    def added_by(self, name: str) -> list[PlacedObject]:
+        before, after = self.transitions[name]
+        return self.state.objs[len(before.objs) : len(after.objs)]
+
 
 @pytest.fixture(scope="module")
 def pipeline_run() -> PipelineRun:
@@ -81,7 +90,7 @@ def pipeline_run() -> PipelineRun:
     ctx = ProviderRegistry()
     result: dict[str, tuple[Snapshot, Snapshot]] = {}
     with contextlib.redirect_stdout(io.StringIO()):
-        for name, step in _steps():
+        for name, step in pipeline_steps():
             before = _snapshot(state)
             step.inject(ctx)
             step.run(ontology, state)
@@ -115,17 +124,17 @@ def test_gate_writes_gate_blk(transitions: dict[str, tuple[Snapshot, Snapshot]])
     assert after.gate_blk > 0
 
 
-def test_gameplay_writes_objs_and_player_towns(
+def test_towns_writes_objs_and_player_towns(
     transitions: dict[str, tuple[Snapshot, Snapshot]],
 ) -> None:
-    before, after = transitions["gameplay"]
+    before, after = transitions["towns"]
     assert before.objs == ()
     assert before.player_towns == ()
     assert len(after.objs) > 0
     assert len(after.player_towns) > 0
 
 
-@pytest.mark.parametrize("name", ["vegetation", "border", "loot", "scatter"])
+@pytest.mark.parametrize("name", ["vegetation", "gameplay", "border", "loot", "scatter"])
 def test_placement_steps_change_objs(
     transitions: dict[str, tuple[Snapshot, Snapshot]], name: str
 ) -> None:
@@ -162,3 +171,43 @@ def test_scatter_piles_stay_out_of_every_guard_zone(pipeline_run: PipelineRun) -
         for o in piles:
             for cell in mask_interactive_cells(o.mask, o.x, o.y):
                 assert cell not in zoc, f"pile at {cell} sits in a guard's zone of control"
+
+
+@pytest.mark.parametrize("name", [name for name, _step in pipeline_steps()])
+def test_every_step_keeps_the_objects_before_it(
+    transitions: dict[str, tuple[Snapshot, Snapshot]], name: str
+) -> None:
+    before, after = transitions[name]
+    assert after.objs[: len(before.objs)] == before.objs
+
+
+@pytest.mark.parametrize("name", ["border", "loot"])
+def test_a_late_guard_keeps_its_distance_from_every_other_guard(
+    pipeline_run: PipelineRun, name: str
+) -> None:
+    guards = [o for o in pipeline_run.state.objs if o.purpose == "GUARD"]
+    for g in (o for o in pipeline_run.added_by(name) if o.purpose == "GUARD"):
+        others = [(o.x, o.y) for o in guards if o is not g and o.level == g.level]
+        assert guard_spaced((g.x, g.y), others), f"{name} guard at {(g.x, g.y)} crowds another"
+
+
+def _touches(o: PlacedObject, blocking: set[tuple[int, Tile]]) -> bool:
+    return any(
+        (o.level, (x + dx, y + dy)) in blocking
+        for x, y, _b in mask_cells(o.mask, o.x, o.y)
+        for dx in (-1, 0, 1)
+        for dy in (-1, 0, 1)
+    )
+
+
+def test_gameplay_objects_sit_next_to_vegetation(pipeline_run: PipelineRun) -> None:
+    blocking = {
+        (o.level, (x, y))
+        for o in pipeline_run.added_by("vegetation")
+        for x, y, blk in mask_cells(o.mask, o.x, o.y)
+        if blk
+    }
+    placed = [o for o in pipeline_run.added_by("gameplay") if o.purpose != "GUARD"]
+    assert placed
+    share = sum(_touches(o, blocking) for o in placed) / len(placed)
+    assert share >= VEGETATION_TOUCH_FLOOR, f"only {share:.0%} of gameplay objects touch vegetation"

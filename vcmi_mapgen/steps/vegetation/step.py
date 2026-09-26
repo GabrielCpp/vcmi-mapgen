@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import override
 
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.models import MapState, PlacedObject, Tile
+from vcmi_mapgen.models import MapState, PlacedObject, Tile, footprint
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import (
     LevelWorkspace,
@@ -29,9 +29,20 @@ class VegetationResult:
     log: list[str] = field(default_factory=list)
 
 
-def _mine_attract(
-    zw: ZoneWorkspace, ts: frozenset[Tile], forbid: frozenset[Tile]
-) -> frozenset[Tile]:
+def _cheb_ring(
+    ts: frozenset[Tile], forbid: frozenset[Tile], cells: set[Tile], lo: int, hi: int
+) -> set[Tile]:
+    if not cells:
+        return set()
+    return {
+        t
+        for t in ts
+        if t not in forbid
+        and lo <= min(max(abs(t[0] - cx), abs(t[1] - cy)) for cx, cy in cells) <= hi
+    }
+
+
+def _attract(zw: ZoneWorkspace, ts: frozenset[Tile], forbid: frozenset[Tile]) -> frozenset[Tile]:
     mine_cells = {
         (mcx, mcy)
         for o in zw.gobjs
@@ -39,16 +50,17 @@ def _mine_attract(
         for mcx, mcy, mblk in OR.mask_cells(o.mask, o.x, o.y)
         if mblk
     }
-    return (
-        frozenset(
-            t
-            for t in ts
-            if t not in forbid
-            and 2 <= min(max(abs(t[0] - mx), abs(t[1] - my)) for mx, my in mine_cells) <= 3
-        )
-        if mine_cells
-        else frozenset[Tile]()
+    planned_cells = {(px, py) for o in zw.planned for px, py, _b in OR.mask_cells(o.mask, o.x, o.y)}
+    return frozenset(
+        _cheb_ring(ts, forbid, mine_cells, 2, 3) | _cheb_ring(ts, forbid, planned_cells, 1, 3)
     )
+
+
+def _planned_tiles(lvl_ws: LevelWorkspace) -> frozenset[Tile]:
+    """Every tile a planned attraction covers on this level, its entrance approach included."""
+    return frozenset(
+        tile for zw in lvl_ws.zones.values() for o in zw.planned for tile, _role in footprint(o)
+    ) | frozenset(t for zw in lvl_ws.zones.values() for t in zw.approaches)
 
 
 def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> None:
@@ -79,11 +91,11 @@ class VegetationStep(PipelineStep):
         seed  RNG seed.
 
     Reads ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx):
-    the folded-in ``workspace`` (a ``PlacementWorkspace``, written by GameplayStep);
+    the folded-in ``workspace`` (a ``PlacementWorkspace``, written by TownsStep);
     each zone's ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/
     ``approaches``/``gobjs``/``rim8``/``ent_bands``, and this step writes
     ``blocked``/``open_set``/``passable`` back into the same object for
-    PickupStep.
+    GatedStep.
 
     Produces: extends ``map_state.objs`` with this step's own new vegetation objects
     (``self.objs`` keeps just the new ones, for callers that want that distinction).
@@ -112,6 +124,7 @@ class VegetationStep(PipelineStep):
         pre_taken = {lvl: map_state.taken_tiles(lvl) for lvl in self._workspace.levels}
 
         for level, lvl_ws in self._workspace.levels.items():
+            planned = _planned_tiles(lvl_ws)
             for zid, zw in lvl_ws.zones.items():
                 zones = map_state.zones[level]
                 terrain = zw.terrain
@@ -126,8 +139,8 @@ class VegetationStep(PipelineStep):
 
                 # Seaport footprint in this zone must be excluded from vegetation
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & ts_full
-                forbid = map_state.taken_tiles(level) | zone_seaport_cells
-                attract = _mine_attract(zw, ts, forbid)
+                forbid = map_state.taken_tiles(level) | zone_seaport_cells | zw.occupied | planned
+                attract = _attract(zw, ts, forbid)
                 # zone-isolation border belt: the whole 8-connected rim minus the planned
                 # entrance bands (those sit in `prot` as hard zeros) gets the +BORDER_W
                 # vegetation bias — both zones densify their own side, so the border reads
@@ -165,7 +178,7 @@ class VegetationStep(PipelineStep):
                 zw.passable = frozenset(passable)
 
         self.objs = new_objs
-        map_state.set_objs(map_state.objs + new_objs, TerrainGate(ontology))
+        map_state.add_objs(new_objs, TerrainGate(ontology))
         for level, lvl_ws in self._workspace.levels.items():
             self._seal_level(ontology, map_state, level, lvl_ws, pre_taken[level])
         for level, lvl_ws in self._workspace.levels.items():
@@ -191,7 +204,7 @@ class VegetationStep(PipelineStep):
             land |= zw.ts_full
             bands |= zw.ent_bands
             web |= zw.prot
-            avoid |= set(zw.approaches)
+            avoid |= set(zw.approaches) | zw.occupied
         level_objs = [o for o in map_state.objs if o.level == level]
         sealers, sealed = seal_borders(
             BorderPlan(land, map_state.zones[level], bands, avoid, web),
@@ -205,7 +218,7 @@ class VegetationStep(PipelineStep):
             for o in sealers:
                 o.level = 1
         self.objs.extend(sealers)
-        map_state.set_objs(map_state.objs + sealers, TerrainGate(ontology))
+        map_state.add_objs(sealers, TerrainGate(ontology))
         for zw in lvl_ws.zones.values():
             mine = sealed & zw.ts_full
             zw.blocked |= mine

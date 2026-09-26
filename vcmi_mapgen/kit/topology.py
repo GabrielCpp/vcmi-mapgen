@@ -1,5 +1,5 @@
 """Zone-shape planning: entrance/gate/front geometry and pocket (sealable-nook) detection.
-Shared by the gameplay, pickup, repair and vegetation steps' entrance/backbone/cache logic."""
+Shared by the gameplay, gated and vegetation steps' entrance/backbone/cache logic."""
 
 import collections
 from collections.abc import Collection, Container, Iterable, Mapping

@@ -39,19 +39,21 @@ from vcmi_mapgen.renderers.overlays import (
 from vcmi_mapgen.steps import (
     BorderStep,
     GameplayStep,
+    GatedStep,
     GateStep,
     LootStep,
-    PickupStep,
     PortalStep,
     ScatterStep,
     SegmentStep,
     TerrainStep,
+    TownsStep,
+    TreasureStep,
     VegetationStep,
 )
 from vcmi_mapgen.steps.border.step import BorderResult
-from vcmi_mapgen.steps.gameplay.step import GameplayIndex
 from vcmi_mapgen.steps.loot.step import LootResult
 from vcmi_mapgen.steps.portal.step import PortalResult
+from vcmi_mapgen.steps.towns.step import TownsIndex
 from vcmi_mapgen.steps.vegetation.step import VegetationResult
 
 ROOT = project_root()
@@ -61,9 +63,11 @@ GENERATE_STOP_POINTS = (
     "terrain",
     "segment",
     "gate",
-    "gameplay",
+    "towns",
     "vegetation",
-    "pickup",
+    "gameplay",
+    "gated",
+    "treasure",
     "border",
     "portal",
     "loot",
@@ -188,14 +192,16 @@ def _generate_steps(args: Args, water_mode: str) -> list[tuple[str, PipelineStep
         steps.append(("gate", GateStep(seed=args.seed)))
     steps.append(
         (
-            "gameplay",
-            GameplayStep(
+            "towns",
+            TownsStep(
                 seed=args.seed, players=args.players, size=args.size, subterrain=args.subterrain
             ),
         )
     )
     steps.append(("vegetation", VegetationStep(seed=args.seed)))
-    steps.append(("pickup", PickupStep(seed=args.seed, size=args.size)))
+    steps.append(("gameplay", GameplayStep(seed=args.seed)))
+    steps.append(("gated", GatedStep(seed=args.seed, size=args.size)))
+    steps.append(("treasure", TreasureStep(seed=args.seed, size=args.size)))
     steps.append(("border", BorderStep(seed=args.seed, size=args.size)))
     steps.append(("portal", PortalStep(seed=args.seed, size=args.size)))
     steps.append(("loot", LootStep(seed=args.seed, size=args.size)))
@@ -225,7 +231,7 @@ def cmd_generate(args: Args) -> None:
 
     objs = map_state.objs
     veg_n = sum(1 for o in objs if not o.purpose)
-    player_zids = pipeline.ctx.get(GameplayIndex, GameplayIndex()).player_zids
+    player_zids = pipeline.ctx.get(TownsIndex, TownsIndex()).player_zids
     print(
         f"generate s{args.seed} {args.size}x{args.size}: "
         + f"{len(objs) - veg_n} gameplay+pickups, {veg_n} vegetation objects, "

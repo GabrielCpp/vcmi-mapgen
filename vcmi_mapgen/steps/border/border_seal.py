@@ -8,6 +8,7 @@ from typing import final
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.models import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.gate.gates import rnd_monster
+from vcmi_mapgen.steps.placement import guard_spaced
 from vcmi_mapgen.steps.vegetation.border_plan import blocking_cells, cross_pairs, zone_owner
 
 
@@ -39,6 +40,7 @@ class _GuardPlacer:
         self._hard_avoid = hard_avoid
         self._cover = CoverIndex(objs)
         self._decor_blk = decor_blk
+        self._guards = [(o.x, o.y) for o in objs if o.purpose == "GUARD"]
 
     @staticmethod
     def _covered(t: Tile, n: Tile, g_set: Collection[Tile]) -> bool:
@@ -59,11 +61,14 @@ class _GuardPlacer:
     def _stand_guard(self, cands: Sequence[Tile]) -> PlacedObject | None:
         first = self._pick_guard(cands)
         for g in [first, *(c for c in cands if c != first)]:
+            if not guard_spaced(g, self._guards):
+                continue
             gident = rnd_monster(3 + (1 if self._rng.random() < 0.3 else 0))
             guard = PlacedObject.at(
                 gident, g, level=0, purpose="GUARD", options={"character": "hostile"}
             )
             if self._cover.try_add(guard):
+                self._guards.append(g)
                 return guard
         return None
 
@@ -87,8 +92,8 @@ class _GuardPlacer:
                 unguarded += 1
                 continue
             guard.seal = True
-            new_objs.append(guard)  # informational: dup-guard cleanup must
-            placed.add((guard.x, guard.y))  # never drop it — it IS the border
+            new_objs.append(guard)
+            placed.add((guard.x, guard.y))
         return placed, unguarded
 
 
@@ -104,7 +109,8 @@ def guard_crossings(
     A crossing outside the entrance bands is a back path the plan could not close. A crossing
     inside a band is a planned entrance and must cost a fight. One guard's zone of control
     covers every crossing within Chebyshev 1, so a run of adjacent crossings shares one guard.
-    Guards never stand on `hard_avoid` tiles (gameplay cells, approaches, pickups).
+    Guards never stand on `hard_avoid` tiles (gameplay cells, approaches, pickups), nor
+    within Chebyshev 2 of another guard.
     Returns (new_objs, guard_tiles, n_unguarded_pairs)."""
     rng = random.Random(seed ^ 0x6A4D ^ (level * 7919))
     owner, _tname = zone_owner(terrain.zones)
@@ -118,20 +124,13 @@ def guard_crossings(
     pairs, band_pairs = cross_pairs(open_all, owner, rules.bands, rules.skip_tiles)
     new_objs: list[PlacedObject] = []
 
-    # Collect existing gameplay guards from objs (placed by pp_gameplay) so the guard
-    # pass below avoids duplicating coverage already provided.
     existing_guards = {(o.x, o.y) for o in objs if o.purpose == "GUARD"}
 
-    # what must stay open gets contested instead: one hostile guard covers every residual
-    # crossing within its Chebyshev-1 zone of control
     decor_blk = OR.decor_blocking_cells(objs + new_objs)
     placer = _GuardPlacer(rng, objs, rules.hard_avoid, decor_blk)
 
     guard_tiles, unguarded = placer.guard_pairs(pairs, existing_guards, new_objs)
 
-    # Band pairs (planned entrance corridors) were left open on purpose but every corridor
-    # must have at least one guard so the crossing requires a fight.  If pp_gameplay already
-    # placed a guard that covers the pair, skip it; otherwise add one now.
     band_guard_tiles, _ = placer.guard_pairs(band_pairs, guard_tiles | existing_guards, new_objs)
 
     guard_tiles |= band_guard_tiles

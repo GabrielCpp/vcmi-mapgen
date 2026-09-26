@@ -10,7 +10,12 @@ dependencies = [
 
 # pytest in the PROJECT env; uv installs the `dev` group by default for `uv run`/`uv sync`.
 [dependency-groups]
-dev = ["pytest>=8", "ruff>=0.8", "basedpyright>=1.20"]
+dev = [
+    "pytest>=8",
+    "ruff>=0.8",
+    "basedpyright>=1.20",
+    "pytest-xdist>=3.8.0",
+]
 
 # Everything else is the Python standard library. Run via uv, e.g.:
 #   uv run python -m vcmi_mapgen.zone_engine run "All for One"
@@ -43,3 +48,5 @@ include = ["vcmi_mapgen"]
 testpaths = ["vcmi_mapgen"]
 python_files = ["*_test.py"]
 python_functions = ["test_*"]
+addopts = "-m 'not slow'"
+markers = ["slow: a whole-pipeline seed sweep, run by `make sweep`"]

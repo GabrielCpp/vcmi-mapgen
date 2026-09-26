@@ -1,29 +1,44 @@
-"""Reliability tests for steps.pickup.loot_zones's single-entrance eligibility check
-and its loot-zone content restrictions."""
+"""Reliability tests for steps.gated.placer's single-entrance eligibility check and the
+steps.treasure.fill loot-zone content restrictions."""
 
 import collections
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.models import PlacedObject, Tile, ZoneRecord
-from vcmi_mapgen.steps.pickup import loot_zones as LZ
+from vcmi_mapgen.steps.gated.placer import find_entry_corridor, place_gated_zones
+from vcmi_mapgen.steps.treasure.fill import LOOT_HERO_STRUCTURE_MIN_SEP, fill_loot_zones
 
 _BOUNDS = (64, 64)
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
+
+
+def _place(
+    zone_records: list[ZoneRecord],
+    objs_existing: list[PlacedObject],
+    seed: int = 1,
+    bounds: tuple[int, int] | None = None,
+) -> tuple[list[PlacedObject], int, set[int]]:
+    """GatedStep then TreasureStep on one level: the access objects, then the fill."""
+    objs, n_placed, access = place_gated_zones(
+        zone_records, objs_existing, seed=seed, bounds=bounds
+    )
+    footprints = {zid: acc.footprint for zid, acc in access.items()}
+    filled = fill_loot_zones(zone_records, footprints, [*objs_existing, *objs], seed, bounds)
+    return objs + filled, n_placed, set(access)
 
 
 def _find_leaks(
     ts0: frozenset[Tile],
     all_ts: set[Tile],
     objs: list[PlacedObject],
-    access_interactive: set[Tile],
-) -> list[tuple[Tile, Tile]]:
-    """8-connected (inside, outside) tile pairs that are BOTH passable, excluding the
-    access object's own interactive cell(s) -- the precise 'properly sealed' bar
-    (s7-z4/s9-z3 diagnosis, 2026-09): no 8-connected path from any loot-zone tile to
-    any tile outside it except through the gate's/monolith's own dark-green tile.
-    `objs` should be the FULL accumulated object list (this zone's own placements
-    plus everything already in neighbouring zones)."""
+    access: PlacedObject,
+) -> list[Tile]:
+    """Loot-zone tiles a hero reaches from outside the zone without stepping on the access
+    object's interactive cell(s), 8-connected. The access object's own footprint is exempt:
+    a Border Gate's overlay row sits on the outside of the gate. `objs` should be the FULL
+    accumulated object list (this zone's own placements plus everything already in
+    neighbouring zones)."""
     blocked: set[Tile] = set()
     for o in objs:
         if not o.mask:
@@ -31,16 +46,19 @@ def _find_leaks(
         for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
             if blk:
                 blocked.add((cx, cy))
-    ext_ts = all_ts - ts0
-    leaks: list[tuple[Tile, Tile]] = []
-    for t in sorted(ts0):
-        if t in blocked or t in access_interactive:
-            continue
+    interactive = set(OR.mask_interactive_cells(access.mask, access.x, access.y))
+    footprint = {(cx, cy) for cx, cy, _b in OR.mask_cells(access.mask, access.x, access.y)}
+    walkable = all_ts - blocked - interactive
+    seen = {t for t in all_ts - ts0 if t in walkable}
+    q = collections.deque(sorted(seen))
+    while q:
+        cx, cy = q.popleft()
         for dx, dy in _DIRS8:
-            nb = (t[0] + dx, t[1] + dy)
-            if nb in ext_ts and nb not in blocked:
-                leaks.append((t, nb))
-    return leaks
+            nb = (cx + dx, cy + dy)
+            if nb in walkable and nb not in seen:
+                seen.add(nb)
+                q.append(nb)
+    return sorted((seen & ts0) - footprint)
 
 
 def _record(zid: int, ts: set[Tile]) -> ZoneRecord:
@@ -112,17 +130,14 @@ def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes() -> None:
             all_ts: set[Tile] = set()
             for zr in zone_records:
                 all_ts |= zr.ts
-            objs, n_placed, _zids = LZ.place_loot_zones(
-                zone_records, objs_existing, seed=seed, bounds=bounds
-            )
+            objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=bounds)
             if n_placed != 1:
                 continue
             ran_at_least_once = True
             access = next(
                 o for o in objs if o.purpose in ("QUEST_GATE", "TRANSPORT") and (o.x, o.y) in ts0
             )
-            access_interactive = set(OR.mask_interactive_cells(access.mask, access.x, access.y))
-            leaks = _find_leaks(ts0, all_ts, objs_existing + objs, access_interactive)
+            leaks = _find_leaks(ts0, all_ts, objs_existing + objs, access)
             assert not leaks, (
                 f"{make_fixture.__name__ if hasattr(make_fixture, '__name__') else ''} "
                 f"seed {seed}: loot zone leaks {leaks}"
@@ -157,9 +172,7 @@ def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_f
     for make_fixture, bounds in fixtures:
         for seed in range(1, 20):
             zone_records, objs_existing = make_fixture()
-            objs, n_placed, _zids = LZ.place_loot_zones(
-                zone_records, objs_existing, seed=seed, bounds=bounds
-            )
+            objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=bounds)
             if n_placed != 1:
                 continue
             access = next((o for o in objs if o.purpose in ("QUEST_GATE", "TRANSPORT")), None)
@@ -191,7 +204,7 @@ def test_a_single_entrance_zone_qualifies_as_a_loot_zone() -> None:
     """Control: with no blocking object splitting the shared boundary, zone 0 has
     exactly one real passable gap into zone 1 and must be selected."""
     zone_records, objs_existing = _zone_records(blocked_at=None)
-    _objs, n_placed, zids = LZ.place_loot_zones(zone_records, objs_existing, seed=1, bounds=_BOUNDS)
+    _objs, n_placed, zids = _place(zone_records, objs_existing, seed=1, bounds=_BOUNDS)
     assert n_placed == 1
     assert zids == {0}
 
@@ -203,7 +216,7 @@ def test_a_vegetation_wall_splitting_the_border_disqualifies_the_zone() -> None:
     the raw zone-vs-zone terrain adjacency (ignoring the blocker) is still one
     contiguous run."""
     zone_records, objs_existing = _zone_records(blocked_at=(3, 6))
-    _objs, n_placed, zids = LZ.place_loot_zones(zone_records, objs_existing, seed=1, bounds=_BOUNDS)
+    _objs, n_placed, zids = _place(zone_records, objs_existing, seed=1, bounds=_BOUNDS)
     assert n_placed == 0
     assert zids == set()
 
@@ -222,7 +235,7 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories() -> None:
     artifact, an unrestricted random artifact/resource, a random/unconfigured spell
     scroll, or an unrelated REWARD_PICKUP type (corpse, leanTo, wagon, ...)."""
     zone_records, objs_existing = _zone_records(blocked_at=None)
-    objs, n_placed, _zids = LZ.place_loot_zones(zone_records, objs_existing, seed=1, bounds=_BOUNDS)
+    objs, n_placed, _zids = _place(zone_records, objs_existing, seed=1, bounds=_BOUNDS)
     assert n_placed == 1, "fixture must actually produce a loot zone to check content"
 
     violations: list[PlacedObject] = []
@@ -263,9 +276,7 @@ def test_loot_zone_fill_claims_every_non_access_tile() -> None:
     ran_at_least_once = False
     for seed in range(1, 8):
         zone_records, objs_existing = _zone_records(blocked_at=None)
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=_BOUNDS
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=_BOUNDS)
         if n_placed != 1:
             continue
         ran_at_least_once = True
@@ -299,9 +310,7 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor() -> None:
     ran_at_least_once = False
     for seed in range(1, 30):
         zone_records, objs_existing = _narrow_zone_records()
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=(32, 14)
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=(32, 14))
         if n_placed != 1:
             continue
         ran_at_least_once = True
@@ -332,9 +341,7 @@ def test_loot_zone_fill_across_many_seeds_never_exceeds_two_per_hero_structure()
     contention may leave fewer, but never more."""
     for seed in range(1, 20):
         zone_records, objs_existing = _zone_records(blocked_at=None)
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=_BOUNDS
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=_BOUNDS)
         if n_placed != 1:
             continue
         types = [o.type for o in objs if o.type in _ALLOWED_HERO_STRUCTURE_TYPES]
@@ -354,9 +361,7 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
     saw_two_of_a_type = False
     for seed in range(1, 20):
         zone_records, objs_existing = _rect_zone_records(5, 4)
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=(64, 64)
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=(64, 64))
         if n_placed != 1:
             continue
         by_type: collections.defaultdict[str, list[Tile]] = collections.defaultdict(list)
@@ -368,9 +373,9 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
             if len(positions) == 2:
                 saw_two_of_a_type = True
                 p1, p2 = positions
-                assert (
-                    max(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])) >= LZ.LOOT_HERO_STRUCTURE_MIN_SEP
-                ), f"seed {seed}: the two {typ} instances {positions} are too close together"
+                assert max(abs(p1[0] - p2[0]), abs(p1[1] - p2[1])) >= LOOT_HERO_STRUCTURE_MIN_SEP, (
+                    f"seed {seed}: the two {typ} instances {positions} are too close together"
+                )
     assert saw_two_of_a_type, "fixture assumption broke: no seed placed 2 of any hero structure"
 
 
@@ -395,9 +400,7 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
     counts: list[int] = []
     for seed in range(1, 20):
         zone_records, objs_existing = _rect_zone_records(5, 4)
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=(64, 64)
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=(64, 64))
         if n_placed != 1:
             continue
         types = {o.type for o in objs if o.type in _ALLOWED_HERO_STRUCTURE_TYPES}
@@ -416,9 +419,7 @@ def test_loot_zone_fill_pass2_uses_the_20_40_40_split() -> None:
     n_art = n_chest = n_res = 0
     for seed in range(1, 60):
         zone_records, objs_existing = _zone_records()
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=_BOUNDS
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=_BOUNDS)
         if n_placed != 1:
             continue
         ts0 = zone_records[0].ts
@@ -449,9 +450,7 @@ def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll() ->
     found: PlacedObject | None = None
     for seed in range(1, 40):
         zone_records, objs_existing = _zone_records(blocked_at=None)
-        objs, _n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=_BOUNDS
-        )
+        objs, _n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=_BOUNDS)
         scroll = next((o for o in objs if o.type == "spellScroll"), None)
         if scroll is not None:
             found = scroll
@@ -470,9 +469,7 @@ def test_spell_scroll_objects_carry_the_spell_in_options_not_subtype() -> None:
     seen = 0
     for seed in range(1, 40):
         zone_records, objs_existing = _zone_records(blocked_at=None)
-        objs, _n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=_BOUNDS
-        )
+        objs, _n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=_BOUNDS)
         for o in objs:
             if o.type != "spellScroll":
                 continue
@@ -562,7 +559,7 @@ def test_entry_corridor_reaches_the_whole_room_not_just_the_first_doorway_tile()
         "-- this shape no longer reproduces the s7-z4 second occurrence"
     )
 
-    corridor = LZ.find_entry_corridor(entry_tile, [], ts, all_ts)
+    corridor = find_entry_corridor(entry_tile, [], ts, all_ts)
     new_reach = _reachable(corridor)
     assert interior <= new_reach, (
         f"corridor {sorted(corridor)} still leaves "
@@ -579,9 +576,7 @@ def test_a_narrow_loot_zones_access_object_always_has_a_usable_interior_doorway(
     seen_gate = seen_mono = False
     for seed in range(1, 30):
         zone_records, objs_existing = _narrow_zone_records()
-        objs, n_placed, _zids = LZ.place_loot_zones(
-            zone_records, objs_existing, seed=seed, bounds=(32, 14)
-        )
+        objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=(32, 14))
         if n_placed != 1:
             continue
         access = next(o for o in objs if o.purpose in ("QUEST_GATE", "TRANSPORT"))

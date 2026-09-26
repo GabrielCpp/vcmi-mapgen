@@ -236,7 +236,7 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row() -> None:
     row (the row directly below its footprint -- the only geometrically-unobstructed
     approach every multi-row structure mask in this ontology has), fully sealing off
     the arena. Seaports are placed AFTER all per-zone gameplay structures (see
-    GameplayStep._run_level_gameplay's "Pass 1... Seaport placement" ordering), so
+    TownsStep._run_level_gameplay's "Pass 1... Seaport placement" ordering), so
     nothing stopped a later seaport from claiming an earlier structure's approach.
     Fixture: an 8x4 island with one extra land tile so a seaport CAN anchor with its
     blocking row exactly on a pre-placed arena's front row -- with seed=3 the old code

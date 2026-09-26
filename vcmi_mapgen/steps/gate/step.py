@@ -19,7 +19,7 @@ from vcmi_mapgen.steps.gate import gates as PG
 
 @dataclass
 class GateResult:
-    """Gate objects/occupancy/approach cells — GameplayStep's/PickupStep's/BorderStep's
+    """Gate objects/occupancy/approach cells — TownsStep's/GatedStep's/BorderStep's
     input. Read via ``ctx.get(GateResult, GateResult())`` (never ``require``): a map
     without --subterrain has no GateStep, so its consumers must see the empty default,
     not an error."""
@@ -29,10 +29,7 @@ class GateResult:
     gate_appr: dict[int, list[Tile]] = field(default_factory=dict)
 
 
-MIN_AREA = 25  # matches GameplayStep's own zone floor — a gate must land on a tile a
-#                zone's own gameplay pass would actually consider (pipeline-refactor-v2-
-#                folders.md Phase 2 found this filter missing here: pre-existing, not a
-#                Phase 2 regression, but required for GameplayStep's gate-object parity).
+MIN_AREA = 25
 
 
 def _land_tiles(zones: Mapping[int, Zone]) -> set[Tile]:
@@ -71,8 +68,8 @@ class GateStep(PipelineStep):
 
     Produces:
       - ``gate_blk``    — blocked tile sets per level, written directly onto MapState.
-      - ``GateResult``  — gate_objs/gate_occ/gate_appr, published into ctx (GameplayStep's/
-        PickupStep's/BorderStep's input; each defaults to empty when no GateStep ran).
+      - ``GateResult``  — gate_objs/gate_occ/gate_appr, published into ctx (TownsStep's/
+        GatedStep's/BorderStep's input; each defaults to empty when no GateStep ran).
     """
 
     def __init__(self, seed: int = 3) -> None:

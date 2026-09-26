@@ -3,8 +3,8 @@ vegetation forbids their footprint), despite `place_water`'s old home in pp_pick
 
 Also owns `pick_identity`/`legal_cells`, the low-level identity-pick/footprint-legality helpers
 `place_water` needs: Gameplay is the first step in pipeline order to need them, so
-`steps/pickup/scatter.py` (added in a later phase, for place_scatter/place_pockets/etc.,
-which need the exact same helpers) imports them from here rather than duplicating them.
+`steps/placement.py` (for the scatter, gated, treasure and loot placers, which need the
+exact same helpers) imports them from here rather than duplicating them.
 """
 
 import collections
@@ -18,7 +18,7 @@ from typing import final
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.models import Identity, PlacedObject, Role, Tile, Zone, footprint
+from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Role, Tile, Zone, footprint
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.steps.gameplay.mines import (
     RND_ART,
@@ -116,6 +116,26 @@ def legal_cells(
     return None
 
 
+def _water_obj(
+    ident: Identity,
+    t: Tile,
+    purpose: str,
+    field: tuple[AbstractSet[Tile], set[Tile]],
+    cover: CoverIndex,
+) -> tuple[PlacedObject, list[Tile]] | None:
+    ts, used = field
+    cells = legal_cells(ident, t, ts, used)
+    if cells is None:
+        return None
+    solid = tuple(row.replace("V", " ") for row in ident.mask)
+    if any((tx, ty) not in ts for tx, ty, _b in OR.mask_cells(solid, t[0], t[1])):
+        return None
+    obj = PlacedObject.at(ident, t, purpose=purpose)
+    if not cover.try_add(obj):
+        return None
+    return obj, cells
+
+
 def place_water(
     ts: AbstractSet[Tile], _zones: Mapping[int, Zone], zid: int, seed: int = 1
 ) -> list[PlacedObject]:
@@ -132,6 +152,7 @@ def place_water(
     area = len(ts)
     objs: list[PlacedObject] = []
     used: set[Tile] = set()
+    cover = CoverIndex()
     for p in WATER_PURPOSES:
         x = st.counts.get(p, 0) / st.tiles * area
         n = min(int(x) + (1 if rng.random() < x - int(x) else 0), 14)
@@ -148,14 +169,12 @@ def place_water(
             ident = _pick_fixed_identity(pool, p, st, rng)
             if ident is None:
                 break
-            cells = legal_cells(ident, t, ts, used)
-            if cells is None:
+            placed_obj = _water_obj(ident, t, p, (ts, used), cover)
+            if placed_obj is None:
                 continue
-            solid = tuple(row.replace("V", " ") for row in ident.mask)
-            if any((tx, ty) not in ts for tx, ty, _b in OR.mask_cells(solid, t[0], t[1])):
-                continue
+            obj, cells = placed_obj
             used.update(cells)
-            objs.append(PlacedObject.at(ident, t, purpose=p))
+            objs.append(obj)
             placed.append(t)
     return objs
 

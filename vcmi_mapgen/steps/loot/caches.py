@@ -26,22 +26,21 @@ from vcmi_mapgen.models import (
 )
 from vcmi_mapgen.steps.gameplay.mines import TerrainStats, mine_gameplay
 from vcmi_mapgen.steps.gate.gates import rnd_monster
-from vcmi_mapgen.steps.pickup.loot_zones import (
-    FILL_EXCL_ANIMS,
-    LOOT_CHEST_TYPES,
-    solo_visit_pool,
-)
-from vcmi_mapgen.steps.pickup.scatter import (
+from vcmi_mapgen.steps.placement import (
     PANDORA_CREATURES,
     RW_LIMITER,
     RW_REWARD,
     RW_TEXT,
     PlaceSpec,
     PlaceTarget,
-    ScatterConfig,
-    ScatterZone,
+    guard_spaced,
     place_one,
-    place_scatter,
+)
+from vcmi_mapgen.steps.scatter.scatter import ScatterConfig, ScatterZone, place_scatter
+from vcmi_mapgen.steps.treasure.fill import (
+    FILL_EXCL_ANIMS,
+    LOOT_CHEST_TYPES,
+    solo_visit_pool,
 )
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
@@ -469,7 +468,9 @@ class _PocketCachePass:
         self.pickup_ident = ON.identity_of(ART_BY_LVL[0])
         self.objs: list[PlacedObject] = []
         self.cover = CoverIndex(context.existing_objs)
-        self.placed_mouths: list[Tile] = []
+        self.guards: list[Tile] = [
+            (o.x, o.y) for o in context.existing_objs if o.purpose == "GUARD"
+        ]
 
     def _absorb(self, zr: ZoneRecord) -> None:
         zid = zr.zid
@@ -574,7 +575,7 @@ class _PocketCachePass:
 
     def _guard_fits(self, cand_g: Tile) -> bool:
         guard_mask = self.guard_mask
-        if cand_g in self.used:
+        if cand_g in self.used or not guard_spaced(cand_g, self.guards):
             return False
         if not all(
             c in self.global_place and c not in self.used
@@ -716,7 +717,6 @@ class _PocketCachePass:
             self._place_artifact(art_spot[0], anim, draw)
 
     def _place_guard(self, guard_tile: Tile, lvl: int, draw: _PocketDraw) -> bool:
-        # Place a new guard at the pocket mouth.
         gident = rnd_monster(lvl)
         if not place_one(
             self._target(self.global_place, draw),
@@ -725,10 +725,8 @@ class _PocketCachePass:
             guard_tile[1],
         ):
             return False
-        # _place_one always appends -- objs[-1] is the guard just placed.
-        # Tag it for steps.loot.step.dedup_nearby_guards's priority tiers.
         self.objs[-1].pocket_guard = True
-        self.placed_mouths.append(guard_tile)
+        self.guards.append(guard_tile)
         if self.protect_pairs:
             self.protect_blocked |= _guard_stand(self.guard_mask, guard_tile[0], guard_tile[1])
         return True

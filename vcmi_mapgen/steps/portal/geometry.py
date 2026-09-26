@@ -13,7 +13,7 @@ from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
 from vcmi_mapgen.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
-from vcmi_mapgen.steps.pickup.scatter import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.steps.placement import PlaceSpec, PlaceTarget, place_one
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 

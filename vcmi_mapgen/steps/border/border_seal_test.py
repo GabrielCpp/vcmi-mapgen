@@ -3,6 +3,7 @@
 from vcmi_mapgen.kit.topology import plan_entrances
 from vcmi_mapgen.models import Tile, Zone
 from vcmi_mapgen.steps.border import border_seal as BS
+from vcmi_mapgen.steps.placement import guard_spaced
 from vcmi_mapgen.steps.vegetation.border_plan import BorderPlan, seal_borders
 
 S, GRASS = 20, 2
@@ -56,6 +57,8 @@ def test_border_plan_closes_or_guards() -> None:
     assert guard_tiles & web_pair, "the unsealable web crossing gets a back-path guard"
     assert n_open == 0
     assert all(o.seal and o.options == {"character": "hostile"} for o in guards)
+    tiles = sorted(guard_tiles)
+    assert all(guard_spaced(t, tiles[i + 1 :]) for i, t in enumerate(tiles))
 
     open_all = (ts1 | ts2) - sealed
 

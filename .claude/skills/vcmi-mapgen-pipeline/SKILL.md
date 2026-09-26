@@ -12,7 +12,7 @@ metadata:
 # VCMI map-generator — pipeline & step architecture
 
 Two otherwise-unrelated pipelines — the procedural generator (`terrain_gen -> tile ->
-segment -> gate? -> gameplay -> vegetation -> pickup -> border -> portal -> loot -> scatter`) and the identity-rebuild
+segment -> gate? -> towns -> vegetation -> gameplay -> gated -> treasure -> border -> portal -> loot -> scatter`) and the identity-rebuild
 engine (`extract_template -> rebuild_map/deform_warp -> verify? -> fm_document`) — share
 one step contract and one hand-wired builder. Read `vcmi-mapgen-maps` for what each step
 domain-wise implements; this skill is about how they're wired together.
@@ -63,18 +63,27 @@ reason to widen the schema.
 
 ## `PlacementWorkspace` is a separate, deliberate exception
 
-`GameplayStep`/`VegetationStep`/`PickupStep`/`BorderStep`/`PortalStep`/`LootStep` share a `PlacementWorkspace`
+`TownsStep`/`VegetationStep`/`GameplayStep`/`GatedStep`/`BorderStep`/`PortalStep`/`LootStep` share a `PlacementWorkspace`
 (constructor-injected by reference, holding `LevelWorkspace`/`ZoneWorkspace` per level/zone)
-that they mutate in place across those steps — `GameplayStep` populates
-`zw.occupied/gobjs/prot/...`, `VegetationStep` fills `zw.open_set/blocked/passable`,
-`PickupStep` writes `zw.reach/used`. This is **not** the `inject()` channel and not
+that they mutate in place across those steps — `TownsStep` populates
+`zw.occupied/gobjs/prot/...` and plans each zone's attractions (`zw.planned`), `VegetationStep`
+grows around those plans and fills `zw.open_set/blocked/passable`, `GameplayStep` emits the
+planned attractions, `GatedStep` builds the `ZoneIndex` zone records (`reach/used`) that `TreasureStep`
+and the later steps share. This is **not** the `inject()` channel and not
 `MapState` — it's a third, narrower pattern for exactly this one tightly-coupled step
 family. Don't generalize it to other steps and don't route its data through `inject()`
 instead; it already IS the injected dependency (passed once, at construction).
 
+Every step is **additive**: it appends its own objects with `map_state.add_objs(new, gate)`
+and never removes or moves an earlier one. A step pre-checks each object against a
+`CoverIndex` and the terrain gate, so a refused object is a candidate it skips, never a
+crash. The step that places a guarded object also places its monster, and no guard may
+stand within Chebyshev 2 of another (`steps.placement.guard_spaced`), so no later pass
+has to delete duplicate guards. Only `VegetationStep` may raise, when it walls off a pocket.
+
 This coupling is why `--stop-after` (below) is a prefix cut and not an arbitrary
-skip-list: `PickupStep` reads `zw.open_set` assuming `VegetationStep` already populated
-it. Skip `vegetation` and `PickupStep` sees the `ZoneWorkspace` dataclass defaults
+skip-list: `GatedStep` reads `zw.open_set` assuming `VegetationStep` already populated
+it. Skip `vegetation` and `GatedStep` sees the `ZoneWorkspace` dataclass defaults
 (empty frozensets) instead of a real gap — a silent wrong-answer, not an error.
 
 ## `PipelineBuilder` — hand-wired DI, no framework

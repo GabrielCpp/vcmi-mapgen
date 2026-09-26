@@ -1,4 +1,4 @@
-"""Generic zone-tile-set primitives shared across the gameplay/pickup/repair/vegetation
+"""Generic zone-tile-set primitives shared across the gameplay/gated/vegetation
 steps: neighbourhoods, edge distance, and the open-run-length statistic."""
 
 import collections

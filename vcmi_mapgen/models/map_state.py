@@ -258,7 +258,27 @@ class MapState:
         return covering_problems(obj, self._covers_index())
 
     def place(self, obj: PlacedObject, rules: PlacementRules) -> None:
-        self.set_objs([*self.objs, obj], rules)
+        self.add_objs([obj], rules)
+
+    def add_objs(self, new: list[PlacedObject], rules: PlacementRules) -> None:
+        """Append ``new`` to the map. Only the new objects are checked: each against the
+        terrain rules, and each against every other object in both directions. The objects
+        already on the map stay as they are."""
+        objs = [*self.objs, *new]
+        index = index_of(objs)
+        problems: list[str] = []
+        for obj in new:
+            problems += rules.check(obj, self.cells) + covering_problems(obj, index)
+            for tile, role in footprint(obj):
+                for cover in index.get((obj.level, tile), ()):
+                    if cover.obj is obj:
+                        continue
+                    problem = _clash(cover.obj, cover.role, tile, Cover(obj, role))
+                    if problem:
+                        problems.append(problem)
+        if problems:
+            raise PlacementError("; ".join(problems))
+        self.objs = objs
 
     def set_objs(self, objs: list[PlacedObject], rules: PlacementRules) -> None:
         index = index_of(objs)

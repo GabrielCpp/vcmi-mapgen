@@ -6,7 +6,7 @@ consumer of TerrainGenStep's raw macro grid, run immediately next and supersedin
 an artificial two-step handoff for what is really one step's job (see
 vcmi_mapgen/steps/AGENTS.md). The raw pre-tile grid is now a private intermediate that
 never leaves this step; only the post-despeckle terrain-code grids (needed downstream by
-SegmentStep/GameplayStep/BorderStep) and tunnel_protect are published, as one
+SegmentStep/TownsStep/GameplayStep/BorderStep) and tunnel_protect are published, as one
 TerrainGrids value."""
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from vcmi_mapgen.steps.terrain_gen import macro_topo as MTOPO
 @dataclass
 class TerrainGrids:
     """Post-despeckle terrain-code grids + tunnel-corridor protect cells — disposable
-    analysis SegmentStep/GameplayStep/BorderStep need, never a MapState fact itself:
+    analysis SegmentStep/TownsStep/GameplayStep/BorderStep need, never a MapState fact itself:
     MapState's terrain fields are `cells`/`surfs` (the VCMI tile-string form TerrainStep
     derives FROM these grids), not the raw terrain-code grid (see
     vcmi_mapgen/models/AGENTS.md)."""
@@ -145,7 +145,7 @@ class TerrainStep(PipelineStep):
 
     Produces: ``map_state.cells``/``surfs`` (the finished, VCMI-tile-string terrain);
     ``TerrainGrids`` (post-despeckle terrain-code grids + tunnel_protect), for
-    SegmentStep/GameplayStep/BorderStep.
+    SegmentStep/TownsStep/GameplayStep/BorderStep.
     """
 
     def __init__(

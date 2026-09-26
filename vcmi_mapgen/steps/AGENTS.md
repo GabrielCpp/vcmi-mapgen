@@ -1,7 +1,7 @@
 # steps/ — the PipelineStep contract
 
-One subpackage per step (`terrain_gen/`, `segment/`, `gate/`, `gameplay/`, `vegetation/`,
-`pickup/`, `border/`, `portal/`, `loot/`, `scatter/`), each holding a `step.py` with one `PipelineStep` subclass. See
+One subpackage per step (`terrain_gen/`, `segment/`, `gate/`, `towns/`, `vegetation/`, `gameplay/`,
+`gated/`, `treasure/`, `border/`, `portal/`, `loot/`, `scatter/`), each holding a `step.py` with one `PipelineStep` subclass. See
 `vcmi-mapgen-pipeline` for `PipelineStep`/`Pipeline`/`ProviderRegistry` themselves
 (in `pipeline.py`); this file is the contract a new or changed step must satisfy.
 
@@ -29,19 +29,31 @@ of step, it is a sign one of two things happened:
    **Fix:** merge the two steps.
 2. **A genuinely shared, cross-step value with no map-level meaning of its own** — e.g.
    `TerrainGrids` (post-despeckle terrain-code grids + tunnel-protect corridor cells,
-   needed by `SegmentStep`/`GameplayStep`) or `PlacementWorkspace` (the
-   `Gameplay→Vegetation→Pickup→Border` shared workspace). This data is real and does need
+   needed by `SegmentStep`/`TownsStep`) or `PlacementWorkspace` (the
+   `Towns→Vegetation→Gameplay→Gated→Border` shared workspace). This data is real and does need
    to cross steps — but the step that *computes* it also has real map-level work to do
-   (`TerrainStep` writes `map_state.cells`/`surfs`; `GameplayStep` writes
+   (`TerrainStep` writes `map_state.cells`/`surfs`; `TownsStep` writes
    `map_state.objs`/`player_towns`), so it is published as a side effect of an
    already-legitimate step's `run()`, never as the sole reason a step exists.
+
+## Every placement step is additive
+
+A step appends its own objects with `map_state.add_objs(new, gate)`. It never removes,
+moves or replaces an object an earlier step placed, so `map_state.set_objs` has no caller
+among the placement steps. Plan into a scratch list and commit only what fits: pre-check
+each object with `CoverIndex.try_add` and the terrain gate, and try the next candidate
+when one is refused. Only `VegetationStep` may raise, when it walls off a pocket.
+
+The step that places a guarded object also places its monster. No guard stands within
+Chebyshev 2 of another (`steps.placement.guard_spaced`), so no later pass deletes
+duplicate guards.
 
 ## How a step publishes a value for a later step
 
 Never a raw string-keyed `ctx["key"] = value` entry. Instead:
 
 1. Define a `@dataclass` for the value, next to the step that produces it (e.g.
-   `GateResult` in `steps/gate/step.py`, `PickupIndex` in `steps/pickup/step.py`).
+   `GateResult` in `steps/gate/step.py`, `GatedResult` in `steps/gated/step.py`).
 2. The producing step's `run()` calls `self._ctx.provide(SomeResult(...))` once it has
    computed the value (`self._ctx` is whatever `inject()` was given — store it there).
 3. A later step's `inject()` reads it back:
@@ -49,11 +61,11 @@ Never a raw string-keyed `ctx["key"] = value` entry. Instead:
      (raises `MissingProviderError` otherwise — that always means the steps were wired in
      the wrong order, never something to work around).
    - `ctx.get(SomeResult, SomeResult())` when the producing step might not be in the
-     pipeline at all (e.g. `GateStep` only runs for subterrain maps — `GameplayStep`/
-     `PickupStep`/`BorderStep` read `GateResult`'s empty default instead of erroring).
+     pipeline at all (e.g. `GateStep` only runs for subterrain maps — `TownsStep`/
+     `GatedStep`/`BorderStep` read `GateResult`'s empty default instead of erroring).
    - `ctx.get_or_create(SomeType, SomeType)` for the one shape where the *first* demander
      creates the value and every later demander mutates that SAME instance further
-     (`PlacementWorkspace`: `GameplayStep` creates it, `VegetationStep`/`PickupStep`/
+     (`PlacementWorkspace`: `TownsStep` creates it, `VegetationStep`/`GameplayStep`/`GatedStep`/
      `BorderStep` each mutate it in place).
 
 This is the entire contract: type-keyed, memoized-per-run, no string keys, no step that

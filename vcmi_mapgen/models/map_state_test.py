@@ -65,6 +65,32 @@ def test_guard_may_stand_on_an_approach_tile() -> None:
     assert Role.APPROACH in {c.role for c in state.covers_at(0, 2, 3)}
 
 
+def test_add_objs_keeps_existing_objects_and_appends() -> None:
+    mine = _obj(2, 2, ("X",), purpose="MINE")
+    guard = _obj(2, 3, ("B",), purpose="GUARD")
+    state = MapState(size=5, objs=[mine])
+    state.add_objs([guard], _NoRules())
+    assert state.objs == [mine, guard]
+    assert state.objs[0] is mine
+
+
+def test_add_objs_refuses_an_overlay_on_an_existing_visit_tile() -> None:
+    mine = _obj(2, 2, ("A",), purpose="MINE")
+    canopy = _obj(3, 3, ("VV", "VV"))
+    state = MapState(size=5, objs=[mine])
+    with pytest.raises(PlacementError):
+        state.add_objs([canopy], _NoRules())
+    assert state.objs == [mine]
+
+
+def test_add_objs_refuses_a_visit_tile_under_an_existing_overlay() -> None:
+    canopy = _obj(3, 3, ("VV", "VV"))
+    mine = _obj(2, 2, ("A",), purpose="MINE")
+    state = MapState(size=5, objs=[canopy])
+    with pytest.raises(PlacementError):
+        state.add_objs([mine], _NoRules())
+
+
 def test_cover_index_refuses_an_overlay_on_a_visit_tile() -> None:
     mine = _obj(2, 2, ("A",), purpose="MINE")
     canopy = _obj(3, 3, ("VV", "VV"))
