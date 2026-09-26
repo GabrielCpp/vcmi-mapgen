@@ -13,7 +13,7 @@ from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import NB8, edge_dist
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import geodesic_path, plan_entrances
-from vcmi_mapgen.models import Entrance, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.models import Entrance, MapState, PlacedObject, Tile, Zone, footprint
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import (
     LevelWorkspace,
@@ -268,6 +268,14 @@ class _LevelGameplay:
             planned=list(plan.planned),
         )
 
+    def _keep_clear(self) -> tuple[frozenset[Tile], frozenset[Tile]]:
+        zws = self.zone_cache.values()
+        web = frozenset[Tile]().union(*(zw.prot for zw in zws))
+        reserved = frozenset(
+            tile for zw in zws for o in zw.planned for tile, _role in footprint(o)
+        ) | frozenset(t for zw in zws for t in zw.approaches)
+        return web, reserved
+
     def run(self) -> LevelResult:
         lv = self.lv
         water_tiles = {(x, y) for y in range(lv.H) for x in range(lv.W) if lv.grid[y][x] == 8}
@@ -293,7 +301,7 @@ class _LevelGameplay:
         # scatter open sets.  Placed here so the veg pass below can forbid their cells.
         if lv.level == 0:
             ship_objs = WT.ensure_water_seaports(
-                WT.SeaMap(lv.W, lv.H, lv.grid, lv.zones),
+                WT.SeaMap(lv.W, lv.H, lv.grid, lv.zones, *self._keep_clear()),
                 [*lv.gate_objs, *self.objs],
                 lv.seed,
                 self.ontology,

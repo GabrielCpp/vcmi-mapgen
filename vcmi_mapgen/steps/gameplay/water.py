@@ -185,6 +185,8 @@ class SeaMap:
     H: int
     grid: Sequence[Sequence[int]]
     zones: Mapping[int, Zone]
+    web: AbstractSet[Tile] = frozenset()
+    reserved: AbstractSet[Tile] = frozenset()
 
 
 def ensure_water_seaports(
@@ -380,7 +382,9 @@ class _SeaportPlanner:
         # Approach tile must not be occupied (dark-green X tile must be accessible)
         if approach in self.existing_blk:
             return False
-        if any(c in self.existing_blk for c in blk):
+        if any(c in self.existing_blk or c in self.sea.web for c in blk):
+            return False
+        if any(c in self.sea.reserved for c in allc):
             return False
         # At least one BXB cell must be 4-adjacent to water
         if not any((bx + dx, by + dy) in self.water_tiles for bx, by in blk for dx, dy in _NB4):
