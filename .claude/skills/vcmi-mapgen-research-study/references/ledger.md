@@ -8,7 +8,8 @@ Editable path on this machine: `farrier source .claude/skills/vcmi-mapgen-resear
 
 # The study ledger
 
-One JSON object per line, appended to `ledger.jsonl` in the study's folder. Append the row
+One JSON object per line, appended to `ledger.jsonl` in the loop's working directory,
+`.study/<question-slug>/`. Append the row
 when the step starts, with `end`, `actual_min` and `outcome` null. Rewrite that last line
 when the step ends. Never delete a row.
 
@@ -32,6 +33,7 @@ when the step ends. Never delete a row.
 | `actual_min` | `end` minus `start` in minutes, computed from the two timestamps and never written by hand |
 | `outcome` | the result, projected against the purpose |
 | `commit` | the commit the step ran on, when it ran code |
+| `checked` | for `decisive` only: the number the second agent recomputed, or null until it has |
 
 A `reflection` row puts its three answers in `outcome`: where the time went, what is
 settled, and whether the current path is still the cheapest.
