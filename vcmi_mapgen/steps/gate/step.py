@@ -42,12 +42,13 @@ def _land_tiles(zones: Mapping[int, Zone]) -> set[Tile]:
     return ts
 
 
+def _zone_of(zones: Mapping[int, Zone]) -> dict[Tile, int]:
+    return {t: zid for zid, z in zones.items() for t in z.tiles_set}
+
+
 def _rim8(zones: Mapping[int, Zone]) -> frozenset[Tile]:
     """All tiles that have an 8-neighbour in a different zone (the inter-zone rim)."""
-    label: dict[Tile, int] = {}
-    for zid, z in zones.items():
-        for t in z.tiles_set:
-            label[t] = zid
+    label = _zone_of(zones)
     rim: set[Tile] = set()
     for (x, y), zid in label.items():
         for dx, dy in NB8:
@@ -93,8 +94,9 @@ class GateStep(PipelineStep):
 
         (gobjs0, gate_occ0, gate_blk0, gate_appr0), (gobjs1, gate_occ1, gate_blk1, gate_appr1) = (
             PG.place_gates(
-                PG.GateSide(ts0, set(), _rim8(zones0)),
-                PG.GateSide(ts1, set(), _rim8(zones1)),
+                PG.GateSide(ts0, set(), _rim8(zones0), _zone_of(zones0)),
+                PG.GateSide(ts1, set(), _rim8(zones1), _zone_of(zones1)),
+                size=map_state.size,
                 seed=self.seed,
             )
         )

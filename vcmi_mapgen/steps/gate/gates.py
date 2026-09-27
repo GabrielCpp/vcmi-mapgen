@@ -1,16 +1,18 @@
 """Subterranean Gate placement — Gate-only logic split out of pp_gameplay.py.
 
 Also owns the low-level gameplay-footprint fitting helpers (`footprint_cells`/`fits`/`GAP`) and
-`rnd_monster`: GateStep is the first step in pipeline order to need them, and Gameplay/
-Pickup/Repair (which need the same helpers for mines, pocket guards, and portal rescue)
+`rnd_monster`: GateStep is the first step in pipeline order to need them, and the later
+placement steps (which need the same helpers for mines, pocket guards, and portal rescue)
 import them from here rather than duplicating them or inventing a generic shared module.
 """
 
 import json
+import math
 import random
-from collections.abc import Container, Iterable
+from collections.abc import Container, Iterable, Mapping
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from itertools import combinations
 
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import json_value as jv
@@ -20,7 +22,8 @@ from vcmi_mapgen.models import Identity, PlacedObject, Tile
 
 ROOT = project_root()
 GATE_STATS_PATH = ROOT / "data" / "pp" / "gate_stats.json"
-GATE_STATS_VERSION = 1
+GATE_STATS_VERSION = 2
+MIN_GAP_QUANTILE = 0.25
 NO_TILES: frozenset[Tile] = frozenset()
 MIN_AREA_STATS = 60
 
@@ -34,8 +37,22 @@ GAP = 2  # free tiles kept between any two gameplay footprints — gameplay
 
 @dataclass(frozen=True, slots=True)
 class GateStats:
-    per_1000_tiles: float
+    """Corpus gate estimator: the gate counts of two-level corpus maps grouped by map width,
+    and the closest-pair gate gap as a fraction of map width."""
+
+    counts_by_size: Mapping[int, tuple[int, ...]]
+    min_gap_frac: float
     n_maps: int
+
+    def draw_count(self, size: int, rng: random.Random) -> int:
+        """A gate count drawn from corpus maps of the nearest width."""
+        if not self.counts_by_size:
+            return 1
+        width = min(self.counts_by_size, key=lambda w: (abs(w - size), w))
+        return rng.choice(self.counts_by_size[width])
+
+    def min_gap(self, size: int) -> float:
+        return self.min_gap_frac * size
 
 
 type Fit = tuple[list[Tile], list[Tile], Tile]
@@ -106,19 +123,43 @@ def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -
     return allc, blk, approach
 
 
+def _corpus_gates(fm: OR.FaithfulMap) -> tuple[Tile, ...]:
+    return tuple(
+        sorted(
+            (o.x, o.y)
+            for o in fm.objects
+            if o.level == 0 and (o.animation or "").lower().removesuffix(".def") == GATE_ANIM
+        )
+    )
+
+
+def _load_gate_stats() -> GateStats | None:
+    if not GATE_STATS_PATH.exists():
+        return None
+    st = jv.as_object(jv.loads(GATE_STATS_PATH.read_text()))
+    if st.get("_version") != GATE_STATS_VERSION:
+        return None
+    frac = st.get("min_gap_frac")
+    return GateStats(
+        counts_by_size={
+            int(w): tuple(jv.as_int(n) for n in jv.as_list(ns))
+            for w, ns in jv.as_object(st.get("counts_by_size")).items()
+        },
+        min_gap_frac=float(frac) if isinstance(frac, int | float) else 0.0,
+        n_maps=jv.as_int(st.get("n_maps")),
+    )
+
+
 def mine_gate_stats(force: bool = False) -> GateStats:
-    """Corpus SUBTERRANEAN_GATE frequency: gates per 1000 underground (non-rock) tiles,
-    averaged over two-level corpus maps — scales generated gate counts to map size, the same
-    density-driven approach as every other placed purpose (never a hand-picked constant)."""
-    if not force and GATE_STATS_PATH.exists():
-        st = jv.as_object(jv.loads(GATE_STATS_PATH.read_text()))
-        if st.get("_version") == GATE_STATS_VERSION:
-            rate = st.get("per_1000_tiles")
-            return GateStats(
-                per_1000_tiles=float(rate) if isinstance(rate, int | float) else 0.0,
-                n_maps=jv.as_int(st.get("n_maps")),
-            )
-    rates: list[float] = []
+    """Corpus SUBTERRANEAN_GATE estimator over distinct two-level corpus maps with at least
+    one gate. Gate count does not track underground area in the corpus, so the count is a
+    draw from same-width maps rather than a per-tile rate. The spacing floor is the
+    MIN_GAP_QUANTILE quantile of each multi-gate map's closest gate pair."""
+    if not force and (cached := _load_gate_stats()) is not None:
+        return cached
+    counts: dict[int, list[int]] = {}
+    gaps: list[float] = []
+    seen: set[tuple[int, tuple[Tile, ...]]] = set()
     for nm in OR.all_map_names():
         try:
             fm = OR.load_faithful(nm)
@@ -126,24 +167,34 @@ def mine_gate_stats(force: bool = False) -> GateStats:
             continue
         if len(fm.terrain) < 2:
             continue
-        ug = fm.terrain[1]
-        ug_area = sum(1 for row in ug for c in row if c.t != 9)
-        if ug_area < MIN_AREA_STATS:
+        if sum(1 for row in fm.terrain[1] for c in row if c.t != 9) < MIN_AREA_STATS:
             continue
-        n_gates = sum(
-            1
-            for o in fm.objects
-            if o.level == 0 and (o.animation or "").lower().removesuffix(".def") == "avtcave"
-        )
-        rates.append(n_gates / ug_area * 1000)
-    per_1000 = sum(rates) / len(rates) if rates else 3.0
+        gates = _corpus_gates(fm)
+        if not gates or (fm.width, gates) in seen:
+            continue
+        seen.add((fm.width, gates))
+        counts.setdefault(fm.width, []).append(len(gates))
+        if len(gates) >= 2:
+            gaps.append(min(math.dist(a, b) for a, b in combinations(gates, 2)) / fm.width)
+    gaps.sort()
+    frac = gaps[int(MIN_GAP_QUANTILE * (len(gaps) - 1))] if gaps else 0.0
+    by_size = {w: sorted(ns) for w, ns in sorted(counts.items())}
     GATE_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
     _ = GATE_STATS_PATH.write_text(
         json.dumps(
-            {"_version": GATE_STATS_VERSION, "per_1000_tiles": per_1000, "n_maps": len(rates)}
+            {
+                "_version": GATE_STATS_VERSION,
+                "counts_by_size": {str(w): ns for w, ns in by_size.items()},
+                "min_gap_frac": frac,
+                "n_maps": len(seen),
+            }
         )
     )
-    return GateStats(per_1000_tiles=per_1000, n_maps=len(rates))
+    return GateStats(
+        counts_by_size={w: tuple(ns) for w, ns in by_size.items()},
+        min_gap_frac=frac,
+        n_maps=len(seen),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +202,7 @@ class GateSide:
     ts: AbstractSet[Tile]
     occ: Iterable[Tile]
     appr: Iterable[Tile] = NO_TILES
+    zone_of: Mapping[Tile, int] = field(default_factory=dict[Tile, int])
 
 
 def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:
@@ -160,7 +212,32 @@ def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:
                 near.add((cx + gx, cy + gy))
 
 
-def place_gates(side0: GateSide, side1: GateSide, seed: int = 1) -> tuple[LevelGates, LevelGates]:
+@dataclass
+class _Spread:
+    side0: GateSide
+    side1: GateSide
+    min_gap: float
+    used0: set[int] = field(default_factory=set)
+    used1: set[int] = field(default_factory=set)
+    anchors: list[Tile] = field(default_factory=list)
+
+    def admits(self, c: Tile) -> bool:
+        if self.side0.zone_of.get(c, -1) in self.used0:
+            return False
+        if self.side1.zone_of.get(c, -1) in self.used1:
+            return False
+        return all(math.dist(c, a) >= self.min_gap for a in self.anchors)
+
+    def take(self, c: Tile) -> None:
+        self.anchors.append(c)
+        for zone_of, used in ((self.side0.zone_of, self.used0), (self.side1.zone_of, self.used1)):
+            if c in zone_of:
+                used.add(zone_of[c])
+
+
+def place_gates(
+    side0: GateSide, side1: GateSide, size: int, seed: int = 1
+) -> tuple[LevelGates, LevelGates]:
     """Subterranean Gate pairs: one `avtcave` object at the IDENTICAL (x, y) on both levels —
     `kit/reachability.py`'s `_gate_links` already pairs gates by exact-(x, y) match, so no other
     linking is needed. Candidates are tiles walkable on BOTH levels (`ts0 & ts1`); footprint
@@ -168,10 +245,13 @@ def place_gates(side0: GateSide, side1: GateSide, seed: int = 1) -> tuple[LevelG
     placed gameplay footprints (`occ0`/`occ1`, GAP-inflated the same way `place_zone` does
     internally) plus their existing approach tiles (`appr0`/`appr1`, so a gate can never
     squat on a mine's or town's doorway), so a gate can never land on top of existing
-    objects on either side. Gate count is corpus-scaled (`mine_gate_stats`), clamped to a
-    sane range for typical map sizes. The underground-side approach — the harder, descending
-    direction — gets a random monster guard at the corpus zone-gate probability (0.65,
-    matching `place_zone`'s own gate-band convention); the surface side is left open.
+    objects on either side. The gate count is drawn from corpus maps of the same width
+    (`mine_gate_stats`) and is an upper bound. Each zone (`zone_of`) on either level hosts at
+    most one gate, and no two gates sit closer than the corpus spacing floor, so pairs spread
+    across the map instead of clustering in one big zone. The underground-side approach — the
+    harder, descending direction — gets a random monster guard at the corpus zone-gate
+    probability (0.65, matching `place_zone`'s own gate-band convention); the surface side is
+    left open.
 
     Returns `(objs0, occ0, blk0, appr0), (objs1, occ1, blk1, appr1)` — the same 4-tuple shape
     `place_zone` returns per level, so `pp_map.build()` folds gate placement into its existing
@@ -189,7 +269,8 @@ def place_gates(side0: GateSide, side1: GateSide, seed: int = 1) -> tuple[LevelG
     if not ts_both:
         return (objs0, occ0n, blk0n, appr0n), (objs1, occ1n, blk1n, appr1n)
     st = mine_gate_stats()
-    target = max(2, min(6, round(st.per_1000_tiles * len(side1.ts) / 1000)))
+    target = st.draw_count(size, rng)
+    spread = _Spread(side0, side1, st.min_gap(size))
     ident = ON.identity_of(GATE_ANIM)
     cands = sorted(ts_both)
     rng.shuffle(cands)
@@ -200,6 +281,8 @@ def place_gates(side0: GateSide, side1: GateSide, seed: int = 1) -> tuple[LevelG
     for c in cands:
         if len(objs0) >= target:
             break
+        if not spread.admits(c):
+            continue
         fit = fits(ident, c, ts_both, Clearance(occupied, near, reserved))
         if fit is None:
             continue
@@ -207,6 +290,7 @@ def place_gates(side0: GateSide, side1: GateSide, seed: int = 1) -> tuple[LevelG
         occupied.update(allc)
         inflate_gap(near, allc)
         reserved.add(approach)
+        spread.take(c)
         for lvl, objs, occn, blkn, apprn in (
             (0, objs0, occ0n, blk0n, appr0n),
             (1, objs1, occ1n, blk1n, appr1n),
