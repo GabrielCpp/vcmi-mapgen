@@ -48,7 +48,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     geodesic paths, pockets, edge distance and noise.
   - `kit/`: step-independent helpers. It covers topology, autotiling (`tiling.py`) and
     the corpus loader (`objects.py`).
-  - `ontology.py`: object identity, footprints, terrain coupling and decoration category.
+  - `vcmi/catalog/`: object identity, footprints, terrain coupling and decoration
+    category, read from the tables in `data/ontology/`.
   - `renderers/`: `PngRenderer` with real H3 sprites (`png.py`, `sprites.py`),
     `VmapRenderer` for playable `.vmap` export (`vmap.py`), the debug overlays
     (`overlays/`), and the `render-ontology` catalog (`ontology_render.py`).
@@ -72,6 +73,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --subterrain --stop-after vegetation
 uv run python -m vcmi_mapgen.cli render-ontology
+uv run python -m vcmi_mapgen.cli regen-ontology
 uv run python -m vcmi_mapgen.extract_vmap
 uv run python -m vcmi_mapgen.corpus_match --seeds 1 2 3 --size 48
 make check
@@ -82,12 +84,13 @@ through `VCMI_HOME`. The rendering tests skip when those files are absent.
 
 ## Rules
 
-- **`ontology.py` is the single source of truth for objects.** Object identity,
-  footprint mask, terrain coupling and decoration category come from its `TAXONOMY` and
-  `LEAF_META` literals. `python -m vcmi_mapgen.ontology --regen` re-derives them from
-  the editor table `objects.txt`. Use its accessors: `identity_of`, `mask_of`,
-  `is_blocking`, `terrains_of`, `decor_pool`, `veg_categories`, `category_of`,
-  `decode_identity`, `category_terrain_matrix`. When the pipeline needs something the
+- **`vcmi/catalog/` is the single source of truth for objects.** Object identity,
+  footprint mask, terrain coupling and decoration category come from
+  `data/ontology/taxonomy.json` and `data/ontology/leaf_meta.json`.
+  `python -m vcmi_mapgen.cli regen-ontology` re-derives them from the editor table
+  `objects.txt`. Use the accessors in `vcmi.catalog.objects`: `identity_of`, `mask_of`,
+  `is_blocking`, `terrains_of`. Use the ones in `vcmi.catalog.decor`: `decor_pool`,
+  `veg_categories`, `category_of`, `decode_identity`, `category_terrain_matrix`. When the pipeline needs something the
   ontology lacks, extend the ontology. The corpus may inform spatial statistics such as
   density, openness and frequency weights. It never decides object identity, mask or
   category.

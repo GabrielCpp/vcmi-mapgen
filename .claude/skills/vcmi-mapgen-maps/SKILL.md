@@ -23,7 +23,7 @@ metadata:
   `python -m vcmi_mapgen.extract_vmap` regenerates it from `maps/`.
 - The internal mask charset tells `'X'` (blocked entrance) apart from `'A'` (walk-on).
   VCMI's own charset cannot, so `load_faithful` never reads that distinction back from a
-  `.vmap`. It re-derives the mask from `ontology.mask_of(animation)` instead.
+  `.vmap`. It re-derives the mask from `vcmi.catalog.objects.mask_of(animation)` instead.
   `kit.vmap.terrain.vcmi_mask` has the details. The file's own mask is the fallback only
   when the ontology has no data for that animation, which is the case for heroes.
 - Object identity comes from VCMI's own config: `kit.vcmi_config.resolve(obj_class,
