@@ -41,8 +41,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
   - `corpus/`: the corpus loader (`maps.py`) and the corpus-versus-generated tally.
   - `vcmi/catalog/`: object identity, footprints, terrain coupling and decoration
     category, read from the tables in `data/ontology/`.
-  - `renderers/`: `PngRenderer` with real H3 sprites (`png.py`, `sprites.py`),
-    `VmapRenderer` for playable `.vmap` export (`vmap.py`), the debug overlays
+  - `renderers/`: `PngRenderer` with real H3 sprites (`png.py`, `sprites.py`), the
+    terrain colours (`palette.py`), `VmapRenderer` for playable `.vmap` export
+    (`vmap.py`, which calls `vcmi/export.py` and `vcmi/players.py`), the debug overlays
     (`overlays/`), and the `render-ontology` catalog (`ontology_render.py`).
   - `vcmi/load.py`: `load_map`, which loads a `.vmap` back into a `MapState`.
   - `h3m.py` and `extract_vmap.py`: the `.h3m` to `.vmap` corpus extraction.

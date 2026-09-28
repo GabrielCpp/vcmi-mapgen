@@ -32,7 +32,7 @@ metadata:
   are in `vcmi-h3m-format-reference/`.
 - A visitable object's template needs `visitableFrom`, the 3x3 approach grid, or the
   editor warns "no visitable directions". `kit.vmap.terrain.visitable_from` derives it
-  from the mask, and `renderers/vmap.py` sets it on every exported object.
+  from the mask, and `vcmi/export.py` sets it on every exported object.
 - Footprints: the core never sees a mask string. `core.model.Footprint` holds an object's
   cells as offsets from its bottom-right anchor, each with a `Role`: blocking, entrance,
   visit or overlay. `vcmi.footprint.footprint_of(rows)` decodes the `'B'`, `'X'`, `'A'`
@@ -74,15 +74,16 @@ metadata:
 
 ## Rendering
 
+- `vcmi/formats/defs.py` decodes H3 DEF sprites. `_decode_frame` handles all four
+  formats: 0 (raw), 1 (per-line RLE), 2 (per-line typed RLE) and 3 (one uint16 offset
+  per 32px block, row-major). A format 3 mistake mangles every mountain, town and
+  monster, so format 3 is the main thing `vcmi/formats/defs_test.py` guards. It checks
+  that every DEF format decodes to its header size with content, and that known object
+  sprites decode.
 - `renderers/sprites.py` composites real 32px H3 sprites from the local LOD files.
-  `_decode_frame` handles all four H3 DEF formats: 0 (raw), 1 (per-line RLE), 2
-  (per-line typed RLE) and 3 (one uint16 offset per 32px block, row-major). A format 3
-  mistake mangles every mountain, town and monster, so format 3 is the main thing the
-  tests guard.
-- `renderers/sprites_test.py` checks that the LOD index loads, that every DEF format
-  decodes to its header size with content, that every terrain tile and known object
-  sprite decodes, the decode coverage across corpus sprites, and that rendering is
-  deterministic. These tests skip when the H3 LOD files are absent.
+  `renderers/sprites_test.py` checks that every terrain tile decodes, the decode
+  coverage across corpus sprites, and that rendering is deterministic.
+- All of these tests skip when the H3 LOD files are absent.
 
 ## History that is not the current design
 
