@@ -48,7 +48,8 @@ class LootResult:
 
 
 class LootStep(PipelineStep):
-    def __init__(self, seed: int = 3, size: int = 72) -> None:
+    def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
+        self.priors = priors
         self.seed = seed
         self.size = size
 
@@ -130,8 +131,10 @@ for example `pipeline.ctx.get(LootResult, LootResult())`.
    `__init__.py` is empty. The top-level `steps/__init__.py` does the re-exporting.
 2. Add the class to the imports and `__all__` in `steps/__init__.py`. Steps are not
    auto-discovered.
-3. Add its name to `GENERATE_STOP_POINTS` and its construction to `_generate_steps` in
-   `cli.py`, in both cases at its position in the run order.
+3. Add its name to `GENERATE_STOP_POINTS` and its construction to `build_steps` in
+   `cli/steps.py`, in both cases at its position in the run order. A step that reads
+   corpus statistics takes `priors: Priors` first. `build_steps` passes it the one value
+   the CLI loaded with `corpus.priors.load_priors`, and no step loads a file itself.
 4. Publish anything a later step needs as a typed dataclass defined next to the step.
    Do not add a field to `MapState` so that a renderer can read it. The test in
    `models/AGENTS.md` decides that.
