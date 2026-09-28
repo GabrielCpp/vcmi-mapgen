@@ -24,8 +24,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 
 - **`vcmi_mapgen/`**, the package:
   - `cli.py`: the CLI, with `generate` and `render-ontology`. It builds the pipeline.
-  - `pipeline.py`: `PipelineStep`, `Pipeline`, `ProviderRegistry` and the
-    `PlacementWorkspace` the placement steps share.
+  - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
   - `models/`: `MapState`, the map's tile grid and object list, plus the plain data
     types `PlacedObject`, `Cell`, `Tile` and `Zone`.
   - `steps/`: one subpackage per pipeline step, each with a `step.py`.

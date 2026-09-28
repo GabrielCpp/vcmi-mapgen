@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-pipeline
-description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(catalog, map_state)), the shared PlacementWorkspace, the additive add_objs rule, --stop-after, and the two cli.py subcommands. Load before adding, changing or reordering a step, or touching pipeline.py or cli.py."
+description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(catalog, map_state)), the frozen placement results, the additive add_objs rule, --stop-after, and the two cli.py subcommands. Load before adding, changing or reordering a step, or touching pipeline.py or cli.py."
 metadata:
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen-pipeline/SKILL.md
@@ -55,7 +55,7 @@ class LootStep(PipelineStep):
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
         self._zones = ctx.require(ZoneIndex)
-        self._workspace = ctx.require(PlacementWorkspace)
+        self._guard_tiles = ctx.require(BorderResult).guard_tiles
 
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         ...
@@ -79,7 +79,7 @@ moved out yet. Move it to the step's package before adding to it.
 
 The `code-structure` skill's rules 1.7 and 1.8 cover the values those functions take. A
 value a step receives from the registry is read, not written. A function takes the fields
-it reads, not the whole workspace or zone map. `ZoneIndex.claims` and `PlacementWorkspace`
+it reads, not the whole zone map. `ZoneIndex.claims` and `ZoneIndex.targets`
 break the first rule today, because later steps write into them. Do not add another field
 of that kind.
 
@@ -89,23 +89,19 @@ of that kind.
 appends a step, and `run()` calls `inject` then `run` on each step in the order it was
 added. The registry changes how a value crosses between steps. It does not make the
 pipeline a dependency graph, so a step never runs earlier because its inputs are ready.
-Order matters for `MapState` writes, for workspace mutation and for RNG determinism.
+Order matters for `MapState` writes, for `ZoneIndex` mutation and for RNG determinism.
 
-## `PlacementWorkspace`: the one shared mutable object
+## Placement steps hand each other frozen values
 
-The placement steps collaborate through one `PlacementWorkspace` in `pipeline.py`. It
-holds a `LevelWorkspace` per level and a `ZoneWorkspace` per zone. The first step that
-demands it creates it with `ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)`.
-Every later placement step mutates that same instance in place. The field comments in
-`ZoneWorkspace` and `LevelWorkspace` name the step that sets each field.
+`VegetationStep` provides the `ZonePlan` (`core/planning/zone_plan.py`), each zone's
+entrances, web and town room. It also provides `VegetationResult`, each zone's open and
+walkable tiles. `GameplayStep` provides `GameplayResult`, one `PlacedZone` per zone.
+`GatedStep` builds the `ZoneIndex` from those values, and `BorderStep` provides its guard
+tiles in `BorderResult`. A producer provides a value once, and every consumer requires it.
+No step creates a value for a later step to fill in.
 
-Do not add a second object like this. A new cross-step value is a typed dataclass on the
-registry. A new field on `ZoneWorkspace` is justified only when an existing placement
-step must read what an earlier placement step decided.
-
-This coupling is why `--stop-after` is a prefix cut and never a skip-list. `GatedStep`
-reads `zw.open_set` on the assumption that `VegetationStep` filled it. Skip vegetation
-and `GatedStep` reads the empty frozenset default. That gives a wrong map, not an error.
+`--stop-after` is a prefix cut and never a skip-list. A step whose producer was skipped
+raises `MissingProviderError` when it requires the missing value.
 
 ## Every placement step is additive
 
