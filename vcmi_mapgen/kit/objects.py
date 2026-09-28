@@ -98,6 +98,16 @@ def all_map_names() -> list[str]:
     return [os.path.splitext(f)[0] for f in sorted(os.listdir(d)) if f.endswith(".vmap")]
 
 
+def corpus_maps() -> list[FaithfulMap]:
+    maps: list[FaithfulMap] = []
+    for name in all_map_names():
+        try:
+            maps.append(load_faithful(name))
+        except Exception:
+            continue
+    return maps
+
+
 # ---------------------------------------------------------------------------
 # Object classification & exact identity
 # ---------------------------------------------------------------------------

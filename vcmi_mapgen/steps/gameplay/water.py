@@ -25,7 +25,7 @@ from vcmi_mapgen.steps.gameplay.mines import (
     RND_RES,
     WATER_PURPOSES,
     TerrainStats,
-    mine_gameplay,
+    load_gameplay,
 )
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
@@ -145,7 +145,7 @@ def place_water(
     loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
     order) -- water bodies get none. Densities and animation mix come from the corpus
     water pass; identities from the ontology's water pools."""
-    st = mine_gameplay().get("water")
+    st = load_gameplay().get("water")
     if not st or not st.tiles:
         return []
     rng = random.Random(seed ^ (zid * 55313) ^ 0x5EA)

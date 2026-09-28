@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.models import Pockets
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import Pipeline, PipelineStep
@@ -165,10 +166,15 @@ class Args(argparse.Namespace):
     overlays: str = DEFAULT_OVERLAYS
     renderers: str = _DEFAULT_RENDERERS
     stop_after: str | None = None
+    only: list[str] | None = None
 
 
 def cmd_render_ontology(args: Args) -> None:
     render_ontology(args.out)
+
+
+def cmd_mine_stats(args: Args) -> None:
+    mine_stats(args.only or ())
 
 
 def _generate_steps(args: Args, water_mode: str) -> list[tuple[str, PipelineStep]]:
@@ -276,6 +282,16 @@ def main() -> None:
     )
     _ = pro.add_argument("--out", default=None, help="output dir (default out/ontology)")
     _ = pro.set_defaults(func=cmd_render_ontology)
+
+    pms = sub.add_parser("mine-stats", help="mine every corpus statistic into data/pp/*.json")
+    _ = pms.add_argument(
+        "--only",
+        nargs="+",
+        choices=list(MINERS),
+        default=None,
+        help="mine only the named statistics (default: all)",
+    )
+    _ = pms.set_defaults(func=cmd_mine_stats)
 
     pg = sub.add_parser(
         "generate", help="full map synthesized by the marked-point-process pipeline"

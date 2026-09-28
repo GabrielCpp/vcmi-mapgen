@@ -278,7 +278,7 @@ def fill_loot_zones(
         zone = FillZone(
             zid=zr.zid,
             terrain=zr.terrain,
-            st=PG.mine_gameplay()[zr.terrain],
+            st=PG.load_gameplay()[zr.terrain],
             reach=frozenset(zr.ts - blocked - footprint),
             used=used,
             rng=random.Random(seed ^ (zr.zid * 92821) ^ 0xA117),

@@ -14,7 +14,6 @@ places them after vegetation.
 
 import argparse
 import collections
-import json
 import math
 from collections.abc import Callable, Iterable, Mapping
 from collections.abc import Set as AbstractSet
@@ -24,6 +23,7 @@ from pathlib import Path
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.segmentation import segment_level
@@ -35,6 +35,7 @@ from vcmi_mapgen.steps.gate.gates import MIN_AREA_STATS
 ROOT = project_root()
 STATS_PATH = str(ROOT / "data" / "pp" / "gameplay_stats.json")
 STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "gameplay_stats_underground.json")
+SOURCE = "vcmi_mapgen.steps.gameplay.mines.mine_gameplay"
 STATS_VERSION = 5  # v5: border open fraction + full-front gate distances
 TOWN_MIN_AREA = 150  # a town needs a real zone
 VISIT_PURPOSES = ("STAT_PERMANENT", "SPELL_SKILL", "BONUS_TEMP", "MANA", "INFO")
@@ -317,12 +318,20 @@ def _stats_to_json(st: TerrainStats) -> dict[str, JsonValue]:
     }
 
 
-def _cached_stats(path: Path, force: bool) -> dict[str, TerrainStats] | None:
-    if not force and path.exists():
-        st = jv.as_object(jv.loads(path.read_text()))
-        if st.get("_version") == STATS_VERSION:
-            return {k: _stats_from_json(v) for k, v in st.items() if k != "_version"}
-    return None
+def _stats_path(level: int) -> Path:
+    return Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
+
+
+def load_gameplay(level: int = 0) -> dict[str, TerrainStats]:
+    st = pp_cache.read(_stats_path(level), version=STATS_VERSION)
+    return {k: _stats_from_json(v) for k, v in st.items() if k not in pp_cache.META_KEYS}
+
+
+def save_gameplay(level: int, stats: Mapping[str, TerrainStats]) -> None:
+    payload: dict[str, object] = {"_version": STATS_VERSION}
+    for t, tst in stats.items():
+        payload[t] = _stats_to_json(tst)
+    pp_cache.write(_stats_path(level), SOURCE, payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -449,7 +458,7 @@ def _finish_stats(a: _TerrainAcc) -> TerrainStats:
     )
 
 
-def mine_gameplay(level: int = 0, force: bool = False) -> dict[str, TerrainStats]:
+def mine_gameplay(level: int, maps: Iterable[OR.FaithfulMap]) -> dict[str, TerrainStats]:
     """Corpus statistics for the FULL L3 intensity fit, per terrain, for terrain level `level`
     (0 = surface, 1 = underground):
 
@@ -468,26 +477,12 @@ def mine_gameplay(level: int = 0, force: bool = False) -> dict[str, TerrainStats
     blended with the level-0 table (real underground object density is statistically
     distinct: smaller, sparser zones), matching `macro_topo.mine_macro`'s precedent.
     """
-    path = Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
-    cached = _cached_stats(path, force)
-    if cached is not None:
-        return cached
     acc = {t: _TerrainAcc() for t in MINED_TERR}
-    for nm in OR.all_map_names():
-        try:
-            fm = OR.load_faithful(nm)
-        except Exception:
-            continue
+    for fm in maps:
         if level >= len(fm.terrain):
             continue
         _accumulate_map(acc, fm, level)
-    result = {t: _finish_stats(a) for t, a in acc.items()}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload: dict[str, JsonValue] = {"_version": STATS_VERSION}
-    for t, tst in result.items():
-        payload[t] = _stats_to_json(tst)
-    _ = path.write_text(json.dumps(payload))
-    return result
+    return {t: _finish_stats(a) for t, a in acc.items()}
 
 
 def theta_covariates(st_t: TerrainStats, purpose: str) -> dict[str, list[float]]:
@@ -628,7 +623,7 @@ def audit_variety(level: int = 0) -> list[AuditGap]:
     `AuditGap`s (empty = the generated maps can reach the corpus's full visitable variety).
     `level` selects which level's corpus stats table to audit (0 = surface, 1 = underground:
     both must stay green since `--subterrain` places gameplay from the level-1 table too)."""
-    st = mine_gameplay(level=level)
+    st = load_gameplay(level=level)
     seen: dict[tuple[str, str], int] = {}  # (purpose, anim) -> total corpus count
     for terr in LAND:
         for p, anims in st[terr].anim_w.items():
@@ -728,7 +723,7 @@ if __name__ == "__main__":
                 for g in gaps:
                     print(f"  {g.purpose:<15} {g.anim:<10} corpus n={g.count:>5}  {g.why}")
         raise SystemExit(1 if bad else 0)
-    st = mine_gameplay(level=args.level or 0)
+    st = load_gameplay(level=args.level or 0)
     for t in LAND:
         d = st[t]
         dens = {p: round(c / max(d.tiles, 1) * 1000, 2) for p, c in d.counts.items()}

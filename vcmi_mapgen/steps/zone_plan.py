@@ -330,7 +330,7 @@ def plan_zones(
             _LevelPlan(
                 zones,
                 terrain.tunnel_protect if level == 1 else NO_TILES,
-                MN.mine_gameplay(level=level),
+                MN.load_gameplay(level=level),
             )
         )
         lw = planner.level()

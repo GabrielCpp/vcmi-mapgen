@@ -2,7 +2,8 @@
 
 ## Map
 
-- `cli.py`: the CLI, with `generate` and `render-ontology`. It builds the pipeline.
+- `cli.py`: the CLI, with `generate`, `render-ontology` and `mine-stats`. It builds the pipeline.
+- `mine_stats.py`: which corpus statistics exist and the one pass that rebuilds every `data/pp/` file.
 - `pipeline.py`: the `PipelineStep` contract, the `Pipeline` engine, the `ProviderRegistry` and the `PlacementWorkspace` the placement steps share.
 - `steps/`: one subpackage per pipeline step, plus the helpers several steps share.
 - `models/`: `MapState`, the tile grid and object list, and the plain data types.
@@ -14,3 +15,4 @@
 - `h3m.py`: the `.h3m` parser.
 - `extract_vmap.py`: regenerates the corpus as editor-openable `.vmap` files.
 - `corpus_match.py`: the report comparing object placement in corpus and generated zones.
+- `veg_experiment.py`: the M1 experiment that samples vegetation on a real corpus zone and compares run lengths.

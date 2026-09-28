@@ -102,3 +102,14 @@ def _placed(type_name: str | None) -> PlacedObject:
 def test_purpose_of_matches_type_to_purpose() -> None:
     assert OR.purpose_of(_placed("town")) == OR.type_to_purpose("town") == "TOWN"
     assert OR.purpose_of(_placed(None)) == "UNKNOWN"
+
+
+def test_all_map_names_is_independent_of_listdir_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    real_listdir = os.listdir
+    names = OR.all_map_names()
+
+    def reversed_listdir(path: str) -> list[str]:
+        return list(reversed(real_listdir(path)))
+
+    monkeypatch.setattr(os, "listdir", reversed_listdir)
+    assert OR.all_map_names() == names

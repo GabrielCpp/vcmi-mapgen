@@ -11,7 +11,7 @@ from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
-from vcmi_mapgen.steps.gameplay.mines import mine_gameplay
+from vcmi_mapgen.steps.gameplay.mines import load_gameplay
 from vcmi_mapgen.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
 from vcmi_mapgen.steps.placement import PlaceSpec, PlaceTarget, place_one
 
@@ -101,7 +101,7 @@ def place_reward_zone(
     level pass skipped (their only content). Claims its cells in `zr.used` so the later
     pocket-cache pass never double-stacks. Returns objs."""
     terrain = zr.terrain
-    st = mine_gameplay()[terrain]
+    st = load_gameplay()[terrain]
     rng = random.Random(seed ^ (entry[0] * 92821) ^ (entry[1] * 131071) ^ 0x907A1)
     ts = zr.ts
     used = zr.used

@@ -83,6 +83,7 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 | Emit | `faithful.py`, `vmapwrite.py`, `traverse.py` |
 | Render & inspect | `render_editor.py`, `render.py`, `render_editor_test.py` |
 | Terrain generation | `markov_terrain.py` (Markov chain learned from the corpus) |
+| Corpus statistics | `mine_stats.py`, run as `cli mine-stats`, writes `data/pp/*.json` |
 
 The `.h3m` corpus is in `maps/`; the format reference is in `vcmi-h3m-format-reference/`
 (notes: [vcmi-h3m-format-reference.md](vcmi-h3m-format-reference.md)); transient outputs go to

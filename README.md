@@ -66,13 +66,23 @@ uv run python -m vcmi_mapgen.cli generate \
     --seed 5 --size 108 --players 4 --teams 2v2
 ```
 
+`generate` reads its corpus statistics from `data/pp/` and never loads a corpus map. After a
+change to `maps_vmap/` or to a statistic's code, rebuild the files:
+
+```bash
+uv run python -m vcmi_mapgen.cli mine-stats
+uv run python -m vcmi_mapgen.cli mine-stats --only markov tiler
+```
+
+A missing file stops `generate` with an error that names `mine-stats`.
+
 ## Map
 
 - `vcmi_mapgen/`: the Python package. It generates, renders and reads maps, and extracts the corpus.
 - `vcmi-h3m-format-reference/`: verbatim VCMI C++ sources that document the `.h3m` format.
 - `maps/`: the `.h3m` corpus of 159 real maps, the source data.
 - `maps_vmap/`: one `.vmap` per corpus map, the generator's input, regenerable from `maps/`.
-- `data/`: corpus-derived priors and fitted statistics.
+- `data/`: corpus-derived priors and fitted statistics. `cli mine-stats` writes `data/pp/`.
 - `docs/`: specs, architecture and the VCMI H3M format reference notes.
 
 ## Tests

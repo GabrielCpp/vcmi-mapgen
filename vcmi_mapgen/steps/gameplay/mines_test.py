@@ -186,7 +186,7 @@ def test_mine_sprites_match_terrain() -> None:
 
     if not os.path.exists(PG.STATS_PATH):
         pytest.skip("gameplay stats not mined")
-    st = PG.mine_gameplay()
+    st = PG.load_gameplay()
     ts = {(x, y) for x in range(40) for y in range(30)}
     for terrain in ("grass", "snow"):
         mw = st[terrain].anim_w["MINE"]

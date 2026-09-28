@@ -2,7 +2,6 @@
 (`footprint_cells`/`fits`/`GAP`) and `rnd_monster` every placement step shares.
 """
 
-import json
 import math
 import random
 from collections.abc import Callable, Container, Iterable, Mapping
@@ -13,12 +12,14 @@ from itertools import combinations
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.models import Identity, Tile
 
 ROOT = project_root()
 GATE_STATS_PATH = ROOT / "data" / "pp" / "gate_stats.json"
 GATE_STATS_VERSION = 2
+GATE_STATS_SOURCE = "vcmi_mapgen.steps.gate.gates.mine_gate_stats"
 MIN_GAP_QUANTILE = 0.25
 NO_TILES: frozenset[Tile] = frozenset()
 MIN_AREA_STATS = 60
@@ -121,12 +122,8 @@ def _corpus_gates(fm: OR.FaithfulMap) -> tuple[Tile, ...]:
     )
 
 
-def _load_gate_stats() -> GateStats | None:
-    if not GATE_STATS_PATH.exists():
-        return None
-    st = jv.as_object(jv.loads(GATE_STATS_PATH.read_text()))
-    if st.get("_version") != GATE_STATS_VERSION:
-        return None
+def load_gate_stats() -> GateStats:
+    st = pp_cache.read(GATE_STATS_PATH, version=GATE_STATS_VERSION)
     frac = st.get("min_gap_frac")
     return GateStats(
         counts_by_size={
@@ -138,21 +135,28 @@ def _load_gate_stats() -> GateStats | None:
     )
 
 
-def mine_gate_stats(force: bool = False) -> GateStats:
+def save_gate_stats(st: GateStats) -> None:
+    pp_cache.write(
+        GATE_STATS_PATH,
+        GATE_STATS_SOURCE,
+        {
+            "_version": GATE_STATS_VERSION,
+            "counts_by_size": {str(w): list(ns) for w, ns in st.counts_by_size.items()},
+            "min_gap_frac": st.min_gap_frac,
+            "n_maps": st.n_maps,
+        },
+    )
+
+
+def mine_gate_stats(maps: Iterable[OR.FaithfulMap]) -> GateStats:
     """Corpus SUBTERRANEAN_GATE estimator over distinct two-level corpus maps with at least
     one gate. Gate count does not track underground area in the corpus, so the count is a
     draw from same-width maps rather than a per-tile rate. The spacing floor is the
     MIN_GAP_QUANTILE quantile of each multi-gate map's closest gate pair."""
-    if not force and (cached := _load_gate_stats()) is not None:
-        return cached
     counts: dict[int, list[int]] = {}
     gaps: list[float] = []
     seen: set[tuple[int, tuple[Tile, ...]]] = set()
-    for nm in OR.all_map_names():
-        try:
-            fm = OR.load_faithful(nm)
-        except Exception:
-            continue
+    for fm in maps:
         if len(fm.terrain) < 2:
             continue
         if sum(1 for row in fm.terrain[1] for c in row if c.t != 9) < MIN_AREA_STATS:
@@ -167,17 +171,6 @@ def mine_gate_stats(force: bool = False) -> GateStats:
     gaps.sort()
     frac = gaps[int(MIN_GAP_QUANTILE * (len(gaps) - 1))] if gaps else 0.0
     by_size = {w: sorted(ns) for w, ns in sorted(counts.items())}
-    GATE_STATS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _ = GATE_STATS_PATH.write_text(
-        json.dumps(
-            {
-                "_version": GATE_STATS_VERSION,
-                "counts_by_size": {str(w): ns for w, ns in by_size.items()},
-                "min_gap_frac": frac,
-                "n_maps": len(seen),
-            }
-        )
-    )
     return GateStats(
         counts_by_size={w: tuple(ns) for w, ns in by_size.items()},
         min_gap_frac=frac,
@@ -239,7 +232,7 @@ def gate_anchors(
     ts_both = side0.ts & side1.ts
     if not ts_both:
         return []
-    st = mine_gate_stats()
+    st = load_gate_stats()
     target = st.draw_count(size, rng)
     spread = Spread(side0, side1, st.min_gap(size))
     cands = sorted(ts_both)

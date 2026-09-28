@@ -21,10 +21,8 @@ Categories are the ontology's decoration types (`veg_categories`); water feature
 
 import argparse
 import collections
-import json
 import math
-import os
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 from vcmi_mapgen import ontology as ON
-from vcmi_mapgen.kit import json_value
+from vcmi_mapgen.kit import json_value, pp_cache
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.kit.paths import project_root
@@ -42,6 +40,7 @@ from vcmi_mapgen.models import JsonValue, Tile
 
 ROOT = project_root()
 PP_DIR = str(ROOT / "data" / "pp")
+SOURCE = "vcmi_mapgen.steps.vegetation.stats.mine"
 RMAX = 6  # pair-correlation rings 0..RMAX (Chebyshev)
 MIN_AREA = 60  # same zone-size floor as the field learner
 CELL = 6  # coarse-cell size for the overdispersion (Cox field) statistic
@@ -307,38 +306,25 @@ def _accumulate_zone(a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
     _count_blocked(a, anchors, ts)
 
 
-def mine(nmaps: int = 159, force: bool = False) -> dict[str, VegStats]:
-    """One corpus pass -> per-terrain stats; cached in data/pp/veg_<terrain>.json."""
-    os.makedirs(PP_DIR, exist_ok=True)
-    paths = {t: os.path.join(PP_DIR, f"veg_{t}.json") for t in LAND}
-    if not force and all(os.path.exists(p) for p in paths.values()):
-        return {
-            t: _stats_from_json(json_value.loads(Path(p).read_text())) for t, p in paths.items()
-        }
-
+def mine(maps: Iterable[OR.FaithfulMap]) -> dict[str, VegStats]:
     acc = {t: _Acc() for t in LAND}
-
-    names = OR.all_map_names()[:nmaps]
-    for i, nm in enumerate(names):
-        try:
-            fm = OR.load_faithful(nm)
-        except Exception:
-            continue
+    for fm in maps:
         zones, _zl, _ = segment_level(fm.terrain[0])
         for z in zones.values():
             terr = TNAME.get(z.terrain_type)
             if terr not in acc or z.area < MIN_AREA:
                 continue
             _accumulate_zone(acc[terr], fm, set(z.tiles_set))
-        if (i + 1) % 40 == 0:
-            print(f"  mined {i + 1}/{len(names)} maps")
+    return {terr: _finalize(terr, a) for terr, a in acc.items()}
 
-    out: dict[str, VegStats] = {}
-    for terr, a in acc.items():
-        out[terr] = _finalize(terr, a)
-        _ = Path(paths[terr]).write_text(json.dumps(_stats_to_json(out[terr])))
-    print(f"mined {len(names)} maps -> {PP_DIR}/veg_<terrain>.json")
-    return out
+
+def _stats_path(terrain: str) -> Path:
+    return Path(PP_DIR) / f"veg_{terrain}.json"
+
+
+def save(stats: Mapping[str, VegStats]) -> None:
+    for terr, st in stats.items():
+        pp_cache.write(_stats_path(terr), SOURCE, _stats_to_json(st))
 
 
 def _finalize(terr: str, a: _Acc) -> VegStats:
@@ -388,10 +374,7 @@ def _finalize(terr: str, a: _Acc) -> VegStats:
 
 
 def load(terrain: str) -> VegStats:
-    p = os.path.join(PP_DIR, f"veg_{terrain}.json")
-    if not os.path.exists(p):
-        _ = mine()
-    return _stats_from_json(json_value.loads(Path(p).read_text()))
+    return _stats_from_json(pp_cache.read(_stats_path(terrain)))
 
 
 def theta(
@@ -472,21 +455,14 @@ def report(terrain: str) -> tuple[VegStats, dict[str, list[float]]]:
 
 
 class _Args(argparse.Namespace):
-    report: str | None = None
-    regen: bool = False
-    nmaps: int = 159
+    report: str = ""
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    _ = ap.add_argument("--report", metavar="TERRAIN", default=None)
-    _ = ap.add_argument("--regen", action="store_true", help="force a fresh corpus pass")
-    _ = ap.add_argument("--nmaps", type=int, default=159)
+    _ = ap.add_argument("--report", metavar="TERRAIN", required=True)
     args = ap.parse_args(namespace=_Args())
-    if args.regen or args.report is None:
-        _ = mine(nmaps=args.nmaps, force=args.regen)
-    if args.report:
-        _ = report(args.report)
+    _ = report(args.report)
 
 
 if __name__ == "__main__":

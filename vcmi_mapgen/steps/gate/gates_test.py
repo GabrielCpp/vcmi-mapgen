@@ -37,7 +37,7 @@ def test_draw_count_uses_nearest_corpus_width() -> None:
 
 def test_at_most_one_gate_per_zone_on_each_level(monkeypatch: pytest.MonkeyPatch) -> None:
     """Two surface zones cap the map at two gates even when the corpus asks for more."""
-    monkeypatch.setattr(PG, "mine_gate_stats", lambda: _stats((6,), frac=0.0))
+    monkeypatch.setattr(PG, "load_gate_stats", lambda: _stats((6,), frac=0.0))
     side0 = _side(_open(lambda x, _y: int(x >= S // 2)))
     side1 = _side(_open(lambda x, y: x // 10 + 4 * (y // 10)))
     for seed in range(20):
@@ -48,7 +48,7 @@ def test_at_most_one_gate_per_zone_on_each_level(monkeypatch: pytest.MonkeyPatch
 
 def test_gates_keep_the_corpus_spacing_floor(monkeypatch: pytest.MonkeyPatch) -> None:
     """With one zone per tile nothing but the spacing floor keeps gates apart."""
-    monkeypatch.setattr(PG, "mine_gate_stats", lambda: _stats((6,), frac=0.25))
+    monkeypatch.setattr(PG, "load_gate_stats", lambda: _stats((6,), frac=0.25))
     zone_of = _open(lambda x, y: x * S + y)
     for seed in range(20):
         anchors = _anchors(_side(zone_of), _side(zone_of), seed)
@@ -57,7 +57,7 @@ def test_gates_keep_the_corpus_spacing_floor(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_gate_count_never_exceeds_the_draw(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(PG, "mine_gate_stats", lambda: _stats((1, 2), frac=0.0))
+    monkeypatch.setattr(PG, "load_gate_stats", lambda: _stats((1, 2), frac=0.0))
     zone_of = _open(lambda x, y: x * S + y)
     for seed in range(20):
         assert 1 <= len(_anchors(_side(zone_of), _side(zone_of), seed)) <= 2

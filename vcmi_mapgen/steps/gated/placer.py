@@ -331,7 +331,7 @@ class GatedPlacer:
         zone = _LootZone(
             zr.zid,
             zr.terrain,
-            PG.mine_gameplay()[zr.terrain],
+            PG.load_gameplay()[zr.terrain],
             zr.ts,
             zr.used,
             rng,
@@ -620,7 +620,7 @@ class GatedPlacer:
             ext_zr.used,
             ext_zr.reach,
             ext_rng,
-            PG.mine_gameplay()[ext_zr.terrain],
+            PG.load_gameplay()[ext_zr.terrain],
             bounds=self.bounds,
             cover=self.cover,
         )

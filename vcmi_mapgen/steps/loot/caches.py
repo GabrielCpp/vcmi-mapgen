@@ -24,7 +24,7 @@ from vcmi_mapgen.models import (
     Zone,
     ZoneRecord,
 )
-from vcmi_mapgen.steps.gameplay.mines import TerrainStats, mine_gameplay
+from vcmi_mapgen.steps.gameplay.mines import TerrainStats, load_gameplay
 from vcmi_mapgen.steps.gate.gates import rnd_monster
 from vcmi_mapgen.steps.placement import (
     PANDORA_CREATURES,
@@ -649,7 +649,7 @@ class _PocketCachePass:
         ref = guard_tile if guard_tile is not None else ref_g
 
         terrain = self.terrain_of[pick.zid]
-        st = mine_gameplay()[terrain]
+        st = load_gameplay()[terrain]
         pool_res = ON.pool("RESOURCE_PILE", terrain)
         pool_art = ON.pool("REWARD_PICKUP", terrain)
         rng = random.Random(self.seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)
@@ -915,7 +915,7 @@ def _pick_art_zone(
 def _place_art(
     env: _QuestEnv, rng: random.Random, art_zr: ZoneRecord, art_ident: Identity
 ) -> Tile | None:
-    st_art = mine_gameplay()[art_zr.terrain]
+    st_art = load_gameplay()[art_zr.terrain]
     art_eligible = env.ptiles & (art_zr.reach - art_zr.used)
     art_cands = sorted(art_eligible)
     rng.shuffle(art_cands)
@@ -932,7 +932,7 @@ def _place_art(
 def _place_hut(
     env: _QuestEnv, rng: random.Random, hut_zr: ZoneRecord, hut_ident: Identity, art_subtype: str
 ) -> bool:
-    st_hut = mine_gameplay()[hut_zr.terrain]
+    st_hut = load_gameplay()[hut_zr.terrain]
     hut_cands = sorted(hut_zr.reach - hut_zr.used)
     rng.shuffle(hut_cands)
     options = _seerhut_quest(rng, art_subtype)

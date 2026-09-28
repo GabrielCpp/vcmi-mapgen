@@ -25,17 +25,16 @@ handful of LARGE designed regions. This module plans the macro structure first:
 import argparse
 import collections
 import heapq
-import json
 import math
 import os
 import random
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image
 
-from vcmi_mapgen.kit import json_value
+from vcmi_mapgen.kit import json_value, pp_cache
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.noise import value_noise
 from vcmi_mapgen.kit.paths import project_root
@@ -48,6 +47,7 @@ from vcmi_mapgen.steps.terrain_gen import markov as MT
 ROOT = project_root()
 STATS_PATH = str(ROOT / "data" / "pp" / "macro_stats.json")
 STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "macro_stats_underground.json")
+SOURCE = "vcmi_mapgen.steps.terrain_gen.macro_topo.mine_macro"
 WATER, ROCK = 8, 9
 MIN_ZONE_AREA = 40  # floor for sampled target areas
 JITTER = 1.4  # growth-cost noise amplitude (0 = pure Voronoi-like fronts)
@@ -129,26 +129,19 @@ def _mine_adjacency(T: list[list[int]], W: int, H: int, adj: collections.Counter
                         adj[f"{min(a, b)}|{max(a, b)}"] += 1
 
 
-def mine_macro(level: int = 0, force: bool = False) -> MacroStats:
+def mine_macro(level: int, maps: Iterable[OR.FaithfulMap]) -> MacroStats:
     """Corpus macro stats for terrain level `level` (0 = surface, 1 = underground). The
     underground table is mined independently from `fm["terrain"][1]` of two-level corpus
     maps — real underground zone areas/adjacency/barrier fraction are statistically distinct
     from the surface (rock, not subterr, is the dominant barrier terrain there; see corpus
     histograms in the design notes), so it is never derived from or blended with level-0 stats."""
-    path = STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND
-    if not force and os.path.exists(path):
-        return _stats_from_json(json_value.loads(Path(path).read_text()))
     barrier = WATER if level == 0 else ROCK
     areas: list[int] = []
     barrier_fracs: list[float] = []
     terr_share = collections.Counter[int]()
     adj = collections.Counter[str]()  # "t1|t2" boundary-tile counts, t1 <= t2
     nzones: list[int] = []
-    for nm in OR.all_map_names():
-        try:
-            fm = OR.load_faithful(nm)
-        except Exception:
-            continue
+    for fm in maps:
         if level >= len(fm.terrain):
             continue
         lvl = fm.terrain[level]
@@ -166,9 +159,19 @@ def mine_macro(level: int = 0, force: bool = False) -> MacroStats:
         adj=dict(adj),
         nzones=nzones,
     )
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    _ = Path(path).write_text(json.dumps(_stats_to_json(st)))
     return st
+
+
+def _stats_path(level: int) -> Path:
+    return Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
+
+
+def load_macro(level: int = 0) -> MacroStats:
+    return _stats_from_json(pp_cache.read(_stats_path(level)))
+
+
+def save_macro(level: int, st: MacroStats) -> None:
+    pp_cache.write(_stats_path(level), SOURCE, _stats_to_json(st))
 
 
 # ---------------------------------------------------------------------------
@@ -465,8 +468,9 @@ def _texture_boundaries(
     can't erode a load-bearing connection back into barrier."""
     H = len(grid)
     W = len(grid[0])
-    M4 = MT.learn4(level)
-    M = MT.learn(level)
+    tables = MT.load_tables(level)
+    M4 = tables.chain4
+    M = tables.chain
     band = _border_band(grid)
     tiles = [
         (x, y)
@@ -546,7 +550,7 @@ def generate(
     water_mode = opts.water_mode
     level = opts.level
     rng = random.Random(seed)
-    st = mine_macro(level=level)
+    st = load_macro(level=level)
     barrier = WATER if level == 0 else ROCK
     protect: set[Tile] = set()
     if level == 1:
@@ -600,7 +604,6 @@ class _Args(argparse.Namespace):
     size: int = 72
     water: float | None = None
     level: int = 0
-    regen_stats: bool = False
 
 
 def main() -> None:
@@ -609,11 +612,8 @@ def main() -> None:
     _ = ap.add_argument("--size", type=int, default=72)
     _ = ap.add_argument("--water", type=float, default=None)
     _ = ap.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
-    _ = ap.add_argument("--regen-stats", action="store_true")
     args = ap.parse_args(namespace=_Args())
-    if args.regen_stats:
-        _ = mine_macro(level=args.level, force=True)
-    st = mine_macro(level=args.level)
+    st = load_macro(level=args.level)
     barrier_name = "water" if args.level == 0 else "rock"
     median_area = st.areas[len(st.areas) // 2]
     median_frac = st.barrier_fracs[len(st.barrier_fracs) // 2]

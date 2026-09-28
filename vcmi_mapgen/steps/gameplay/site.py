@@ -32,7 +32,7 @@ from vcmi_mapgen.steps.gameplay.mines import (
     TerrainStats,
     gate_dist,
     intensity_weights,
-    mine_gameplay,
+    load_gameplay,
     openness,
 )
 from vcmi_mapgen.steps.gate.gates import (
@@ -267,7 +267,7 @@ class ZoneSite:
         self.lf = lf
         self.ts: AbstractSet[Tile] = zw.ts
         self.rng = random.Random(seed ^ (zid * 40503) ^ SITE_SALT)
-        self.st: TerrainStats = mine_gameplay(level=lf.level)[zw.terrain]
+        self.st: TerrainStats = load_gameplay(level=lf.level)[zw.terrain]
         self.reserved: set[Tile] = set(zw.ent_bands) | set(zw.approaches)
         self.passable: set[Tile] = set(zw.passable)
         self.prot: set[Tile] = set(zw.prot)

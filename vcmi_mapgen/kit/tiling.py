@@ -11,12 +11,17 @@ sliver-zones.
 
 import collections
 import functools
-from collections.abc import Collection
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 
+from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit import terrain_segment as TS
-from vcmi_mapgen.models import Cell, Tile
+from vcmi_mapgen.models import Cell, JsonValue, Tile
+
+TILER_SOURCE = "vcmi_mapgen.kit.tiling.learn_terrain_tiler"
 
 type ViewMirror = tuple[int, int]
 type Tiler = tuple[
@@ -61,8 +66,7 @@ def _neigh8(grid: list[list[int]], x: int, y: int, W: int, H: int) -> tuple[int,
     )
 
 
-@functools.cache
-def _learn_terrain_tiler() -> Tiler:
+def learn_terrain_tiler(maps: Iterable[OR.FaithfulMap]) -> Tiler:
     """(exact, four, clean) view/m tables learned from every corpus terrain tile."""
     exact: dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]] = (
         collections.defaultdict(collections.Counter)
@@ -73,8 +77,7 @@ def _learn_terrain_tiler() -> Tiler:
     clean: dict[int, collections.Counter[ViewMirror]] = collections.defaultdict(
         collections.Counter
     )  # t (all-same nbrs)-> (view,m)
-    for name in OR.all_map_names():
-        fm = OR.load_faithful(name)
+    for fm in maps:
         for g in fm.terrain:
             H = len(g)
             W = len(g[0])
@@ -90,6 +93,60 @@ def _learn_terrain_tiler() -> Tiler:
                     if all(v == t for v in sig):
                         clean[t][vm] += 1
     return (exact, four, clean)
+
+
+def _counts_to_json(counter: collections.Counter[ViewMirror]) -> list[list[int]]:
+    return [[view, m, n] for (view, m), n in counter.items()]
+
+
+def _counts_from_json(raw: JsonValue) -> collections.Counter[ViewMirror]:
+    counter = collections.Counter[ViewMirror]()
+    for entry in jv.as_list(raw):
+        view, m, n = (jv.as_int(v) for v in jv.as_list(entry))
+        counter[(view, m)] = n
+    return counter
+
+
+def _sig_table_from_json(
+    raw: JsonValue,
+) -> dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]]:
+    table: dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]] = {}
+    for entry in jv.as_list(raw):
+        t, sig, counts = jv.as_list(entry)
+        key = (jv.as_int(t), tuple(jv.as_int(v) for v in jv.as_list(sig)))
+        table[key] = _counts_from_json(counts)
+    return table
+
+
+def tiler_path() -> Path:
+    return pp_cache.PP_DIR / "tiler.json"
+
+
+def save_tiler(tiler: Tiler) -> None:
+    exact, four, clean = tiler
+    pp_cache.write(
+        tiler_path(),
+        TILER_SOURCE,
+        {
+            "exact": [[t, list(sig), _counts_to_json(c)] for (t, sig), c in exact.items()],
+            "four": [[t, list(sig), _counts_to_json(c)] for (t, sig), c in four.items()],
+            "clean": [[t, _counts_to_json(c)] for t, c in clean.items()],
+        },
+    )
+
+
+@functools.cache
+def load_tiler() -> Tiler:
+    raw = pp_cache.read(tiler_path())
+    clean: dict[int, collections.Counter[ViewMirror]] = {}
+    for entry in jv.as_list(raw.get("clean")):
+        t, counts = jv.as_list(entry)
+        clean[jv.as_int(t)] = _counts_from_json(counts)
+    return (
+        _sig_table_from_json(raw.get("exact")),
+        _sig_table_from_json(raw.get("four")),
+        clean,
+    )
 
 
 def _tile_cell(t: int, sig: tuple[int, ...], x: int, y: int, tiler: Tiler) -> Cell:
@@ -267,7 +324,7 @@ def tile_terrain(
     speckles (< MIN_TERRAIN_PATCH tiles) are first merged into their dominant neighbour;
     `protect` cells are exempt (see `despeckle_ids`)."""
     id_grid = despeckle_ids(id_grid, W, H, protect=protect)
-    tiler = _learn_terrain_tiler()
+    tiler = load_tiler()
     return [
         [_tile_cell(id_grid[y][x], _neigh8(id_grid, x, y, W, H), x, y, tiler) for x in range(W)]
         for y in range(H)
