@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.model import Tile, ZoneRecord
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace
-from vcmi_mapgen.core.steps.placement import scatter_reach
+from vcmi_mapgen.core.placement.place import scatter_reach
 
 
 @dataclass

@@ -4,12 +4,8 @@ densities it draws from."""
 from collections.abc import Sequence
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.steps.gameplay.mines import (
-    AUDIT_EXCLUDED,
-    audit_variety,
-    land_names,
-    load_gameplay,
-)
+from vcmi_mapgen.core.steps.gameplay.mines import AUDIT_EXCLUDED, audit_variety, land_names
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 
 def audit(catalog: Catalog, levels: Sequence[int]) -> bool:

@@ -2,5 +2,4 @@
 
 ## Map
 
-- `scatter.py`: `place_scatter`, the unguarded resource piles over the finished open field.
-- `step.py`: `ScatterStep`, the last step that places anything.
+- `step.py`: `ScatterStep`, the last step that places anything. It calls `core.placement.scatter.place_scatter`.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Container, Iterable, Iterator
 
-from vcmi_mapgen.core.model import Footprint, PlacedObject, Tile
+from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile
 
 
 def anchored_cells(fp: Footprint, x: int, y: int) -> Iterator[tuple[int, int, bool]]:
@@ -21,15 +21,14 @@ def interactive_cells(fp: Footprint, x: int, y: int) -> list[Tile]:
     return [t for t, role in fp.at(x, y) if role.interactive]
 
 
+def blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
+    """Blocking cells of every object in `objs`."""
+    return {(cx, cy) for o in objs for cx, cy, blk in anchored_cells(o.footprint, o.x, o.y) if blk}
+
+
 def decor_blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
     """Blocking cells of every purpose-less (vegetation/decor) object in `objs`."""
-    return {
-        (cx, cy)
-        for o in objs
-        if not o.purpose
-        for cx, cy, blk in anchored_cells(o.footprint, o.x, o.y)
-        if blk
-    }
+    return blocking_cells(o for o in objs if not o.purpose)
 
 
 def overlay_clear(fp: Footprint, x: int, y: int, blocked: Container[Tile]) -> bool:
@@ -67,3 +66,22 @@ def front_tiles(fp: Footprint, x: int, y: int) -> set[Tile]:
             if t not in footprint:
                 front.add(t)
     return front
+
+
+def footprint_cells(
+    ident: Identity, ax: int, ay: int
+) -> tuple[list[Tile], list[Tile], Tile | None]:
+    """(all_cells, blocking_cells, approach) of an identity anchored at (ax, ay); approach is
+    the tile a hero stands on to visit: below an entrance, or a visit cell itself."""
+    allc: list[Tile] = []
+    blk: list[Tile] = []
+    approach: Tile | None = None
+    for (tx, ty), role in ident.footprint.at(ax, ay):
+        allc.append((tx, ty))
+        if role.blocks:
+            blk.append((tx, ty))
+        if role is Role.ENTRANCE:
+            approach = (tx, ty + 1)
+        elif role is Role.VISIT and approach is None:
+            approach = (tx, ty)
+    return allc, blk, approach

@@ -35,17 +35,7 @@ from vcmi_mapgen.core.model import (
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import ZoneWorkspace
-from vcmi_mapgen.core.steps.gameplay.mines import (
-    CORE_SPELLS,
-    MINE_GUARD_LVL,
-    Covariates,
-    TerrainStats,
-    gate_dist,
-    intensity_weights,
-    load_gameplay,
-    openness,
-)
-from vcmi_mapgen.core.steps.gate.gates import (
+from vcmi_mapgen.core.placement.guards import (
     NO_TILES,
     Clearance,
     Fit,
@@ -53,7 +43,110 @@ from vcmi_mapgen.core.steps.gate.gates import (
     inflate_gap,
     rnd_monster,
 )
-from vcmi_mapgen.core.steps.placement import web_dist
+from vcmi_mapgen.core.placement.intensity import Covariates, gate_dist, intensity_weights, openness
+from vcmi_mapgen.core.placement.place import web_dist
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.corpus.gameplay import load_gameplay
+
+# every base-game learnable spell (config/spells/{adventure,other,offensive,timed}.json,
+# indices 0-69) — a town's Mage Guild picks its taught spells from this pool, so omitting
+# it (as opposed to leaving it empty) is what VCMI reads as "no spells available". Creature
+# abilities (config/spells/ability.json, indices 70-81: stoneGaze, poison, ...) are not
+# learnable spells and are excluded, matching real VCMI RMG output.
+CORE_SPELLS: list[JsonValue] = [
+    "core:" + name
+    for name in (
+        "summonBoat",
+        "scuttleBoat",
+        "visions",
+        "viewEarth",
+        "disguise",
+        "viewAir",
+        "fly",
+        "waterWalk",
+        "dimensionDoor",
+        "townPortal",
+        "quicksand",
+        "landMine",
+        "forceField",
+        "fireWall",
+        "earthquake",
+        "dispel",
+        "cure",
+        "resurrection",
+        "animateDead",
+        "sacrifice",
+        "teleport",
+        "removeObstacle",
+        "clone",
+        "fireElemental",
+        "earthElemental",
+        "waterElemental",
+        "airElemental",
+        "magicArrow",
+        "iceBolt",
+        "lightningBolt",
+        "implosion",
+        "chainLightning",
+        "frostRing",
+        "fireball",
+        "inferno",
+        "meteorShower",
+        "deathRipple",
+        "destroyUndead",
+        "armageddon",
+        "titanBolt",
+        "shield",
+        "airShield",
+        "fireShield",
+        "protectAir",
+        "protectFire",
+        "protectWater",
+        "protectEarth",
+        "antiMagic",
+        "magicMirror",
+        "bless",
+        "curse",
+        "bloodlust",
+        "precision",
+        "weakness",
+        "stoneSkin",
+        "disruptingRay",
+        "prayer",
+        "mirth",
+        "sorrow",
+        "fortune",
+        "misfortune",
+        "haste",
+        "slow",
+        "slayer",
+        "frenzy",
+        "counterstrike",
+        "berserk",
+        "hypnotize",
+        "forgetfulness",
+        "blind",
+    )
+]
+
+
+# guard strength tracks the value guarded: mine guards by resource rarity. Every mine is
+# guarded (user-reported bug: unguarded mines), valuable mines scaling higher still. The
+# town's own economy pair (sawmill/orePit) is guarded at level 1 specifically (user-mandated
+# — a trivial early fight, not a level-3+ wall in front of every town's starting economy).
+MINE_GUARD_LVL = {
+    "sawmill": 1,
+    "orePit": 1,
+    "waterWheel": 3,
+    "windmill": 3,
+    "mysticalGarden": 3,
+    "alchemistLab": 4,
+    "sulfurDune": 4,
+    "gemPond": 5,
+    "crystalCavern": 5,
+    "goldMine": 6,
+    "abandoned": 5,
+}
 
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3

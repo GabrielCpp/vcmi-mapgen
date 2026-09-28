@@ -9,10 +9,10 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.placement import guard_zoc
-from vcmi_mapgen.core.steps.scatter import scatter as SC
+from vcmi_mapgen.core.placement import scatter as SC
+from vcmi_mapgen.core.placement.guards import guard_zoc
+from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
-from vcmi_mapgen.validate import TerrainGate
 
 
 class ScatterStep(PipelineStep):

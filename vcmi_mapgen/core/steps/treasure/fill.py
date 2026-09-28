@@ -22,8 +22,9 @@ from vcmi_mapgen.core.model import (
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 _LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})
@@ -124,7 +125,7 @@ class FillZone:
 
     zid: int
     terrain: str
-    st: PG.TerrainStats
+    st: TerrainStats
     reach: frozenset[Tile]
     used: set[Tile]
     rng: random.Random
@@ -316,7 +317,7 @@ def fill_loot_zones(
         zone = FillZone(
             zid=zr.zid,
             terrain=zr.terrain,
-            st=PG.load_gameplay()[zr.terrain],
+            st=load_gameplay()[zr.terrain],
             reach=frozenset(zr.ts - blocked - footprint),
             used=used,
             rng=random.Random(seed ^ (zr.zid * 92821) ^ 0xA117),

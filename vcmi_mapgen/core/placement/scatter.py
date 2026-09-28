@@ -12,9 +12,17 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile, Zone
-from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one, web_dist
+from vcmi_mapgen.core.model.purpose import PICKUP_PURPOSES, Purpose
+from vcmi_mapgen.core.placement.intensity import (
+    Covariates,
+    gate_dist,
+    intensity_weights,
+    openness,
+    scaled_cap,
+)
+from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one, web_dist
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 from vcmi_mapgen.kit.topology import zone_gate_bands
 
 CAPS = {
@@ -57,12 +65,12 @@ def _stoch(rng: random.Random, x: float, cap: int) -> int:
     return min(n, cap)
 
 
-def _scatter_gate_dist(zone: ScatterZone, st: PG.TerrainStats) -> dict[Tile, int]:
+def _scatter_gate_dist(zone: ScatterZone, st: TerrainStats) -> dict[Tile, int]:
     if zone.entrances is not None:  # isolation plan: gd measures from the
         bands = [(r, b) for r, b, _o in zone.entrances]  # planned narrow crossings
     else:
         bands = zone_gate_bands(zone.ts, zone.zones, zone.zid, open_frac=st.border_open_frac)
-    return PG.gate_dist(zone.ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
+    return gate_dist(zone.ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
 
 
 def place_scatter(
@@ -79,20 +87,20 @@ def place_scatter(
     once for the WHOLE map after every zone's scatter is done (a genuine pocket must be
     judged against true global passability, not one zone's reach alone)."""
     ts = zone.ts
-    st = PG.load_gameplay()[zone.terrain]
+    st = load_gameplay()[zone.terrain]
     rng = random.Random(config.seed ^ (zone.zid * 92821) ^ 0x9C4)
     area = len(ts)
-    dens = {p: st.counts.get(p, 0) / max(st.tiles, 1) for p in PG.PICKUP_PURPOSES}
+    dens = {p: st.counts.get(p, 0) / max(st.tiles, 1) for p in PICKUP_PURPOSES}
 
     n_res = _stoch(
         rng,
         dens[Purpose.RESOURCE_PILE] * area,
-        PG.scaled_cap(CAPS[Purpose.RESOURCE_PILE], dens[Purpose.RESOURCE_PILE] * area),
+        scaled_cap(CAPS[Purpose.RESOURCE_PILE], dens[Purpose.RESOURCE_PILE] * area),
     )
 
     dweb = web_dist(zone.open_set, zone.prot)
     reach = set(dweb) if config.reach_in is None else config.reach_in  # reachable open tiles only
-    op = PG.openness(zone.open_set)
+    op = openness(zone.open_set)
     ed = edge_dist(ts)
     gd = _scatter_gate_dist(zone, st)
 
@@ -109,7 +117,7 @@ def place_scatter(
     def scatter(purpose: str, pool: Sequence[Identity], n: int, min_sep: int) -> None:
         if n <= 0:
             return
-        wmap = PG.intensity_weights(reach, purpose, st, PG.Covariates(ed, gd, op))
+        wmap = intensity_weights(reach, purpose, st, Covariates(ed, gd, op))
         cands = sorted(reach)
         if not cands:  # zone has no reachable open tile
             return

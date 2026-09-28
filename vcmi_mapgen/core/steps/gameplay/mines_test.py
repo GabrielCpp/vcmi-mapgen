@@ -8,10 +8,12 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.guards import GAP
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.step import OpenZone, place_open_zone
-from vcmi_mapgen.core.steps.gate.gates import GAP, footprint_cells
 from vcmi_mapgen.core.steps.vegetation import stats as PS
+from vcmi_mapgen.corpus.gameplay import STATS_PATH, load_gameplay
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
@@ -25,7 +27,7 @@ def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
 @needs_stats
 def test_gameplay_layer_legal_and_deterministic(catalog: Catalog) -> None:
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     o1 = place_open_zone(catalog, OpenZone(ts, "grass"), 4)
@@ -112,7 +114,7 @@ def test_select_player_zones_far_apart() -> None:
 def test_forced_town_sits_on_zone_centroid(catalog: Catalog) -> None:
     """A designated player zone gets its town ON the centroid (footprint-centered)."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     objs = place_open_zone(catalog, OpenZone(ts, "grass", player=True), 4).gobjs
@@ -135,7 +137,7 @@ def test_forced_town_sits_on_zone_centroid(catalog: Catalog) -> None:
 def test_town_zone_gets_wood_and_ore_next_to_town(catalog: Catalog) -> None:
     """A zone with a town ALWAYS holds a sawmill + ore pit, anchored near the town."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     for seed in (1, 4, 9):
@@ -157,7 +159,7 @@ def test_mine_ledger_covers_basics_and_rations_gold(catalog: Catalog) -> None:
     """The map-level ledger drives zones to cover all six basic resources and blocks gold
     mines until the map holds several towns."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(40) for y in range(30)}
     # gold is rationed to towns - 1 (a zone may roll a neutral town of its own, which
@@ -183,7 +185,7 @@ def test_banks_placed_on_land_and_legal(catalog: Catalog) -> None:
     """Creature banks (utopias, conservatories, crypts...) place on land like visitables:
     full footprint in-zone, approach standable, no extra approach guard."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(45) for y in range(40)}
     banks: list[PlacedObject] = []
@@ -204,9 +206,9 @@ def test_mine_sprites_match_terrain(catalog: Catalog) -> None:
     """Mine DEFs carry a baked-in terrain apron; placed mines must use variants the corpus
     actually uses on that terrain (no dirt-apron gold mine on grass)."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
-    st = PG.load_gameplay()
+    st = load_gameplay()
     ts = {(x, y) for x in range(40) for y in range(30)}
     for terrain in ("grass", "snow"):
         mw = st[terrain].anim_w[Purpose.MINE]
@@ -226,7 +228,7 @@ def test_audit_variety_green(catalog: Catalog) -> None:
     (identity via the catalog, placement via a pool) — the acceptance check for corpus
     visitable variety."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     gaps = PG.audit_variety(catalog)
     assert gaps == [], f"variety gaps: {gaps}"

@@ -4,8 +4,8 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement.guards import guard_spaced
 from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entrances
-from vcmi_mapgen.core.steps.placement import guard_spaced
 from vcmi_mapgen.kit.topology import plan_entrances
 
 GRASS = 2

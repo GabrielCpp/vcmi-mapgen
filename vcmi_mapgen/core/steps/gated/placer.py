@@ -16,10 +16,11 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells
-from vcmi_mapgen.core.steps.gate.gates import rnd_monster
-from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
+from vcmi_mapgen.core.placement.guards import rnd_monster
+from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 LOOT_ZONE_MAX_TILES = 60
 _LOOT_COLORS = [(f"avxbgt{i}0", f"avxkey{i}0") for i in range(8)]
@@ -135,12 +136,6 @@ def find_entry_corridor(
     return corridor
 
 
-def _blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
-    return {
-        (cx, cy) for o in objs for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y) if blk
-    }
-
-
 def _count_clusters(boundary: AbstractSet[Tile]) -> int:
     seen: set[Tile] = set()
     n = 0
@@ -230,7 +225,7 @@ class LootAccess:
 class _LootZone:
     zid: int
     terrain: str
-    st: PG.TerrainStats
+    st: TerrainStats
     ts: frozenset[Tile]
     used: set[Tile]
     rng: random.Random
@@ -277,7 +272,7 @@ class GatedPlacer:
         self.town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == Purpose.TOWN}
         self.cover = CoverIndex(objs_existing)
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
-        self.blocked = _blocking_cells(objs_existing)
+        self.blocked = FP.blocking_cells(objs_existing)
         self.interactive_existing = {
             c for o in objs_existing for c in FP.interactive_cells(o.footprint, o.x, o.y)
         }
@@ -335,7 +330,7 @@ class GatedPlacer:
         zone = _LootZone(
             zr.zid,
             zr.terrain,
-            PG.load_gameplay()[zr.terrain],
+            load_gameplay()[zr.terrain],
             zr.ts,
             zr.used,
             rng,
@@ -465,7 +460,7 @@ class GatedPlacer:
         return None
 
     def _has_ext_access(self, ts: AbstractSet[Tile], interactive: AbstractSet[Tile]) -> bool:
-        blocked = _blocking_cells(self.objs) | self.blocked
+        blocked = FP.blocking_cells(self.objs) | self.blocked
         w, h = self.bounds if self.bounds is not None else (999, 999)
         return any(
             nb not in ts and nb not in blocked and 0 <= nb[0] < w and 0 <= nb[1] < h
@@ -547,7 +542,7 @@ class GatedPlacer:
         spec = PlaceSpec(Purpose.TRANSPORT, None, ident=mono_ident, interactive_only=True)
         if not place_one(self._target(zone), spec, *int_t):
             return False
-        self.blocked |= _blocking_cells(self.objs[n0:])
+        self.blocked |= FP.blocking_cells(self.objs[n0:])
         self._seal(zone, sited)
         if not self._finish(zone, sited):
             return False
@@ -626,7 +621,7 @@ class GatedPlacer:
             ext_zr.used,
             ext_zr.reach,
             ext_rng,
-            PG.load_gameplay()[ext_zr.terrain],
+            load_gameplay()[ext_zr.terrain],
             bounds=self.bounds,
             cover=self.cover,
         )
@@ -647,7 +642,7 @@ class GatedPlacer:
                 PlaceSpec(Purpose.GUARD, None, ident=gident, clear_of=clear_of),
             ):
                 break
-        self.blocked |= _blocking_cells(self.objs[n0:])
+        self.blocked |= FP.blocking_cells(self.objs[n0:])
         return True
 
 

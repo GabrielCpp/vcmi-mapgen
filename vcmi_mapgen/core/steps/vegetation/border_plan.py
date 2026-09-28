@@ -12,10 +12,6 @@ from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import footprint as FP
 
 
-def blocking_cells(o: PlacedObject) -> list[Tile]:
-    return [(cx, cy) for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y) if blk]
-
-
 def zone_owner(
     catalog: Catalog, zones: Mapping[int, Zone]
 ) -> tuple[dict[Tile, int], dict[Tile, str]]:
@@ -167,9 +163,7 @@ def seal_borders(
     `avoid` tile. Returns (new_objs, sealed_cells)."""
     rng = random.Random(seed ^ 0x5EA1 ^ (level * 7919))
     owner, tname = zone_owner(catalog, plan.zones)
-    blocked: set[Tile] = set()
-    for o in objs:
-        blocked.update(blocking_cells(o))
+    blocked = FP.blocking_cells(objs)
     open_all = set(plan.land) - blocked
     pairs: list[tuple[Tile, Tile]] = cross_pairs(open_all, owner, plan.bands)[0]
     sealer = _Sealer(plan, owner, open_all)

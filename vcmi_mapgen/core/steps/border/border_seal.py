@@ -9,9 +9,8 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gate.gates import rnd_monster
-from vcmi_mapgen.core.steps.placement import guard_spaced
-from vcmi_mapgen.core.steps.vegetation.border_plan import blocking_cells, cross_pairs, zone_owner
+from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
+from vcmi_mapgen.core.steps.vegetation.border_plan import cross_pairs, zone_owner
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,9 +118,7 @@ def guard_crossings(
     Returns (new_objs, guard_tiles, n_unguarded_pairs)."""
     rng = random.Random(seed ^ 0x6A4D ^ (terrain.level * 7919))
     owner, _tname = zone_owner(catalog, terrain.zones)
-    blocked: set[Tile] = set()
-    for o in objs:
-        blocked.update(blocking_cells(o))
+    blocked = FP.blocking_cells(objs)
     grid = terrain.grid
     open_all = {
         (x, y) for y in range(terrain.height) for x in range(terrain.width) if grid[y][x] < 8

@@ -20,11 +20,11 @@ from vcmi_mapgen.core.model import (
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.water import legal_cells
+from vcmi_mapgen.core.placement.cells import legal_cells
+from vcmi_mapgen.core.placement.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.core.steps.loot import caches as CA
-from vcmi_mapgen.core.steps.scatter.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.core.steps.vegetation import stats as PS
+from vcmi_mapgen.corpus.gameplay import STATS_PATH
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
@@ -50,7 +50,7 @@ def _pickups(catalog: Catalog, zone: ScatterZone, seed: int) -> list[PlacedObjec
 @needs_stats
 def test_pickup_layer_legal_and_deterministic(catalog: Catalog) -> None:
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {1: _zone(ts)}
@@ -180,7 +180,7 @@ def test_scatter_places_resource_piles(catalog: Catalog) -> None:
     """Unguarded scatter places resource piles, a mix of fixed and random resources, and
     a real zone always yields some."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {1: _zone(ts)}
@@ -214,7 +214,7 @@ def test_pocket_guard_level_matches_artifact_tier_exactly(catalog: Catalog) -> N
     """Level of the guard monster == level of the artifact at the deep end (user-mandated
     2026-09) -- no random +1 bump on the guard, unlike the pre-redefinition behavior."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
 
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
@@ -344,7 +344,7 @@ def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog) -> None
     (treasureChest, campfire, pandoraBox) -- never scholar/corpse/spellScroll/leanTo/
     wagon/warriorTomb/denOfThieves, which "everything but an artifact" used to allow."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
 
     allowed = {"treasureChest", "campfire", "pandoraBox"}

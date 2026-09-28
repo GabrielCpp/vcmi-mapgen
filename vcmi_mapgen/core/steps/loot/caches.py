@@ -25,23 +25,16 @@ from vcmi_mapgen.core.model import (
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay.mines import TerrainStats, load_gameplay
-from vcmi_mapgen.core.steps.gate.gates import rnd_monster
-from vcmi_mapgen.core.steps.placement import (
-    PANDORA_CREATURES,
-    RW_LIMITER,
-    RW_REWARD,
-    RW_TEXT,
-    PlaceSpec,
-    PlaceTarget,
-    guard_spaced,
-    place_one,
-)
+from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
+from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.placement.rewards import PANDORA_CREATURES, RW_LIMITER, RW_REWARD, RW_TEXT
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.treasure.fill import (
     FILL_EXCL_ANIMS,
     LOOT_CHEST_TYPES,
     solo_visit_pool,
 )
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
 # treasure(1-2) → minor(3) → major(4-5) → any/relic(6).

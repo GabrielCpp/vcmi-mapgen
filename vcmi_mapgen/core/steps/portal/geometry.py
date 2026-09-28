@@ -12,9 +12,9 @@ from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zon
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay.mines import load_gameplay
-from vcmi_mapgen.core.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
-from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits, rnd_monster
+from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 

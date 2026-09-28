@@ -5,23 +5,20 @@ most against unwalkable tiles, summed over both levels, wins."""
 
 from __future__ import annotations
 
+import math
 import random
+from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.steps.gameplay.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
-from vcmi_mapgen.core.steps.gate.gates import (
-    GATE_ANIM,
-    NO_TILES,
-    Fit,
-    GateSide,
-    Spread,
-    gate_anchors,
-    rnd_monster,
-)
+from vcmi_mapgen.core.placement.guards import NO_TILES, Fit, rnd_monster
+from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
+from vcmi_mapgen.core.priors.gates import GATE_ANIM
+from vcmi_mapgen.corpus.gates import load_gate_stats
 
 GUARD_P = 0.65
 GUARD_SALT = 0x6A7F
@@ -111,3 +108,69 @@ def place_gate_pairs(
         gate_objs=placer.objs,
         gate_blk={lvl: frozenset(blk) for lvl, blk in placer.blk.items()},
     )
+
+
+@dataclass(frozen=True, slots=True)
+class GateSide:
+    ts: AbstractSet[Tile]
+    occ: Iterable[Tile]
+    appr: Iterable[Tile] = NO_TILES
+    zone_of: Mapping[Tile, int] = field(default_factory=dict[Tile, int])
+
+
+@dataclass
+class Spread:
+    side0: GateSide
+    side1: GateSide
+    min_gap: float
+    used0: set[int] = field(default_factory=set)
+    used1: set[int] = field(default_factory=set)
+    anchors: list[Tile] = field(default_factory=list)
+
+    def admits(self, c: Tile) -> bool:
+        if self.side0.zone_of.get(c, -1) in self.used0:
+            return False
+        if self.side1.zone_of.get(c, -1) in self.used1:
+            return False
+        return all(math.dist(c, a) >= self.min_gap for a in self.anchors)
+
+    def take(self, c: Tile) -> None:
+        self.anchors.append(c)
+        for zone_of, used in ((self.side0.zone_of, self.used0), (self.side1.zone_of, self.used1)):
+            if c in zone_of:
+                used.add(zone_of[c])
+
+
+def gate_anchors(
+    side0: GateSide,
+    side1: GateSide,
+    size: int,
+    seed: int,
+    place: Callable[[Tile, Spread], Tile | None],
+) -> list[Tile]:
+    """Walk the tiles land on both levels in a seeded order and let ``place`` put a gate
+    pair near each one the spread admits. ``place`` returns the anchor it used, or None.
+    The count is drawn from corpus maps of the same width and is an upper bound. Each zone
+    on either level hosts at most one gate, and no two gates sit closer than the corpus
+    spacing floor."""
+    rng = random.Random(seed ^ 0x6A7E)
+    ts_both = side0.ts & side1.ts
+    if not ts_both:
+        return []
+    st = load_gate_stats()
+    target = st.draw_count(size, rng)
+    spread = Spread(side0, side1, st.min_gap(size))
+    cands = sorted(ts_both)
+    rng.shuffle(cands)
+    out: list[Tile] = []
+    for c in cands:
+        if len(out) >= target:
+            break
+        if not spread.admits(c):
+            continue
+        anchor = place(c, spread)
+        if anchor is None:
+            continue
+        spread.take(anchor)
+        out.append(anchor)
+    return out

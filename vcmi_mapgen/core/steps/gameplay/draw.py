@@ -16,6 +16,7 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import COUNTED, VISIT_PURPOSES, Purpose
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RANDOM_SHARE,
     RND_DWELL,
@@ -23,7 +24,6 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     RND_TOWN,
     TOWN_MIN_AREA,
     Ledger,
-    TerrainStats,
     info_pool,
     mine_variants,
     rest_mines,

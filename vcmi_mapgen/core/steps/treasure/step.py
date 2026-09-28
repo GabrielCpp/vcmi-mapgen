@@ -7,10 +7,10 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.steps.gated.step import GatedResult
 from vcmi_mapgen.core.steps.treasure.fill import LootLevel, fill_loot_zones
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
-from vcmi_mapgen.validate import TerrainGate
 
 
 @final

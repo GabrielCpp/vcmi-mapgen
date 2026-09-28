@@ -10,7 +10,7 @@ exact same helpers) imports them from here rather than duplicating them.
 import collections
 import random
 import zlib
-from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
@@ -29,13 +29,12 @@ from vcmi_mapgen.core.model import (
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay.mines import (
-    RND_ART,
-    RND_RES,
-    WATER_PURPOSES,
-    TerrainStats,
-    load_gameplay,
+from vcmi_mapgen.core.placement.cells import legal_cells
+from vcmi_mapgen.core.placement.identity import (
+    pick_fixed_identity,
 )
+from vcmi_mapgen.core.steps.gameplay.mines import WATER_PURPOSES
+from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
@@ -49,76 +48,6 @@ SEAPORT_SEARCH_HOPS = 2  # near-coastal search depth (s10 diagnosis, 2026-09: th
 # shore instead of by land zone
 
 _NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-
-def pick_random_identity(
-    catalog: Catalog, purpose: str, rng: random.Random, art_share: float = 0.45
-) -> Identity | None:
-    """Identity for a pickup. The H3 convention (user-mandated): favour the editor's RANDOM
-    classes — random resource, tiered random artifacts — over fixed ones. `art_share` is
-    the random-artifact probability for REWARD_PICKUP: high for guarded caches, low for
-    unguarded scatter (which draws the fixed LOOT pool — treasure chests, campfires —
-    weighted by the corpus mix, where the chest dominates). None means the caller draws a
-    fixed identity instead."""
-    if purpose == Purpose.RESOURCE_PILE and rng.random() < 0.6:
-        return catalog.identity_of(RND_RES)
-    if purpose == Purpose.REWARD_PICKUP and rng.random() < art_share:
-        anim = rng.choices([a for a, _w, _v in RND_ART], weights=[w for _a, w, _v in RND_ART], k=1)[
-            0
-        ]
-        return catalog.identity_of(anim)
-    return None
-
-
-def pick_fixed_identity(
-    pool: Iterable[Identity], purpose: str, st_t: TerrainStats, rng: random.Random
-) -> Identity | None:
-    pool = sorted(
-        (i for i in pool if "random" not in (i.type or "").lower()),
-        key=lambda i: i.animation,
-    )
-    if not pool:
-        return None
-    w = st_t.anim_w.get(purpose, {})
-    return rng.choices(pool, weights=[w.get(i.animation.lower(), 0) + 0.2 for i in pool], k=1)[0]
-
-
-@dataclass(frozen=True, slots=True)
-class CellRules:
-    bounds: tuple[int, int] | None = None
-    interactive_only: bool = False
-
-
-DEFAULT_CELL_RULES = CellRules()
-
-
-def legal_cells(
-    ident: Identity,
-    anchor: Tile,
-    open_set: Container[Tile],
-    used: Container[Tile],
-    rules: CellRules = DEFAULT_CELL_RULES,
-) -> list[Tile] | None:
-    """A pickup/guard placement is legal if its INTERACTIVE cell(s) sit on an unused,
-    placement-eligible tile.  V-overlay cells (sprite bleed) may overlap terrain/walls.
-
-    interactive_only=True: only the interactive (A/X) cell is checked against `used` and
-    bounds, and only that cell is returned for claiming.  Use this for dense fill passes
-    where adjacent pickups' V-cells would otherwise falsely block each other — V cells are
-    cosmetic in H3/VCMI and two objects sharing V-cell space is legal."""
-    x, y = anchor
-    cells = [(tx, ty) for tx, ty, _b in FP.anchored_cells(ident.footprint, x, y)]
-    interactive = FP.interactive_cells(ident.footprint, x, y) or cells
-    check = interactive if rules.interactive_only else cells
-    if rules.bounds is not None:
-        bw, bh = rules.bounds
-        if any(not (0 <= tx < bw and 0 <= ty < bh) for tx, ty in check):
-            return None
-    if any(c in used for c in check):
-        return None
-    if all(c in open_set and c not in used for c in interactive):
-        return check
-    return None
 
 
 def _water_obj(
@@ -268,9 +197,7 @@ def _structure_fronts(objs: Iterable[PlacedObject]) -> tuple[set[Tile], list[set
         fp = o.footprint
         if not fp.cells:
             continue
-        for cx, cy, blk in FP.anchored_cells(fp, o.x, o.y):
-            if blk:
-                structure_blk.add((cx, cy))
+        structure_blk |= FP.blocking_cells([o])
         front = FP.front_tiles(fp, o.x, o.y)
         if front:
             structure_fronts.append(front)

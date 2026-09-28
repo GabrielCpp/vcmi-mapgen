@@ -13,32 +13,35 @@ places them after vegetation.
 """
 
 import collections
-import math
 from collections.abc import Callable, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject, Tile, Zone
-from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
+from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import PICKUP_PURPOSES, VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gate.gates import MIN_AREA_STATS
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.core.placement.intensity import (
+    EB,
+    GB,
+    OB,
+    Covariates,
+    gate_bin,
+    gate_dist,
+    open_bin,
+    openness,
+)
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.corpus.gameplay import (
+    load_gameplay,
+)
+from vcmi_mapgen.corpus.mine.gates import MIN_AREA_STATS
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
-from vcmi_mapgen.vcmi.formats import json_value as jv
 
-ROOT = project_root()
-STATS_PATH = str(ROOT / "data" / "pp" / "gameplay_stats.json")
-STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "gameplay_stats_underground.json")
-SOURCE = "vcmi_mapgen.core.steps.gameplay.mines.mine_gameplay"
-STATS_VERSION = 5  # v5: border open fraction + full-front gate distances
 TOWN_MIN_AREA = 150  # a town needs a real zone
-PICKUP_PURPOSES = (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD)
 WATER_PURPOSES = (
     Purpose.REWARD_PICKUP,
     Purpose.BONUS_TEMP,
@@ -65,87 +68,6 @@ ALL_PURPOSES = (
 # the six basic resource mines every map must cover (gold is the deliberate exception:
 # only worth placing when the map holds several towns)
 BASIC_MINE_RES = ("sawmill", "orePit", "alchemistLab", "sulfurDune", "crystalCavern", "gemPond")
-# every base-game learnable spell (config/spells/{adventure,other,offensive,timed}.json,
-# indices 0-69) — a town's Mage Guild picks its taught spells from this pool, so omitting
-# it (as opposed to leaving it empty) is what VCMI reads as "no spells available". Creature
-# abilities (config/spells/ability.json, indices 70-81: stoneGaze, poison, ...) are not
-# learnable spells and are excluded, matching real VCMI RMG output.
-CORE_SPELLS: list[JsonValue] = [
-    "core:" + name
-    for name in (
-        "summonBoat",
-        "scuttleBoat",
-        "visions",
-        "viewEarth",
-        "disguise",
-        "viewAir",
-        "fly",
-        "waterWalk",
-        "dimensionDoor",
-        "townPortal",
-        "quicksand",
-        "landMine",
-        "forceField",
-        "fireWall",
-        "earthquake",
-        "dispel",
-        "cure",
-        "resurrection",
-        "animateDead",
-        "sacrifice",
-        "teleport",
-        "removeObstacle",
-        "clone",
-        "fireElemental",
-        "earthElemental",
-        "waterElemental",
-        "airElemental",
-        "magicArrow",
-        "iceBolt",
-        "lightningBolt",
-        "implosion",
-        "chainLightning",
-        "frostRing",
-        "fireball",
-        "inferno",
-        "meteorShower",
-        "deathRipple",
-        "destroyUndead",
-        "armageddon",
-        "titanBolt",
-        "shield",
-        "airShield",
-        "fireShield",
-        "protectAir",
-        "protectFire",
-        "protectWater",
-        "protectEarth",
-        "antiMagic",
-        "magicMirror",
-        "bless",
-        "curse",
-        "bloodlust",
-        "precision",
-        "weakness",
-        "stoneSkin",
-        "disruptingRay",
-        "prayer",
-        "mirth",
-        "sorrow",
-        "fortune",
-        "misfortune",
-        "haste",
-        "slow",
-        "slayer",
-        "frenzy",
-        "counterstrike",
-        "berserk",
-        "hypnotize",
-        "forgetfulness",
-        "blind",
-    )
-]
-EB, GB, OB = 6, 4, 4  # covariate bins: edge-dist, gate-dist, openness
 
 # The H3 mapmaking convention (user-mandated): most placed objects are the editor's RANDOM
 # classes — random town/dwelling/monster/resource/artifact — with a few fixed ones. All of
@@ -153,84 +75,7 @@ EB, GB, OB = 6, 4, 4  # covariate bins: edge-dist, gate-dist, openness
 RND_TOWN = "avcranx0"  # randomTown
 RND_DWELL = "avrcgen0"  # randomDwelling (any level)
 RND_DWELL_L = tuple(f"avrcgen{i}" for i in range(1, 8))  # randomDwellingLvl 1..7
-RND_RES = "avtrndm0"  # randomResource
-RND_ART = (
-    ("avarnd1", 50, 3),
-    ("avarnd2", 30, 5),  # (anim, pick weight, reward value):
-    ("avarnd3", 15, 8),
-    ("avarand", 5, 5),
-)  # treasure/minor/major/any artifact
 RANDOM_SHARE = 0.7  # towns: random vs fixed split
-# guard strength tracks the value guarded: mine guards by resource rarity. Every mine is
-# guarded (user-reported bug: unguarded mines), valuable mines scaling higher still. The
-# town's own economy pair (sawmill/orePit) is guarded at level 1 specifically (user-mandated
-# — a trivial early fight, not a level-3+ wall in front of every town's starting economy).
-MINE_GUARD_LVL = {
-    "sawmill": 1,
-    "orePit": 1,
-    "waterWheel": 3,
-    "windmill": 3,
-    "mysticalGarden": 3,
-    "alchemistLab": 4,
-    "sulfurDune": 4,
-    "gemPond": 5,
-    "crystalCavern": 5,
-    "goldMine": 6,
-    "abandoned": 5,
-}
-
-
-def scaled_cap(base: int, expectation: float) -> int:
-    """Area-scaled soft cap: the corpus expectation (density x area) drives the count; the
-    cap only stops outliers (1.5x the expectation), never below the base floor."""
-    return max(base, math.ceil(expectation * 1.5))
-
-
-def _gbin(d: int) -> int:
-    return min(d // 3, GB - 1)
-
-
-def _obin(n_open_5x5: int) -> int:
-    return min(n_open_5x5 // 7, OB - 1)
-
-
-def gate_dist(ts: AbstractSet[Tile], gates: Iterable[Tile]) -> dict[Tile, int]:
-    """4-connected BFS steps from the zone's rim gates (corpus + generated zones alike)."""
-    d = {g: 0 for g in gates if g in ts}
-    q = collections.deque(d)
-    while q:
-        x, y = q.popleft()
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            n = (x + dx, y + dy)
-            if n in ts and n not in d:
-                d[n] = d[(x, y)] + 1
-                q.append(n)
-    return d
-
-
-def openness(open_set: AbstractSet[Tile]) -> dict[Tile, int]:
-    """Per open tile: number of open tiles in its 5x5 window (low = nook/chokepoint)."""
-    out: dict[Tile, int] = {}
-    for x, y in open_set:
-        out[(x, y)] = sum(
-            1 for dx in range(-2, 3) for dy in range(-2, 3) if (x + dx, y + dy) in open_set
-        )
-    return out
-
-
-@dataclass(frozen=True, slots=True)
-class TerrainStats:
-    tiles: int
-    counts: dict[str, int]
-    anim_w: dict[str, dict[str, int]]
-    e: dict[str, list[int]]
-    g: dict[str, list[int]]
-    o: dict[str, list[int]]
-    tiles_e: list[int]
-    tiles_g: list[int]
-    tiles_o: list[int]
-    border_open_frac: float
-    guard_frac: dict[str, float]
 
 
 @dataclass(slots=True)
@@ -264,78 +109,6 @@ class AuditGap:
     anim: str
     count: int
     why: str
-
-
-def _number(value: JsonValue | None) -> float:
-    return float(value) if isinstance(value, int | float) else 0.0
-
-
-def _int_map(value: JsonValue | None) -> dict[str, int]:
-    return {k: jv.as_int(v) for k, v in jv.as_object(value).items()}
-
-
-def _int_list(value: JsonValue | None) -> list[int]:
-    return [jv.as_int(v) for v in jv.as_list(value)]
-
-
-def _int_lists(value: JsonValue | None) -> dict[str, list[int]]:
-    return {k: _int_list(v) for k, v in jv.as_object(value).items()}
-
-
-def _stats_from_json(value: JsonValue | None) -> TerrainStats:
-    d = jv.as_object(value)
-    return TerrainStats(
-        tiles=jv.as_int(d.get("tiles")),
-        counts=_int_map(d.get("counts")),
-        anim_w={k: _int_map(v) for k, v in jv.as_object(d.get("anim_w")).items()},
-        e=_int_lists(d.get("e")),
-        g=_int_lists(d.get("g")),
-        o=_int_lists(d.get("o")),
-        tiles_e=_int_list(d.get("tiles_e")),
-        tiles_g=_int_list(d.get("tiles_g")),
-        tiles_o=_int_list(d.get("tiles_o")),
-        border_open_frac=_number(d.get("border_open_frac")),
-        guard_frac={k: _number(v) for k, v in jv.as_object(d.get("guard_frac")).items()},
-    )
-
-
-def _stats_to_json(st: TerrainStats) -> dict[str, JsonValue]:
-    return {
-        "tiles": st.tiles,
-        "counts": {k: v for k, v in st.counts.items()},
-        "anim_w": {p: {a: n for a, n in c.items()} for p, c in st.anim_w.items()},
-        "e": {p: [n for n in v] for p, v in st.e.items()},
-        "g": {p: [n for n in v] for p, v in st.g.items()},
-        "o": {p: [n for n in v] for p, v in st.o.items()},
-        "tiles_e": [n for n in st.tiles_e],
-        "tiles_g": [n for n in st.tiles_g],
-        "tiles_o": [n for n in st.tiles_o],
-        "border_open_frac": st.border_open_frac,
-        "guard_frac": {p: f for p, f in st.guard_frac.items()},
-    }
-
-
-def _stats_path(level: int) -> Path:
-    return Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
-
-
-def load_gameplay(level: int = 0) -> dict[str, TerrainStats]:
-    st = pp_cache.read(_stats_path(level), version=STATS_VERSION)
-    return {k: _stats_from_json(v) for k, v in st.items() if k not in pp_cache.META_KEYS}
-
-
-def save_gameplay(level: int, stats: Mapping[str, TerrainStats]) -> None:
-    payload: dict[str, object] = {"_version": STATS_VERSION}
-    for t, tst in stats.items():
-        payload[t] = _stats_to_json(tst)
-    pp_cache.write(_stats_path(level), SOURCE, payload)
-
-
-@dataclass(frozen=True, slots=True)
-class Covariates:
-    ed: Mapping[Tile, int]
-    gd: Mapping[Tile, int]
-    op: Mapping[Tile, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -396,10 +169,10 @@ def _count_zone_obj(
     if anim:
         a.anim_w[p][anim] += 1
     a.e[p][min(cov.ed[t], EB - 1)] += 1
-    a.g[p][_gbin(cov.gd.get(t, 12))] += 1
+    a.g[p][gate_bin(cov.gd.get(t, 12))] += 1
     op = cov.op
     if op is not None and t in op:
-        a.o[p][_obin(op[t])] += 1
+        a.o[p][open_bin(op[t])] += 1
     if p in (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.MINE):
         a.guardable[p] += 1
         if any(max(abs(t[0] - gx), abs(t[1] - gy)) <= 3 for gx, gy in guards):
@@ -420,9 +193,9 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
     op = openness(ts - veg_blocked)
     for t in ts:
         a.tiles_e[min(ed[t], EB - 1)] += 1
-        a.tiles_g[_gbin(gd.get(t, 12))] += 1
+        a.tiles_g[gate_bin(gd.get(t, 12))] += 1
         if t in op:
-            a.tiles_o[_obin(op[t])] += 1
+            a.tiles_o[open_bin(op[t])] += 1
     cov = Covariates(ed, gd, op)
     for o in zone_objs:
         _count_zone_obj(a, o, cov, cl.guards)
@@ -493,42 +266,6 @@ def mine_gameplay(
             continue
         _accumulate_map(catalog, acc, fm, level)
     return {t: _finish_stats(a) for t, a in acc.items()}
-
-
-def theta_covariates(st_t: TerrainStats, purpose: str) -> dict[str, list[float]]:
-    """The L3 counting fit: th[bin] = log of the purpose's relative intensity in that covariate
-    bin vs its zone-wide average (Laplace-smoothed, clipped to ±2). Additive across covariates
-    — the log-linear model of spec §7.1 with independent covariate effects."""
-    out: dict[str, list[float]] = {}
-    tot = sum(st_t.counts.get(p, 0) for p in [purpose]) or 1
-    base = tot / max(st_t.tiles, 1)
-    for key, cov, tile_bins, nbins in (
-        ("e", st_t.e, st_t.tiles_e, EB),
-        ("g", st_t.g, st_t.tiles_g, GB),
-        ("o", st_t.o, st_t.tiles_o, OB),
-    ):
-        cnts = cov.get(purpose, [0] * nbins)
-        th: list[float] = []
-        for b in range(nbins):
-            lam_b = (cnts[b] + 0.5) / (tile_bins[b] + 0.5 / max(base, 1e-9))
-            th.append(max(-2.0, min(2.0, math.log(lam_b / base))))
-        out[key] = th
-    return out
-
-
-def intensity_weights(
-    ts: Iterable[Tile], purpose: str, st_t: TerrainStats, cov: Covariates
-) -> dict[Tile, float]:
-    """Per-tile placement intensity  w(u) = exp(th_e + th_g (+ th_o))  from the L3 fit."""
-    th = theta_covariates(st_t, purpose)
-    ed, gd, op = cov.ed, cov.gd, cov.op
-    w: dict[Tile, float] = {}
-    for t in sorted(ts):
-        s = th["e"][min(ed[t], EB - 1)] + th["g"][_gbin(gd.get(t, 12))]
-        if op is not None:
-            s += th["o"][_obin(op[t])] if t in op else -2.0
-        w[t] = math.exp(s)
-    return w
 
 
 def info_pool(

@@ -1,7 +1,7 @@
 # core/steps/ — the PipelineStep contract
 
 One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
-`gated/`, `treasure/`, `border/`, `portal/`, `loot/`, `scatter/`), each holding a `step.py` with one `PipelineStep` subclass. `gate/` holds no step. It keeps the gate statistics and the footprint helpers every placement step shares. `zone_plan.py` holds no step either. It builds each zone's entrances, walkable web and the sea plan, and `VegetationStep` calls it first. See
+`gated/`, `treasure/`, `border/`, `portal/`, `loot/`, `scatter/`), each holding a `step.py` with one `PipelineStep` subclass. `zone_plan.py` holds no step. It builds each zone's entrances, walkable web and the sea plan, and `VegetationStep` calls it first. See
 `vcmi-mapgen-pipeline` for `PipelineStep`/`Pipeline`/`ProviderRegistry` themselves
 (in `core/pipeline.py`); this file is the contract a new or changed step must satisfy.
 
@@ -17,10 +17,8 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 - `portal/`: `PortalStep`, the portal pairs that link cut-off zones to the start zone.
 - `loot/`: `LootStep`, the seer-hut quests and guarded pocket caches.
 - `scatter/`: `ScatterStep`, the free resource piles placed last.
-- `gate/`: the Subterranean Gate statistics and the footprint helpers every placement step shares. It holds no step.
 - `zone_plan.py`: each zone's entrances, walkable web and sea plan, and the player zones with the room kept for their town. `VegetationStep` builds it first.
 - `zone_index.py`: the per-level zone records and walk targets the placement steps after vegetation share.
-- `placement.py`: the placement primitives shared over the open field: reachability, guard control and spacing, `place_one` and the pandoraBox rewards.
 
 ## What a step must do
 

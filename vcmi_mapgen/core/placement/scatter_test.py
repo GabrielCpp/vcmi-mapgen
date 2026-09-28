@@ -1,9 +1,9 @@
-"""Reliability tests for steps.scatter.scatter (unguarded resource piles)."""
+"""Reliability tests for core.placement.scatter (unguarded resource piles)."""
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.steps.scatter import scatter as SC
+from vcmi_mapgen.core.placement import scatter as SC
 
 
 def test_place_scatter_handles_a_zone_with_no_reachable_open_tile(catalog: Catalog) -> None:

@@ -1,119 +1,25 @@
-"""Placement primitives shared by every step that places objects over the open field:
-the reachability BFS, a guard's zone of control, the guard spacing rule, ``place_one``
-and the pandoraBox reward helpers."""
+"""``place_one``, the shared placement primitive, and the reachability BFS it places against."""
 
 import collections
 import random
-from collections.abc import Collection, Container, Iterable, Sequence
+from collections.abc import Collection, Container, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
-from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.model.resource import Resource
-from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.water import (
-    CellRules,
-    legal_cells,
-    pick_fixed_identity,
-    pick_random_identity,
+from vcmi_mapgen.core.model import (
+    CoverIndex,
+    Identity,
+    JsonValue,
+    PlacedObject,
+    Tile,
 )
-
-GUARD_SPACING = 2
-
-PANDORA_CREATURES = (
-    "pikeman",
-    "centaur",
-    "gremlin",
-    "imp",
-    "skeleton",
-    "troglodyte",
-    "goblin",
-    "gnoll",
-    "peasant",
-)  # vanilla tier-1 dwelling
-# creatures, one per RoE town plus the neutral peasant -- a modest
-# unguarded-scatter payload, not cache-treasure tier.
-
-RW_TEXT: dict[str, JsonValue] = {
-    "exactStrings": None,
-    "localStrings": None,
-    "message": None,
-    "numbers": None,
-    "stringsTextID": None,
-}
-RW_LIMITER: dict[str, JsonValue] = {
-    "allOf": [],
-    "anyOf": [],
-    "artifacts": [],
-    "creatures": [],
-    "dayOfWeek": 0,
-    "daysPassed": 0,
-    "heroExperience": 0,
-    "heroLevel": -1,
-    "manaPercentage": 0,
-    "manaPoints": 0,
-    "movePercentage": 0,
-    "movePoints": 0,
-    "noneOf": [],
-    "primary": [0, 0, 0, 0],
-    "secondary": [],
-}
-RW_REWARD: dict[str, JsonValue] = {
-    "creatures": [],
-    "creaturesChange": [],
-    "heroExperience": 0,
-    "heroLevel": 0,
-    "manaDiff": 0,
-    "manaOverflowFactor": 0,
-    "manaPercentage": -1,
-    "moveOverflowFactor": 0,
-    "movePercentage": -1,
-    "movePoints": 0,
-    "primary": [0, 0, 0, 0],
-    "resources": {},
-    "secondary": [],
-    "spellCast": {"level": 0},
-}
-
-
-def _pandora_reward(rng: random.Random) -> dict[str, JsonValue]:
-    """A VCMI 'Rewardable' payload for a pandoraBox (schema captured verbatim from a real
-    VCMI-RMG .vmap: `options.rewardable.info[].reward` alongside a sibling all-null
-    `guardMessage`). Without this an unconfigured pandoraBox is legal but permanently
-    empty -- every field defaults to 0/-1/null, which is a no-op reward. Kept modest
-    (gold/experience/a small creature stack): this fires from the unguarded-scatter loot
-    pool, not a guarded cache."""
-    reward = dict(RW_REWARD)
-    flavor = rng.choices(("gold", "experience", "creatures"), weights=(45, 30, 25), k=1)[0]
-    if flavor == "gold":
-        reward["resources"] = {Resource.GOLD: rng.choice((500, 1000, 1500, 2000, 3000, 5000))}
-    elif flavor == "experience":
-        reward["heroExperience"] = rng.choice((1000, 1500, 2500, 5000, 7500, 10000))
-    else:
-        reward["creatures"] = [
-            {"type": f"core:{rng.choice(PANDORA_CREATURES)}", "amount": rng.randint(3, 10)}
-        ]
-    return {
-        "guardMessage": dict(RW_TEXT),
-        "rewardable": {
-            "info": [
-                {
-                    "limiter": dict(RW_LIMITER),
-                    "message": dict(RW_TEXT),
-                    "reward": reward,
-                    "visitType": 1,
-                }
-            ],
-            "infoWindowType": 0,
-            "onSelect": dict(RW_TEXT),
-            "resetParameters": {"period": 0},
-            "selectMode": "selectFirst",
-            "visitMode": "unlimited",
-        },
-    }
+from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
+from vcmi_mapgen.core.placement.identity import pick_fixed_identity, pick_random_identity
+from vcmi_mapgen.core.placement.rewards import pandora_reward
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 
 def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, int]:
@@ -131,26 +37,6 @@ def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, 
     return d
 
 
-def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
-    """Every tile inside some guard's zone of control: the interactive cell plus its 8
-    neighbours. A hero stepping on one of them fights the guard."""
-    zoc: set[Tile] = set()
-    for o in objs:
-        if o.purpose != Purpose.GUARD or not o.footprint.cells:
-            continue
-        for ix, iy in FP.interactive_cells(o.footprint, o.x, o.y):
-            zoc.add((ix, iy))
-            zoc.update((ix + dx, iy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
-    return zoc
-
-
-def guard_spaced(t: Tile, guards: Iterable[Tile]) -> bool:
-    """True when no guard in ``guards`` stands within Chebyshev ``GUARD_SPACING`` of ``t``.
-    Every step that places a guard refuses a tile this rejects, so no two guards crowd one
-    crossing."""
-    return all(max(abs(t[0] - g[0]), abs(t[1] - g[1])) > GUARD_SPACING for g in guards)
-
-
 def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Tile]:
     return set(web_dist(open_set, prot))
 
@@ -162,7 +48,7 @@ class PlaceTarget:
     used: set[Tile]
     reach: AbstractSet[Tile]
     rng: random.Random
-    st: PG.TerrainStats
+    st: TerrainStats
     bounds: tuple[int, int] | None = None
     cover: CoverIndex | None = None
 
@@ -213,7 +99,7 @@ def _apply_options(o: PlacedObject, ident: Identity, spec: PlaceSpec, rng: rando
     if spec.options is not None:
         o.options = spec.options
     elif ident.type == "pandoraBox":  # absent => legal but permanently empty reward
-        o.options = _pandora_reward(rng)
+        o.options = pandora_reward(rng)
     elif ident.type == "spellScroll":
         # VCMI's spellScroll object has exactly one registered subtype ("object") --
         # the spell itself is carried in options.spell, never in subtype (confirmed

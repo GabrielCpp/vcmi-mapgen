@@ -8,21 +8,23 @@ from itertools import combinations
 import pytest
 
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.core.steps.gate import gates as PG
+from vcmi_mapgen.core.priors.gates import GateStats
+from vcmi_mapgen.core.steps.gameplay import gate_pairs as PG
+from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateSide, gate_anchors
 
 S = 40
 
 
-def _stats(counts: tuple[int, ...], frac: float = 0.25) -> PG.GateStats:
-    return PG.GateStats(counts_by_size={S: counts}, min_gap_frac=frac, n_maps=len(counts))
+def _stats(counts: tuple[int, ...], frac: float = 0.25) -> GateStats:
+    return GateStats(counts_by_size={S: counts}, min_gap_frac=frac, n_maps=len(counts))
 
 
-def _side(zone_of: dict[Tile, int]) -> PG.GateSide:
-    return PG.GateSide(frozenset(zone_of), set(), zone_of=zone_of)
+def _side(zone_of: dict[Tile, int]) -> GateSide:
+    return GateSide(frozenset(zone_of), set(), zone_of=zone_of)
 
 
-def _anchors(side0: PG.GateSide, side1: PG.GateSide, seed: int) -> list[Tile]:
-    return PG.gate_anchors(side0, side1, S, seed, lambda c, _spread: c)
+def _anchors(side0: GateSide, side1: GateSide, seed: int) -> list[Tile]:
+    return gate_anchors(side0, side1, S, seed, lambda c, _spread: c)
 
 
 def _open(label: Callable[[int, int], int]) -> dict[Tile, int]:
@@ -30,7 +32,7 @@ def _open(label: Callable[[int, int], int]) -> dict[Tile, int]:
 
 
 def test_draw_count_uses_nearest_corpus_width() -> None:
-    st = PG.GateStats(counts_by_size={36: (1,), 108: (7,)}, min_gap_frac=0.0, n_maps=2)
+    st = GateStats(counts_by_size={36: (1,), 108: (7,)}, min_gap_frac=0.0, n_maps=2)
     assert st.draw_count(40, random.Random(0)) == 1
     assert st.draw_count(100, random.Random(0)) == 7
 

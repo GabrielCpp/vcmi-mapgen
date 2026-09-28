@@ -16,11 +16,11 @@ from vcmi_mapgen.core.pipeline import (
     ProviderRegistry,
 )
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.zone_plan import plan_player_zones, plan_zones
-from vcmi_mapgen.validate import TerrainGate
 
 
 @dataclass

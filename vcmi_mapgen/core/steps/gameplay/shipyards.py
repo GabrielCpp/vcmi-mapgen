@@ -12,9 +12,10 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.guards import Fit
+from vcmi_mapgen.core.placement.site import SiteIndex, ZoneSite, back_score, door_cells
 from vcmi_mapgen.core.steps.gameplay import water as WT
-from vcmi_mapgen.core.steps.gameplay.site import SiteIndex, ZoneSite, back_score, door_cells
-from vcmi_mapgen.core.steps.gate.gates import Fit, footprint_cells
 
 SHORE_NOOK = 4
 

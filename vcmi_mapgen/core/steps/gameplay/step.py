@@ -21,6 +21,10 @@ from vcmi_mapgen.core.pipeline import (
     ProviderRegistry,
     ZoneWorkspace,
 )
+from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.guards import inflate_gap
+from vcmi_mapgen.core.placement.rules import TerrainGate
+from vcmi_mapgen.core.placement.site import LevelField, SiteIndex, ZoneSite
 from vcmi_mapgen.core.steps.gameplay.draw import TOWN_SLOTS, DrawSpec, ZoneDraw, ZoneDrawer
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateResult, place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.mines import (
@@ -31,11 +35,8 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     tie_dwellings,
 )
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
-from vcmi_mapgen.core.steps.gameplay.site import LevelField, SiteIndex, ZoneSite
-from vcmi_mapgen.core.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_plan import seaport_cells
-from vcmi_mapgen.validate import TerrainGate
 
 NO_TILES: frozenset[Tile] = frozenset()
 

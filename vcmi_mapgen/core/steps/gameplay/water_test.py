@@ -12,9 +12,9 @@ from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
+from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.vcmi.footprint import footprint_of
 
 Grid = list[list[int]]
@@ -345,7 +345,7 @@ def test_place_water_never_places_a_guard(catalog: Catalog) -> None:
     order: outside those three, no monster). Sampled across many seeds since GUARD is a
     probabilistic pick among WATER_PURPOSES, not a guaranteed-every-call roll."""
 
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {1: _zone(ts, 14.5, 11.5, 8)}

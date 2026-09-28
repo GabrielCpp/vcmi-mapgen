@@ -43,3 +43,4 @@ COUNTED = (
     Purpose.TRANSPORT,
     Purpose.WATER_TRANSPORT,
 )
+PICKUP_PURPOSES = (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD)

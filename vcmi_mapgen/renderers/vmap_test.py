@@ -9,8 +9,10 @@ import pytest
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
+from vcmi_mapgen.core.placement.site import CORE_SPELLS
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.step import OpenZone, place_open_zone
+from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
 from vcmi_mapgen.vcmi.catalog import objects as ON
@@ -121,7 +123,7 @@ def test_vmap_export_game_contracts(catalog: Catalog, tmp_path: Path) -> None:
         "VBBBBB",
         "VBBABB",
     )
-    if not os.path.exists(PG.STATS_PATH):
+    if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     # a placed zone carries the game-time options on the right purposes
     ts = {(x, y) for x in range(30) for y in range(24)}
@@ -131,7 +133,7 @@ def test_vmap_export_game_contracts(catalog: Catalog, tmp_path: Path) -> None:
         "allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]
     }
     assert _opts(town)["buildings"] == START_BUILDINGS
-    assert _opts(town)["possibleSpells"] == PG.CORE_SPELLS
+    assert _opts(town)["possibleSpells"] == CORE_SPELLS
     guards = [o for o in objs if o.purpose == "GUARD"]
     assert all(_opts(o)["character"] == "hostile" for o in guards)
     # random dwellings in a town zone are marked with the town's coordinates ...
@@ -147,7 +149,7 @@ def test_vmap_export_game_contracts(catalog: Catalog, tmp_path: Path) -> None:
     vobjs = _objects(p)
     vtown = next(vo for vo in vobjs if vo.get("type") in ("town", "randomTown"))
     assert _vopts(vtown)["buildings"] == START_BUILDINGS
-    assert _vopts(vtown)["possibleSpells"] == PG.CORE_SPELLS
+    assert _vopts(vtown)["possibleSpells"] == CORE_SPELLS
     assert len(_template_mask(vtown)) == 6, "town mask must span the full sprite"
     # the coordinate marker resolved to the town's minted instanceName
     vdwell = [vo for vo in vobjs if jv.as_str(vo.get("type")).startswith("randomDwelling")]
