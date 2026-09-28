@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import override
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.core.model import MapState, Zone
 from vcmi_mapgen.renderers.overlays._tiles import passable_tiles, passage_tiles, zone_lookup
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
@@ -17,14 +18,19 @@ class PassageOverlay(MapOverlay):
     """Blue: passable tiles that border a passable tile in a DIFFERENT zone --
     the actual walkable seam between two zones.
 
-    Reads ``state.zones[level]`` (populated by ``SegmentStep``); a no-op when
-    zones are absent.
+    Reads the ``zones`` it is given, level -> zone id -> zone, as TerrainStep's
+    ``Segmentation`` holds them; a no-op when a level has no zones.
     """
+
+    _zones: Mapping[int, Mapping[int, Zone]]
+
+    def __init__(self, zones: Mapping[int, Mapping[int, Zone]] | None = None) -> None:
+        self._zones = zones or {}
 
     @override
     def apply(self, state: MapState, level: int) -> Image.Image:
         surf = state.surfs.get(level) or state.cells.get(level)
-        zones = state.zones.get(level)
+        zones = self._zones.get(level)
         if not surf or not zones:
             return self._blank(*self._grid_size(state, level))
         W, H = len(surf[0]), len(surf)

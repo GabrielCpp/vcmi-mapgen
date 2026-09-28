@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from vcmi_mapgen.cli.steps import build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
+from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.steps.border.result import BorderResult
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
 from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import PngRenderer, VmapRenderer
@@ -32,10 +34,11 @@ from vcmi_mapgen.vcmi.install import VcmiInstall
 ROOT = project_root()
 CATALOG = VcmiCatalog()
 
-# Every factory takes `pockets` (LootStep's LootResult.pockets) uniformly, even
-# though only PocketOverlay uses it -- it's disposable analysis, not a MapState fact
+# Every factory takes `pockets` (LootStep's LootResult.pockets) and `zones`
+# (TerrainStep's Segmentation.zones) uniformly, even though only a few overlays use
+# them -- they're disposable analysis, not a MapState fact
 # (see vcmi_mapgen/core/model/AGENTS.md), so it must reach the overlay through its own
-# constructor rather than the overlay reading/recomputing it off MapState.
+# constructor rather than the overlay reading/recomputing them off MapState.
 #
 # "zone" is fill-only here -- PngRenderer composites overlays in list order, so a
 # zone-id label drawn at its normal stack position gets painted over by whatever
@@ -43,35 +46,38 @@ CATALOG = VcmiCatalog()
 # whenever "zone" is requested, so the label always survives on top of the stack.
 
 
-def _zone(_pockets: Pockets) -> MapOverlay:
-    return ZoneOverlay(labels=False)
+type Zones = Mapping[int, Mapping[int, Zone]]
 
 
-def _blocking(_pockets: Pockets) -> MapOverlay:
+def _zone(_pockets: Pockets, zones: Zones) -> MapOverlay:
+    return ZoneOverlay(zones, labels=False)
+
+
+def _blocking(_pockets: Pockets, _zones: Zones) -> MapOverlay:
     return BlockingOverlay(tiers=True)
 
 
-def _passage(_pockets: Pockets) -> MapOverlay:
-    return PassageOverlay()
+def _passage(_pockets: Pockets, zones: Zones) -> MapOverlay:
+    return PassageOverlay(zones)
 
 
-def _pocket(pockets: Pockets) -> MapOverlay:
+def _pocket(pockets: Pockets, _zones: Zones) -> MapOverlay:
     return PocketOverlay(pockets)
 
 
-def _guard(_pockets: Pockets) -> MapOverlay:
+def _guard(_pockets: Pockets, _zones: Zones) -> MapOverlay:
     return GuardOverlay()
 
 
-def _grid(_pockets: Pockets) -> MapOverlay:
+def _grid(_pockets: Pockets, _zones: Zones) -> MapOverlay:
     return GridOverlay()
 
 
-def _tile_type(_pockets: Pockets) -> MapOverlay:
+def _tile_type(_pockets: Pockets, _zones: Zones) -> MapOverlay:
     return TileTypeOverlay()
 
 
-OVERLAY_FACTORIES: dict[str, Callable[[Pockets], MapOverlay]] = {
+OVERLAY_FACTORIES: dict[str, Callable[[Pockets, Zones], MapOverlay]] = {
     "zone": _zone,
     "blocking": _blocking,
     "passage": _passage,
@@ -85,7 +91,7 @@ RENDERER_CHOICES = ("png", "vmap")
 DEFAULT_RENDERERS = "png,vmap"
 
 
-def parse_overlays(spec: str, pockets: Pockets) -> list[MapOverlay]:
+def parse_overlays(spec: str, pockets: Pockets, zones: Zones) -> list[MapOverlay]:
     spec = spec.strip().lower()
     names = [] if spec in ("", "none") else [s.strip() for s in spec.split(",")]
     unknown = [n for n in names if n not in OVERLAY_FACTORIES]
@@ -94,9 +100,9 @@ def parse_overlays(spec: str, pockets: Pockets) -> list[MapOverlay]:
             f"unknown overlay(s): {', '.join(unknown)} "
             + f"(choices: {', '.join(OVERLAY_FACTORIES)}, or 'none')"
         )
-    overlays = [OVERLAY_FACTORIES[n](pockets) for n in names if n != "grid"]
+    overlays = [OVERLAY_FACTORIES[n](pockets, zones) for n in names if n != "grid"]
     if "zone" in names:
-        overlays.append(ZoneOverlay(fill=False))
+        overlays.append(ZoneOverlay(zones, fill=False))
     if "grid" in names:
         overlays.append(GridOverlay())
     return overlays
@@ -165,7 +171,8 @@ def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
             png1 = png_renderer.save(map_state, f"ppmap_s{opts.seed}_L1.png", level=1)
             print(f"  {png1}")
 
-        overlays = parse_overlays(opts.overlays, loot_result.pockets)
+        zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
+        overlays = parse_overlays(opts.overlays, loot_result.pockets, zones)
         if overlays:
             overlay_renderer = PngRenderer(index, overlays=overlays)
             ov_img = overlay_renderer.render(map_state, level=0)

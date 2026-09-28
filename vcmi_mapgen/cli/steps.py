@@ -6,7 +6,6 @@ from vcmi_mapgen.core.steps import (
     LootStep,
     PortalStep,
     ScatterStep,
-    SegmentStep,
     TerrainStep,
     TreasureStep,
     VegetationStep,
@@ -14,7 +13,6 @@ from vcmi_mapgen.core.steps import (
 
 GENERATE_STOP_POINTS = (
     "terrain",
-    "segment",
     "vegetation",
     "gameplay",
     "gated",
@@ -37,7 +35,6 @@ def build_steps(
             "terrain",
             TerrainStep(size=size, seed=seed, water_mode=water_mode, subterrain=subterrain),
         ),
-        ("segment", SegmentStep()),
     ]
     steps.append(("vegetation", VegetationStep(seed=seed, players=players)))
     steps.append(

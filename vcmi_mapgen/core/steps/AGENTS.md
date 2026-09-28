@@ -8,7 +8,6 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 ## Map
 
 - `terrain_gen/`: `TerrainStep`, the macro terrain layout and the corpus-learned autotiling for both levels.
-- `segment/`: `SegmentStep`, the same-terrain flood-fill zone segmentation per level.
 - `vegetation/`: `VegetationStep`, the corpus-fitted Gibbs process that grows trees, rocks and lakes.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
@@ -42,7 +41,7 @@ of step, it is a sign one of two things happened:
    **Fix:** merge the two steps.
 2. **A genuinely shared, cross-step value with no map-level meaning of its own** — e.g.
    `TerrainGrids` (post-despeckle terrain-code grids + tunnel-protect corridor cells,
-   needed by `SegmentStep`/`VegetationStep`) or `PlacementWorkspace` (the
+   needed by `VegetationStep`/`BorderStep`) or `PlacementWorkspace` (the
    `Vegetation→Gameplay→Gated→Border` shared workspace). This data is real and does need
    to cross steps — but the step that *computes* it also has real map-level work to do
    (`TerrainStep` writes `map_state.cells`/`surfs`; `VegetationStep` writes

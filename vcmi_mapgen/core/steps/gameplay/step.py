@@ -37,7 +37,7 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
 )
 from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
-from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -183,12 +183,12 @@ class GameplayStep(PipelineStep):
         size        Map side length in tiles (square).
         subterrain  Whether a second underground level is active.
 
-    inject(ctx): ``PlacementWorkspace`` (each zone's post-vegetation field), ``TerrainGrids``
-    (the grids and the tunnel protect set). The step publishes the player zones the zone plan
-    picked, then commits the sea objects the zone plan drew. Gates stay off each player town's
-    kept room. Gates may stand on an underground tunnel. No other object's footprint may,
-    and none may strand one. A player town that finds no spot in its zone moves to the
-    largest zone with room for it.
+    inject(ctx): ``PlacementWorkspace`` (each zone's post-vegetation field), ``TerrainGrids`` (the
+    grids and the tunnel protect set), ``Segmentation`` (the surface zones). The step publishes the
+    player zones the zone plan picked, then commits the sea objects the zone plan drew. Gates stay
+    off each player town's kept room. Gates may stand on an underground tunnel. No other object's
+    footprint may, and none may strand one. A player town that finds no spot in its zone moves to
+    the largest zone with room for it.
 
     Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
     ``map_state.player_towns``, folds the objects into each ``ZoneWorkspace`` and sets each
@@ -207,6 +207,7 @@ class GameplayStep(PipelineStep):
         self._ctx = ProviderRegistry()
         self._workspace = PlacementWorkspace()
         self._grids: dict[int, list[list[int]]] = {}
+        self._segmentation = Segmentation({}, {})
         self._player_zids: list[tuple[int, int]] = []
         self._tunnels: frozenset[Tile] = NO_TILES
         self._placed_res: set[str] = set()
@@ -218,6 +219,7 @@ class GameplayStep(PipelineStep):
         terrain = ctx.require(TerrainGrids)
         self._grids = terrain.grids
         self._tunnels = terrain.tunnel_protect
+        self._segmentation = ctx.require(Segmentation)
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -333,7 +335,7 @@ class GameplayStep(PipelineStep):
     def _place_shipyards(self, idx: SiteIndex, map_state: MapState, catalog: Catalog) -> None:
         objs = [o for o in map_state.objs if o.level == 0 and o.purpose]
         objs += [o for site in idx.sites.values() for o in site.objs]
-        shore = Shore(self._grids[0], map_state.zones[0], objs)
+        shore = Shore(self._grids[0], self._segmentation.zones[0], objs)
         n = place_shipyards(idx, shore, self.seed, catalog)
         print(f"  L0 seaport guarantee: {n} shipyard(s) added")
 

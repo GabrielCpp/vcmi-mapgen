@@ -41,9 +41,9 @@ def test_passage_tiles_sit_exactly_on_the_zone_seam() -> None:
         0: _zone(left, (1, 1.5)),
         1: _zone(right, (4, 1.5)),
     }
-    state = MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[], zones={0: zones})
+    state = MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[])
 
-    tinted = _tinted_tiles(PassageOverlay().apply(state, 0))
+    tinted = _tinted_tiles(PassageOverlay({0: zones}).apply(state, 0))
     expected = {(x, y) for y in range(4) for x in (2, 3)}
     assert tinted == expected
 

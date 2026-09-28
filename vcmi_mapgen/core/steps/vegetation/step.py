@@ -17,8 +17,7 @@ from vcmi_mapgen.core.pipeline import (
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning import zone_plan as ZPL
-from vcmi_mapgen.core.steps.segment.result import Segmentation
-from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
@@ -57,13 +56,12 @@ class VegetationStep(PipelineStep):
         seed     RNG seed.
         players  Number of player zones whose town spot stays clear of trees.
 
-    Reads ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx):
-    ``TerrainGrids``, ``Segmentation`` and the ``PlacementWorkspace``, created here and filled by
-    ``zone_plan.plan_zones`` and ``zone_plan.plan_player_zones`` before any tree grows; each
-    zone's ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/``approaches``/
+    inject(ctx): ``TerrainGrids``, ``Segmentation`` (TerrainStep's zones) and the
+    ``PlacementWorkspace``, created here and filled by ``zone_plan.plan_zones`` and
+    ``zone_plan.plan_player_zones`` before any tree grows; each zone's ``ZoneWorkspace`` supplies
+    ``prot``/``occupied``/``gblocked``/``approaches``/
     ``gobjs``/``rim8``/``ent_bands``/``town_clear``/``town_blk``, and this step writes
-    ``blocked``/``open_set``/``passable`` back into the same object for
-    GatedStep.
+    ``blocked``/``open_set``/``passable`` back into the same object for GatedStep.
 
     Produces: extends ``map_state.objs`` with this step's own new vegetation objects
     (``self.objs`` keeps just the new ones, for callers that want that distinction).
@@ -94,7 +92,11 @@ class VegetationStep(PipelineStep):
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
         ZPL.plan_zones(catalog, self._workspace, self._segmentation, self._terrain, self.seed)
         ZPL.plan_player_zones(
-            catalog, self._workspace, map_state.zones, self._terrain.tunnel_protect, self.players
+            catalog,
+            self._workspace,
+            self._segmentation.zones,
+            self._terrain.tunnel_protect,
+            self.players,
         )
         models: dict[str, PP.VegModel] = {}
         new_objs: list[PlacedObject] = []
@@ -102,7 +104,7 @@ class VegetationStep(PipelineStep):
 
         for level, lvl_ws in self._workspace.levels.items():
             for zid, zw in lvl_ws.zones.items():
-                zones = map_state.zones[level]
+                zones = self._segmentation.zones[level]
                 terrain = zw.terrain
                 ts = zw.ts
                 ts_full = zw.ts_full
@@ -187,7 +189,7 @@ class VegetationStep(PipelineStep):
         level_objs = [o for o in [*lvl_ws.sea, *map_state.objs] if o.level == level]
         sealers, sealed = seal_borders(
             catalog,
-            BorderPlan(land, map_state.zones[level], bands, avoid, web),
+            BorderPlan(land, self._segmentation.zones[level], bands, avoid, web),
             level_objs,
             self.seed,
             level,

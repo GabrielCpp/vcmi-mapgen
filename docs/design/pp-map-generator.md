@@ -211,7 +211,7 @@ data the Map file writes.
 | Catalog | Reshape | `vcmi/catalog/` | The pipeline receives an `Ontology` instance, but 19 modules call the module-level accessors. A test cannot hand in a small catalog. See M12. |
 | Terrain layout | Exists | `core/steps/terrain_gen/` | Owns and never-knows match. It also computes tile art. See M13. |
 | Tile art | Reshape | `kit/tiling.py`, called from the terrain step | Generation computes it, and it reads the corpus each process. See M13. |
-| Zone | Exists | `core/grid/segment.py`, `core/steps/segment/` | Water and rock are barriers. The zone plan drops zones under 25 tiles. |
+| Zone | Exists | `core/grid/segment.py`, `core/steps/terrain_gen/step.py` | Water and rock are barriers. The zone plan drops zones under 25 tiles. |
 | Water body | Exists | `core/steps/zone_plan.py` | A flood fill over water tiles. |
 | Passage | Reshape | `kit/topology.py`, planned in `core/steps/zone_plan.py` | The code opens one or two fixed 3-tile entrances per zone pair and densifies the rest of the border. The spec opens a band sized by the corpus open fraction. See M1. |
 | Walkable web | Exists | `core/steps/vegetation/sample.py`, extended in `core/steps/gameplay/site.py` | Built from entrances, landings and town rooms before vegetation. Each committed approach links to it. A cut web reroutes. See M2. |

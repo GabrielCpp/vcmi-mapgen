@@ -10,7 +10,7 @@ def test_zone_label_composites_last_regardless_of_requested_order() -> None:
     "zone" is requested, or a later overlay (blocking/guard/pocket) buries it. This
     held even when "zone" was the first name in the spec, which is the reported bug:
     the default overlay order is "zone,blocking,guard,pocket"."""
-    overlays = parse_overlays("zone,blocking,pocket", {})
+    overlays = parse_overlays("zone,blocking,pocket", {}, {})
     assert isinstance(overlays[-1], ZoneOverlay)
     assert overlays[-1].labels is True
     assert overlays[-1].fill is False, "the trailing zone pass must be label-only"
@@ -21,7 +21,7 @@ def test_zone_label_composites_last_regardless_of_requested_order() -> None:
 
 
 def test_zone_not_requested_no_trailing_label_pass() -> None:
-    overlays = parse_overlays("blocking,pocket", {})
+    overlays = parse_overlays("blocking,pocket", {}, {})
     assert not any(isinstance(o, ZoneOverlay) for o in overlays)
 
 

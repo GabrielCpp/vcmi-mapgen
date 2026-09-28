@@ -101,7 +101,7 @@ def classify_objects(
 
 
 def zone_lookup(zones: Mapping[int, Zone]) -> dict[Tile, int]:
-    """tile -> zone id, from a SegmentStep-populated `state.zones[level]` dict."""
+    """tile -> zone id, from one level of TerrainStep's `Segmentation.zones`."""
     lookup: dict[Tile, int] = {}
     for zid, z in zones.items():
         for t in z.tiles_set:

@@ -7,7 +7,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import Pipeline
-from vcmi_mapgen.core.steps import GameplayStep, SegmentStep, TerrainStep, VegetationStep
+from vcmi_mapgen.core.steps import GameplayStep, TerrainStep, VegetationStep
 
 
 def _run_towns(
@@ -20,7 +20,6 @@ def _run_towns(
         _ = pipeline.add_step(
             TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain)
         )
-        _ = pipeline.add_step(SegmentStep())
         _ = pipeline.add_step(VegetationStep(seed=seed, players=players))
         _ = pipeline.add_step(
             GameplayStep(seed=seed, players=players, size=size, subterrain=subterrain)

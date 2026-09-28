@@ -13,7 +13,7 @@ from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
 from vcmi_mapgen.core.steps.portal import geometry as GEO
 from vcmi_mapgen.core.steps.portal.result import PortalResult
-from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 
 
 def _find_start(
@@ -49,6 +49,7 @@ class PortalStep(PipelineStep):
         size        Map side length in tiles (square).
 
     inject(ctx): ``ZoneIndex`` (targets/zone_records, mutated in place), ``TerrainGrids``,
+    ``Segmentation``,
     ``TownsIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
     defaults to empty when GameplayStep has not run.
 
@@ -65,6 +66,7 @@ class PortalStep(PipelineStep):
         self._targets: dict[int, list[Tile]] = {}
         self._zone_records: dict[int, list[ZoneRecord]] = {}
         self._grids: dict[int, list[list[int]]] = {}
+        self._segmentation = Segmentation({}, {})
         self._workspace = PlacementWorkspace()
         self._player_zids: list[tuple[int, int]] = []
         self._gate_objs: list[PlacedObject] = []
@@ -76,6 +78,7 @@ class PortalStep(PipelineStep):
         self._targets = zones.targets
         self._zone_records = zones.zone_records
         self._grids = ctx.require(TerrainGrids).grids
+        self._segmentation = ctx.require(Segmentation)
         self._workspace = ctx.require(PlacementWorkspace)
         self._player_zids = ctx.require(TownsIndex).player_zids
         self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
@@ -89,14 +92,14 @@ class PortalStep(PipelineStep):
                 objs_by_level[o.level].append(o)
 
         gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
-        start = _find_start(self._player_zids, map_state.zones, self._workspace)
+        start = _find_start(self._player_zids, self._segmentation.zones, self._workspace)
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
                 catalog,
                 GEO.PortalWorld(
                     self.size,
                     grids,
-                    map_state.zones,
+                    self._segmentation.zones,
                     objs_by_level,
                     self._targets,
                     self._zone_records,

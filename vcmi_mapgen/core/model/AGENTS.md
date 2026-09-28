@@ -31,11 +31,9 @@ approach tile, and any overlay may sit over a resource pile or reward pickup. A 
 gate-blocked tiles (`gate_blk`), placed objects (`objs`), player towns (`player_towns`).
 
 Zone segmentation is not a map fact. The map is a grid, and a `.vmap` has no notion of
-zones. `SegmentStep` computes them from the terrain, so they are analysis. They belong in
-the registry as a typed value that each consumer requires, like any other step output.
-`MapState.zones`, `TileView.zone` and the `_zone_index` cache are known debt that is due
-to move off `MapState`. Do not add readers of them, and do not add another derived field
-on the same pattern.
+zones. `TerrainStep` computes them from the terrain, so they are analysis. They live in
+the registry as `Segmentation`, which each consumer requires. Overlays that draw zones
+take them through their constructor.
 
 A field does **not** belong on `MapState` merely because a renderer wants to read it.
 The test is: is this a fact the map itself carries, or is it an arbitrary, disposable

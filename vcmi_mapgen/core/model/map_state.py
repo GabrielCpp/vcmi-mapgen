@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from vcmi_mapgen.core.model.objects import Cell, PlacedObject, Role, Tile, Zone
+from vcmi_mapgen.core.model.objects import Cell, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 
 
@@ -33,7 +33,6 @@ class TileView:
     x: int
     y: int
     terrain: int | None
-    zone: int | None
     gate_blocked: bool
     covers: tuple[Cover, ...]
     border: bool = False
@@ -59,9 +58,7 @@ class TileView:
         return not (self.blocking or self.visitable or self.approach)
 
 
-BORDER = TileView(
-    level=-1, x=-1, y=-1, terrain=None, zone=None, gate_blocked=False, covers=(), border=True
-)
+BORDER = TileView(level=-1, x=-1, y=-1, terrain=None, gate_blocked=False, covers=(), border=True)
 
 
 def footprint(obj: PlacedObject) -> list[tuple[Tile, Role]]:
@@ -173,8 +170,8 @@ class PlacementRules(Protocol):
 @dataclass
 class MapState:
     """The map as VCMI means it: a ``size`` by ``size`` grid on each level, with terrain
-    (``surfs``/``cells``), zone segmentation (``zones``), gate-blocked tiles (``gate_blk``),
-    placed objects (``objs``) and player towns (``player_towns``).
+    (``surfs``/``cells``), gate-blocked tiles (``gate_blk``), placed objects (``objs``) and
+    player towns (``player_towns``).
 
     Ask about a tile with ``at``. A position outside the map answers ``BORDER``, a blocking
     sentinel. Ask about an object with ``free_for`` before placing it.
@@ -186,7 +183,6 @@ class MapState:
     size: int
     surfs: dict[int, list[list[str]]] = field(default_factory=dict)
     cells: dict[int, list[list[Cell]]] = field(default_factory=dict)
-    zones: dict[int, dict[int, Zone]] = field(default_factory=dict)
     gate_blk: dict[int, frozenset[Tile]] = field(default_factory=dict)
     objs: list[PlacedObject] = field(default_factory=list)
     player_towns: list[PlacedObject] = field(default_factory=list)
@@ -194,8 +190,6 @@ class MapState:
         default_factory=dict, init=False, repr=False
     )
     _covers_of: tuple[int, int] | None = field(default=None, init=False, repr=False)
-    _zone_of: dict[tuple[int, Tile], int] = field(default_factory=dict, init=False, repr=False)
-    _zone_key: int | None = field(default=None, init=False, repr=False)
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.size and 0 <= y < self.size
@@ -206,17 +200,6 @@ class MapState:
             self._covers = index_of(self.objs)
             self._covers_of = key
         return self._covers
-
-    def _zone_index(self) -> dict[tuple[int, Tile], int]:
-        if self._zone_key != id(self.zones):
-            self._zone_of = {
-                (level, tile): zid
-                for level, zs in self.zones.items()
-                for zid, z in zs.items()
-                for tile in z.tiles_set
-            }
-            self._zone_key = id(self.zones)
-        return self._zone_of
 
     def covers_at(self, level: int, x: int, y: int) -> tuple[Cover, ...]:
         return tuple(self._covers_index().get((level, (x, y)), ()))
@@ -231,7 +214,6 @@ class MapState:
             x=x,
             y=y,
             terrain=terrain,
-            zone=self._zone_index().get((level, (x, y))),
             gate_blocked=(x, y) in self.gate_blk.get(level, frozenset()),
             covers=self.covers_at(level, x, y),
         )

@@ -18,11 +18,11 @@ from vcmi_mapgen.core.steps import (
     LootStep,
     PortalStep,
     ScatterStep,
-    SegmentStep,
     TerrainStep,
     TreasureStep,
     VegetationStep,
 )
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 
 SIZE = 48
 SEED = 7
@@ -35,7 +35,6 @@ class Snapshot:
     objs: tuple[str, ...]
     cells: int
     surfs: int
-    zones: int
     gate_blk: int
     player_towns: tuple[str, ...]
 
@@ -45,7 +44,6 @@ def _snapshot(state: MapState) -> Snapshot:
         objs=tuple(repr(o) for o in state.objs),
         cells=len(state.cells),
         surfs=len(state.surfs),
-        zones=sum(len(z) for z in state.zones.values()),
         gate_blk=sum(len(b) for b in state.gate_blk.values()),
         player_towns=tuple(repr(o) for o in state.player_towns),
     )
@@ -57,7 +55,6 @@ def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
             "terrain_gen",
             TerrainStep(size=SIZE, seed=seed, water_mode="normal", subterrain=True),
         ),
-        ("segment", SegmentStep()),
         ("vegetation", VegetationStep(seed=seed, players=PLAYERS)),
         ("gameplay", GameplayStep(seed=seed, players=PLAYERS, size=SIZE, subterrain=True)),
         ("gated", GatedStep(seed=seed, size=SIZE)),
@@ -73,6 +70,7 @@ def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
 class PipelineRun:
     catalog: Catalog
     state: MapState
+    ctx: ProviderRegistry
     transitions: dict[str, tuple[Snapshot, Snapshot]]
 
     def added_by(self, name: str) -> list[PlacedObject]:
@@ -91,7 +89,7 @@ def pipeline_run(catalog: Catalog) -> PipelineRun:
             step.inject(ctx)
             step.run(catalog, state)
             result[name] = (before, _snapshot(state))
-    return PipelineRun(catalog, state, result)
+    return PipelineRun(catalog, state, ctx, result)
 
 
 @pytest.fixture(scope="module")
@@ -108,10 +106,9 @@ def test_terrain_gen_writes_cells_and_surfs(
     assert after.surfs > 0
 
 
-def test_segment_writes_zones(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:
-    before, after = transitions["segment"]
-    assert before.zones == 0
-    assert after.zones > 0
+def test_terrain_gen_provides_segmentation(pipeline_run: PipelineRun) -> None:
+    zones = pipeline_run.ctx.require(Segmentation).zones
+    assert all(zones[level] for level in pipeline_run.state.cells)
 
 
 def test_gameplay_writes_gate_blk(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:

@@ -18,7 +18,7 @@ from vcmi_mapgen.core.steps.border import border_seal as BS
 from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entrances
 from vcmi_mapgen.core.steps.border.result import BorderResult
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
-from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 
 
 def _loot_tiles(zone_records: list[ZoneRecord]) -> set[Tile]:
@@ -58,7 +58,7 @@ class BorderStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
 
-    inject(ctx): ``ZoneIndex`` (zone records), ``TerrainGrids``, ``TownsIndex``
+    inject(ctx): ``ZoneIndex`` (zone records), ``TerrainGrids``, ``Segmentation``, ``TownsIndex``
     (player zones), the shared
     ``PlacementWorkspace`` (``entrance_plan``/``seal_avoid``/``hard_avoid``; writes
     ``guard_tiles`` back per level).
@@ -74,6 +74,7 @@ class BorderStep(PipelineStep):
         self._ctx = ProviderRegistry()
         self._zone_records: dict[int, list[ZoneRecord]] = {}
         self._grids: dict[int, list[list[int]]] = {}
+        self._segmentation = Segmentation({}, {})
         self._workspace = PlacementWorkspace()
         self._player_zids: list[tuple[int, int]] = []
 
@@ -82,6 +83,7 @@ class BorderStep(PipelineStep):
         self._ctx = ctx
         self._zone_records = ctx.require(ZoneIndex).zone_records
         self._grids = ctx.require(TerrainGrids).grids
+        self._segmentation = ctx.require(Segmentation)
         self._workspace = ctx.require(PlacementWorkspace)
         self._player_zids = ctx.require(TownsIndex).player_zids
 
@@ -110,7 +112,7 @@ class BorderStep(PipelineStep):
             self.objs.extend(ent_objs)
             new_objs, guard_tiles, n_open = BS.guard_crossings(
                 catalog,
-                BS.LevelGrid(W, H, self._grids[level], map_state.zones[level], level),
+                BS.LevelGrid(W, H, self._grids[level], self._segmentation.zones[level], level),
                 BS.CrossingRules(bands, lvl_ws.hard_avoid, skip_tiles=loot_ts),
                 objs_by_level[level],
                 self.seed,
