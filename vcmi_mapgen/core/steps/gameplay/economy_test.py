@@ -7,10 +7,10 @@ import pytest
 from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger
-from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
+from vcmi_mapgen.corpus.vegetation import PP_DIR
 
-HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
+HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 

@@ -13,3 +13,5 @@ arguments in `__main__.py` and calls one module per subcommand.
 - `render_sprites.py`: the `render-sprites` subcommand. It renders one `.vmap` with the real H3 sprites.
 - `settings.py`: `Settings`, the one place that reads `os.environ` and `sys.platform`, and `open_install`, which finds the VCMI install or exits naming `VCMI_HOME`.
 - `steps.py`: `build_steps`, the one step list, and the `--stop-after` names.
+- `veg_experiment.py`: the M1 experiment. It samples vegetation on a real corpus zone and
+  compares the run lengths with the corpus.

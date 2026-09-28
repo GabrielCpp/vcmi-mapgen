@@ -16,64 +16,29 @@ Categories are the catalog's decoration types (`Catalog.decor_category`); water 
 are dropped everywhere. Cached per terrain in
 ``data/pp/veg_<terrain>.json``.
 
-    uv run python -m vcmi_mapgen.core.steps.vegetation.stats --report grass
+    uv run python -m vcmi_mapgen.corpus.mine.vegetation --report grass
 """
 
 import argparse
 import collections
-import math
-from collections.abc import Callable, Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Footprint, JsonValue, MapState, Role, Tile
+from vcmi_mapgen.core.model import Footprint, MapState, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.vcmi.formats import json_value
+from vcmi_mapgen.core.priors.vegetation import RMAX, CellStats, VegetationStats, theta
+from vcmi_mapgen.corpus.vegetation import load_vegetation
 
-ROOT = project_root()
-PP_DIR = str(ROOT / "data" / "pp")
-SOURCE = "vcmi_mapgen.core.steps.vegetation.stats.mine"
-RMAX = 6  # pair-correlation rings 0..RMAX (Chebyshev)
 MIN_AREA = 60  # same zone-size floor as the field learner
 CELL = 6  # coarse-cell size for the overdispersion (Cox field) statistic
-
-
-@dataclass(frozen=True, slots=True)
-class CellStats:
-    size: int
-    n: int
-    sum: int
-    sum2: int
-
-
-@dataclass(slots=True)
-class VegStats:
-    terrain: str
-    nzones: int
-    tiles: int
-    nanchors: int
-    tiles_per_ebin: list[int]
-    anch: dict[str, list[int]]
-    lam: dict[str, list[float]]
-    lam_tot: dict[str, float]
-    g: dict[str, list[float]]
-    pairN: dict[str, list[int]]
-    pairD: list[int]
-    anim_w: dict[str, dict[str, int]]
-    mean_blk_cells: dict[str, float]
-    cell: CellStats | None
-    veg_blocked_frac: float
-    runs: dict[str, float]
 
 
 @dataclass(slots=True)
@@ -97,80 +62,6 @@ class _Acc:
     cells_sum: int = 0
     cells_sum2: int = 0
     runs: collections.Counter[int] = field(default_factory=collections.Counter)
-
-
-def _as_float(value: JsonValue) -> float:
-    return float(value) if isinstance(value, int | float) else 0.0
-
-
-def _int_list(value: JsonValue | None) -> list[int]:
-    return [json_value.as_int(v) for v in json_value.as_list(value)]
-
-
-def _float_list(value: JsonValue | None) -> list[float]:
-    return [_as_float(v) for v in json_value.as_list(value)]
-
-
-def _map_of[T](value: JsonValue | None, convert: Callable[[JsonValue], T]) -> dict[str, T]:
-    return {k: convert(v) for k, v in json_value.as_object(value).items()}
-
-
-def _stats_from_json(raw: JsonValue) -> VegStats:
-    obj = json_value.as_object(raw)
-    cell_obj = json_value.as_object(obj.get("cell"))
-    cell = (
-        CellStats(
-            size=json_value.as_int(cell_obj.get("size")),
-            n=json_value.as_int(cell_obj.get("n")),
-            sum=json_value.as_int(cell_obj.get("sum")),
-            sum2=json_value.as_int(cell_obj.get("sum2")),
-        )
-        if cell_obj
-        else None
-    )
-    return VegStats(
-        terrain=json_value.as_str(obj.get("terrain")),
-        nzones=json_value.as_int(obj.get("nzones")),
-        tiles=json_value.as_int(obj.get("tiles")),
-        nanchors=json_value.as_int(obj.get("nanchors")),
-        tiles_per_ebin=_int_list(obj.get("tiles_per_ebin")),
-        anch=_map_of(obj.get("anch"), _int_list),
-        lam=_map_of(obj.get("lam"), _float_list),
-        lam_tot=_map_of(obj.get("lam_tot"), _as_float),
-        g=_map_of(obj.get("g"), _float_list),
-        pairN=_map_of(obj.get("pairN"), _int_list),
-        pairD=_int_list(obj.get("pairD")),
-        anim_w=_map_of(obj.get("anim_w"), lambda v: _map_of(v, json_value.as_int)),
-        mean_blk_cells=_map_of(obj.get("mean_blk_cells"), _as_float),
-        cell=cell,
-        veg_blocked_frac=_as_float(obj.get("veg_blocked_frac")),
-        runs=_map_of(obj.get("runs"), _as_float),
-    )
-
-
-def _stats_to_json(st: VegStats) -> dict[str, object]:
-    return {
-        "terrain": st.terrain,
-        "nzones": st.nzones,
-        "tiles": st.tiles,
-        "nanchors": st.nanchors,
-        "tiles_per_ebin": st.tiles_per_ebin,
-        "anch": st.anch,
-        "lam": st.lam,
-        "lam_tot": st.lam_tot,
-        "g": st.g,
-        "pairN": st.pairN,
-        "pairD": st.pairD,
-        "anim_w": st.anim_w,
-        "mean_blk_cells": st.mean_blk_cells,
-        "cell": (
-            None
-            if st.cell is None
-            else {"size": st.cell.size, "n": st.cell.n, "sum": st.cell.sum, "sum2": st.cell.sum2}
-        ),
-        "veg_blocked_frac": st.veg_blocked_frac,
-        "runs": st.runs,
-    }
 
 
 def _footprint(catalog: Catalog, anim: str) -> Footprint:
@@ -308,7 +199,7 @@ def _accumulate_zone(catalog: Catalog, a: _Acc, fm: MapState, ts: set[Tile]) -> 
     _count_blocked(catalog, a, anchors, ts)
 
 
-def mine(catalog: Catalog, maps: Iterable[MapState]) -> dict[str, VegStats]:
+def mine(catalog: Catalog, maps: Iterable[MapState]) -> dict[str, VegetationStats]:
     acc = {catalog.terrain_name(t): _Acc() for t in Terrain if t.is_land}
     for fm in maps:
         zones, _zl, _ = segment_level(fm.cells[0])
@@ -320,16 +211,7 @@ def mine(catalog: Catalog, maps: Iterable[MapState]) -> dict[str, VegStats]:
     return {terr: _finalize(catalog, terr, a) for terr, a in acc.items()}
 
 
-def _stats_path(terrain: str) -> Path:
-    return Path(PP_DIR) / f"veg_{terrain}.json"
-
-
-def save(stats: Mapping[str, VegStats]) -> None:
-    for terr, st in stats.items():
-        pp_cache.write(_stats_path(terr), SOURCE, _stats_to_json(st))
-
-
-def _finalize(catalog: Catalog, terr: str, a: _Acc) -> VegStats:
+def _finalize(catalog: Catalog, terr: str, a: _Acc) -> VegetationStats:
     tot_tiles = max(a.tiles, 1)
     lam: dict[str, list[float]] = {}
     for cat, per_e in a.anch.items():
@@ -355,7 +237,7 @@ def _finalize(catalog: Catalog, terr: str, a: _Acc) -> VegStats:
         for cat, cnt in a.anim_w.items()
     }
     runs_tot = sum(a.runs.values()) or 1
-    return VegStats(
+    return VegetationStats(
         terrain=terr,
         nzones=a.nzones,
         tiles=a.tiles,
@@ -375,67 +257,8 @@ def _finalize(catalog: Catalog, terr: str, a: _Acc) -> VegStats:
     )
 
 
-def load(terrain: str) -> VegStats:
-    return _stats_from_json(pp_cache.read(_stats_path(terrain)))
-
-
-def theta(
-    stats: VegStats, min_pairs: int = 30, lo: float = -1.5, hi: float = 2.0
-) -> dict[str, list[float]]:
-    """Pairwise log-potentials  theta[a][b][r] = clip(log ghat_ab(r))  (spec §2.6 counting fit).
-    Rings with fewer than `min_pairs` observed pairs are neutral (0) — too sparse to trust."""
-    th: dict[str, list[float]] = {}
-    for key, gr in stats.g.items():
-        N = stats.pairN[key]
-        th[key] = [
-            max(lo, min(hi, math.log(gr[r]))) if N[r] >= min_pairs and gr[r] > 0 else 0.0
-            for r in range(RMAX + 1)
-        ]
-    return th
-
-
-def theta_local(
-    stats: VegStats,
-    rint: int = 2,
-    base_r: int = 4,
-    min_pairs: int = 30,
-    clip: tuple[float, float] = (-1.5, 1.5),
-) -> dict[str, list[float]]:
-    """LOCAL pair potentials, background-normalized:  theta[a][b][r] = log(g(r) / g(base_r)),
-    r <= rint. The raw g(r) > 1 at ALL ranges because zones mix dense forest masses with
-    clearings (large-scale inhomogeneity); fitting that as pair attraction makes the Gibbs
-    process explosive. Dividing by the mid-range g isolates the genuinely LOCAL clumping /
-    stacking excess; the large-scale part is carried by the Cox log-field (`cox_sigma`)."""
-    lo, hi = clip
-    th: dict[str, list[float]] = {}
-    for key, gr in stats.g.items():
-        N = stats.pairN[key]
-        base = gr[base_r] if (N[base_r] >= min_pairs and gr[base_r] > 0) else None
-        row: list[float] = []
-        for r in range(rint + 1):
-            if base and N[r] >= min_pairs and gr[r] > 0:
-                row.append(max(lo, min(hi, math.log(gr[r] / base))))
-            else:
-                row.append(0.0)
-        th[key] = row
-    return th
-
-
-def cox_sigma(stats: VegStats) -> float:
-    """Log-field std of the Cox modulation, fitted from coarse-cell overdispersion: for a
-    log-Gaussian Cox process the Fisher index of cell counts is  F = 1 + m(e^{s^2}-1)  with
-    m the mean count, so  s^2 = ln(1 + (F-1)/m)  (Møller & Waagepetersen 2004, ch. 5)."""
-    c = stats.cell
-    if c is None or c.n < 10 or c.sum <= 0:
-        return 0.0
-    m = c.sum / c.n
-    var = c.sum2 / c.n - m * m
-    F = var / m
-    return math.sqrt(max(0.0, math.log(1.0 + max(0.0, F - 1.0) / m)))
-
-
-def report(terrain: str) -> tuple[VegStats, dict[str, list[float]]]:
-    st = load(terrain)
+def report(terrain: str) -> tuple[VegetationStats, dict[str, list[float]]]:
+    st = load_vegetation(terrain)
     head = f"== {terrain}: zones={st.nzones} tiles={st.tiles} anchors={st.nanchors} "
     density = f"(density {st.nanchors / max(st.tiles, 1):.3f}/tile) "
     print(f"{head}{density}veg_blocked_frac={st.veg_blocked_frac:.3f}")

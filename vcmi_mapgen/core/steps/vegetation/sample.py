@@ -26,7 +26,7 @@ Samples a zone's decoration configuration from the Gibbs marked point process fi
 The blocked mask is EMERGENT (union of sampled footprints) — run-length stats become the
 validation metric, per the M1 experiment:
 
-    uv run python -m vcmi_mapgen.veg_experiment --map "All for One" --zone 11
+    uv run python -m vcmi_mapgen.cli.veg_experiment --map "All for One" --zone 11
 """
 
 import collections
@@ -48,7 +48,8 @@ from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.entrances import Gate, zone_fronts, zone_gate_bands
-from vcmi_mapgen.core.steps.vegetation import stats as PS
+from vcmi_mapgen.core.priors import vegetation as PS
+from vcmi_mapgen.corpus.vegetation import load_vegetation
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)
@@ -87,7 +88,7 @@ class VegModel:
 
 def build_model(catalog: Catalog, terrain: str) -> VegModel:
     """Fitted per-terrain sampling model: category list, intensities, theta kernel, ident pools."""
-    st = PS.load(terrain)
+    st = load_vegetation(terrain)
     th = PS.theta_local(st, rint=RINT)
 
     by_cat: collections.defaultdict[str, list[Identity]] = collections.defaultdict(list)

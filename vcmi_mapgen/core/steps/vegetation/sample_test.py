@@ -12,7 +12,7 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.entrances import plan_entrances, zone_fronts, zone_gate_bands
 from vcmi_mapgen.core.steps.vegetation import sample as PP
-from vcmi_mapgen.core.steps.vegetation import stats as PS
+from vcmi_mapgen.corpus.vegetation import PP_DIR
 
 
 def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
@@ -25,7 +25,7 @@ def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
     )
 
 
-HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
+HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 

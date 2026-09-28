@@ -6,10 +6,10 @@ import pytest
 
 from vcmi_mapgen.cli.audit import audit_variety
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
+from vcmi_mapgen.corpus.vegetation import PP_DIR
 
-HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
+HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 

@@ -15,10 +15,10 @@ from vcmi_mapgen.core.placement.cells import legal_cells
 from vcmi_mapgen.core.placement.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.steps.loot import pickups as CA
-from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
+from vcmi_mapgen.corpus.vegetation import PP_DIR
 
-HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
+HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 

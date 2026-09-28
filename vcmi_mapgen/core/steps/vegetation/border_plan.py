@@ -3,57 +3,14 @@ blocking decoration while the vegetation step still owns the terrain."""
 
 import collections
 import random
-from collections.abc import Collection, Container, Iterable, Mapping
+from collections.abc import Container, Iterable, Mapping
 from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import footprint as FP
-
-
-def zone_owner(
-    catalog: Catalog, zones: Mapping[int, Zone]
-) -> tuple[dict[Tile, int], dict[Tile, str]]:
-    """Land tile to zone id and terrain name, water and rock zones left out."""
-    owner: dict[Tile, int] = {}
-    tname: dict[Tile, str] = {}
-    for zid, z in sorted(zones.items()):
-        if z.terrain_type.is_barrier:
-            continue
-        terr = catalog.terrain_name(z.terrain_type)
-        for t in z.tiles_set:
-            owner[t] = zid
-            tname[t] = terr
-    return owner, tname
-
-
-def cross_pairs(
-    open_all: Collection[Tile],
-    owner: Mapping[Tile, int],
-    bands: Container[Tile],
-    skip_tiles: Container[Tile] = (),
-) -> tuple[list[tuple[Tile, Tile]], list[tuple[Tile, Tile]]]:
-    """8-adjacent open pairs across a zone border, each unordered pair once.
-
-    Returns (plain pairs, pairs touching an entrance band)."""
-    pairs: list[tuple[Tile, Tile]] = []
-    band_pairs: list[tuple[Tile, Tile]] = []
-    for t in sorted(open_all):
-        a = owner.get(t)
-        if a is None or t in skip_tiles:
-            continue
-        for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):
-            n = (t[0] + dx, t[1] + dy)
-            if n not in open_all or n in skip_tiles:
-                continue
-            b = owner.get(n)
-            if b is not None and b != a:
-                if t in bands or n in bands:
-                    band_pairs.append((t, n))
-                else:
-                    pairs.append((t, n))
-    return pairs, band_pairs
+from vcmi_mapgen.core.planning.borders import cross_pairs, zone_owner
 
 
 @dataclass(frozen=True, slots=True)

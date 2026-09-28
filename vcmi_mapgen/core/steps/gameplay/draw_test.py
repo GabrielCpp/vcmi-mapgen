@@ -9,10 +9,10 @@ from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import GAP
-from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.corpus.gameplay import STATS_PATH, load_gameplay
+from vcmi_mapgen.corpus.vegetation import PP_DIR
 
-HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
+HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 

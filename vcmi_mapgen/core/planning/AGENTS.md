@@ -6,6 +6,8 @@ steps.
 
 ## Map
 
+- `borders.py`: `zone_owner` and `cross_pairs`, the zone border geometry that the vegetation
+  border plan and the border guards both read.
 - `entrances.py`: each zone's fronts, its `Gate` values and the planned entrances. Every
   function reads the zone label grid, never the zones dict.
 - `player_zones.py`: `select_player_zones`, the greedy max-min pick of the player zones.
