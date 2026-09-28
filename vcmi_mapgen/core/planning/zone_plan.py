@@ -1,14 +1,14 @@
 """The zone plan every placement step shares: each zone's entrances and walkable web, the
-ridge, the planned sea objects, one open shipyard landing per shore, and the player zones with
-room kept for their town. VegetationStep builds it before growing trees, and GameplayStep
-commits the sea objects."""
+planned sea objects, one open shipyard landing per shore, and the player zones with room kept
+for their town. VegetationStep builds it before growing trees and publishes it as a
+``ZonePlan``, and GameplayStep commits the sea objects."""
 
 from __future__ import annotations
 
 import collections
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -16,9 +16,8 @@ from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.grid.reach import STEPS4
 from vcmi_mapgen.core.grid.segment import ZoneLabel
-from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Entrance, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspace
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
@@ -35,6 +34,60 @@ from vcmi_mapgen.corpus.gameplay import load_gameplay
 NO_TILES: frozenset[Tile] = frozenset()
 
 MIN_AREA = 25
+
+
+@dataclass(frozen=True, slots=True)
+class TownRoom:
+    cells: frozenset[Tile]
+    clear: frozenset[Tile]
+    blk: frozenset[Tile]
+    path: tuple[Tile, ...]
+
+
+NO_ROOM = TownRoom(NO_TILES, NO_TILES, NO_TILES, ())
+
+
+@dataclass(frozen=True, slots=True)
+class PlanZone:
+    """One zone before any tree grows: its terrain and tiles, its planned entrances and their
+    bands, its 8-connected rim, the walkable web, and the room kept for a player town
+    (``NO_ROOM`` in any other zone)."""
+
+    terrain: str
+    ts: frozenset[Tile]
+    entrances: tuple[Entrance, ...]
+    prot: frozenset[Tile]
+    rim8: frozenset[Tile]
+    ent_bands: frozenset[Tile]
+    town: TownRoom = NO_ROOM
+
+
+@dataclass(frozen=True, slots=True)
+class Landings:
+    """The shipyard cells of a level: the blocking or anchored cells and the approaches."""
+
+    blk: frozenset[Tile] = NO_TILES
+    appr: frozenset[Tile] = NO_TILES
+
+
+@dataclass(frozen=True, slots=True)
+class PlanLevel:
+    """One level of the plan: its zones, the entrance plan over all its zones, the planned
+    sea objects and the landings kept open for them. Only the surface has sea."""
+
+    zones: Mapping[int, PlanZone]
+    entrance_plan: Mapping[int, list[Entrance]]
+    sea: tuple[PlacedObject, ...] = ()
+    landings: Landings = Landings()
+
+
+@dataclass(frozen=True, slots=True)
+class ZonePlan:
+    """The plan VegetationStep publishes: one ``PlanLevel`` per terrain level, and the
+    player zones as (level, zid)."""
+
+    levels: Mapping[int, PlanLevel]
+    player_zids: tuple[tuple[int, int], ...]
 
 
 def _rim8(zones: Mapping[int, Zone]) -> set[Tile]:
@@ -64,17 +117,20 @@ def seaport_cells(catalog: Catalog, objs: Iterable[PlacedObject]) -> tuple[set[T
     return seaport_blk, seaport_appr
 
 
-def _connect_landings(lw: LevelWorkspace) -> None:
-    for appr in sorted(lw.seaport_appr):
-        for _zid, zw in sorted(lw.zones.items()):
-            if appr not in zw.ts_full or appr in zw.prot:
+def _connect_landings(zones: Mapping[int, PlanZone], landings: Landings) -> dict[int, PlanZone]:
+    out = dict(zones)
+    for appr in sorted(landings.appr):
+        for zid in sorted(out):
+            zone = out[zid]
+            if appr not in zone.ts or appr in zone.prot:
                 continue
-            free = zw.ts - zw.gblocked - lw.seaport_blk
+            free = zone.ts - landings.blk
             goals = sorted(
-                zw.prot & free, key=lambda t: (abs(t[0] - appr[0]) + abs(t[1] - appr[1]), t)
+                zone.prot & free, key=lambda t: (abs(t[0] - appr[0]) + abs(t[1] - appr[1]), t)
             )
             path = next((p for g in goals if (p := geodesic_path(appr, g, free))), list[Tile]())
-            zw.prot = zw.prot | frozenset(path)
+            out[zid] = replace(zone, prot=zone.prot | frozenset(path))
+    return out
 
 
 @final
@@ -82,12 +138,12 @@ class _LandingCheck:
     """Refuse a landing whose blocking row would cut open land off the web, or leave its own
     approach off the web. Before vegetation every zone tile still counts as walkable."""
 
-    def __init__(self, lw: LevelWorkspace) -> None:
+    def __init__(self, zones: Mapping[int, PlanZone]) -> None:
         self.land: set[Tile] = set()
         self.web: set[Tile] = set()
-        for zw in lw.zones.values():
-            self.land |= zw.ts - zw.gblocked
-            self.web |= zw.prot
+        for zone in zones.values():
+            self.land |= zone.ts
+            self.web |= zone.prot
 
     def _pocket(self, start: Tile, cut: AbstractSet[Tile]) -> set[Tile]:
         seen = {start}
@@ -118,11 +174,11 @@ class _LandingCheck:
 
 
 def plan_landings(
-    lw: LevelWorkspace, grid: Sequence[Sequence[int]], zones: Mapping[int, Zone], sea: SeaPlan
-) -> None:
+    pl: PlanLevel, grid: Sequence[Sequence[int]], zones: Mapping[int, Zone], sea: SeaPlan
+) -> PlanLevel:
     """Keep one shipyard landing per shore open for vegetation: the footprint and approach
     of a shipyard the shore could take before any tree stands, joined to the walkable web."""
-    reserved = frozenset[Tile]().union(*(zw.ent_bands for zw in lw.zones.values()))
+    reserved = frozenset[Tile]().union(*(z.ent_bands for z in pl.zones.values()))
     landings = WT.ensure_water_seaports(
         WT.SeaMap(
             len(grid[0]) if grid else 0,
@@ -130,7 +186,7 @@ def plan_landings(
             grid,
             zones,
             reserved,
-            accept=_LandingCheck(lw).accept,
+            accept=_LandingCheck(pl.zones).accept,
             quiet=True,
         ),
         list(sea.objs),
@@ -138,11 +194,13 @@ def plan_landings(
         sea.catalog,
     )
     _, appr = seaport_cells(sea.catalog, landings)
-    lw.seaport_blk = frozenset(
-        (x, y) for o in landings for x, y, _b in FP.anchored_cells(o.footprint, o.x, o.y)
+    kept = Landings(
+        frozenset(
+            (x, y) for o in landings for x, y, _b in FP.anchored_cells(o.footprint, o.x, o.y)
+        ),
+        frozenset(appr),
     )
-    lw.seaport_appr = frozenset(appr)
-    _connect_landings(lw)
+    return replace(pl, sea=tuple(sea.objs), landings=kept, zones=_connect_landings(pl.zones, kept))
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,9 +257,8 @@ class _ZonePlanner:
         self.lp = lp
         self.entrance_plan = plan_entrances(lp.zone_label)
         self.rim_all = _rim8(lp.zones)
-        self.ridge: set[Tile] = set()
 
-    def workspace(self, zid: int, z: Zone, terrain: str) -> ZoneWorkspace:
+    def zone(self, zid: int, z: Zone, terrain: str) -> PlanZone:
         lp = self.lp
         ts = set(z.tiles_set)
         z_entr = self.entrance_plan.get(zid, [])
@@ -209,7 +266,6 @@ class _ZonePlanner:
         seedt = min(ts, key=lambda t: (t[0] - round(zcx)) ** 2 + (t[1] - round(zcy)) ** 2)
         ent_bands: set[Tile] = set[Tile]().union(*(b for _r, b, _o in z_entr)) if z_entr else set()
         rim8 = self.rim_all & ts
-        self.ridge |= rim8 - ent_bands
         prot = PP.protected_web(
             PP.ZoneRef(ts, lp.zone_label, zid, z.centroid),
             edge_dist(ts),
@@ -220,72 +276,61 @@ class _ZonePlanner:
                 keep_off=rim8,
             ),
         ) | (lp.tunnel_protect & ts)
-        return ZoneWorkspace(
+        return PlanZone(
             terrain=terrain,
             ts=frozenset(ts),
-            ts_full=frozenset(ts),
-            entrances=z_entr,
+            entrances=tuple(z_entr),
             prot=frozenset(prot),
             rim8=frozenset(rim8),
             ent_bands=frozenset(ent_bands),
         )
 
-    def level(self) -> LevelWorkspace:
-        zws: dict[int, ZoneWorkspace] = {}
+    def level(self) -> PlanLevel:
+        zones: dict[int, PlanZone] = {}
         for zid, z in sorted(self.lp.zones.items()):
             if z.terrain_type.is_barrier or z.area < MIN_AREA:
                 continue
-            zws[zid] = self.workspace(zid, z, self.lp.catalog.terrain_name(z.terrain_type))
-        return LevelWorkspace(
-            zones=zws, entrance_plan=self.entrance_plan, ridge=frozenset(self.ridge)
-        )
+            zones[zid] = self.zone(zid, z, self.lp.catalog.terrain_name(z.terrain_type))
+        return PlanLevel(zones=zones, entrance_plan=self.entrance_plan)
 
 
-@dataclass(frozen=True, slots=True)
-class TownRoom:
-    cells: frozenset[Tile]
-    clear: frozenset[Tile]
-    blk: frozenset[Tile]
-    path: tuple[Tile, ...]
-
-
-def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> TownRoom | None:
+def town_room(catalog: Catalog, zone: PlanZone, off: AbstractSet[Tile]) -> TownRoom | None:
     """The town spot nearest the zone centre before any tree grows: the footprint and approach
     inside the zone and clear of ``off``, the blocking cells off the web, and a walk from the
     approach to the web."""
     ident = catalog.random_town()
-    area = len(zw.ts)
-    cx = sum(t[0] for t in zw.ts) / area + (ident.footprint.width - 1) / 2.0
-    cy = sum(t[1] for t in zw.ts) / area + (ident.footprint.height - 1) / 2.0
-    for anchor in sorted(zw.ts, key=lambda t: ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)):
+    area = len(zone.ts)
+    cx = sum(t[0] for t in zone.ts) / area + (ident.footprint.width - 1) / 2.0
+    cy = sum(t[1] for t in zone.ts) / area + (ident.footprint.height - 1) / 2.0
+    for anchor in sorted(zone.ts, key=lambda t: ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)):
         allc, blk, approach = footprint_cells(ident.footprint, *anchor)
         if approach is None:
             continue
         cells = frozenset([*allc, approach])
-        if any(t not in zw.ts or t in off for t in cells):
+        if any(t not in zone.ts or t in off for t in cells):
             continue
-        if any(t in zw.prot for t in blk):
+        if any(t in zone.prot for t in blk):
             continue
-        path = path_to_web(approach, zw.prot, zw.ts - zw.gblocked - set(blk))
+        path = path_to_web(approach, zone.prot, zone.ts - set(blk))
         if path:
             clear = frozenset([*blk, *door_cells(ident.footprint, anchor), approach])
             return TownRoom(cells, clear, frozenset(blk), tuple(path))
     return None
 
 
-def _room_off(lw: LevelWorkspace, zw: ZoneWorkspace, tunnels: AbstractSet[Tile]) -> set[Tile]:
-    off = set(zw.ent_bands) | set(tunnels)
-    inflate_gap(off, lw.seaport_blk | lw.seaport_appr)
+def _room_off(landings: Landings, zone: PlanZone, tunnels: AbstractSet[Tile]) -> set[Tile]:
+    off = set(zone.ent_bands) | set(tunnels)
+    inflate_gap(off, landings.blk | landings.appr)
     return off
 
 
 def plan_player_zones(
     catalog: Catalog,
-    workspace: PlacementWorkspace,
+    levels: Mapping[int, PlanLevel],
     zones_by_level: Mapping[int, Mapping[int, Zone]],
     tunnels: AbstractSet[Tile],
     players: int,
-) -> None:
+) -> ZonePlan:
     """Pick the player zones among those with room for a town, and keep that room: the town's
     blocking cells, door and approach stay free of vegetation, count as walls when vegetation
     keeps its ground reachable, and its approach joins the web."""
@@ -293,31 +338,31 @@ def plan_player_zones(
 
     def room(level: int, zid: int) -> TownRoom | None:
         if (level, zid) not in rooms:
-            lw = workspace.levels.get(level)
-            zw = lw.zones.get(zid) if lw is not None else None
+            pl = levels.get(level)
+            zone = pl.zones.get(zid) if pl is not None else None
             off = (
                 NO_TILES
-                if zw is None or lw is None
-                else _room_off(lw, zw, tunnels if level == 1 else NO_TILES)
+                if zone is None or pl is None
+                else _room_off(pl.landings, zone, tunnels if level == 1 else NO_TILES)
             )
-            rooms[level, zid] = None if zw is None else town_room(catalog, zw, off)
+            rooms[level, zid] = None if zone is None else town_room(catalog, zone, off)
         return rooms[level, zid]
 
     picks = select_player_zones(
         zones_by_level, players, lambda level, zid: room(level, zid) is not None
     )
+    zones = {level: dict(pl.zones) for level, pl in levels.items()}
     for level, zid in picks:
         kept = room(level, zid)
         if kept is None:
             continue
-        zw = workspace.levels[level].zones[zid]
-        zw.town_room = kept.cells
-        zw.town_clear = kept.clear
-        zw.town_blk = kept.blk
-        zw.prot = zw.prot | frozenset(kept.path)
+        zone = zones[level][zid]
+        zones[level][zid] = replace(zone, town=kept, prot=zone.prot | frozenset(kept.path))
     if players and len(picks) < players:
         print(f"  WARNING: only {len(picks)} zones can host a player town (requested {players})")
-    workspace.player_zids = picks
+    return ZonePlan(
+        {level: replace(pl, zones=zones[level]) for level, pl in levels.items()}, tuple(picks)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,11 +375,10 @@ class PlanTerrain:
     tunnel_protect: frozenset[Tile]
 
 
-def plan_zones(
-    catalog: Catalog, workspace: PlacementWorkspace, terrain: PlanTerrain, seed: int
-) -> None:
-    """Fill ``workspace`` with one ``LevelWorkspace`` per terrain level. The surface level
-    also holds its planned sea objects and the shipyard landings kept open for them."""
+def plan_zones(catalog: Catalog, terrain: PlanTerrain, seed: int) -> dict[int, PlanLevel]:
+    """One ``PlanLevel`` per terrain level. The surface level also holds its planned sea
+    objects and the shipyard landings kept open for them."""
+    levels: dict[int, PlanLevel] = {}
     for level in sorted(terrain.grids):
         zones = terrain.segmentation.zones[level]
         planner = _ZonePlanner(
@@ -346,8 +390,9 @@ def plan_zones(
                 load_gameplay(level=level),
             )
         )
-        lw = planner.level()
-        workspace.levels[level] = lw
+        pl = planner.level()
         if level == 0:
-            lw.sea = tuple(populate_water(catalog, terrain.grids[level], zones, seed))
-            plan_landings(lw, terrain.grids[level], zones, SeaPlan(lw.sea, seed, catalog))
+            sea = tuple(populate_water(catalog, terrain.grids[level], zones, seed))
+            pl = plan_landings(pl, terrain.grids[level], zones, SeaPlan(sea, seed, catalog))
+        levels[level] = pl
+    return levels

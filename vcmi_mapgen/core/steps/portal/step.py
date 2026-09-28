@@ -7,10 +7,10 @@ from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile, Zone
-from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
-from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
 from vcmi_mapgen.core.steps.portal import rescue as RS
 from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
@@ -19,13 +19,12 @@ from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 def _find_start(
     player_zids: Sequence[tuple[int, int]],
     zones_by_level: Mapping[int, Mapping[int, Zone]],
-    workspace: PlacementWorkspace,
+    town_of_zone: Mapping[int, Mapping[int, PlacedObject]],
 ) -> tuple[int, Tile] | None:
     """Return (level, (x, y)) for the first player town, or centroid of the
     largest surface land zone when there are no players."""
     for lvl, zid in player_zids:
-        lvl_ws = workspace.levels.get(lvl)
-        t = lvl_ws.town_of_zone.get(zid) if lvl_ws is not None else None
+        t = town_of_zone.get(lvl, {}).get(zid)
         if t is not None:
             return (lvl, (t.x, t.y))
     zones0 = zones_by_level.get(0, {})
@@ -49,8 +48,7 @@ class PortalStep(PipelineStep):
         size        Map side length in tiles (square).
 
     inject(ctx): ``ZoneIndex`` (targets and claims, mutated in place), ``Segmentation``,
-    ``TownsIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
-    defaults to empty when GameplayStep has not run.
+    ``TownsIndex`` (player_zids), ``GameplayResult`` (each zone's town) and ``GateResult``.
 
     Produces: appends the portals and their guards to ``map_state.objs`` and provides
     ``PortalResult``.
@@ -66,7 +64,7 @@ class PortalStep(PipelineStep):
         self._zone_records: dict[int, list[ZoneRecord]] = {}
         self._claims: dict[int, frozenset[Tile]] = {}
         self._segmentation = Segmentation({}, {})
-        self._workspace = PlacementWorkspace()
+        self._town_of_zone: Mapping[int, Mapping[int, PlacedObject]] = {}
         self._player_zids: list[tuple[int, int]] = []
         self._gate_objs: list[PlacedObject] = []
 
@@ -78,9 +76,9 @@ class PortalStep(PipelineStep):
         self._zone_records = zones.zone_records
         self._claims = zones.claims
         self._segmentation = ctx.require(Segmentation)
-        self._workspace = ctx.require(PlacementWorkspace)
+        self._town_of_zone = ctx.require(GameplayResult).town_of_zone
         self._player_zids = ctx.require(TownsIndex).player_zids
-        self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
+        self._gate_objs = ctx.require(GateResult).gate_objs
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -91,7 +89,7 @@ class PortalStep(PipelineStep):
                 objs_by_level[o.level].append(o)
 
         gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
-        start = _find_start(self._player_zids, self._segmentation.zones, self._workspace)
+        start = _find_start(self._player_zids, self._segmentation.zones, self._town_of_zone)
         covers = {
             lvl: CoverIndex(objs, self._claims.get(lvl, ())) for lvl, objs in objs_by_level.items()
         }

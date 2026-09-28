@@ -78,7 +78,7 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
         pytest.skip("gameplay stats not mined")
     # a placed zone carries the game-time options on the right purposes
     ts = {(x, y) for x in range(30) for y in range(24)}
-    objs: list[PlacedObject] = open_zone(OpenZone(ts, "grass", player=True), 3).gobjs
+    objs: list[PlacedObject] = list(open_zone(OpenZone(ts, "grass", player=True), 3).objs)
     town = next(o for o in objs if o.purpose == "TOWN")
     START_BUILDINGS: JsonValue = {
         "allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]

@@ -94,7 +94,8 @@ def place_pocket_caches(
     `global_open`, only 116 survive once true passability is used instead — 271 (~80%) were
     false positives, including the exact mouth (11,48) example proven and sent as "fixed" in
     the prior turn. Fix: geometry now runs on `global_true` (union of every zone's
-    `passable`, i.e. `ts - blocked - gblocked`), the ACTUAL per-tile open/blocked layer.
+    `passable`, the tiles still walkable after vegetation and gameplay), the ACTUAL
+    per-tile open/blocked layer.
     `open_set`/`global_open` still exists and still matters — but only downstream, to gate
     where a NEW object may physically land (see `global_place` below).
 

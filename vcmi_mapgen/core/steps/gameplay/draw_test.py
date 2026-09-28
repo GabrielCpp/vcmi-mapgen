@@ -30,7 +30,8 @@ def test_gameplay_layer_legal_and_deterministic(open_zone: OpenZonePlacer) -> No
     o1 = open_zone(OpenZone(ts, "grass"), 4)
     o2 = open_zone(OpenZone(ts, "grass"), 4)
     assert o1 == o2, "gameplay placement must be seed-deterministic"
-    objs, occupied, blocked, approaches = o1.gobjs, o1.occupied, o1.gblocked, o1.approaches
+    objs, occupied, approaches = o1.objs, o1.cells, o1.approaches
+    blocked = {t for o in objs for t in _footprint(o)[1]}
     assert objs, "a 720-tile grass zone should hold gameplay"
     # GUARD monsters deliberately sit ON approaches/gates, and MINE_SEAL decorations
     # deliberately sit GAP-adjacent to the mine they seal off (no approach of their own) —
@@ -79,7 +80,7 @@ def test_forced_town_sits_on_zone_centroid(open_zone: OpenZonePlacer) -> None:
     if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
-    objs = open_zone(OpenZone(ts, "grass", player=True), 4).gobjs
+    objs = open_zone(OpenZone(ts, "grass", player=True), 4).objs
     towns = [o for o in objs if o.purpose == Purpose.TOWN]
     assert towns, "force_town guarantees a town in a 720-tile zone"
     t = towns[0]
@@ -104,7 +105,7 @@ def test_town_zone_gets_wood_and_ore_next_to_town(open_zone: OpenZonePlacer) -> 
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     for seed in (1, 4, 9):
-        objs = open_zone(OpenZone(ts, "grass", player=True), seed).gobjs
+        objs = open_zone(OpenZone(ts, "grass", player=True), seed).objs
         towns = [o for o in objs if o.purpose == Purpose.TOWN]
         assert towns, f"seed {seed}: forced town missing"
         sub_of = {id(o): open_zone.catalog.identity_of(o.kind).subtype for o in objs}
@@ -129,7 +130,7 @@ def test_banks_placed_on_land_and_legal(open_zone: OpenZonePlacer) -> None:
     banks: list[PlacedObject] = []
     for seed in range(1, 12):
         banks += [
-            o for o in open_zone(OpenZone(ts, "grass"), seed).gobjs if o.purpose == Purpose.BANK
+            o for o in open_zone(OpenZone(ts, "grass"), seed).objs if o.purpose == Purpose.BANK
         ]
     assert banks, "a 1800-tile grass zone must produce banks across a dozen seeds"
     for b in banks:
@@ -149,7 +150,7 @@ def test_mine_sprites_match_terrain(open_zone: OpenZonePlacer) -> None:
     for terrain in ("grass", "snow"):
         mw = st[terrain].anim_w[Purpose.MINE]
         for seed in range(1, 8):
-            objs = open_zone(OpenZone(ts, terrain), seed).gobjs
+            objs = open_zone(OpenZone(ts, terrain), seed).objs
             for m in (o for o in objs if o.purpose == Purpose.MINE):
                 w = mw.get(m.kind.lower(), 0)
                 assert w > 0, (

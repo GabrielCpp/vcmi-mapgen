@@ -41,8 +41,8 @@ of step, it is a sign one of two things happened:
    **Fix:** merge the two steps.
 2. **A genuinely shared, cross-step value with no map-level meaning of its own** — e.g.
    `TerrainGrids` (the tunnel-protect corridor cells, needed by
-   `VegetationStep`/`GameplayStep`) or `PlacementWorkspace` (the
-   `Vegetation→Gameplay→Gated→Border` shared workspace). This data is real and does need
+   `VegetationStep`/`GameplayStep`) or `ZonePlan` (each zone's entrances and web, which
+   `VegetationStep` computes and the later placement steps read). This data is real and does need
    to cross steps — but the step that *computes* it also has real map-level work to do
    (`TerrainStep` writes `map_state.terrain`; `VegetationStep` writes
    `map_state.objs`), so it is published as a side effect of an
@@ -83,10 +83,9 @@ Never a raw string-keyed `ctx["key"] = value` entry. Instead:
    - `ctx.get(SomeResult, SomeResult())` when the producing step might not be in the
      pipeline at all (e.g. the CLI reads `TownsIndex`'s empty default when a
      `--stop-after` run ends before `GameplayStep` published them).
-   - `ctx.get_or_create(SomeType, SomeType)` for the one shape where the *first* demander
-     creates the value and every later demander mutates that SAME instance further
-     (`PlacementWorkspace`: `VegetationStep` creates it, `GameplayStep`/`GatedStep`/
-     `BorderStep` each mutate it in place).
+
+A value is provided once, by the one step that produces it. No step creates a value for a
+later step to fill in.
 
 This is the entire contract: type-keyed, memoized-per-run, no string keys, no step that
 exists solely to populate one. `MapState` vs. registry placement follows
@@ -97,7 +96,7 @@ by construction, since anything map-level went onto `MapState` in the same `run(
 ## Step sequencing is unchanged
 
 None of this touches *when* steps run. `add_step()` order is still hand-written and still
-matters — `MapState`/`PlacementWorkspace` mutation order and RNG determinism depend on it
+matters — `MapState`/`ZoneIndex` mutation order and RNG determinism depend on it
 exactly as before. The registry only changes how a value crosses from one already-ordered
 step to a later one; it is not a dependency graph, and adding a value to it never lets a
 step run earlier or later than its position in the list says it does.

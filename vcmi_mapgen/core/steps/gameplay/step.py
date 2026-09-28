@@ -12,16 +12,11 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, MapState, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.pipeline import (
-    LevelWorkspace,
-    PipelineStep,
-    PlacementWorkspace,
-    ProviderRegistry,
-)
+from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.rules import TerrainGate
-from vcmi_mapgen.core.placement.site import LevelField, SiteIndex, ZoneSite
+from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteIndex, SiteZone, ZoneSite
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.steps.gameplay.draw import (
     TOWN_MIN_AREA,
@@ -32,9 +27,10 @@ from vcmi_mapgen.core.steps.gameplay.draw import (
 )
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger, tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
-from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
+from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -74,13 +70,11 @@ def place_mines(site: ZoneSite, draw: ZoneDraw, ledger: Ledger, placed_res: set[
 
 
 def _town_hosts(sites: Sequence[ZoneSite]) -> list[ZoneSite]:
-    free = [s for s in sites if s.town_center is None and len(s.zw.ts_full) >= TOWN_MIN_AREA]
-    shared = [
-        s for s in sites if s.town_center is not None and len(s.zw.ts_full) >= 4 * TOWN_MIN_AREA
-    ]
+    free = [s for s in sites if s.town_center is None and len(s.zone.ts) >= TOWN_MIN_AREA]
+    shared = [s for s in sites if s.town_center is not None and len(s.zone.ts) >= 4 * TOWN_MIN_AREA]
     return [
-        *sorted(free, key=lambda s: -len(s.zw.ts_full)),
-        *sorted(shared, key=lambda s: -len(s.zw.ts_full)),
+        *sorted(free, key=lambda s: -len(s.zone.ts)),
+        *sorted(shared, key=lambda s: -len(s.zone.ts)),
     ]
 
 
@@ -141,17 +135,17 @@ class GameplayStep(PipelineStep):
         size        Map side length in tiles (square).
         subterrain  Whether a second underground level is active.
 
-    inject(ctx): ``PlacementWorkspace`` (each zone's post-vegetation field), ``TerrainGrids`` (the
-    tunnel protect set), ``Segmentation`` (the surface zones). The step publishes the
+    inject(ctx): ``ZonePlan`` (each zone's plan, the player zones and the sea objects),
+    ``VegetationResult`` (each zone's open and walkable tiles), ``TerrainGrids`` (the tunnel
+    protect set), ``Segmentation`` (the surface zones). The step publishes the
     player zones the zone plan picked, then commits the sea objects the zone plan drew. Gates stay
     off each player town's kept room. Gates may stand on an underground tunnel. No other object's
     footprint may, and none may strand one. A player town that finds no spot in its zone moves to
     the largest zone with room for it.
 
     Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
-    ``map_state.player_towns``, folds the objects into each ``ZoneWorkspace`` and sets each
-    ``LevelWorkspace``'s ``town_of_zone``, ``seaport_blk`` and ``seaport_appr``. Into ctx:
-    ``TownsIndex`` and ``GateResult``.
+    ``map_state.player_towns``. Into ctx: ``TownsIndex``, ``GateResult`` and
+    ``GameplayResult``.
     """
 
     def __init__(
@@ -163,7 +157,8 @@ class GameplayStep(PipelineStep):
         self.subterrain = subterrain
         self.objs: list[PlacedObject] = []
         self._ctx = ProviderRegistry()
-        self._workspace = PlacementWorkspace()
+        self._plan = ZPL.ZonePlan({}, ())
+        self._veg = VegetationResult()
         self._grids: dict[int, list[list[Terrain]]] = {}
         self._segmentation = Segmentation({}, {})
         self._player_zids: list[tuple[int, int]] = []
@@ -173,7 +168,8 @@ class GameplayStep(PipelineStep):
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
-        self._workspace = ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)
+        self._plan = ctx.require(ZPL.ZonePlan)
+        self._veg = ctx.require(VegetationResult)
         self._tunnels = ctx.require(TerrainGrids).tunnel_protect
         self._segmentation = ctx.require(Segmentation)
 
@@ -182,11 +178,11 @@ class GameplayStep(PipelineStep):
         self._grids = map_state.terrain
         gate = TerrainGate(catalog)
         self._pick_player_zones()
-        for _level, lw in sorted(self._workspace.levels.items()):
-            map_state.add_objs(list(lw.sea), gate)
+        for _level, pl in sorted(self._plan.levels.items()):
+            map_state.add_objs(list(pl.sea), gate)
         indexes = {
-            level: self._index(catalog, level, lw, map_state, gate)
-            for level, lw in sorted(self._workspace.levels.items())
+            level: self._index(catalog, level, map_state, gate)
+            for level in sorted(self._plan.levels)
         }
         gates = self._place_gates(catalog, indexes, map_state)
         ledger = Ledger(set(BASIC_MINE_RES), len(self._player_zids), 0)
@@ -204,7 +200,7 @@ class GameplayStep(PipelineStep):
         self._ctx.provide(gates)
 
     def _pick_player_zones(self) -> None:
-        self._player_zids = list(self._workspace.player_zids)
+        self._player_zids = list(self._plan.player_zids)
         self._ctx.provide(TownsIndex(player_zids=self._player_zids))
 
     def _place_gates(
@@ -212,7 +208,7 @@ class GameplayStep(PipelineStep):
     ) -> GateResult:
         landings = self._landings() if 0 in indexes else set[Tile]()
         for level, idx in indexes.items():
-            rooms = (zw.town_room for zw in self._workspace.levels[level].zones.values())
+            rooms = (zone.town.cells for zone in self._plan.levels[level].zones.values())
             idx.lf.avoid = frozenset[Tile]().union(*rooms) | (landings if level == 0 else NO_TILES)
         gates = GateResult()
         if self.subterrain and 0 in indexes and 1 in indexes:
@@ -251,16 +247,15 @@ class GameplayStep(PipelineStep):
             print(f"  WARNING: {need} player town(s) found no zone with room")
 
     def _landings(self) -> set[Tile]:
-        lw = self._workspace.levels[0]
+        planned = self._plan.levels[0].landings
         landing: set[Tile] = set()
-        inflate_gap(landing, lw.seaport_blk | lw.seaport_appr)
+        inflate_gap(landing, planned.blk | planned.appr)
         return landing
 
     def _index(
         self,
         catalog: Catalog,
         level: int,
-        lw: LevelWorkspace,
         map_state: MapState,
         gate: TerrainGate,
     ) -> SiteIndex:
@@ -271,17 +266,22 @@ class GameplayStep(PipelineStep):
             lambda o: not gate.check(o, map_state.terrain),
         )
         idx = SiteIndex(lf)
-        for zid, zw in sorted(lw.zones.items()):
-            idx.sites[zid] = ZoneSite(catalog, zid, zw, lf, self.seed)
-            idx.zone_of.update(dict.fromkeys(zw.ts, zid))
+        vegetated = self._veg.zones[level]
+        for zid, zone in sorted(self._plan.levels[level].zones.items()):
+            v = vegetated[zid]
+            site = SiteZone(
+                zone.terrain, zone.ts, zone.ent_bands, zone.prot, v.open_set, v.passable
+            )
+            idx.sites[zid] = ZoneSite(catalog, zid, site, lf, self.seed)
+            idx.zone_of.update(dict.fromkeys(zone.ts, zid))
         return idx
 
     def _draw(self, site: ZoneSite, ledger: Ledger) -> ZoneDraw:
         level = site.lf.level
         spec = DrawSpec(
             zid=site.zid,
-            terrain=site.zw.terrain,
-            area=len(site.zw.ts_full),
+            terrain=site.zone.terrain,
+            area=len(site.zone.ts),
             player=(level, site.zid) in self._player_zids,
             gates=site.gates,
             has_water=any(Terrain.WATER in row for row in self._grids[level]),
@@ -304,24 +304,28 @@ class GameplayStep(PipelineStep):
         gate: TerrainGate,
     ) -> None:
         towns: dict[tuple[int, int], list[PlacedObject]] = {}
+        zones: dict[int, dict[int, PlacedZone]] = {}
+        landings: dict[int, ZPL.Landings] = {}
+        town_of_zone: dict[int, dict[int, PlacedObject]] = {}
         for level, idx in sorted(indexes.items()):
-            lw = self._workspace.levels[level]
+            zones[level] = {}
+            town_of_zone[level] = {}
             for zid, site in sorted(idx.sites.items()):
-                site.write_back()
-                tie_dwellings(catalog, site.zw.gobjs)
+                tie_dwellings(catalog, site.objs)
+                zones[level][zid] = site.placed()
                 self.objs.extend(site.objs)
                 zone_towns = [o for o in site.objs if o.purpose == Purpose.TOWN]
                 if zone_towns:
-                    lw.town_of_zone[zid] = zone_towns[0]
+                    town_of_zone[level][zid] = zone_towns[0]
                     towns[level, zid] = zone_towns
             blk, appr = ZPL.seaport_cells(
                 catalog,
                 [o for o in [*map_state.objs, *self.objs] if o.level == level],
             )
-            lw.seaport_blk = frozenset(blk)
-            lw.seaport_appr = frozenset(appr)
+            landings[level] = ZPL.Landings(frozenset(blk), frozenset(appr))
         map_state.add_objs(self.objs, gate)
         map_state.player_towns = self._player_towns(towns)
+        self._ctx.provide(GameplayResult(zones, landings, town_of_zone))
 
     def _player_towns(self, towns: dict[tuple[int, int], list[PlacedObject]]) -> list[PlacedObject]:
         out = [towns[k][0] for k in self._player_zids if k in towns]

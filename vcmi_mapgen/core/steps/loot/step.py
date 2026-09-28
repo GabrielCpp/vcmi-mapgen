@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import collections
+from dataclasses import replace
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import Pockets, find_pockets
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
-from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
+from vcmi_mapgen.core.steps.border.result import BorderResult
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
 from vcmi_mapgen.core.steps.loot import pickups as PK
 from vcmi_mapgen.core.steps.loot import quests as QU
@@ -41,7 +43,7 @@ class LootStep(PipelineStep):
         size        Map side length in tiles (square).
 
     inject(ctx): ``ZoneIndex`` (targets/zone_records), ``TownsIndex`` (player_zids),
-    the shared ``PlacementWorkspace`` (``guard_tiles`` per level).
+    ``BorderResult`` (``guard_tiles`` per level, taken off each zone's open tiles).
 
     Produces: appends its objects to ``map_state.objs`` and provides ``LootResult``.
     """
@@ -55,7 +57,7 @@ class LootStep(PipelineStep):
         self._zone_records: dict[int, list[ZoneRecord]] = {}
         self._claims: dict[int, frozenset[Tile]] = {}
         self._player_zids: list[tuple[int, int]] = []
-        self._workspace = PlacementWorkspace()
+        self._guard_tiles: dict[int, frozenset[Tile]] = {}
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -65,7 +67,7 @@ class LootStep(PipelineStep):
         self._zone_records = zones.zone_records
         self._claims = zones.claims
         self._player_zids = ctx.require(TownsIndex).player_zids
-        self._workspace = ctx.require(PlacementWorkspace)
+        self._guard_tiles = dict(ctx.require(BorderResult).guard_tiles)
 
     def _place_level_loot(
         self,
@@ -79,8 +81,10 @@ class LootStep(PipelineStep):
         existing objects, read only. Returns (new_objs, pocket_depth_by_tile)."""
         size, seed = self.size, self.seed
         targets = self._targets[level]
-        zone_records = self._zone_records[level]
-        border_guards = self._workspace.levels[level].guard_tiles
+        border_guards = self._guard_tiles.get(level, frozenset[Tile]())
+        zone_records = [
+            replace(zr, open_set=zr.open_set - border_guards) for zr in self._zone_records[level]
+        ]
         _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(zone_records)
         cover = CoverIndex(objs, self._claims.get(level, ()))
         qobjs, n_quests = QU.place_seer_hut_quests(

@@ -375,7 +375,7 @@ class _PortalRescue:
         # the reward upgrade: the portal makes the zone special
         zr = self.zr_by[lvl].get(zone.zid)
         if zr is None:  # zone skipped by the level pass (bare
-            free = set(zone.ts) - st.occupied  # terrain): synth a minimal record
+            free = frozenset(zone.ts) - st.occupied  # terrain): synth a minimal record
             zr = bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
         self.cover_by[lvl].claim(far_fit[0])  # the monolith's own cells
         robjs = place_reward_zone(

@@ -1,6 +1,5 @@
-"""Map-generation primitives: the placement steps' collaboration
-workspaces, the PipelineStep contract, and the generic Pipeline engine that runs an
-ordered list of steps against a shared ProviderRegistry. ``MapState`` itself lives in
+"""Map-generation primitives: the PipelineStep contract, and the generic Pipeline engine that
+runs an ordered list of steps against a shared ProviderRegistry. ``MapState`` itself lives in
 ``vcmi_mapgen.core.model`` (see that package's AGENTS.md) — it is a plain data model, not a
 pipeline primitive.
 
@@ -28,7 +27,7 @@ sequence is just a different list of ``add_step()`` calls, never a new wiring me
 because a step declares what it needs by reading the registry itself instead of the
 caller pushing named values sourced from specific upstream attributes. Step SEQUENCING
 (the order `add_step()` calls are made in) is unchanged by any of this — steps still run
-in the exact order they were added, for the same reason as always: MapState/workspace
+in the exact order they were added, for the same reason as always: MapState
 mutation order and RNG determinism depend on it. The registry only changes how a value
 crosses from one step to a later one; it does not turn the pipeline into a lazy
 dependency graph.
@@ -37,79 +36,18 @@ dependency graph.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from dataclasses import dataclass, field
 from typing import cast, overload
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Entrance, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import MapState
 
 __all__ = [
-    "LevelWorkspace",
     "MapState",
     "MissingProviderError",
     "Pipeline",
     "PipelineStep",
-    "PlacementWorkspace",
     "ProviderRegistry",
-    "ZoneWorkspace",
 ]
-
-
-@dataclass
-class ZoneWorkspace:
-    """One zone's handoff data, mutated in place as Vegetation -> Gameplay -> Gated
-    each run. Not a MapState field: this is step-collaboration bookkeeping, not a
-    map-level fact anything outside the placement steps needs to read."""
-
-    terrain: str = ""
-    ts: frozenset[Tile] = frozenset()  # set by the zone plan
-    ts_full: frozenset[Tile] = frozenset()
-    gobjs: list[PlacedObject] = field(default_factory=list)
-    occupied: frozenset[Tile] = frozenset()
-    gblocked: frozenset[Tile] = frozenset()
-    approaches: tuple[Tile, ...] = ()
-    entrances: list[Entrance] = field(
-        default_factory=list
-    )  # planning.entrances.plan_entrances entries
-    prot: frozenset[Tile] = frozenset()  # protected web
-    rim8: frozenset[Tile] = frozenset()
-    ent_bands: frozenset[Tile] = frozenset()
-    blocked: frozenset[Tile] = frozenset()  # set by VegetationStep
-    open_set: frozenset[Tile] = frozenset()
-    passable: frozenset[Tile] = frozenset()
-    town_room: frozenset[Tile] = frozenset()
-    town_clear: frozenset[Tile] = frozenset()
-    town_blk: frozenset[Tile] = frozenset()
-
-
-@dataclass
-class LevelWorkspace:
-    zones: dict[int, ZoneWorkspace] = field(default_factory=dict)  # zid -> ZoneWorkspace
-    entrance_plan: dict[int, list[Entrance]] = field(default_factory=dict)
-    ridge: frozenset[Tile] = frozenset()
-    hard_avoid: set[Tile] = field(default_factory=set)
-    guard_tiles: frozenset[Tile] = frozenset()
-    sea: tuple[PlacedObject, ...] = ()
-    # seaport cells: the zone plan's planned landings, then GameplayStep's shipyard blocking cells
-    seaport_blk: frozenset[Tile] = frozenset()
-    seaport_appr: frozenset[Tile] = frozenset()
-    town_of_zone: dict[int, PlacedObject] = field(
-        default_factory=dict
-    )  # set by GameplayStep — zid -> town obj
-
-
-class PlacementWorkspace:
-    """Inter-step collaboration object for the placement steps. Created by
-    whichever of those steps runs first (``ctx.get_or_create(PlacementWorkspace,
-    PlacementWorkspace)``) and mutated in place by each later one in turn —
-    ``MapState`` stays generic map-layer truth only, this is the one shared, progressively
-    -built object every other cross-step value would need if it weren't a single
-    computed-once value (see ``vcmi_mapgen/core/steps/AGENTS.md``)."""
-
-    def __init__(self) -> None:
-        self.levels: dict[int, LevelWorkspace] = {}  # level -> LevelWorkspace
-        self.player_zids: list[tuple[int, int]] = []
 
 
 class MissingProviderError(LookupError):
@@ -127,13 +65,9 @@ class ProviderRegistry:
     A producing step's ``run()`` calls ``provide(value)`` once it has computed its typed
     result. A later step's ``inject()`` calls ``require(SomeType)`` for a value some
     earlier step is guaranteed to have produced by then, or ``get(SomeType, default)``
-    when the producing step might not have run at all (e.g. ``GameplayStep`` only
-    places gates on subterrain maps, so ``PortalStep`` reads an empty ``GateResult`` default
-    before it has run).
-    ``get_or_create(SomeType, factory)`` is for the one case where the FIRST demander
-    creates the value and every later demander mutates that SAME instance further
-    (``PlacementWorkspace``) — "the pipeline computes it for the first person who
-    demands it, or returns the existing value."
+    when the producing step might not have run at all (e.g. the CLI reads an empty
+    ``BorderResult`` default when a run stops before ``BorderStep``). Each value is provided
+    once, by the one step that produces it.
     """
 
     def __init__(self) -> None:
@@ -158,11 +92,6 @@ class ProviderRegistry:
 
     def get[T](self, cls: type[T], default: T | None = None) -> T | None:
         return cast(T | None, self._values.get(cls, default))
-
-    def get_or_create[T](self, cls: type[T], factory: Callable[[], T]) -> T:
-        if cls not in self._values:
-            self._values[cls] = factory()
-        return cast(T, self._values[cls])
 
 
 class PipelineStep(ABC):

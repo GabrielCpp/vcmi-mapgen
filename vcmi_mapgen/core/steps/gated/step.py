@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
-from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import build_zone_index
+from vcmi_mapgen.core.planning.zone_plan import ZonePlan
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
 from vcmi_mapgen.core.steps.gated.placer import place_gated_zones
 from vcmi_mapgen.core.steps.gated.result import GatedResult
 
@@ -34,7 +37,8 @@ class GatedStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
 
-    inject(ctx): the shared ``PlacementWorkspace``.
+    inject(ctx): ``ZonePlan`` (each zone's plan) and ``GameplayResult`` (each zone after
+    placement and the recomputed seaport landings).
 
     Produces: appends the gates, monoliths, partners, guards and seals to ``map_state.objs``,
     and provides ``ZoneIndex`` and ``GatedResult``.
@@ -45,16 +49,18 @@ class GatedStep(PipelineStep):
         self.size = size
         self.objs: list[PlacedObject] = []
         self._ctx = ProviderRegistry()
-        self._workspace = PlacementWorkspace()
+        self._plan = ZonePlan({}, ())
+        self._gameplay = GameplayResult({}, {}, {})
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
-        self._workspace = ctx.require(PlacementWorkspace)
+        self._plan = ctx.require(ZonePlan)
+        self._gameplay = ctx.require(GameplayResult)
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
-        index = build_zone_index(self._workspace)
+        index = build_zone_index(self._plan, self._gameplay.zones, self._gameplay.landings)
         by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in index.zone_records}
         for o in map_state.objs:
             if o.level in by_level:
@@ -74,7 +80,9 @@ class GatedStep(PipelineStep):
             for zr in zone_records:
                 if zr.zid in access:
                     interior |= zr.ts
-                    zr.loot_zone = True
+            index.zone_records[level] = [
+                replace(zr, loot_zone=True) if zr.zid in access else zr for zr in zone_records
+            ]
             targets = index.targets[level]
             targets.extend((o.x, o.y) for o in new if o.purpose)
             targets[:] = [t for t in targets if t not in interior]

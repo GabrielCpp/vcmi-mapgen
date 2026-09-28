@@ -37,7 +37,6 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.pipeline import ZoneWorkspace
 from vcmi_mapgen.core.placement.guards import (
     NO_TILES,
     Clearance,
@@ -206,6 +205,32 @@ def _on_land(grid: Sequence[Sequence[int]], t: Tile) -> bool:
     return 0 <= y < len(grid) and 0 <= x < len(grid[y]) and grid[y][x] != Terrain.WATER
 
 
+@dataclass(frozen=True, slots=True)
+class SiteZone:
+    """What one zone brings to placement: its terrain and tiles, the entrance bands, the
+    protected web, the open tiles left after vegetation and the tiles a hero can walk."""
+
+    terrain: str
+    ts: frozenset[Tile]
+    ent_bands: frozenset[Tile]
+    prot: frozenset[Tile]
+    open_set: frozenset[Tile]
+    passable: frozenset[Tile]
+
+
+@dataclass(frozen=True, slots=True)
+class PlacedZone:
+    """One zone after placement: its objects, the tiles their footprints cover, their
+    approaches, and the open, walkable and protected tiles left for the steps after it."""
+
+    objs: tuple[PlacedObject, ...]
+    cells: frozenset[Tile]
+    approaches: tuple[Tile, ...]
+    open_set: frozenset[Tile]
+    passable: frozenset[Tile]
+    prot: frozenset[Tile]
+
+
 @final
 class ZoneSite:
     """One zone's placement state after vegetation. ``reserved`` (entrance bands and
@@ -213,24 +238,24 @@ class ZoneSite:
     through ``passable`` and ``comp`` labels its connected pieces."""
 
     def __init__(
-        self, catalog: Catalog, zid: int, zw: ZoneWorkspace, lf: LevelField, seed: int
+        self, catalog: Catalog, zid: int, zone: SiteZone, lf: LevelField, seed: int
     ) -> None:
         self.catalog = catalog
         self.guard_probe = catalog.guard(3)
         self.zid = zid
-        self.zw = zw
+        self.zone = zone
         self.lf = lf
-        self.ts: AbstractSet[Tile] = zw.ts
+        self.ts: AbstractSet[Tile] = zone.ts
         self.rng = random.Random(seed ^ (zid * 40503) ^ SITE_SALT)
-        self.st: TerrainStats = load_gameplay(level=lf.level)[zw.terrain]
-        self.reserved: set[Tile] = set(zw.ent_bands) | set(zw.approaches)
-        self.passable: set[Tile] = set(zw.passable)
-        self.prot: set[Tile] = set(zw.prot)
+        self.st: TerrainStats = load_gameplay(level=lf.level)[zone.terrain]
+        self.reserved: set[Tile] = set(zone.ent_bands)
+        self.passable: set[Tile] = set(zone.passable)
+        self.prot: set[Tile] = set(zone.prot)
         self.reach: set[Tile] = set()
         self.comp: dict[Tile, int] = {}
         self.set_reach(set(web_dist(self.passable, self.prot)))
         self.cov = Covariates(
-            edge_dist(zw.ts), gate_dist(zw.ts, zw.ent_bands), openness(zw.open_set)
+            edge_dist(zone.ts), gate_dist(zone.ts, zone.ent_bands), openness(zone.open_set)
         )
         self.wcache: dict[str, dict[Tile, float]] = {}
         self.objs: list[PlacedObject] = []
@@ -424,7 +449,7 @@ class ZoneSite:
             lvl += 1
         _ = self.add_guard(self.catalog.guard(lvl), approach)
         ex, ey = approach[0], approach[1] - 1
-        seal_pool = self.catalog.decor(self.zw.terrain, blocking=True, max_cells=1)
+        seal_pool = self.catalog.decor(self.zone.terrain, blocking=True, max_cells=1)
         if not seal_pool:
             return
         for s in ((ex - 1, ey), (ex + 1, ey), (ex - 1, ey + 1), (ex + 1, ey + 1)):
@@ -452,15 +477,16 @@ class ZoneSite:
         self.cells.add(s)
         self.block([s], reach)
 
-    def write_back(self) -> None:
-        zw = self.zw
-        zw.gobjs.extend(self.objs)
-        zw.occupied = zw.occupied | frozenset(self.cells)
-        zw.gblocked = zw.gblocked | frozenset(self.blk)
-        zw.approaches = (*zw.approaches, *self.approaches)
-        zw.open_set = zw.open_set - self.cells - frozenset(self.approaches)
-        zw.passable = zw.passable - self.blk - self.stranded
-        zw.prot = frozenset(self.prot)
+    def placed(self) -> PlacedZone:
+        cells = frozenset(self.cells)
+        return PlacedZone(
+            tuple(self.objs),
+            cells,
+            tuple(self.approaches),
+            self.zone.open_set - cells - frozenset(self.approaches),
+            self.zone.passable - self.blk - self.stranded,
+            frozenset(self.prot),
+        )
 
 
 @dataclass(slots=True)

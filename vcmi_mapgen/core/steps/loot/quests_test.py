@@ -18,9 +18,9 @@ def _record(zid: int, x0: int) -> ZoneRecord:
         zid=zid,
         terrain="grass",
         ts=frozenset(ts),
-        open_set=set(ts),
-        passable=set(ts),
-        reach=set(ts),
+        open_set=frozenset(ts),
+        passable=frozenset(ts),
+        reach=frozenset(ts),
     )
 
 

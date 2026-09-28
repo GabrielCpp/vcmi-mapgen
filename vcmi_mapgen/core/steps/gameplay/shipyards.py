@@ -35,7 +35,7 @@ class _ShipyardHooks:
         self.pending: dict[Tile, _Pending] = {}
         self.banned: set[Tile] = set()
         for site in idx.sites.values():
-            self.banned |= site.zw.ent_bands | set(site.approaches) | site.cells
+            self.banned |= site.zone.ent_bands | set(site.approaches) | site.cells
 
     def _door_ok(self, fp: Footprint, anchor: Tile, approach: Tile) -> ZoneSite | None:
         lf = self.lf

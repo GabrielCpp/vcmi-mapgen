@@ -8,8 +8,7 @@ from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.pipeline import ZoneWorkspace
-from vcmi_mapgen.core.placement.site import LevelField, ZoneSite
+from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteZone, ZoneSite
 from vcmi_mapgen.core.steps.gameplay.draw import DrawSpec, ZoneDrawer
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger, tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.step import place_attractions, place_mines, place_town
@@ -48,31 +47,24 @@ class OpenZone:
 class OpenZonePlacer:
     catalog: Catalog
 
-    def __call__(self, zone: OpenZone, seed: int, ledger: Ledger | None = None) -> ZoneWorkspace:
+    def __call__(self, zone: OpenZone, seed: int, ledger: Ledger | None = None) -> PlacedZone:
         """Draw and place one zone of open land with no vegetation and a one-tile web at its
-        top-left corner, outside any pipeline. Returns its workspace after write-back."""
+        top-left corner, outside any pipeline. Returns the placed zone."""
         ts, terrain, player = zone.ts, zone.terrain, zone.player
         w = max(x for x, _y in ts) + 1
         h = max(y for _x, y in ts) + 1
-        zw = ZoneWorkspace(
-            terrain=terrain,
-            ts=frozenset(ts),
-            ts_full=frozenset(ts),
-            prot=frozenset({min(ts)}),
-            open_set=frozenset(ts),
-            passable=frozenset(ts),
-        )
+        tiles = frozenset(ts)
+        sz = SiteZone(terrain, tiles, frozenset(), frozenset({min(ts)}), tiles, tiles)
         lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [], lambda _o: True)
-        site = ZoneSite(self.catalog, 1, zw, lf, seed)
+        site = ZoneSite(self.catalog, 1, sz, lf, seed)
         ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
         spec = DrawSpec(1, terrain, len(ts), player=player)
         draw = ZoneDrawer(self.catalog, spec, site.st, ledger, seed).draw()
         place_town(site, draw, player)
         place_mines(site, draw, ledger, set())
         place_attractions(site, draw)
-        site.write_back()
-        tie_dwellings(self.catalog, zw.gobjs)
-        return zw
+        tie_dwellings(self.catalog, site.objs)
+        return site.placed()
 
 
 @pytest.fixture

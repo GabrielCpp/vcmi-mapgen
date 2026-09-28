@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.placement.site import PlacedZone
+from vcmi_mapgen.core.planning.zone_plan import Landings
 
 
 @dataclass
@@ -22,3 +25,13 @@ class TownsIndex:
     input. A run stopped before GameplayStep reads the empty default."""
 
     player_zids: list[tuple[int, int]] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class GameplayResult:
+    """Each zone after placement by level and zid, each level's seaport landings recomputed
+    from the placed shipyards, and the first town each zone received."""
+
+    zones: Mapping[int, Mapping[int, PlacedZone]]
+    landings: Mapping[int, Landings]
+    town_of_zone: Mapping[int, Mapping[int, PlacedObject]]

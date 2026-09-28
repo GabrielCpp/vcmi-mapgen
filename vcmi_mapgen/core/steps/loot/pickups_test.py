@@ -30,9 +30,9 @@ def _pickups(catalog: Catalog, zone: ScatterZone, seed: int) -> list[PlacedObjec
         zid=1,
         terrain="grass",
         ts=frozenset(zone.ts),
-        open_set=set(zone.open_set),
-        passable=set(zone.open_set),
-        reach=reach,
+        open_set=frozenset(zone.open_set),
+        passable=frozenset(zone.open_set),
+        reach=frozenset(reach),
     )
     cobjs, _n, _depths = CA.place_pocket_caches(
         catalog, [record], seed=seed, context=CA.PocketContext(existing_objs=sobjs, cover=cover)
@@ -133,9 +133,9 @@ def _field_with_room(
         zid=0,
         terrain="grass",
         ts=frozenset(ts),
-        open_set=set(ts),
-        passable=set(ts),
-        reach=set(ts),
+        open_set=frozenset(ts),
+        passable=frozenset(ts),
+        reach=frozenset(ts),
     )
 
 
@@ -208,7 +208,7 @@ def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_
 
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
     zr = _field_with_room(room, {(5, 4), (6, 4)})
-    zr.open_set.discard((6, 7))  # walkable (still in ts/passable/reach) but
+    zr = replace(zr, open_set=zr.open_set - {(6, 7)})  # walkable (still in ts/passable/reach) but
     # reserved -- e.g. another object's approach cell
     objs, _n_pockets, depth = CA.place_pocket_caches(catalog, [zr], seed=3, bounds=(20, 20))
     claimed: set[Tile] = set()
@@ -241,9 +241,9 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine(catalog: 
         zid=0,
         terrain="grass",
         ts=frozenset(ts),
-        open_set=set(ts),
-        passable=set(ts),
-        reach=set(ts),
+        open_set=frozenset(ts),
+        passable=frozenset(ts),
+        reach=frozenset(ts),
     )
 
     objs, _n_pockets, _depth = CA.place_pocket_caches(

@@ -7,12 +7,14 @@ from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject
-from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement import scatter as SC
 from vcmi_mapgen.core.placement.guards import guard_zoc
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
+from vcmi_mapgen.core.planning.zone_plan import ZonePlan
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 
 
@@ -25,8 +27,8 @@ class ScatterStep(PipelineStep):
         seed       RNG seed.
         size       Map side length in tiles (square).
 
-    inject(ctx): ``ZoneIndex`` (zone records), ``Segmentation`` (the zone label grid), the
-    shared ``PlacementWorkspace``.
+    inject(ctx): ``ZoneIndex`` (zone records), ``Segmentation`` (the zone label grid),
+    ``ZonePlan`` (each zone's plan) and ``GameplayResult`` (each zone after placement).
 
     Produces: appends the piles to ``map_state.objs``.
     """
@@ -36,13 +38,15 @@ class ScatterStep(PipelineStep):
         self.size: int = size
         self.objs: list[PlacedObject] = []
         self._zones: ZoneIndex = ZoneIndex()
-        self._workspace: PlacementWorkspace = PlacementWorkspace()
+        self._plan: ZonePlan = ZonePlan({}, ())
+        self._gameplay: GameplayResult = GameplayResult({}, {}, {})
         self._segmentation: Segmentation = Segmentation({}, {})
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._zones = ctx.require(ZoneIndex)
-        self._workspace = ctx.require(PlacementWorkspace)
+        self._plan = ctx.require(ZonePlan)
+        self._gameplay = ctx.require(GameplayResult)
         self._segmentation = ctx.require(Segmentation)
 
     @override
@@ -61,21 +65,23 @@ class ScatterStep(PipelineStep):
             }
             cover = CoverIndex(level_objs, self._zones.claims.get(level, frozenset()) | taken)
             zoc = guard_zoc(level_objs)
-            lvl_ws = self._workspace.levels[level]
+            planned = self._plan.levels[level].zones
+            placed = self._gameplay.zones[level]
             for zr in zone_records:
                 if zr.loot_zone:
                     continue
-                zw = lvl_ws.zones[zr.zid]
+                zone = planned[zr.zid]
+                pz = placed[zr.zid]
                 piles, _r = SC.place_scatter(
                     catalog,
                     SC.ScatterZone(
-                        zw.ts,
+                        zone.ts,
                         self._segmentation.zone_label[level],
                         zr.zid,
-                        zw.terrain,
-                        zw.open_set - (zw.rim8 - zw.ent_bands),
-                        zw.prot,
-                        entrances=zw.entrances,
+                        zone.terrain,
+                        pz.open_set - (zone.rim8 - zone.ent_bands),
+                        pz.prot,
+                        entrances=list(zone.entrances),
                     ),
                     SC.ScatterConfig(
                         seed=self.seed,
@@ -91,7 +97,7 @@ class ScatterStep(PipelineStep):
                 self.objs.extend(piles)
                 pk = collections.Counter(o.purpose for o in piles)
                 print(
-                    f"  L{level} zone {zr.zid:>3} {zw.terrain:<8} {len(zw.ts_full):>5} tiles: "
+                    f"  L{level} zone {zr.zid:>3} {zone.terrain:<8} {len(zone.ts):>5} tiles: "
                     + f"scatter res={pk.get('RESOURCE_PILE', 0)}"
                 )
 

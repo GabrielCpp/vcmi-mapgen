@@ -10,14 +10,12 @@ from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.pipeline import (
-    LevelWorkspace,
-    PlacementWorkspace,
-    ProviderRegistry,
-    ZoneWorkspace,
-)
+from vcmi_mapgen.core.pipeline import ProviderRegistry
+from vcmi_mapgen.core.placement.site import PlacedZone
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
+from vcmi_mapgen.core.planning.zone_plan import PlanLevel, PlanZone, ZonePlan
 from vcmi_mapgen.core.steps import ScatterStep
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 
 PILE = Identity("fakePile", "gold", "fake_pile", Footprint.one(Role.VISIT))
@@ -126,15 +124,12 @@ def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
         tiles=sorted(ts),
         tiles_set=ts,
     )
-    workspace = PlacementWorkspace()
-    workspace.levels[0] = LevelWorkspace(
-        zones={1: ZoneWorkspace(terrain="grass", ts=ts, ts_full=ts, open_set=ts, entrances=[])}
-    )
+    none = frozenset[tuple[int, int]]()
+    plan_zone = PlanZone("grass", ts, (), none, none, none)
     ctx = ProviderRegistry()
-    ctx.provide(workspace)
-    ctx.provide(
-        ZoneIndex(zone_records={0: [ZoneRecord(1, "grass", ts, set(ts), set(ts), set(ts))]})
-    )
+    ctx.provide(ZonePlan({0: PlanLevel({1: plan_zone}, {})}, ()))
+    ctx.provide(GameplayResult({0: {1: PlacedZone((), none, (), ts, ts, none)}}, {}, {}))
+    ctx.provide(ZoneIndex(zone_records={0: [ZoneRecord(1, "grass", ts, ts, ts, ts)]}))
     ctx.provide(Segmentation({0: {1: zone}}, {0: label_zones({1: zone})}))
     map_state = MapState(size=30)
     catalog = FakeCatalog()
