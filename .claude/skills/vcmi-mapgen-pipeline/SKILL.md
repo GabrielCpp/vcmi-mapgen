@@ -76,6 +76,9 @@ pipeline.
 
 A loop inside `run` that chooses tiles, zones or objects is a function that has not been
 moved out yet. Move it to the step's package before adding to it.
+`run` stays under 30 lines. `vegetation/grow.py`, `scatter/piles.py` and `border/guard.py`
+show the shape: a frozen value holding one level's inputs, and a function that returns one
+level's result. `MapState.objs_by_level` gives each level's objects.
 
 The `code-structure` skill's rules 1.7 and 1.8 cover the values those functions take. A
 value a step receives from the registry is read, not written. A function takes the fields
