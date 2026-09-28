@@ -7,11 +7,10 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen.cli.settings import load_settings
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
+from vcmi_mapgen.core.placement.identity import RND_TOWN
 from vcmi_mapgen.core.placement.site import CORE_SPELLS
-from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.step import OpenZone, place_open_zone
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
@@ -104,7 +103,7 @@ def test_vmap_export_roundtrip(tmp_path: Path) -> None:
 
 
 @needs_vcmi
-def test_vmap_export_game_contracts(catalog: Catalog, tmp_path: Path) -> None:
+def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -> None:
     """Round-2 playtest contracts (v5.2): mask orientation matches the art (the sawmill
     entrance is ONE tile left of the anchor, not mirrored), export masks are V-padded to
     the sprite tile extent (VCMI truncates sprites outside the mask), guards fight
@@ -127,7 +126,7 @@ def test_vmap_export_game_contracts(catalog: Catalog, tmp_path: Path) -> None:
         pytest.skip("gameplay stats not mined")
     # a placed zone carries the game-time options on the right purposes
     ts = {(x, y) for x in range(30) for y in range(24)}
-    objs: list[PlacedObject] = place_open_zone(catalog, OpenZone(ts, "grass", player=True), 3).gobjs
+    objs: list[PlacedObject] = open_zone(OpenZone(ts, "grass", player=True), 3).gobjs
     town = next(o for o in objs if o.purpose == "TOWN")
     START_BUILDINGS: JsonValue = {
         "allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]
@@ -237,7 +236,7 @@ def test_playability_overlay_random_town_shows_random_in_lobby(tmp_path: Path) -
     (isFactionRandom false + allowedFactions defaulting to ALL on an absent key) picks the
     first faction by id (Castle) instead of showing 'random' in the lobby — the bug reported
     2026-07-03: every player's town appeared fixed to Castle."""
-    rnd = ON.identity_of(PG.RND_TOWN)
+    rnd = ON.identity_of(RND_TOWN)
     grid = [[2] * 24 for _ in range(24)]
     cells = ZE.tile_terrain(grid, 24, 24)
     towns = [_town(rnd, 8, 8)]

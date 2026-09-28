@@ -6,8 +6,6 @@ corpus rate, and the forced objects count inside it."""
 from __future__ import annotations
 
 from collections.abc import Sequence
-from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -19,22 +17,22 @@ from vcmi_mapgen.core.pipeline import (
     PipelineStep,
     PlacementWorkspace,
     ProviderRegistry,
-    ZoneWorkspace,
 )
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
+from vcmi_mapgen.core.placement.identity import RND_TOWN
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.placement.site import LevelField, SiteIndex, ZoneSite
 from vcmi_mapgen.core.planning import zone_plan as ZPL
-from vcmi_mapgen.core.steps.gameplay.draw import TOWN_SLOTS, DrawSpec, ZoneDraw, ZoneDrawer
-from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
-from vcmi_mapgen.core.steps.gameplay.mines import (
-    BASIC_MINE_RES,
-    RND_TOWN,
+from vcmi_mapgen.core.steps.gameplay.draw import (
     TOWN_MIN_AREA,
-    Ledger,
-    tie_dwellings,
+    TOWN_SLOTS,
+    DrawSpec,
+    ZoneDraw,
+    ZoneDrawer,
 )
+from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger, tie_dwellings
+from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
@@ -132,45 +130,6 @@ def place_attractions(site: ZoneSite, draw: ZoneDraw) -> None:
         smaller = _smaller(site, draw.pools.get(purpose, []), ident)
         if not any(site.place(purpose, alt, order) is not None for alt in smaller):
             print(f"  zone {site.zid}: no spot for {purpose} {ident.animation}")
-
-
-@dataclass(frozen=True, slots=True)
-class OpenZone:
-    """One zone of open land to draw outside any pipeline: its tiles, its terrain, and
-    whether a player starts in it."""
-
-    ts: AbstractSet[Tile]
-    terrain: str
-    player: bool = False
-
-
-def place_open_zone(
-    catalog: Catalog, zone: OpenZone, seed: int, ledger: Ledger | None = None
-) -> ZoneWorkspace:
-    """Draw and place one zone of open land with no vegetation and a one-tile web at its
-    top-left corner, outside any pipeline. Returns its workspace after write-back."""
-    ts, terrain, player = zone.ts, zone.terrain, zone.player
-    w = max(x for x, _y in ts) + 1
-    h = max(y for _x, y in ts) + 1
-    zw = ZoneWorkspace(
-        terrain=terrain,
-        ts=frozenset(ts),
-        ts_full=frozenset(ts),
-        prot=frozenset({min(ts)}),
-        open_set=frozenset(ts),
-        passable=frozenset(ts),
-    )
-    lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [], lambda _o: True)
-    site = ZoneSite(catalog, 1, zw, lf, seed)
-    ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
-    spec = DrawSpec(1, terrain, len(ts), player=player)
-    draw = ZoneDrawer(catalog, spec, site.st, ledger, seed).draw()
-    place_town(site, draw, player)
-    place_mines(site, draw, ledger, set())
-    place_attractions(site, draw)
-    site.write_back()
-    tie_dwellings(zw.gobjs)
-    return zw
 
 
 @final

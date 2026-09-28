@@ -11,29 +11,22 @@ from __future__ import annotations
 import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import final
+from typing import cast, final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import COUNTED, VISIT_PURPOSES, Purpose
+from vcmi_mapgen.core.placement.identity import RND_DWELL, RND_DWELL_L, RND_TOWN, pick_kind
+from vcmi_mapgen.core.placement.intensity import density, stoch_round
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.core.steps.gameplay.mines import (
-    RANDOM_SHARE,
-    RND_DWELL,
-    RND_DWELL_L,
-    RND_TOWN,
-    TOWN_MIN_AREA,
-    Ledger,
-    info_pool,
-    mine_variants,
-    rest_mines,
-)
+from vcmi_mapgen.core.steps.gameplay.economy import ECONOMY, Ledger, mine_variants, rest_mines
 
 DRAW_SALT = 0x5EED
 TOWN_SLOTS = 3
 MIX: tuple[str, ...] = (Purpose.MINE, Purpose.DWELLING, Purpose.BANK, "VISIT")
-ECONOMY = ("sawmill", "orePit")
 DWELL_LEVEL_W = (22, 18, 15, 13, 12, 10, 10)
+TOWN_MIN_AREA = 150  # a town needs a real zone
+RANDOM_SHARE = 0.7  # towns: random vs fixed split
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,12 +52,20 @@ class ZoneDraw:
     pools: dict[str, list[Identity]] = field(default_factory=dict)
 
 
-def stoch_round(rng: random.Random, x: float) -> int:
-    return int(x) + (1 if rng.random() < x - int(x) else 0)
-
-
-def density(st: TerrainStats) -> dict[str, float]:
-    return {p: c / max(st.tiles, 1) for p, c in st.counts.items()}
+def info_pool(
+    catalog: Catalog, terrain: str, has_water: bool, has_subterrain: bool = False
+) -> list[Identity]:
+    """`catalog.candidates(Purpose.INFO, terrain)`, minus cartographer subtypes the map
+    can't back up:
+    cartographerSubterranean is dropped unless the map actually has a second level, and
+    cartographerWater is dropped on maps with no water at all."""
+    pool = catalog.candidates(Purpose.INFO, terrain)
+    return [
+        i
+        for i in pool
+        if (i.subtype != "cartographerSubterranean" or has_subterrain)
+        and (i.subtype != "cartographerWater" or has_water)
+    ]
 
 
 @final
@@ -122,20 +123,18 @@ class ZoneDrawer:
         return shares
 
     def _pick(self, pool: Iterable[Identity], purpose: str) -> Identity | None:
-        cands = sorted(
-            (i for i in pool if "random" not in (i.type or "").lower()),
-            key=lambda i: i.animation,
-        )
-        if not cands:
-            return None
         w = self.st.anim_w.get(purpose, {})
-        weights = [
-            (w.get(i.animation.lower(), 0) ** 0.5 + 0.3)
-            * (0.05 if i.animation.lower() in self.used_anims else 1.0)
-            for i in cands
-        ]
-        ident = self.rng.choices(cands, weights=weights, k=1)[0]
-        self.used_anims.add(ident.animation.lower())
+        ident = pick_kind(
+            pool,
+            lambda i: cast(
+                float,
+                (w.get(i.animation.lower(), 0) ** 0.5 + 0.3)
+                * (0.05 if i.animation.lower() in self.used_anims else 1.0),
+            ),
+            self.rng,
+        )
+        if ident is not None:
+            self.used_anims.add(ident.animation.lower())
         return ident
 
     def _town(self) -> Identity | None:

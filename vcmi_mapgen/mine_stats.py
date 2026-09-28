@@ -2,12 +2,12 @@ from collections.abc import Callable, Sequence
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.core.steps.gameplay import mines
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo, markov
 from vcmi_mapgen.core.steps.vegetation import stats as veg_stats
 from vcmi_mapgen.corpus.gameplay import save_gameplay
 from vcmi_mapgen.corpus.gates import save_gate_stats
 from vcmi_mapgen.corpus.maps import corpus_maps
+from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
 from vcmi_mapgen.kit import tiling
 
@@ -37,7 +37,7 @@ def _gates(maps: Sequence[MapState], _catalog: Catalog) -> None:
 
 def _gameplay(maps: Sequence[MapState], catalog: Catalog) -> None:
     for level in LEVELS:
-        save_gameplay(level, mines.mine_gameplay(catalog, level, maps))
+        save_gameplay(level, mine_gameplay(catalog, level, maps))
 
 
 def _vegetation(maps: Sequence[MapState], catalog: Catalog) -> None:

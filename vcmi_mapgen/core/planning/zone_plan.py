@@ -22,10 +22,11 @@ from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWo
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
+from vcmi_mapgen.core.placement.identity import RND_TOWN
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
 from vcmi_mapgen.core.planning.entrances import plan_entrances
+from vcmi_mapgen.core.planning.player_zones import select_player_zones
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.core.steps.gameplay import mines as MN
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
@@ -254,7 +255,7 @@ def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> To
     """The town spot nearest the zone centre before any tree grows: the footprint and approach
     inside the zone and clear of ``off``, the blocking cells off the web, and a walk from the
     approach to the web."""
-    ident = catalog.identity_of(MN.RND_TOWN)
+    ident = catalog.identity_of(RND_TOWN)
     area = len(zw.ts)
     cx = sum(t[0] for t in zw.ts) / area + (ident.footprint.width - 1) / 2.0
     cy = sum(t[1] for t in zw.ts) / area + (ident.footprint.height - 1) / 2.0
@@ -304,7 +305,7 @@ def plan_player_zones(
             rooms[level, zid] = None if zw is None else town_room(catalog, zw, off)
         return rooms[level, zid]
 
-    picks = MN.select_player_zones(
+    picks = select_player_zones(
         zones_by_level, players, lambda level, zid: room(level, zid) is not None
     )
     for level, zid in picks:

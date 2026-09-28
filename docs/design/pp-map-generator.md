@@ -206,7 +206,7 @@ data the Map file writes.
 | Concept | Verdict | Where | Finding |
 |---|---|---|---|
 | Random stream | Reshape | About 20 call sites, from `core/steps/terrain_gen/` to `core/steps/scatter/` | Each site mixes the seed with a region id, a multiplier and a salt by hand. No shared function exists. See M10. |
-| Corpus survey | Reshape | Survey functions in `core/steps/terrain_gen/macro_topo.py`, `core/steps/vegetation/stats.py`, `core/steps/gameplay/mines.py` and `core/steps/gate/gates.py` | The survey code sits beside each consumer and runs on a cache miss in the middle of a generation run. No single command writes the priors. |
+| Corpus survey | Reshape | Survey functions in `core/steps/terrain_gen/macro_topo.py`, `core/steps/vegetation/stats.py`, `corpus/mine/gameplay.py` and `core/steps/gate/gates.py` | The survey code sits beside each consumer and runs on a cache miss in the middle of a generation run. No single command writes the priors. |
 | Priors | Reshape | `data/pp/*.json`, committed | Four of six statistics are cached. The Markov border model and the tile art table learn from all 159 maps on every run. Only the gameplay and gate files carry a version. See M11. |
 | Catalog | Reshape | `vcmi/catalog/` | The pipeline receives an `Ontology` instance, but 19 modules call the module-level accessors. A test cannot hand in a small catalog. See M12. |
 | Terrain layout | Exists | `core/steps/terrain_gen/` | Owns and never-knows match. It also computes tile art. See M13. |
@@ -215,10 +215,10 @@ data the Map file writes.
 | Water body | Exists | `core/steps/zone_plan.py` | A flood fill over water tiles. |
 | Passage | Reshape | `kit/topology.py`, planned in `core/steps/zone_plan.py` | The code opens one or two fixed 3-tile entrances per zone pair and densifies the rest of the border. The spec opens a band sized by the corpus open fraction. See M1. |
 | Walkable web | Exists | `core/steps/vegetation/sample.py`, extended in `core/steps/gameplay/site.py` | Built from entrances, landings and town rooms before vegetation. Each committed approach links to it. A cut web reroutes. See M2. |
-| Player zones | Exists | `core/steps/gameplay/mines.py`, room kept in `core/steps/zone_plan.py` | Greedy max-min on centroid distance, largest zone first, only zones with room for a town. Chosen before vegetation. |
+| Player zones | Exists | `core/planning/player_zones.py`, room kept in `core/steps/zone_plan.py` | Greedy max-min on centroid distance, largest zone first, only zones with room for a town. Chosen before vegetation. |
 | Vegetation | Exists | `core/steps/vegetation/` | Hard zeros on the web and the town room hold. The vegetation layer also builds the whole zone plan. See M14. |
 | Zone budget | Exists | `core/steps/gameplay/draw.py` | One total per zone at the corpus rate. Forced objects count inside it. A moved town or a shipyard spends slots after the draw. |
-| Economy ledger | Reshape | `core/steps/gameplay/mines.py`, consumed in `draw.py` and `step.py` | Map-wide and passed through zones in sorted order. A basic mine that finds no spot only prints a warning. See M7. |
+| Economy ledger | Reshape | `core/steps/gameplay/economy.py`, consumed in `draw.py` and `step.py` | Map-wide and passed through zones in sorted order. A basic mine that finds no spot only prints a warning. See M7. |
 | Object choice | Exists | `core/steps/gameplay/draw.py`, `ontology.pick` | It shares one class with the Zone budget. See M15. |
 | Placement rule | Reshape | `validate.py`, `core/model/map_state.py`, `core/steps/gameplay/site.py`, `core/steps/placement.py`, `core/steps/gated/placer.py` | The terrain rule and the cover rule are shared and the map re-checks them on commit. The zone-local rules (gap, reach, doors, mine front) are copied per placer. |
 | Site preference | Exists | `core/steps/gameplay/site.py` | Centres come in intensity order or centroid order. Inside each 5x5 window, spots sort by back contact, then distance. It is a sort key, not a sum. See M4. |

@@ -3,6 +3,7 @@ corpus covariate counts."""
 
 import collections
 import math
+import random
 from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
@@ -13,6 +14,14 @@ from vcmi_mapgen.core.model import (
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 EB, GB, OB = 6, 4, 4  # covariate bins: edge-dist, gate-dist, openness
+
+
+def stoch_round(rng: random.Random, x: float) -> int:
+    return int(x) + (1 if rng.random() < x - int(x) else 0)
+
+
+def density(st: TerrainStats) -> dict[str, float]:
+    return {p: c / max(st.tiles, 1) for p, c in st.counts.items()}
 
 
 def scaled_cap(base: int, expectation: float) -> int:

@@ -18,7 +18,7 @@ STATS_PATH = str(ROOT / "data" / "pp" / "gameplay_stats.json")
 STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "gameplay_stats_underground.json")
 
 
-SOURCE = "vcmi_mapgen.core.steps.gameplay.mines.mine_gameplay"
+SOURCE = "vcmi_mapgen.corpus.mine.gameplay.mine_gameplay"
 
 
 STATS_VERSION = 5  # v5: border open fraction + full-front gate distances

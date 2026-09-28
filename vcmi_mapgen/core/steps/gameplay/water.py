@@ -33,7 +33,6 @@ from vcmi_mapgen.core.placement.cells import legal_cells
 from vcmi_mapgen.core.placement.identity import (
     pick_fixed_identity,
 )
-from vcmi_mapgen.core.steps.gameplay.mines import WATER_PURPOSES
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
@@ -48,6 +47,17 @@ SEAPORT_SEARCH_HOPS = 2  # near-coastal search depth (s10 diagnosis, 2026-09: th
 # shore instead of by land zone
 
 _NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
+
+WATER_PURPOSES = (
+    Purpose.REWARD_PICKUP,
+    Purpose.BONUS_TEMP,
+    Purpose.TRANSPORT,
+    Purpose.INFO,
+    Purpose.BANK,
+    Purpose.WATER_TRANSPORT,
+    # no guard -- a monster only ever gates a mine, a loot-zone/portal-rescue access
+    # object, or a pocket mouth (user-mandated placement order); water bodies get none.
+)
 
 
 def _water_obj(
