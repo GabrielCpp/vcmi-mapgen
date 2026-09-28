@@ -2,6 +2,9 @@
 
 ## Map
 
-- `caches.py`: the guarded pocket caches and the seer-hut quests.
+- `pickups.py`: the guarded pocket caches, a guard at each mouth and loot inside.
+- `pockets.py`: pocket geometry, the deduped nooks, their guard stands and the
+  town-to-mine routes a pocket guard must not cut.
+- `quests.py`: the seer-hut quests, each linking an artifact to the hut that asks for it.
 - `result.py`: `LootResult`, which carries the pockets `LootStep` publishes.
 - `step.py`: `LootStep`.

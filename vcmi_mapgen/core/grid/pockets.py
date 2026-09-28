@@ -136,7 +136,7 @@ def find_pockets(
     EVERY 4-connected pair in `reach` is tried as a candidate doorway — "try to enlarge
     the cavity by moving the two entrance tiles until it stops being sealed or exceeds
     max_tiles" is achieved by this exhaustive search itself: every alternative doorway
-    position for the same physical nook is tried anyway, and `steps.loot.caches.
+    position for the same physical nook is tried anyway, and `core.steps.loot.pockets.
     dedupe_pockets` + `mouth_key` (unchanged) keep the best (largest, most-in-neck)
     candidate among the overlapping ones.
 

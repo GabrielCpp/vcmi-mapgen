@@ -12,7 +12,8 @@ from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, Provider
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
-from vcmi_mapgen.core.steps.loot import caches as CA
+from vcmi_mapgen.core.steps.loot import pickups as PK
+from vcmi_mapgen.core.steps.loot import quests as QU
 from vcmi_mapgen.core.steps.loot.result import LootResult
 
 
@@ -82,12 +83,12 @@ class LootStep(PipelineStep):
         border_guards = self._workspace.levels[level].guard_tiles
         _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(zone_records)
         cover = CoverIndex(objs, self._claims.get(level, ()))
-        qobjs, n_quests = CA.place_seer_hut_quests(
+        qobjs, n_quests = QU.place_seer_hut_quests(
             catalog,
             zone_records,
             seed=seed,
             bounds=(size, size),
-            context=CA.SeerHutContext(
+            context=QU.SeerHutContext(
                 pocket_tiles=_pocket_tiles_pkt,
                 existing_objs=objs,
                 used_artifacts=seerhut_artifacts,
@@ -98,12 +99,12 @@ class LootStep(PipelineStep):
         if n_quests:
             print(f"  L{level} seer hut quests: {n_quests}")
 
-        cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
+        cobjs, n_pockets, pocket_depth_by_tile = PK.place_pocket_caches(
             catalog,
             zone_records,
             seed=seed,
             bounds=(size, size),
-            context=CA.PocketContext(
+            context=PK.PocketContext(
                 border_guards=border_guards,
                 precomputed_pockets=_raw_pkt,
                 existing_objs=[*objs, *qobjs],

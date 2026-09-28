@@ -1,27 +1,29 @@
-"""Guarded pocket caches + Seer Hut quests — Repair-only (always ran from
-`_repair_and_finish_level`, never from `_run_level`'s per-zone passes).
-"""
+"""Guarded pocket caches: a guard at each pocket mouth, an artifact at the deepest tile
+and pickups in between, placed once per level over the finished walkable field."""
 
-import collections
 import random
-from collections.abc import Collection, Container, Iterable, Mapping, Sequence
+from collections.abc import Collection, Container, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from itertools import pairwise
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.geometry import NB8
-from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
-from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, JsonValue, PlacedObject, Tile
+from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, pocket_depths
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
-from vcmi_mapgen.core.placement.rewards import PANDORA_CREATURES, RW_LIMITER, RW_REWARD, RW_TEXT
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.core.steps.loot.pockets import (
+    dedupe_pockets,
+    guard_stand,
+    guard_stands,
+    home_mine_protect_pairs,
+    reach8,
+    reachable,
+)
 from vcmi_mapgen.core.steps.treasure.fill import (
     FILL_EXCL_ANIMS,
     LOOT_CHEST_TYPES,
@@ -38,255 +40,6 @@ ART_BY_LVL = ["avarnd1", "avarnd1", "avarnd2", "avarnd3", "avarnd3", "avarand"]
 
 # Types that must maintain a minimum map-fraction separation between any two instances in pockets.
 _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
-
-
-def _guard_stand(mask: Footprint, x: int, y: int) -> set[Tile]:
-    return set(FP.interactive_cells(mask, x, y))
-
-
-def _approach_tiles(mask: Footprint, x: int, y: int, passable: Container[Tile]) -> set[Tile]:
-    """Passable tiles a hero could stand on to visit this object -- its own interactive
-    cell(s) when walk-on, plus every passable 8-neighbour of them (covers a
-    blocked-entrance 'X' interactive cell, which is clicked from an adjacent tile, never
-    stood on itself)."""
-    ap: set[Tile] = set()
-    for ix, iy in FP.interactive_cells(mask, x, y):
-        if (ix, iy) in passable:
-            ap.add((ix, iy))
-        for dx, dy in NB8:
-            nb = (ix + dx, iy + dy)
-            if nb in passable:
-                ap.add(nb)
-    return ap
-
-
-def _reachable(
-    passable: AbstractSet[Tile],
-    blocked: AbstractSet[Tile],
-    sources: AbstractSet[Tile],
-    targets: AbstractSet[Tile],
-) -> bool:
-    """8-connected BFS: can a hero reach any `targets` tile from `sources` while never
-    stepping into `blocked`? `sources`/`targets` themselves are always allowed (they are
-    the actual endpoints, not obstacles)."""
-    avail = (passable - blocked) | sources | targets
-    frontier = collections.deque(t for t in sources if t in avail)
-    seen = set(frontier)
-    while frontier:
-        x, y = frontier.popleft()
-        if (x, y) in targets:
-            return True
-        for dx, dy in NB8:
-            nb = (x + dx, y + dy)
-            if nb in avail and nb not in seen:
-                seen.add(nb)
-                frontier.append(nb)
-    return bool(seen & targets)
-
-
-def home_mine_protect_pairs(
-    existing_objs: Sequence[PlacedObject],
-    zone_records: Sequence[ZoneRecord],
-    home_zids: Collection[int],
-    global_true: Container[Tile],
-) -> tuple[list[tuple[frozenset[Tile], frozenset[Tile]]], set[Tile]]:
-    """(town_approach, mine_approach) pairs that a NEW pocket guard must never sever --
-    one pair per force_town zone's own sawmill/orePit (`home_zids`), for every player
-    town on this level (s2-z1 diagnosis, 2026-09: a pocket guard placed right by the
-    castle sealed the only route to BOTH of its own starting mines, even though each
-    already carries its own dedicated level-1 guard -- a mine's day-1 economy must stay
-    reachable without an extra, involuntary fight). Also returns the standing tile of
-    every EXISTING guard that is not itself a mine's own guard (those are expected
-    fights, never a blocker) -- the base 'blocked' set the caller folds new pocket guards
-    into as they're accepted. Returns (protect_pairs, base_blocked)."""
-    if not home_zids:
-        return [], set()
-    ts_by_zid = {zr.zid: zr.ts for zr in zone_records}
-    mine_cells = _mine_cells(existing_objs)
-    base_blocked = _base_blocked(existing_objs, mine_cells)
-
-    pairs: list[tuple[frozenset[Tile], frozenset[Tile]]] = []
-    for zid in home_zids:
-        ts = ts_by_zid.get(zid)
-        if ts is None:
-            continue
-        pairs.extend(_home_zone_pairs(existing_objs, ts, global_true))
-    return pairs, base_blocked
-
-
-def _mine_cells(existing_objs: Sequence[PlacedObject]) -> set[Tile]:
-    mine_cells: set[Tile] = set()
-    for o in existing_objs:
-        if o.purpose == Purpose.MINE:
-            mask = o.footprint
-            if mask.cells:
-                mine_cells |= {(cx, cy) for cx, cy, _b in FP.anchored_cells(mask, o.x, o.y)}
-    return mine_cells
-
-
-def _is_mine_guard(o: PlacedObject, mine_cells: Iterable[Tile]) -> bool:
-    return any(max(abs(o.x - mx), abs(o.y - my)) <= 1 for mx, my in mine_cells)
-
-
-def _base_blocked(existing_objs: Sequence[PlacedObject], mine_cells: set[Tile]) -> set[Tile]:
-    base_blocked: set[Tile] = set()
-    for o in existing_objs:
-        if o.purpose == Purpose.GUARD and not _is_mine_guard(o, mine_cells):
-            mask = o.footprint
-            if mask.cells:
-                base_blocked |= _guard_stand(mask, o.x, o.y)
-    return base_blocked
-
-
-def _home_zone_pairs(
-    existing_objs: Sequence[PlacedObject], ts: AbstractSet[Tile], global_true: Container[Tile]
-) -> list[tuple[frozenset[Tile], frozenset[Tile]]]:
-    pairs: list[tuple[frozenset[Tile], frozenset[Tile]]] = []
-    town = next(
-        (o for o in existing_objs if o.purpose == Purpose.TOWN and (o.x, o.y) in ts),
-        None,
-    )
-    if town is None:
-        return pairs
-    town_ap = _approach_tiles(town.footprint, town.x, town.y, global_true)
-    if not town_ap:
-        return pairs
-    for o in existing_objs:
-        if not (
-            o.purpose == Purpose.MINE and o.subtype in ("sawmill", "orePit") and (o.x, o.y) in ts
-        ):
-            continue
-        mine_ap = _approach_tiles(o.footprint, o.x, o.y, global_true)
-        if mine_ap:
-            pairs.append((frozenset(town_ap), frozenset(mine_ap)))
-    return pairs
-
-
-def _reach8(open_set: Container[Tile], seed: Iterable[Tile]) -> set[Tile]:
-    """8-connected BFS over the true `open_set` (the physical open/blocked tile layer),
-    seeded from tiles already proven reachable by `_web_dist`. Extends that 4-connected web
-    reach with anything only joined by a diagonal step — H3 heroes move diagonally, so a
-    tile behind a corner-cut squeeze IS reachable in play even though `_web_dist` can't see
-    past it. This is the layer pocket mouths/cache tiles are actually validated against:
-    plain `open_set` membership alone would also accept ground that is open but totally
-    disconnected from the web (an unreachable floating island), which is not placeable
-    either."""
-    d = set(t for t in seed if t in open_set)
-    q = collections.deque(d)
-    while q:
-        x, y = q.popleft()
-        for dx, dy in NB8:
-            n = (x + dx, y + dy)
-            if n in open_set and n not in d:
-                d.add(n)
-                q.append(n)
-    return d
-
-
-def dedupe_pockets(
-    pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]],
-    reach: Container[Tile] = (),
-) -> list[list[tuple[Tile, frozenset[Tile], frozenset[Tile]]]]:
-    """Collapse near-duplicate mouth candidates into one CANDIDATE LIST per genuine physical
-    nook. `find_pockets` returns one entry per candidate MOUTH tile, but several nearby
-    tiles each independently qualify as "the" guard spot of the same nook (a ZoC-neck is 3x3,
-    so a flat-face nook alone yields ~4 candidates) -- and in H3 a guard already threatens
-    every adjacent tile (stepping next to a wandering monster forces combat), so one guard
-    placed at a shared neck already gates every mouth candidate touching it. Merge
-    guard_tile+pocket tiles into 4-connected blobs (union-find over shared tiles).
-
-    `pockets` maps guard_tile -> (pocket_frozenset, mouth_frozenset) as returned by
-    `find_pockets`.
-
-    Returns a list of candidate lists (one list per nook), each sorted by `mouth_key`
-    over `reach` (in-neck first, then largest pocket, then orthogonal-front), outer list
-    sorted best-top-candidate first. Each candidate is a (guard_tile, pocket, mouth_fs)
-    triple. The caller tries candidates within a blob in order and falls back to the next
-    one when the top pick's mouth tile is unusable."""
-    items = [(g, pocket, mouth_fs) for g, (pocket, mouth_fs) in pockets.items()]
-    owner: collections.defaultdict[Tile, list[int]] = collections.defaultdict(list)
-    for idx, (g, pocket, _mouth_fs) in enumerate(items):
-        for t in (g, *pocket):
-            owner[t].append(idx)
-    parent = list(range(len(items)))
-
-    def find(i: int) -> int:
-        while parent[i] != i:
-            parent[i] = parent[parent[i]]
-            i = parent[i]
-        return i
-
-    for idxs in owner.values():
-        for a, b in pairwise(idxs):
-            ra, rb = find(a), find(b)
-            if ra != rb:
-                parent[ra] = rb
-
-    groups: collections.defaultdict[int, list[tuple[Tile, frozenset[Tile], frozenset[Tile]]]] = (
-        collections.defaultdict(list)
-    )
-    for idx, (g, pocket, mouth_fs) in enumerate(items):
-        groups[find(idx)].append((g, pocket, mouth_fs))
-    blobs = [
-        sorted(cands, key=lambda kv: mouth_key(reach, kv[0], kv[1])) for cands in groups.values()
-    ]
-    return sorted(blobs, key=lambda cands: mouth_key(reach, cands[0][0], cands[0][1]))
-
-
-def _seerhut_reward(rng: random.Random) -> dict[str, JsonValue]:
-    """The seer hut's own `options.rewardable` payout, paid once its quest's artifact
-    condition is met -- same flavour draw as `_pandora_reward` but a tier up (VCMI's own
-    RMG seer-hut samples pay in the 5-figure XP / dozens-of-creatures range, well above
-    pandora's open-scatter tier: a seer hut costs the hero a whole side-quest, not a
-    five-second detour)."""
-    reward = dict(RW_REWARD)
-    flavor = rng.choices(("gold", "experience", "creatures"), weights=(35, 40, 25), k=1)[0]
-    if flavor == "gold":
-        reward["resources"] = {Resource.GOLD: rng.choice((3000, 5000, 7500, 10000, 15000))}
-    elif flavor == "experience":
-        reward["heroExperience"] = rng.choice((2500, 5000, 7500, 10000, 15000))
-    else:
-        reward["creatures"] = [
-            {"type": f"core:{rng.choice(PANDORA_CREATURES)}", "amount": rng.randint(5, 20)}
-        ]
-    return reward
-
-
-def _seerhut_quest(rng: random.Random, artifact_subtype: str) -> dict[str, JsonValue]:
-    """VCMI 'Quest' + 'Rewardable' payload for a seerHut (schema captured verbatim from two
-    real VCMI-RMG .vmap seerHut instances): a MISSION_ARTIFACT quest -- the hero must be
-    CARRYING one specific named artifact -- gated via `quest.limiter.artifacts`. The sibling
-    `rewardable.info[]` entry (paid out once the quest is satisfied) keeps the plain no-op
-    base limiter: the artifact CHECK lives only in `quest.limiter`, confirmed against both
-    reference instances, whose own `rewardable` limiter carries no `artifacts` restriction of
-    its own."""
-    quest_limiter: dict[str, JsonValue] = {
-        **RW_LIMITER,
-        "artifacts": [f"core:{artifact_subtype}"],
-    }
-    return {
-        "quest": {
-            "completedText": dict(RW_TEXT),
-            "firstVisitText": dict(RW_TEXT),
-            "limiter": quest_limiter,
-            "nextVisitText": dict(RW_TEXT),
-        },
-        "rewardable": {
-            "info": [
-                {
-                    "limiter": dict(RW_LIMITER),
-                    "message": dict(RW_TEXT),
-                    "reward": _seerhut_reward(rng),
-                    "visitType": 1,
-                }
-            ],
-            "infoWindowType": 0,
-            "onSelect": dict(RW_TEXT),
-            "resetParameters": {"period": 0},
-            "selectMode": "selectFirst",
-            "visitMode": "unlimited",
-        },
-    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,19 +121,6 @@ def place_pocket_caches(
     return _PocketCachePass(catalog, zone_records, seed, bounds, context).run()
 
 
-def _guard_stands(g: Tile, pocket: frozenset[Tile], mouth: frozenset[Tile]) -> list[Tile]:
-    xs = [t[0] for t in mouth]
-    ys = [t[1] for t in mouth]
-    ring = [
-        (x, y)
-        for x in range(max(xs) - 1, min(xs) + 2)
-        for y in range(max(ys) - 1, min(ys) + 2)
-        if (x, y) not in pocket and (x, y) not in mouth
-    ]
-    ring.sort(key=lambda t: (min(abs(t[0] - m[0]) + abs(t[1] - m[1]) for m in mouth), t))
-    return [g, *sorted(mouth - {g}), *ring]
-
-
 @dataclass(frozen=True, slots=True)
 class _PocketPick:
     guard_tile: Tile | None
@@ -436,7 +176,7 @@ class _PocketCachePass:
 
         for zr in zone_records:
             self._absorb(zr)
-        self.global_reach8 = _reach8(self.global_true, self.global_reach)
+        self.global_reach8 = reach8(self.global_true, self.global_reach)
         self.global_place = self.global_reach8 & self.global_open
 
         # A NEW pocket guard must never cut a player's town off from its own force_town
@@ -450,7 +190,7 @@ class _PocketCachePass:
         self.protect_pairs = [
             (src, dst)
             for src, dst in protect_pairs
-            if _reachable(self.global_true, self.protect_blocked, src, dst)
+            if reachable(self.global_true, self.protect_blocked, src, dst)
         ]
 
         self.decor_blk = FP.decor_blocking_cells(context.existing_objs)
@@ -578,9 +318,9 @@ class _PocketCachePass:
         ):
             return False
         if self.protect_pairs:
-            blocked = self.protect_blocked | _guard_stand(guard_mask, cand_g[0], cand_g[1])
+            blocked = self.protect_blocked | guard_stand(guard_mask, cand_g[0], cand_g[1])
             if not all(
-                _reachable(self.global_true, blocked, src, dst) for src, dst in self.protect_pairs
+                reachable(self.global_true, blocked, src, dst) for src, dst in self.protect_pairs
             ):
                 return False  # would seal a town off from its own starting mine
         if any(c in self.decor_blk for c in FP.interactive_cells(guard_mask, cand_g[0], cand_g[1])):
@@ -615,7 +355,7 @@ class _PocketCachePass:
                 continue
             if first is None:
                 first = _PocketPick(None, cand_pocket, cand_zid, cand_mouth_fs, cand_g)
-            for stand in _guard_stands(cand_g, cand_pocket, cand_mouth_fs):
+            for stand in guard_stands(cand_g, cand_pocket, cand_mouth_fs):
                 if not (self._guard_fits(stand) and self._leaves_cache_spot(stand, cand_pocket)):
                     continue
                 pick = _PocketPick(stand, cand_pocket, cand_zid, cand_mouth_fs, cand_g)
@@ -723,7 +463,7 @@ class _PocketCachePass:
         self.objs[-1].pocket_guard = True
         self.guards.append(guard_tile)
         if self.protect_pairs:
-            self.protect_blocked |= _guard_stand(self.guard_mask, guard_tile[0], guard_tile[1])
+            self.protect_blocked |= guard_stand(self.guard_mask, guard_tile[0], guard_tile[1])
         return True
 
     def _place_artifact(self, t: Tile, anim: str, draw: _PocketDraw) -> None:
@@ -757,187 +497,3 @@ class _PocketCachePass:
             if t not in fillable:
                 continue
             self.pocket_depth_by_tile[t] = d / max_d if max_d else 0.0
-
-
-SEERHUT_ZONE_RATIO = 4  # ~1 seer-hut quest per 4 eligible zones -- zone_engine.py's own
-# corpus-replay convention for the same object
-MAX_SEER_HUTS = 6
-SEERHUT_MIN_REACH = 8  # a zone needs at least this many free reachable tiles to be worth
-# drawing into a quest (host EITHER the hut or its artifact)
-
-
-@dataclass(frozen=True, slots=True)
-class SeerHutContext:
-    pocket_tiles: AbstractSet[Tile] | None = None
-    existing_objs: Sequence[PlacedObject] = ()
-    used_artifacts: set[str] | None = None
-    cover: CoverIndex | None = None
-
-
-_DEFAULT_SEERHUT_CONTEXT = SeerHutContext()
-
-
-@dataclass(frozen=True, slots=True)
-class _QuestEnv:
-    catalog: Catalog
-    eligible: Sequence[ZoneRecord]
-    ptiles: AbstractSet[Tile]
-    used_artifacts: set[str]
-    objs: list[PlacedObject]
-    bounds: tuple[int, int] | None
-    cover: CoverIndex
-
-
-def place_seer_hut_quests(
-    catalog: Catalog,
-    zone_records: Sequence[ZoneRecord],
-    seed: int = 1,
-    bounds: tuple[int, int] | None = None,
-    context: SeerHutContext = _DEFAULT_SEERHUT_CONTEXT,
-) -> tuple[list[PlacedObject], int]:
-    """One or more Seer Hut quests for the WHOLE level (VCMI RMG convention: a seer hut's
-    mission gates on a single named artifact the hero must find and hand-carry to it). Each
-    quest links two placements in DIFFERENT zones -- the quest's target artifact (an
-    unguarded findable pickup, same "always free in open ground" doctrine as scatter loot --
-    see the module docstring) and the seer hut itself (a rigid visitable building) -- with the
-    hut's `options.quest.limiter.artifacts` naming the exact artifact identity placed for it.
-
-    Runs once per level, after every zone's own gameplay/vegetation/scatter is finalized and
-    the map-level G2/island repair has run (so both placements land on truly reachable
-    ground), and BEFORE the pocket-cache pass claims the remaining nooks -- `zone_records`'
-    `open_set`/`reach` and the cover are shared with that pass, so tiles this function spends are
-    already excluded when pockets are judged.
-
-    `context.used_artifacts`, when passed, is a set MUTATED in place and shared across every level's
-    call for the same map (see `pp_map.build`) -- a named artifact is a map-unique relic in
-    vanilla H3, so one quest's target must never double as another level's target too.
-
-    `zone_records` is a list of {"zid", "terrain", "ts", "open_set", "passable", "reach"}
-    (see `pp_map._run_level`/`place_pocket_caches`). Returns (objs, n_quests)."""
-    cover = context.cover if context.cover is not None else CoverIndex(context.existing_objs)
-    eligible = [zr for zr in zone_records if len(zr.reach - cover.claims) >= SEERHUT_MIN_REACH]
-    if len(eligible) < 2:
-        return [], 0
-    n = min(MAX_SEER_HUTS, max(1, len(eligible) // SEERHUT_ZONE_RATIO))
-
-    rng_pair = random.Random(seed ^ 0xEE47)
-    objs: list[PlacedObject] = []
-    used_artifacts = context.used_artifacts if context.used_artifacts is not None else set[str]()
-    placed = 0
-    # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
-    _ptiles_global = _quest_pocket_tiles(zone_records, context.pocket_tiles)
-    env = _QuestEnv(catalog, eligible, _ptiles_global, used_artifacts, objs, bounds, cover)
-
-    for i in range(n):
-        idx_hut, idx_art = rng_pair.sample(range(len(eligible)), 2)
-        rng = random.Random(seed ^ (i * 92821) ^ 0xEE47)
-        if _place_quest(env, rng, idx_hut, idx_art):
-            placed += 1
-    return objs, placed
-
-
-def _quest_pocket_tiles(
-    zone_records: Sequence[ZoneRecord], pocket_tiles: AbstractSet[Tile] | None
-) -> AbstractSet[Tile]:
-    if pocket_tiles is not None:
-        return pocket_tiles
-    passable_all = set[Tile]().union(*(zr.passable for zr in zone_records))
-    raw_p = find_pockets(passable_all)
-    _ptiles_acc: set[Tile] = set()
-    for _g, (pt, _mf) in raw_p.items():
-        if len(pt) >= 3:
-            _ptiles_acc |= set(pt)
-    return _ptiles_acc
-
-
-def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int) -> bool:
-    eligible = env.eligible
-    hut_zr = eligible[idx_hut]
-
-    pool_hut = sorted(
-        (
-            h
-            for h in env.catalog.candidates(Purpose.QUEST_GATE, hut_zr.terrain)
-            if h.type == "seerHut"
-        ),
-        key=lambda h: h.animation,
-    )
-    if not pool_hut:
-        return False
-    hut_ident = rng.choice(pool_hut)
-
-    # Find an art zone with a ≥3-tile pocket; start with the random pick then
-    # try other eligible zones to avoid getting 0 quests when the chosen zone
-    # has no pocket tiles available.
-    art_zr_order = [eligible[idx_art]] + [
-        zr for j, zr in enumerate(eligible) if j not in (idx_art, idx_hut)
-    ]
-    art_zr, art_ident = _pick_art_zone(env, rng, art_zr_order)
-    if art_zr is None or art_ident is None or art_ident.subtype is None:
-        return False  # no eligible art zone with a ≥3-tile pocket
-
-    mark = env.cover.mark()
-    if _place_art(env, rng, art_zr, art_ident) is None:
-        return False
-
-    if not _place_hut(env, rng, hut_zr, hut_ident, art_ident.subtype):
-        # no room for the hut => a dangling quest artifact nobody asked for; drop it
-        # rather than leave an orphaned reference
-        _ = env.objs.pop()
-        env.cover.rollback(mark)
-        return False
-
-    env.used_artifacts.add(art_ident.subtype)
-    return True
-
-
-def _pick_art_zone(
-    env: _QuestEnv, rng: random.Random, art_zr_order: Sequence[ZoneRecord]
-) -> tuple[ZoneRecord, Identity] | tuple[None, None]:
-    for cand_art_zr in art_zr_order:
-        art_eligible = env.ptiles & (cand_art_zr.reach - env.cover.claims)
-        if not art_eligible:
-            continue
-        cand_pool_art = sorted(
-            (
-                a
-                for a in env.catalog.candidates(Purpose.REWARD_PICKUP, cand_art_zr.terrain)
-                if a.type == "artifact" and a.subtype not in env.used_artifacts
-            ),
-            key=lambda a: a.animation,
-        )
-        if not cand_pool_art:
-            continue
-        return cand_art_zr, rng.choice(cand_pool_art)
-    return None, None
-
-
-def _place_art(
-    env: _QuestEnv, rng: random.Random, art_zr: ZoneRecord, art_ident: Identity
-) -> Tile | None:
-    st_art = load_gameplay()[art_zr.terrain]
-    art_eligible = env.ptiles & (art_zr.reach - env.cover.claims)
-    art_cands = sorted(art_eligible)
-    rng.shuffle(art_cands)
-    target = PlaceTarget(
-        env.catalog, env.objs, env.cover, art_zr.reach, rng, st_art, bounds=env.bounds
-    )
-    spec = PlaceSpec(Purpose.REWARD_PICKUP, None, ident=art_ident)
-    for t in art_cands:
-        if place_one(target, spec, t[0], t[1]):
-            return t
-    return None
-
-
-def _place_hut(
-    env: _QuestEnv, rng: random.Random, hut_zr: ZoneRecord, hut_ident: Identity, art_subtype: str
-) -> bool:
-    st_hut = load_gameplay()[hut_zr.terrain]
-    hut_cands = sorted(hut_zr.reach - env.cover.claims)
-    rng.shuffle(hut_cands)
-    options = _seerhut_quest(rng, art_subtype)
-    target = PlaceTarget(
-        env.catalog, env.objs, env.cover, hut_zr.reach, rng, st_hut, bounds=env.bounds
-    )
-    spec = PlaceSpec(Purpose.QUEST_GATE, None, ident=hut_ident, options=options)
-    return any(place_one(target, spec, t[0], t[1]) for t in hut_cands)

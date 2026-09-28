@@ -1,7 +1,7 @@
 """PocketOverlay — magenta gradient over guard-sealed pocket regions.
 
 Pure rendering: pocket geometry (which tiles form a sealed nook, at what depth) is
-disposable analysis computed once by core.steps.loot.caches.place_pocket_caches, not a
+disposable analysis computed once by core.steps.loot.pickups.place_pocket_caches, not a
 MapState fact (see vcmi_mapgen/core/model/AGENTS.md) -- this overlay never re-derives it."""
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ class PocketOverlay(MapOverlay):
 
     Args:
         pockets: level -> {(x, y): normalized_depth in 0..1}, exactly LootStep's
-            ``ctx["pockets"]`` (produced by `steps.loot.caches.place_pocket_caches`).
+            ``ctx["pockets"]`` (produced by `core.steps.loot.pickups.place_pocket_caches`).
     """
 
     _pockets: Pockets

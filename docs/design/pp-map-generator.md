@@ -222,9 +222,9 @@ data the Map file writes.
 | Object choice | Exists | `core/steps/gameplay/draw.py`, `ontology.pick` | It shares one class with the Zone budget. See M15. |
 | Placement rule | Reshape | `validate.py`, `core/model/map_state.py`, `core/steps/gameplay/site.py`, `core/steps/placement.py`, `core/steps/gated/placer.py` | The terrain rule and the cover rule are shared and the map re-checks them on commit. The zone-local rules (gap, reach, doors, mine front) are copied per placer. |
 | Site preference | Exists | `core/steps/gameplay/site.py` | Centres come in intensity order or centroid order. Inside each 5x5 window, spots sort by back contact, then distance. It is a sort key, not a sum. See M4. |
-| Guard | Reshape | `core/steps/gameplay/site.py`, `gate_pairs.py`, `core/steps/loot/caches.py`, `core/steps/border/`, `core/steps/placement.py` | Level rules live in three places. Spacing is checked by the border and cache guards only. See M5. |
-| Pocket | Exists | `core/steps/loot/caches.py` | Not inspected beyond its guard spacing call. |
-| Cache | Exists | `core/steps/loot/caches.py` | Not inspected beyond its guard spacing call. |
+| Guard | Reshape | `core/steps/gameplay/site.py`, `gate_pairs.py`, `core/steps/loot/pickups.py`, `core/steps/border/`, `core/steps/placement.py` | Level rules live in three places. Spacing is checked by the border and cache guards only. See M5. |
+| Pocket | Exists | `core/steps/loot/pockets.py` | Not inspected beyond its guard spacing call. |
+| Cache | Exists | `core/steps/loot/pickups.py` | Not inspected beyond its guard spacing call. |
 | Scatter | Exists | `core/steps/scatter/` | Runs last. Keeps off every guard's zone of control. |
 | Water population | Exists | `core/steps/zone_plan.py`, `core/steps/gameplay/water.py` | Drawn before vegetation, committed first by the gameplay layer. See M3. |
 | Landing | Exists | `core/steps/zone_plan.py` | One landing per shore, joined to the web, kept free of vegetation. |

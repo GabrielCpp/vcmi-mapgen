@@ -2,7 +2,7 @@
 
 from vcmi_mapgen.core.grid import pockets as PK
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.core.steps.loot.caches import dedupe_pockets
+from vcmi_mapgen.core.steps.loot.pockets import dedupe_pockets
 
 
 def test_pocket_depths_increase_from_mouth_to_deepest_tile() -> None:
@@ -49,7 +49,7 @@ def _open_field_with_room(
 def _top_pocket(reach: set[Tile]) -> tuple[Tile, frozenset[Tile], frozenset[Tile]]:
     """find_pockets alone can return several overlapping raw candidates for the SAME
     physical nook (e.g. the true outer doorway, and an inner partition of the room that
-    is technically also a valid-but-smaller 2-tile doorway) -- `steps.loot.caches.
+    is technically also a valid-but-smaller 2-tile doorway) -- `core.steps.loot.pockets.
     dedupe_pockets` blob-merges those and keeps the best one, exactly as the real
     pipeline always calls it. Asserts exactly one physical nook was found and returns
     its (guard_tile, pocket, mouth_fs)."""
