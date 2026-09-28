@@ -1,0 +1,93 @@
+"""Golden oracle: two generated maps hash to the values recorded in data/golden.json.
+
+`make golden` runs it. `make golden-update` re-records the hashes, which only a
+behaviour change may do."""
+
+from __future__ import annotations
+
+import dataclasses
+import hashlib
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from vcmi_mapgen.kit import json_value as jv
+from vcmi_mapgen.kit import vmap as VM
+from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.models import MapState
+from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.pipeline import Pipeline, PipelineStep
+from vcmi_mapgen.renderers import VmapRenderer
+from vcmi_mapgen.steps import (
+    BorderStep,
+    GameplayStep,
+    GatedStep,
+    LootStep,
+    PortalStep,
+    ScatterStep,
+    SegmentStep,
+    TerrainStep,
+    TreasureStep,
+    VegetationStep,
+)
+
+GOLDEN = project_root() / "data" / "golden.json"
+MAPS = (("s1_48", 1, 48, False), ("s3_72_sub", 3, 72, True))
+
+
+def _steps(seed: int, size: int, subterrain: bool) -> list[PipelineStep]:
+    return [
+        TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain),
+        SegmentStep(),
+        VegetationStep(seed=seed, players=2),
+        GameplayStep(seed=seed, players=2, size=size, subterrain=subterrain),
+        GatedStep(seed=seed, size=size),
+        TreasureStep(seed=seed, size=size),
+        BorderStep(seed=seed, size=size),
+        PortalStep(seed=seed, size=size),
+        LootStep(seed=seed, size=size),
+        ScatterStep(seed=seed, size=size),
+    ]
+
+
+def _generate(seed: int, size: int, subterrain: bool) -> MapState:
+    pipeline = Pipeline(Ontology(), size)
+    for step in _steps(seed, size, subterrain):
+        _ = pipeline.add_step(step)
+    return pipeline.run()
+
+
+def _digest(state: MapState, out_dir: Path) -> str:
+    path = VmapRenderer(out_dir=str(out_dir)).render(state, "golden.vmap", name="golden")
+    doc = VM.read(path)
+    objects = sorted(json.dumps(dataclasses.asdict(o), sort_keys=True) for o in doc.objects)
+    gate_blk = {str(lvl): sorted(tiles) for lvl, tiles in sorted(state.gate_blk.items())}
+    towns = [[t.x, t.y, t.level, t.type, t.subtype] for t in state.player_towns]
+    payload = json.dumps(
+        {"terrain": doc.terrain, "objects": objects, "gate_blk": gate_blk, "towns": towns},
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _recorded() -> dict[str, str]:
+    if not GOLDEN.exists():
+        return {}
+    loaded = jv.as_object(jv.loads(GOLDEN.read_text()))
+    return {key: jv.as_str(value) for key, value in loaded.items()}
+
+
+@pytest.mark.golden
+@pytest.mark.parametrize(("key", "seed", "size", "subterrain"), MAPS)
+def test_generated_map_matches_golden(
+    key: str, seed: int, size: int, subterrain: bool, tmp_path: Path
+) -> None:
+    digest = _digest(_generate(seed, size, subterrain), tmp_path)
+    if os.environ.get("GOLDEN_UPDATE") == "1":
+        recorded = _recorded()
+        recorded[key] = digest
+        _ = GOLDEN.write_text(json.dumps(recorded, indent=2, sort_keys=True) + "\n")
+        return
+    assert _recorded().get(key) == digest

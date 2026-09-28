@@ -5,7 +5,7 @@
 # to list them. Add your own repo-specific (non-agent) targets below the include.
 include .agents/agents.mk
 
-.PHONY: check lint test sweep
+.PHONY: check lint test sweep golden golden-update
 check: lint test
 
 lint:
@@ -18,3 +18,9 @@ test:
 
 sweep:
 	uv run python -m pytest -q -n auto -m slow
+
+golden:
+	uv run python -m pytest -q -n 2 -m golden vcmi_mapgen/golden_test.py
+
+golden-update:
+	GOLDEN_UPDATE=1 uv run python -m pytest -q -p no:xdist -m golden vcmi_mapgen/golden_test.py

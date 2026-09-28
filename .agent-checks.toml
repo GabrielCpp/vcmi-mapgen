@@ -1,0 +1,4 @@
+[target-architecture]
+plan = "docs/architecture/plan.json"
+sources = ["*.py"]
+exclude = ["vcmi-h3m-format-reference/*", ".venv/*"]

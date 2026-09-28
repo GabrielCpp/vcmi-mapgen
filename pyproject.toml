@@ -15,6 +15,7 @@ dev = [
     "ruff>=0.8",
     "basedpyright>=1.20",
     "pytest-xdist>=3.8.0",
+    "import-linter>=2.15",
 ]
 
 # Everything else is the Python standard library. Run via uv, e.g.:
@@ -48,5 +49,8 @@ include = ["vcmi_mapgen"]
 testpaths = ["vcmi_mapgen"]
 python_files = ["*_test.py"]
 python_functions = ["test_*"]
-addopts = "-m 'not slow'"
-markers = ["slow: a whole-pipeline seed sweep, run by `make sweep`"]
+addopts = "-m 'not slow and not golden'"
+markers = [
+    "slow: a whole-pipeline seed sweep, run by `make sweep`",
+    "golden: the generated-map hash oracle, run by `make golden`",
+]
