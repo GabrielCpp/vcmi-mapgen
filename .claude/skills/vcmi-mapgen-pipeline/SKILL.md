@@ -13,7 +13,7 @@ metadata:
 
 The generator is one procedural pipeline. `cli.py` builds it in `_generate_steps`, and
 that list is the source of truth for which steps run and in what order. At the time of
-writing it runs `terrain -> segment -> vegetation -> gameplay -> gated -> treasure ->
+writing it runs `terrain -> vegetation -> gameplay -> gated -> treasure ->
 border -> portal -> loot -> scatter`.
 
 Two hand-written files hold the rest of the contract. Read them before changing a step:

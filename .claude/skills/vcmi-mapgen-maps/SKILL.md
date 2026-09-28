@@ -62,7 +62,7 @@ metadata:
 ## Segmentation
 
 - `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`.
-  `SegmentStep` calls it and provides `Segmentation(zones, zone_label)`.
+  `TerrainStep` calls it and provides `Segmentation(zones, zone_label)`.
 - `zone_label` is a `ZoneLabel` grid read `[y][x]`. The entrance and gate geometry in
   `core/planning/entrances.py` reads it. `label_zones(zones)` rebuilds one from
   hand-built zones in tests.
