@@ -24,9 +24,9 @@ from random import Random
 from typing import cast
 
 from vcmi_mapgen.kit import vcmi_config
-from vcmi_mapgen.kit.lod import lod
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.models import Identity, Mask
+from vcmi_mapgen.vcmi.formats.lod import lod
 
 type Taxonomy = dict[str, dict[str, dict[str, dict[str, list[str] | dict[str, str]]]]]
 
@@ -78,7 +78,7 @@ CLASS_NAMES = {
 #     already plain JSON, no legacy table involved) -- needs a VCMI *source* checkout.
 #   - SPELL_LEVELS / ARTIFACT_TIERS: the level/tier field itself lives in the original
 #     H3 game's own legacy text tables (DATA/SPTRAITS.TXT / DATA/ARTRAITS.TXT, inside
-#     H3bitmap.lod -- readable via kit.lod.lod().read(), same mechanism
+#     H3bitmap.lod -- readable via vcmi.formats.lod.lod().read(), same mechanism
 #     objects.txt uses), but mapping a row to its VCMI identifier requires VCMI *source*
 #     config too (config/spells/*.json / config/artifacts.json's "index" field, zipped
 #     positionally against the legacy table's file-order rows -- verified by spot-check,
@@ -3805,16 +3805,15 @@ def category_terrain_matrix() -> list[list[bool]]:
 def _decode_mask(passability: str, triggers: str) -> Mask:
     """Decode the objects.txt passability(48)+triggers(48) bitfields into the B/A/V footprint
     mask rows (`kit.objects.mask_cells` semantics: B=blocking, A=visitable anchor, V=visible
-    overlay). This reproduces `kit.vmap.mask.build_mask_from_h3m` (the corpus mask source)
+    overlay). This reproduces `vcmi.formats.vmap.mask.build_mask_from_h3m` (the corpus mask source)
     bit-for-bit: the
     6x8 grid defaults to 'V', a cell is 'A' if its trigger bit is set else 'B' if its
     passability bit is clear (H3: clear=blocked); rows/cols that are all-'V' are trimmed. The
     grid is anchored bottom-right and stored rotated 180° (rows bottom-to-top AND columns
     right-to-left), so BOTH are reversed to sprite-align it — reversing rows only leaves every
     asymmetric footprint horizontally mirrored vs the art (the v5.2 sawmill-entrance bug; see
-    :func:`_decode_mask_grid`). Kept bit-for-bit in sync with `kit.vmap.mask.build_mask_from_h3m`
-    (the
-    corpus mask source)."""
+    :func:`_decode_mask_grid`). Kept bit-for-bit in sync with
+    `vcmi.formats.vmap.mask.build_mask_from_h3m` (the corpus mask source)."""
 
     def rows(bits: str) -> list[str]:
         return [bits[r * 8 : (r + 1) * 8] for r in range(6)]
@@ -3932,9 +3931,9 @@ def _decode_mask_full(passability: str, triggers: str, tile_dims: tuple[int, int
     are visually part of the sprite (the v5.3 sawmill-guard-hidden-behind-trees bug). Real RMG
     .vmaps V-fill to the sprite extent, so this is the ground truth for :func:`mask_of` as well
     as :func:`vmap_mask_of` — both in the same LEFT-TO-RIGHT column order as this function's
-    output and the corpus's `kit.vmap.mask.build_mask_from_h3m` masks (col 0 = leftmost tile,
-    anchor is the
-    last column: `tx = ax - (ww - 1 - c)`, see `kit.objects.mask_cells`'s docstring); no column
+    output and the corpus's `vcmi.formats.vmap.mask.build_mask_from_h3m` masks (col 0 =
+    leftmost tile, anchor is the last column: `tx = ax - (ww - 1 - c)`, see
+    `kit.objects.mask_cells`'s docstring); no column
     reversal is needed anywhere in this decode chain — the v5.4 sawmill-guard-wrong-side bug
     turned out to be in the CONSUMER (`mask_cells`/`_cells` treating col 0 as the anchor instead
     of the leftmost tile), not in this decode chain."""

@@ -6,10 +6,10 @@ import glob
 import os
 from collections import defaultdict
 
-from vcmi_mapgen.kit import json_value as jv
-from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root, vcmi_home
 from vcmi_mapgen.models import JsonValue, MapState, PlacedObject
+from vcmi_mapgen.vcmi.formats import json_value as jv
+from vcmi_mapgen.vcmi.formats import vmap as VM
 
 ROOT = project_root()
 

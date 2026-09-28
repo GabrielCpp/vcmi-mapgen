@@ -11,15 +11,15 @@ import glob
 import os
 import re
 
-from vcmi_mapgen import h3m
-from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import vcmi_config as vcmi_ids
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.vmap.document import PlayerSlot, VmapDocument, VmapObject
-from vcmi_mapgen.kit.vmap.mask import build_mask_from_h3m
-from vcmi_mapgen.kit.vmap.terrain import export_mask, tile_string, visitable_from
-from vcmi_mapgen.kit.vmap.writer import write
 from vcmi_mapgen.models import Cell, PlacedObject
+from vcmi_mapgen.vcmi.formats import h3m
+from vcmi_mapgen.vcmi.formats import json_value as jv
+from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
+from vcmi_mapgen.vcmi.formats.vmap.mask import build_mask_from_h3m
+from vcmi_mapgen.vcmi.formats.vmap.terrain import export_mask, tile_string, visitable_from
+from vcmi_mapgen.vcmi.formats.vmap.writer import write
 
 ROOT = project_root()
 OUT = str(ROOT / "maps_vmap")

@@ -16,7 +16,7 @@ from vcmi_mapgen.models import JsonValue
 @dataclass
 class VmapObject:
     """One `objects.json` entry. `mask` is the VCMI-charset (' 0VBHAT') footprint as
-    stored in the file -- see `kit.vmap.terrain.vcmi_mask` for why this is NOT the same
+    stored in the file -- see `vcmi.formats.vmap.terrain.vcmi_mask` for why this is NOT the same
     charset the engine's internal `mask_cells`/`is_blocking` expect."""
 
     instance_name: str

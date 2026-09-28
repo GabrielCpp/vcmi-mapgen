@@ -1,7 +1,12 @@
 import pytest
 
-from vcmi_mapgen.kit.vmap.terrain import decode_tile_string, tile_string, vcmi_mask, visitable_from
 from vcmi_mapgen.models import Cell
+from vcmi_mapgen.vcmi.formats.vmap.terrain import (
+    decode_tile_string,
+    tile_string,
+    vcmi_mask,
+    visitable_from,
+)
 
 
 def test_tile_string_round_trips_through_decode() -> None:

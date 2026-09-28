@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from vcmi_mapgen import ontology as ON
-from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.objects import type_to_purpose
-from vcmi_mapgen.kit.vmap.terrain import decode_tile_string
 from vcmi_mapgen.models import MapState, PlacedObject
+from vcmi_mapgen.vcmi.formats import vmap as VM
+from vcmi_mapgen.vcmi.formats.vmap.terrain import decode_tile_string
 
 
 class VmapReader:

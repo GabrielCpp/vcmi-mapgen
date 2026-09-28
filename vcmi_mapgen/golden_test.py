@@ -13,8 +13,6 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.kit import json_value as jv
-from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.models import MapState
 from vcmi_mapgen.ontology import Ontology
@@ -32,6 +30,8 @@ from vcmi_mapgen.steps import (
     TreasureStep,
     VegetationStep,
 )
+from vcmi_mapgen.vcmi.formats import json_value as jv
+from vcmi_mapgen.vcmi.formats import vmap as VM
 
 GOLDEN = project_root() / "data" / "golden.json"
 MAPS = (("s1_48", 1, 48, False), ("s3_72_sub", 3, 72, True))

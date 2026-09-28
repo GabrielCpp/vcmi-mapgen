@@ -15,11 +15,11 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit import terrain_segment as TS
 from vcmi_mapgen.models import Cell, JsonValue, Tile
+from vcmi_mapgen.vcmi.formats import json_value as jv
 
 TILER_SOURCE = "vcmi_mapgen.kit.tiling.learn_terrain_tiler"
 

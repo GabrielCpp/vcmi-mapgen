@@ -12,9 +12,9 @@ import os
 import re
 from pathlib import Path
 
-from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import paths as vcmi_paths
 from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.vcmi.formats import json_value as jv
 
 _BASES = [*vcmi_paths.vcmi_config_dirs(), os.path.join(vcmi_paths.vcmi_home(), "Mods")]
 

@@ -3,7 +3,7 @@ round-trip-safe `VmapDocument` -- header players/teams/victory/defeat, every
 object's identity/mask/options, and terrain as VCMI tile strings.
 
 This is a STRUCTURAL reader only: it does not reconstruct the engine-internal mask
-charset (see `kit.vmap.terrain.vcmi_mask`'s docstring) -- `VmapObject.mask` is exactly
+charset (see `vcmi.formats.vmap.terrain.vcmi_mask`'s docstring) -- `VmapObject.mask` is exactly
 what the file's `template.mask` says, which is lossy for the 'X' vs 'A' distinction.
 Callers that need the internal charset (blocking/visitable classification) must
 re-derive it from the ontology by object identity, not from this field.
@@ -15,9 +15,9 @@ import re
 import zipfile
 from typing import TypedDict
 
-from vcmi_mapgen.kit import json_value as jv
-from vcmi_mapgen.kit.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.vcmi.formats import json_value as jv
+from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 
 _PLAYER_MODELED = {"canPlay", "team", "mainTown", "allowedFactions", "randomFaction"}
 _HEADER_MODELED = {

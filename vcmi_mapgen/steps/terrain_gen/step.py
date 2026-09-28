@@ -19,11 +19,11 @@ from typing import override
 
 from vcmi_mapgen.kit import terrain_segment as TSG
 from vcmi_mapgen.kit import tiling as TL
-from vcmi_mapgen.kit import vmap as VM
 from vcmi_mapgen.models import Cell, MapState, Tile
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.steps.terrain_gen import macro_topo as MTOPO
+from vcmi_mapgen.vcmi.formats import vmap as VM
 
 
 @dataclass

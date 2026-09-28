@@ -13,10 +13,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.vcmi.formats import json_value as jv
 
 SOURCE = "vcmi_mapgen.steps.terrain_gen.markov.learn, learn4"
 

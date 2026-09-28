@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from vcmi_mapgen import ontology as ON
-from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.geometry import edge_dist
@@ -31,6 +30,7 @@ from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 from vcmi_mapgen.models import Identity, JsonValue, PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.gate.gates import MIN_AREA_STATS
+from vcmi_mapgen.vcmi.formats import json_value as jv
 
 ROOT = project_root()
 STATS_PATH = str(ROOT / "data" / "pp" / "gameplay_stats.json")

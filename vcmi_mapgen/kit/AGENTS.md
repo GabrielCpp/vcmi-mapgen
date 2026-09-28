@@ -6,8 +6,6 @@ module here has its own `__main__`.
 ## Map
 
 - `geometry.py`: zone-tile-set primitives: neighbourhoods, edge distance and the open run-length statistic.
-- `json_value.py`: typed narrowing of parsed JSON into objects, lists, ints and strings.
-- `lod.py`: the index and reader for the H3 `.lod` sprite archives.
 - `noise.py`: the seeded value-noise field.
 - `objects.py`: the corpus catalog: map names, `load_faithful`, `corpus_maps` and footprint mask expansion.
 - `paths.py`: where the VCMI data directory and the repository root are on this machine.
@@ -19,4 +17,3 @@ module here has its own `__main__`.
 - `tiling.py`: the corpus-learned autotiler that picks each tile's transition view.
 - `topology.py`: zone-shape planning: entrances, gates, fronts and pocket detection.
 - `vcmi_config.py`: the `(objectClass, objectSubID)` to VCMI `type::subtype` lookup from VCMI's own config.
-- `vmap/`: the `.vmap` reader, writer and tile-string codecs.

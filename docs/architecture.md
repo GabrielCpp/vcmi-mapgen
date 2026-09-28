@@ -66,7 +66,7 @@ recording when the shape is unchanged.
 ## 4. Rendering is part of the contract
 
 Inspection uses **real editor sprites**, not dots — `render_editor.py` composites 32px H3
-sprites from the local LOD files. Its `_decode_frame` handles all four H3 DEF formats; format
+sprites from the local LOD files. `_decode_frame` (now in `vcmi/formats/defs.py`) handles all four H3 DEF formats; format
 3 (one uint16 offset per 32-px block, row-major) is the subtle one — getting it wrong mangles
 every mountain/town/monster. `vcmi_mapgen/render_editor_test.py` guards this: every format
 decodes to its header dimensions with real content, all terrain tiles decode, a corpus-wide
@@ -77,7 +77,7 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 
 | Stage | Module(s) |
 |---|---|
-| Faithful data pipeline | `h3m.py`, `vcmi_ids.py`, `h3m2vmap.py`, `extract_faithful.py` → `maps_json/` |
+| Faithful data pipeline | `vcmi/formats/h3m.py`, `vcmi_ids.py`, `h3m2vmap.py`, `extract_faithful.py` → `maps_json/` |
 | Segment | `terrain_segment.py` |
 | Record / replay / stretch | `zone_engine.py` (the CLI), `obj_resolve.py`, `ontology.py` |
 | Emit | `faithful.py`, `vmapwrite.py` |

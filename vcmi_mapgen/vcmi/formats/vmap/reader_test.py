@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
 
-from vcmi_mapgen.kit.vmap import reader, writer
-from vcmi_mapgen.kit.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.vcmi.formats.vmap import reader, writer
+from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 
 
 def _sample_doc() -> VmapDocument:

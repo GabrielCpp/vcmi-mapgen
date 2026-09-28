@@ -2,9 +2,9 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.vcmi.formats import json_value as jv
 
 PP_DIR = project_root() / "data" / "pp"
 MINE_STATS = "uv run python -m vcmi_mapgen.cli mine-stats"

@@ -13,8 +13,8 @@ import json
 import os
 import zipfile
 
-from vcmi_mapgen.kit.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 
 
 def _name_struct(s: str) -> dict[str, JsonValue]:
