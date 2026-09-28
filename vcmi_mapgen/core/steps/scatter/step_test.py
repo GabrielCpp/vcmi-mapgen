@@ -6,7 +6,7 @@ import io
 from typing import final
 
 from vcmi_mapgen.core.catalog import ObjectSpec
-from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone, ZoneRecord
+from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import (
@@ -15,8 +15,8 @@ from vcmi_mapgen.core.pipeline import (
     ProviderRegistry,
     ZoneWorkspace,
 )
+from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps import ScatterStep
-from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 
 PILE = Identity("fakePile", "gold", "fake_pile", Footprint.one(Role.VISIT))
 

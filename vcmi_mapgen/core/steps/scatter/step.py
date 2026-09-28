@@ -12,7 +12,7 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement import scatter as SC
 from vcmi_mapgen.core.placement.guards import guard_zoc
 from vcmi_mapgen.core.placement.rules import TerrainGate
-from vcmi_mapgen.core.steps.zone_index import ZoneIndex
+from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 
 
 class ScatterStep(PipelineStep):

@@ -1,8 +1,8 @@
-"""Reliability tests for kit.topology (gate bands, entrance planning)."""
+"""Reliability tests for core.planning.entrances (gate bands, entrance planning)."""
 
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.kit import topology as ZF
+from vcmi_mapgen.core.planning import entrances as ZF
 
 
 def _zone(ts: set[Tile], centroid: tuple[float, float], area: int, terrain_type: int) -> Zone:

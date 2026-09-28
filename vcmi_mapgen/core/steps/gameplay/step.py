@@ -25,6 +25,7 @@ from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.placement.site import LevelField, SiteIndex, ZoneSite
+from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.steps.gameplay.draw import TOWN_SLOTS, DrawSpec, ZoneDraw, ZoneDrawer
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateResult, place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.mines import (
@@ -36,7 +37,6 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
 )
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.core.steps.zone_plan import seaport_cells
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -358,7 +358,9 @@ class GameplayStep(PipelineStep):
                 if zone_towns:
                     lw.town_of_zone[zid] = zone_towns[0]
                     towns[level, zid] = zone_towns
-            blk, appr = seaport_cells(o for o in [*map_state.objs, *self.objs] if o.level == level)
+            blk, appr = ZPL.seaport_cells(
+                o for o in [*map_state.objs, *self.objs] if o.level == level
+            )
             lw.seaport_blk = frozenset(blk)
             lw.seaport_appr = frozenset(appr)
         map_state.add_objs(self.objs, gate)

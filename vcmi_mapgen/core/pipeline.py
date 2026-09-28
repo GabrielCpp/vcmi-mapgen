@@ -69,15 +69,15 @@ class ZoneWorkspace:
     occupied: frozenset[Tile] = frozenset()
     gblocked: frozenset[Tile] = frozenset()
     approaches: tuple[Tile, ...] = ()
-    entrances: list[Entrance] = field(default_factory=list)  # kit.topology.plan_entrances entries
+    entrances: list[Entrance] = field(
+        default_factory=list
+    )  # planning.entrances.plan_entrances entries
     prot: frozenset[Tile] = frozenset()  # protected web
     rim8: frozenset[Tile] = frozenset()
     ent_bands: frozenset[Tile] = frozenset()
     blocked: frozenset[Tile] = frozenset()  # set by VegetationStep
     open_set: frozenset[Tile] = frozenset()
     passable: frozenset[Tile] = frozenset()
-    reach: frozenset[Tile] = frozenset()
-    used: frozenset[Tile] = frozenset()
     town_room: frozenset[Tile] = frozenset()
     town_clear: frozenset[Tile] = frozenset()
     town_blk: frozenset[Tile] = frozenset()

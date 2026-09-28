@@ -13,21 +13,14 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
-from vcmi_mapgen.core.model import (
-    CoverIndex,
-    Footprint,
-    Identity,
-    JsonValue,
-    PlacedObject,
-    Tile,
-    ZoneRecord,
-)
+from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, JsonValue, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.placement.rewards import PANDORA_CREATURES, RW_LIMITER, RW_REWARD, RW_TEXT
+from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.treasure.fill import (
     FILL_EXCL_ANIMS,
@@ -329,7 +322,7 @@ def place_pocket_caches(
     User-mandated fix (2026-07-04): pocket detection must not run per zone against that
     zone's own `reach` alone — a tile absent from one zone's reach is NOT necessarily
     blocking, it may just be a NEIGHBOURING zone's open ground, and zone borders are wide
-    gate bands, not walls (see `kit.topology.zone_gate_bands`). Fix #1: build one GLOBAL
+    gate bands, not walls (see `core.planning.entrances.zone_gate_bands`). Fix #1: build one GLOBAL
     reachable set (union of every zone's remaining reach) instead of a per-zone one.
 
     Third fix, same day (user: "there is something wrong in the way you classify open tile,

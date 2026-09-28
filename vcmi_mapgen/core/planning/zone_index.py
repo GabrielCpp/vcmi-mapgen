@@ -5,9 +5,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from vcmi_mapgen.core.model import Tile, ZoneRecord
+from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace
 from vcmi_mapgen.core.placement.place import scatter_reach
+
+
+@dataclass(slots=True)
+class ZoneRecord:
+    zid: int
+    terrain: str
+    ts: frozenset[Tile]
+    open_set: set[Tile]
+    passable: set[Tile]
+    reach: set[Tile] = field(default_factory=set)
+    used: set[Tile] = field(default_factory=set)
+    loot_zone: bool = False
 
 
 @dataclass
@@ -17,6 +29,19 @@ class ZoneIndex:
 
     targets: dict[int, list[Tile]] = field(default_factory=dict)
     zone_records: dict[int, list[ZoneRecord]] = field(default_factory=dict)
+
+
+def bare_record(zid: int, terrain: str, ts: frozenset[Tile], free: set[Tile]) -> ZoneRecord:
+    """The record of a zone the level pass skipped: its free tiles, nothing reached or used."""
+    return ZoneRecord(
+        zid=zid,
+        terrain=terrain,
+        ts=ts,
+        open_set=free,
+        passable=free,
+        reach=set(),
+        used=set(),
+    )
 
 
 def _level_records(lvl_ws: LevelWorkspace, targets: list[Tile]) -> list[ZoneRecord]:

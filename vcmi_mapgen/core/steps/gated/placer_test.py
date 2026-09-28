@@ -4,10 +4,11 @@ steps.treasure.fill loot-zone content restrictions."""
 import collections
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile, ZoneRecord
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.steps.gated.placer import find_entry_corridor, place_gated_zones
 from vcmi_mapgen.core.steps.treasure.fill import (
     LOOT_HERO_STRUCTURE_MIN_SEP,

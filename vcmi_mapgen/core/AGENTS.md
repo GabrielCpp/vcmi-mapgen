@@ -8,6 +8,7 @@ Map generation: the data model, the pipeline engine and the steps.
 - `grid/`: pure grid algorithms over tile sets: segmentation, components, paths, pockets, edge distance and noise.
 - `model/`: `MapState`, the tile grid and object list, and the plain data types.
 - `placement/`: where an object stands: footprint cells, the terrain rule, guards, sites, `place_one` and scatter.
+- `planning/`: each zone's entrances, walkable web and sea plan, and the one `ZoneRecord` each zone carries.
 - `priors/`: the corpus priors as frozen values.
 - `pipeline.py`: the `PipelineStep` contract, the `Pipeline` engine, the `ProviderRegistry` and the `PlacementWorkspace` the placement steps share.
-- `steps/`: one subpackage per pipeline step, plus the helpers several steps share.
+- `steps/`: one subpackage per pipeline step.

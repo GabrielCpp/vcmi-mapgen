@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from vcmi_mapgen.cli.steps import build_steps
-from vcmi_mapgen.core.model import Pockets
+from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.steps.border.step import BorderResult
 from vcmi_mapgen.core.steps.gameplay.step import TownsIndex

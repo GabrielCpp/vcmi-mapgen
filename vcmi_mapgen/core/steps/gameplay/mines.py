@@ -34,12 +34,12 @@ from vcmi_mapgen.core.placement.intensity import (
     open_bin,
     openness,
 )
+from vcmi_mapgen.core.planning.entrances import zone_fronts, zone_gates
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.corpus.gameplay import (
     load_gameplay,
 )
 from vcmi_mapgen.corpus.mine.gates import MIN_AREA_STATS
-from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 
 TOWN_MIN_AREA = 150  # a town needs a real zone
 WATER_PURPOSES = (

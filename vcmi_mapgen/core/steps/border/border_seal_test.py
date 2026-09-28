@@ -4,9 +4,9 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.guards import guard_spaced
+from vcmi_mapgen.core.planning.entrances import plan_entrances
 from vcmi_mapgen.core.steps.border import border_seal as BS
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
-from vcmi_mapgen.kit.topology import plan_entrances
 
 S, GRASS = 20, 2
 

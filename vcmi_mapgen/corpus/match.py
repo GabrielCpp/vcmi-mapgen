@@ -22,8 +22,8 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.intensity import gate_dist
 from vcmi_mapgen.core.placement.site import back_score
+from vcmi_mapgen.core.planning.entrances import zone_fronts, zone_gates
 from vcmi_mapgen.corpus.maps import all_map_names, load_corpus_map
-from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 
 MEASURES = ("depth", "gate", "open", "back")
 EDGES = (20, 60, 100, 150, 250, 500, 1000)

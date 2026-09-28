@@ -21,9 +21,9 @@ from vcmi_mapgen.core.placement.intensity import (
     scaled_cap,
 )
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one, web_dist
+from vcmi_mapgen.core.planning.entrances import zone_gate_bands
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.corpus.gameplay import load_gameplay
-from vcmi_mapgen.kit.topology import zone_gate_bands
 
 CAPS = {
     Purpose.RESOURCE_PILE: 16,

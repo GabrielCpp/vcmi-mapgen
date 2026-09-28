@@ -10,5 +10,5 @@ workspace.
 - `geometry.py`: the 4- and 8-neighbourhoods, edge distance and the open run-length statistic.
 - `noise.py`: the seeded value-noise field.
 - `paths.py`: `geodesic_path` inside a tile set, `farthest_points` sampling and the backbone `SPACING`.
-- `pockets.py`: pocket detection, each pocket's mouth, and each pocket tile's depth from its mouth.
+- `pockets.py`: pocket detection, each pocket's mouth, each pocket tile's depth from its mouth, and the `Pockets` type.
 - `segment.py`: `segment_level`, the terrain flood fill with each tile's position inside its zone.

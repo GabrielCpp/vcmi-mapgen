@@ -22,6 +22,7 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
+from vcmi_mapgen.core.planning.entrances import plan_entrances
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.gameplay import mines as MN
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
@@ -29,7 +30,6 @@ from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.corpus.gameplay import load_gameplay
-from vcmi_mapgen.kit.topology import plan_entrances
 
 NO_TILES: frozenset[Tile] = frozenset()
 

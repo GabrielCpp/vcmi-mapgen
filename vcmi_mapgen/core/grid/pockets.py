@@ -15,6 +15,8 @@ POCKET_MAX_TILES = 10  # user-mandated 2026-09: "a closed cavity of 1 to 10 othe
 POCKET_NOOK_BLOCKED = 4  # mouth_key's "in a neck" tiebreak: a mouth tile counts as
 # IN the neck when >=4 of its 8 neighbours are blocking
 
+type Pockets = dict[int, dict[Tile, float]]
+
 
 def _bounded_fill(
     reach: Container[Tile],

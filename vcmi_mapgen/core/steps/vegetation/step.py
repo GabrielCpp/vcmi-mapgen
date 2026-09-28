@@ -17,10 +17,10 @@ from vcmi_mapgen.core.pipeline import (
 )
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.rules import TerrainGate
+from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
-from vcmi_mapgen.core.steps.zone_plan import plan_player_zones, plan_zones
 
 
 @dataclass
@@ -96,8 +96,8 @@ class VegetationStep(PipelineStep):
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         if self._workspace is None:
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
-        plan_zones(catalog, self._workspace, map_state, self._terrain, self.seed)
-        plan_player_zones(
+        ZPL.plan_zones(catalog, self._workspace, map_state, self._terrain, self.seed)
+        ZPL.plan_player_zones(
             catalog, self._workspace, map_state.zones, self._terrain.tunnel_protect, self.players
         )
         models: dict[str, PP.VegModel] = {}

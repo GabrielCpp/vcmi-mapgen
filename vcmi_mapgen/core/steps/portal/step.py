@@ -7,14 +7,14 @@ from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
+from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateResult
 from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.core.steps.portal import geometry as GEO
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 
 
 @dataclass

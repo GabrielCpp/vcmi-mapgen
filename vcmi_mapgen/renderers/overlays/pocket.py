@@ -15,7 +15,7 @@ from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
 if TYPE_CHECKING:
-    from vcmi_mapgen.core.model import Pockets
+    from vcmi_mapgen.core.grid.pockets import Pockets
 
 
 class PocketOverlay(MapOverlay):

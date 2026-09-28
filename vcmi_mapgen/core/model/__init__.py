@@ -19,8 +19,6 @@ from vcmi_mapgen.core.model.objects import (
     Tile,
     Zone,
 )
-from vcmi_mapgen.core.model.pockets import Pockets
-from vcmi_mapgen.core.model.zone_record import ZoneRecord
 
 __all__ = [
     "BORDER",
@@ -35,11 +33,9 @@ __all__ = [
     "PlacedObject",
     "PlacementError",
     "PlacementRules",
-    "Pockets",
     "Role",
     "Tile",
     "TileView",
     "Zone",
-    "ZoneRecord",
     "footprint",
 ]

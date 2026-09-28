@@ -10,19 +10,12 @@ from dataclasses import dataclass
 from typing import Self
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import (
-    CoverIndex,
-    Footprint,
-    Identity,
-    PlacedObject,
-    Role,
-    Tile,
-    ZoneRecord,
-)
+from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 

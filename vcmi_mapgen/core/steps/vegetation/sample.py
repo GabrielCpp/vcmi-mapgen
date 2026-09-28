@@ -46,8 +46,8 @@ from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.planning.entrances import zone_fronts, zone_gate_bands
 from vcmi_mapgen.core.steps.vegetation import stats as PS
-from vcmi_mapgen.kit.topology import zone_fronts, zone_gate_bands
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)
@@ -189,7 +189,7 @@ def protected_web(
     opts: WebOptions = _DEFAULT_WEB,
 ) -> set[Tile]:
     """The PROTECTED walkable set: spanning backbone over farthest-point nodes + rim gate
-    BANDS (constructive global connectivity, reusing kit.topology's helpers — spec §5).
+    BANDS (constructive global connectivity, reusing core.planning.entrances's helpers — spec §5).
 
     Gates are corpus-wide bands of the zone-contact front (`open_frac` = the mined fraction
     of corpus zone-border tiles left passable): the whole band is protected, so vegetation
@@ -198,10 +198,10 @@ def protected_web(
     every placed object stays reachable); `avoid` tiles (gameplay footprints) are
     impassable, so corridors route AROUND towns/mines instead of through them.
 
-    `entrances` (this zone's `kit.topology.plan_entrances` entries) switches the border model
-    from corpus-open to ISOLATED: only the planned narrow entrance bands are protected —
-    the rest of the front is left plantable, and `sample_zone`'s border bias actively
-    densifies it (the map-level isolation redesign). `keep_off` (the caller's 8-connected
+    `entrances` (this zone's `core.planning.entrances.plan_entrances` entries) switches
+    the border model from corpus-open to ISOLATED: only the planned narrow entrance bands are
+    protected — the rest of the front is left plantable, and `sample_zone`'s border bias
+    actively densifies it (the map-level isolation redesign). `keep_off` (the caller's 8-connected
     rim: every tile with an 8-neighbour in another zone) further restricts backbone
     ROUTING in that mode — a web corridor pinned to the rim would both hold the ridge open
     and be unsealable by `pp_map.seal_zone_borders`."""

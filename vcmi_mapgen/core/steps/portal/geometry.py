@@ -8,12 +8,13 @@ from functools import partial
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits, rnd_monster
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.planning.zone_index import ZoneRecord, bare_record
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
@@ -485,15 +486,7 @@ class _PortalRescue:
         zr = self.zr_by[lvl].get(zone.zid)
         if zr is None:  # zone skipped by the level pass (bare
             free = set(zone.ts) - st.occupied  # terrain): synth a minimal record
-            zr = ZoneRecord(
-                zid=zone.zid,
-                terrain=zone.terrain,
-                ts=frozenset(zone.ts),
-                open_set=free,
-                passable=free,
-                reach=set(),
-                used=set(),
-            )
+            zr = bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
         zr.used.update(far_fit[0])  # the monolith's own cells
         robjs = place_reward_zone(
             self.catalog, RewardSite(zr, far_appr, (W, H), self.cover_by[lvl]), seed=self.seed

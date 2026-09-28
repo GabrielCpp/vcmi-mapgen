@@ -9,4 +9,3 @@ module here has its own `__main__`.
 - `pp_cache.py`: how a `data/pp/` statistics file is read and written, and the error when one is missing.
 - `render_palette.py`: the terrain colours the renderers use, keyed by `Terrain`.
 - `tiling.py`: the corpus-learned autotiler that picks each tile's transition view.
-- `topology.py`: zone-shape planning: entrances, gates and fronts.

@@ -7,21 +7,13 @@ import pytest
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import find_pockets
-from vcmi_mapgen.core.model import (
-    CoverIndex,
-    Footprint,
-    Identity,
-    PlacedObject,
-    Role,
-    Tile,
-    Zone,
-    ZoneRecord,
-)
+from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import legal_cells
 from vcmi_mapgen.core.placement.scatter import ScatterConfig, ScatterZone, place_scatter
+from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.steps.loot import caches as CA
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.corpus.gameplay import STATS_PATH

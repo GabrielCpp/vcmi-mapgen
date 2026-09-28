@@ -19,11 +19,9 @@ approach tile, and any overlay may sit over a resource pile or reward pickup. A 
 
 - `map_state.py`: `MapState`, the tile grid and the objects on it, and the grid API.
 - `objects.py`: the object and zone records: `PlacedObject`, its `Identity` and `Entrance`, `Cell` and `Zone`, and the `Footprint` an object covers, a set of cells each with its `Role`.
-- `zone_record.py`: `ZoneRecord`, one zone's tiles, reach and used cells for the placement steps.
 - `terrain.py`: `Terrain`, the terrain vocabulary, and which terrains are water, barrier or land.
 - `purpose.py`: `Purpose`, the purposes objects are placed for, and the groups `VISIT_PURPOSES` and `COUNTED`.
 - `resource.py`: `Resource`, the resources a map's economy counts.
-- `pockets.py`: the `Pockets` type, each level's pocket tiles and their weights.
 
 ## `MapState`
 
