@@ -23,6 +23,7 @@ from pathlib import Path
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Identity, JsonValue, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gate.gates import MIN_AREA_STATS
 from vcmi_mapgen.kit import objects as OR
@@ -40,25 +41,24 @@ STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "gameplay_stats_underground.
 SOURCE = "vcmi_mapgen.core.steps.gameplay.mines.mine_gameplay"
 STATS_VERSION = 5  # v5: border open fraction + full-front gate distances
 TOWN_MIN_AREA = 150  # a town needs a real zone
-VISIT_PURPOSES = ("STAT_PERMANENT", "SPELL_SKILL", "BONUS_TEMP", "MANA", "INFO")
-PICKUP_PURPOSES = ("RESOURCE_PILE", "REWARD_PICKUP", "GUARD")
+PICKUP_PURPOSES = (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD)
 WATER_PURPOSES = (
-    "REWARD_PICKUP",
-    "BONUS_TEMP",
-    "TRANSPORT",
-    "INFO",
-    "BANK",
-    "WATER_TRANSPORT",
-    # no "GUARD" -- a monster only ever gates a mine, a loot-zone/portal-rescue access
+    Purpose.REWARD_PICKUP,
+    Purpose.BONUS_TEMP,
+    Purpose.TRANSPORT,
+    Purpose.INFO,
+    Purpose.BANK,
+    Purpose.WATER_TRANSPORT,
+    # no guard -- a monster only ever gates a mine, a loot-zone/portal-rescue access
     # object, or a pocket mouth (user-mandated placement order); water bodies get none.
 )
 ALL_PURPOSES = (
-    "TOWN",
-    "MINE",
-    "DWELLING",
-    "WATER_TRANSPORT",
-    "TRANSPORT",
-    "BANK",
+    Purpose.TOWN,
+    Purpose.MINE,
+    Purpose.DWELLING,
+    Purpose.WATER_TRANSPORT,
+    Purpose.TRANSPORT,
+    Purpose.BANK,
     *VISIT_PURPOSES,
     *PICKUP_PURPOSES,
 )
@@ -378,7 +378,7 @@ def _zone_blocked(
     veg_blocked: set[Tile] = set()
     all_blocked: set[Tile] = set()
     for o in zone_objs:
-        is_decor = OR.purpose_of(o) == "DECORATION"
+        is_decor = OR.purpose_of(o) == Purpose.DECORATION
         anim = o.animation.lower().removesuffix(".def")
         for cx, cy, blk in OR.mask_cells(ON.mask_of(anim), o.x, o.y):
             if blk and (cx, cy) in ts:
@@ -404,7 +404,7 @@ def _count_zone_obj(
     op = cov.op
     if op is not None and t in op:
         a.o[p][_obin(op[t])] += 1
-    if p in ("RESOURCE_PILE", "REWARD_PICKUP", "MINE"):
+    if p in (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.MINE):
         a.guardable[p] += 1
         if any(max(abs(t[0] - gx), abs(t[1] - gy)) <= 3 for gx, gy in guards):
             a.guarded[p] += 1
@@ -434,7 +434,9 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
 
 def _accumulate_map(acc: dict[str, _TerrainAcc], fm: OR.FaithfulMap, level: int) -> None:
     zones, _zl, _ = segment_level(fm.terrain[level])
-    guards = {(o.x, o.y) for o in fm.objects if o.level == level and OR.purpose_of(o) == "GUARD"}
+    guards = {
+        (o.x, o.y) for o in fm.objects if o.level == level and OR.purpose_of(o) == Purpose.GUARD
+    }
     _accumulate_water(acc["water"], fm, level)
     cl = _CorpusLevel(fm, level, zones, guards)
     for zid, z in zones.items():
@@ -458,7 +460,7 @@ def _finish_stats(a: _TerrainAcc) -> TerrainStats:
         border_open_frac=(a.border_open / a.border_tiles if a.border_tiles else 0.5),
         guard_frac={
             p: (a.guarded[p] / a.guardable[p] if a.guardable[p] else 0.0)
-            for p in ("RESOURCE_PILE", "REWARD_PICKUP", "MINE")
+            for p in (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.MINE)
         },
     )
 
@@ -527,10 +529,10 @@ def intensity_weights(
 
 
 def info_pool(terrain: str, has_water: bool, has_subterrain: bool = False) -> list[Identity]:
-    """`DC.pool("INFO", terrain)`, minus cartographer subtypes the map can't back up:
+    """`DC.pool(Purpose.INFO, terrain)`, minus cartographer subtypes the map can't back up:
     cartographerSubterranean is dropped unless the map actually has a second level, and
     cartographerWater is dropped on maps with no water at all."""
-    pool = DC.pool("INFO", terrain)
+    pool = DC.pool(Purpose.INFO, terrain)
     return [
         i
         for i in pool
@@ -579,7 +581,7 @@ def tie_dwellings(objs: Iterable[PlacedObject]) -> None:
     # around a random town are its own. Instance names are minted only at export, so the
     # marker carries the town's coordinates; `renderers.vmap.VmapRenderer._build_document`
     # swaps in the instanceName.
-    town = next((o for o in objs if o.purpose == "TOWN"), None)
+    town = next((o for o in objs if o.purpose == Purpose.TOWN), None)
     if town is not None:
         for o in objs:
             if (o.type or "").startswith("randomDwelling"):
@@ -590,10 +592,10 @@ def tie_dwellings(objs: Iterable[PlacedObject]) -> None:
 
 # purposes deliberately NOT reproduced by the generator (the audit's whitelist)
 AUDIT_EXCLUDED = {
-    "TRANSPORT": "relational: subterranean gates + two-way monoliths are placed by their own "
+    Purpose.TRANSPORT: "relational: subterranean gates + two-way monoliths are placed by their own "
     + "matched-set passes (place_gate_pairs / PortalStep), not the "
     + "per-zone density draw — the audit must not demand every corpus variant",
-    "GUARD": "guards are leveled RANDOM monsters by design, never corpus identities",
+    Purpose.GUARD: "guards are leveled RANDOM monsters by design, never corpus identities",
 }
 # corpus sprite VARIANTS of ontology objects: same {type, subtype} gameplay object under a
 # different DEF filename (fort-less 'village' town sprites vs the editor's forted '..x0'
@@ -616,7 +618,7 @@ TOWN_SPRITE_VARIANTS = {
 PLACED_PURPOSES = (
     set(VISIT_PURPOSES)
     | set(PICKUP_PURPOSES)
-    | {"TOWN", "MINE", "DWELLING", "BANK", "WATER_TRANSPORT"}
+    | {Purpose.TOWN, Purpose.MINE, Purpose.DWELLING, Purpose.BANK, Purpose.WATER_TRANSPORT}
 ) - set(AUDIT_EXCLUDED)
 
 

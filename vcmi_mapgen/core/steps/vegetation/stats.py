@@ -32,6 +32,7 @@ import numpy as np
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import JsonValue, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
@@ -186,7 +187,7 @@ def _anchors_of_zone(fm: OR.FaithfulMap, ts: AbstractSet[Tile]) -> list[tuple[in
     for o in fm.objects:
         if o.level != 0 or (o.x, o.y) not in ts:
             continue
-        if OR.purpose_of(o) != "DECORATION":
+        if OR.purpose_of(o) != Purpose.DECORATION:
             continue
         anim = o.animation.lower().removesuffix(".def")
         ci = DC.category_of(anim)

@@ -4,6 +4,7 @@ import contextlib
 import io
 
 from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.steps import GameplayStep, SegmentStep, TerrainStep, VegetationStep
 from vcmi_mapgen.vcmi.catalog.adapter import Ontology
@@ -29,7 +30,7 @@ def _run_towns(seed: int, size: int = 48, players: int = 2, subterrain: bool = T
 def test_every_player_gets_a_placed_start_town() -> None:
     """Each requested player receives a real placed TOWN object, and no town twice."""
     state = _run_towns(seed=1)
-    town_positions = {(o.x, o.y, o.level) for o in state.objs if o.purpose == "TOWN"}
+    town_positions = {(o.x, o.y, o.level) for o in state.objs if o.purpose == Purpose.TOWN}
     starts = [(t.x, t.y, t.level) for t in state.player_towns]
     assert len(starts) == 2, f"only {len(starts)}/2 players got a start town"
     assert len(set(starts)) == len(starts)

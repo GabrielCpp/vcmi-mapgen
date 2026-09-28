@@ -9,6 +9,8 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells, pick_identity
 from vcmi_mapgen.kit import objects as OR
@@ -81,7 +83,7 @@ def _pandora_reward(rng: random.Random) -> dict[str, JsonValue]:
     reward = dict(RW_REWARD)
     flavor = rng.choices(("gold", "experience", "creatures"), weights=(45, 30, 25), k=1)[0]
     if flavor == "gold":
-        reward["resources"] = {"gold": rng.choice((500, 1000, 1500, 2000, 3000, 5000))}
+        reward["resources"] = {Resource.GOLD: rng.choice((500, 1000, 1500, 2000, 3000, 5000))}
     elif flavor == "experience":
         reward["heroExperience"] = rng.choice((1000, 1500, 2500, 5000, 7500, 10000))
     else:
@@ -128,7 +130,7 @@ def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
     neighbours. A hero stepping on one of them fights the guard."""
     zoc: set[Tile] = set()
     for o in objs:
-        if o.purpose != "GUARD" or not o.mask:
+        if o.purpose != Purpose.GUARD or not o.mask:
             continue
         for ix, iy in OR.mask_interactive_cells(o.mask, o.x, o.y):
             zoc.add((ix, iy))
@@ -199,7 +201,7 @@ def _guard_cells(
 
 
 def _apply_options(o: PlacedObject, ident: Identity, spec: PlaceSpec, rng: random.Random) -> None:
-    if spec.purpose == "GUARD":  # absent => VCMI 'compliant' => every creature joins free
+    if spec.purpose == Purpose.GUARD:  # absent => VCMI 'compliant' => every creature joins free
         o.options = {"character": "hostile"}
     if spec.options is not None:
         o.options = spec.options
@@ -228,7 +230,7 @@ def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
     )
     if ident is None:
         return False
-    if spec.purpose == "GUARD":
+    if spec.purpose == Purpose.GUARD:
         cells = _guard_cells(target, spec, ident, x, y)
     else:
         cells = legal_cells(

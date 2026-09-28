@@ -11,12 +11,16 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one, web_dist
 from vcmi_mapgen.kit.topology import zone_gate_bands
 from vcmi_mapgen.vcmi.catalog import decor as DC
 
-CAPS = {"RESOURCE_PILE": 16, "REWARD_PICKUP": 8}  # base floors; caps scale (scatter only --
+CAPS = {
+    Purpose.RESOURCE_PILE: 16,
+    Purpose.REWARD_PICKUP: 8,
+}  # base floors; caps scale (scatter only --
 # pocket guards/caches are deterministic, see place_pocket_caches)
 SCATTER_ART_SHARE = 0.15  # unguarded scatter: mostly LOOT (chests/campfires); the
 # tiered random artifacts live behind cache guards instead
@@ -82,8 +86,8 @@ def place_scatter(
 
     n_res = _stoch(
         rng,
-        dens["RESOURCE_PILE"] * area,
-        PG.scaled_cap(CAPS["RESOURCE_PILE"], dens["RESOURCE_PILE"] * area),
+        dens[Purpose.RESOURCE_PILE] * area,
+        PG.scaled_cap(CAPS[Purpose.RESOURCE_PILE], dens[Purpose.RESOURCE_PILE] * area),
     )
 
     dweb = web_dist(zone.open_set, zone.prot)
@@ -92,7 +96,7 @@ def place_scatter(
     ed = edge_dist(ts)
     gd = _scatter_gate_dist(zone, st)
 
-    pool_res = DC.pool("RESOURCE_PILE", zone.terrain)
+    pool_res = DC.pool(Purpose.RESOURCE_PILE, zone.terrain)
 
     objs: list[PlacedObject] = []
     used: set[Tile] = set() if config.used_in is None else config.used_in
@@ -120,5 +124,5 @@ def place_scatter(
             if place_one(target, spec, t[0], t[1]):
                 placed.append(t)
 
-    scatter("RESOURCE_PILE", pool_res, n_res, min_sep=3)
+    scatter(Purpose.RESOURCE_PILE, pool_res, n_res, min_sep=3)
     return objs, used, reach

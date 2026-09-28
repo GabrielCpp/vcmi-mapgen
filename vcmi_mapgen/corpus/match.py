@@ -17,8 +17,8 @@ from typing import final
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import COUNTED
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.steps.gameplay.draw import COUNTED
 from vcmi_mapgen.core.steps.gameplay.mines import gate_dist
 from vcmi_mapgen.core.steps.gameplay.site import back_score, mask_tiles
 from vcmi_mapgen.kit import objects as OR

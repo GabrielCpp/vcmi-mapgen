@@ -117,7 +117,8 @@ def cmd_render_sprites(args: Args) -> None:
 
 
 def cmd_regen_ontology(_args: Args) -> None:
-    tree = regenerate(lod(open_install(load_settings()).data_dir))
+    install = open_install(load_settings())
+    tree = regenerate(lod(install.data_dir), load_config(install))
     print("ontology taxonomy (regenerated)")
     for cluster in CLUSTERS:
         purposes = tree.get(cluster, {})

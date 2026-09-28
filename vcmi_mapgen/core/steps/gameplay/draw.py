@@ -14,13 +14,13 @@ from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen.core.model import Identity
+from vcmi_mapgen.core.model.purpose import COUNTED, VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RANDOM_SHARE,
     RND_DWELL,
     RND_DWELL_L,
     RND_TOWN,
     TOWN_MIN_AREA,
-    VISIT_PURPOSES,
     Ledger,
     TerrainStats,
     info_pool,
@@ -32,8 +32,7 @@ from vcmi_mapgen.vcmi.catalog import objects as ON
 
 DRAW_SALT = 0x5EED
 TOWN_SLOTS = 3
-COUNTED = ("TOWN", "MINE", "DWELLING", "BANK", *VISIT_PURPOSES, "TRANSPORT", "WATER_TRANSPORT")
-MIX: tuple[str, ...] = ("MINE", "DWELLING", "BANK", "VISIT")
+MIX: tuple[str, ...] = (Purpose.MINE, Purpose.DWELLING, Purpose.BANK, "VISIT")
 ECONOMY = ("sawmill", "orePit")
 DWELL_LEVEL_W = (22, 18, 15, 13, 12, 10, 10)
 
@@ -92,10 +91,10 @@ class ZoneDrawer:
         out = ZoneDraw(total=total, pools=self.pools)
         if town:
             out.town = self._town()
-        out.mines = self._mines(shares["MINE"] + (2 if town else 0))
+        out.mines = self._mines(shares[Purpose.MINE] + (2 if town else 0))
         out.attractions = [
-            *self._dwellings(shares["DWELLING"]),
-            *self._banks(shares["BANK"]),
+            *self._dwellings(shares[Purpose.DWELLING]),
+            *self._banks(shares[Purpose.BANK]),
             *self._visits(shares["VISIT"]),
         ]
         return out
@@ -104,14 +103,14 @@ class ZoneDrawer:
         spec = self.spec
         if spec.area < TOWN_MIN_AREA or room < TOWN_SLOTS:
             return False
-        return self.rng.random() < self.dens.get("TOWN", 0.0) * spec.area
+        return self.rng.random() < self.dens.get(Purpose.TOWN, 0.0) * spec.area
 
     def _split(self, rest: int) -> dict[str, int]:
         shares = dict.fromkeys(MIX, 0)
         weights = [
-            self.dens.get("MINE", 0.0),
-            self.dens.get("DWELLING", 0.0),
-            self.dens.get("BANK", 0.0),
+            self.dens.get(Purpose.MINE, 0.0),
+            self.dens.get(Purpose.DWELLING, 0.0),
+            self.dens.get(Purpose.BANK, 0.0),
             sum(self.dens.get(p, 0.0) for p in VISIT_PURPOSES),
         ]
         if rest <= 0 or sum(weights) <= 0:
@@ -140,10 +139,10 @@ class ZoneDrawer:
     def _town(self) -> Identity | None:
         if self.spec.player or self.rng.random() < RANDOM_SHARE:
             return ON.identity_of(RND_TOWN)
-        return self._pick(DC.pool("TOWN", self.spec.terrain), "TOWN")
+        return self._pick(DC.pool(Purpose.TOWN, self.spec.terrain), Purpose.TOWN)
 
     def _take(self, ids: list[Identity], res: str, used: set[str], out: list[Identity]) -> None:
-        ident = self._pick(ids, "MINE")
+        ident = self._pick(ids, Purpose.MINE)
         if ident is not None:
             out.append(ident)
         used.add(res)
@@ -158,7 +157,7 @@ class ZoneDrawer:
         return self.rng.choices(keys, weights=rw, k=1)[0]
 
     def _mines(self, n: int) -> list[Identity]:
-        mine_w = self.st.anim_w.get("MINE", {})
+        mine_w = self.st.anim_w.get(Purpose.MINE, {})
         mines = {
             res: mine_variants(ids, mine_w)
             for res, ids in ON.mines_by_resource(self.spec.terrain).items()
@@ -188,8 +187,8 @@ class ZoneDrawer:
         rng = self.rng
         out: list[tuple[str, Identity]] = []
         if n:
-            _ = self._keep_pool("DWELLING", [ON.identity_of(a) for a in RND_DWELL_L])
-            _ = self._keep_pool("DWELLING", DC.pool("DWELLING", self.spec.terrain))
+            _ = self._keep_pool(Purpose.DWELLING, [ON.identity_of(a) for a in RND_DWELL_L])
+            _ = self._keep_pool(Purpose.DWELLING, DC.pool(Purpose.DWELLING, self.spec.terrain))
         for _ in range(n):
             ident: Identity | None
             if rng.random() < 0.8:
@@ -200,17 +199,20 @@ class ZoneDrawer:
                 )
                 ident = ON.identity_of(anim)
             else:
-                ident = self._pick(self.pools["DWELLING"], "DWELLING")
+                ident = self._pick(self.pools[Purpose.DWELLING], Purpose.DWELLING)
             if ident:
-                out.append(("DWELLING", ident))
+                out.append((Purpose.DWELLING, ident))
         return out
 
     def _banks(self, n: int) -> list[tuple[str, Identity]]:
         out: list[tuple[str, Identity]] = []
         for _ in range(n):
-            ident = self._pick(self._keep_pool("BANK", DC.pool("BANK", self.spec.terrain)), "BANK")
+            ident = self._pick(
+                self._keep_pool(Purpose.BANK, DC.pool(Purpose.BANK, self.spec.terrain)),
+                Purpose.BANK,
+            )
             if ident:
-                out.append(("BANK", ident))
+                out.append((Purpose.BANK, ident))
         return out
 
     def _visits(self, n: int) -> list[tuple[str, Identity]]:
@@ -221,7 +223,7 @@ class ZoneDrawer:
             p = self.rng.choices(VISIT_PURPOSES, weights=vw, k=1)[0]
             pool = (
                 info_pool(spec.terrain, spec.has_water, spec.has_subterrain)
-                if p == "INFO"
+                if p == Purpose.INFO
                 else DC.pool(p, spec.terrain)
             )
             ident = self._pick(self._keep_pool(p, pool), p)

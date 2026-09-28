@@ -99,9 +99,6 @@ class Ontology:
     def mines_by_resource(self, terrain: str | int) -> dict[str, list[Identity]]:
         return OB.mines_by_resource(terrain)
 
-    def visitable_purposes(self) -> tuple[str, ...]:
-        return OB.visitable_purposes()
-
     def veg_categories(self) -> list[str]:
         return DC.veg_categories()
 

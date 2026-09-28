@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument, VmapObject
@@ -99,9 +100,11 @@ def _placed(type_name: str | None) -> PlacedObject:
     )
 
 
-def test_purpose_of_matches_type_to_purpose() -> None:
-    assert OR.purpose_of(_placed("town")) == OR.type_to_purpose("town") == "TOWN"
-    assert OR.purpose_of(_placed(None)) == "UNKNOWN"
+def test_purpose_of_reads_the_catalog() -> None:
+    assert OR.purpose_of(_placed("town")) == Purpose.TOWN
+    assert OR.purpose_of(_placed("mine")) == Purpose.MINE
+    assert OR.purpose_of(_placed("noSuchType")) == Purpose.UNKNOWN
+    assert OR.purpose_of(_placed(None)) == Purpose.UNKNOWN
 
 
 def test_all_map_names_is_independent_of_listdir_order(monkeypatch: pytest.MonkeyPatch) -> None:

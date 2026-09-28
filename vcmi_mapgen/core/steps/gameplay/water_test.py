@@ -8,6 +8,7 @@ from collections.abc import Iterable, Sequence
 import pytest
 
 from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay import water as WT
@@ -255,7 +256,7 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row() -> None:
         x=3,
         y=2,
         level=0,
-        purpose="STAT_PERMANENT",
+        purpose=Purpose.STAT_PERMANENT,
         type="arena",
         subtype="object",
         animation="",
@@ -351,6 +352,6 @@ def test_place_water_never_places_a_guard() -> None:
     for seed in range(1, 30):
         objs += WT.place_water(ts, zones, 1, seed=seed)
     assert objs, "fixture assumption broke: expected some water objects across 30 seeds"
-    assert not any(o.purpose == "GUARD" for o in objs), (
+    assert not any(o.purpose == Purpose.GUARD for o in objs), (
         "place_water must never place a GUARD-purpose object"
     )

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from typing import Self
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.kit import objects as OR
@@ -26,8 +28,10 @@ _LOOT_SCROLL_LEVELS = (4, 5)
 _LOOT_HERO_STRUCTURE_TYPES = frozenset({"learningStone", "gardenOfRevelation", "starAxis"})
 _LOOT_HERO_STRUCTURE_COUNT = 2
 LOOT_HERO_STRUCTURE_MIN_SEP = 2
-_LOOT_RARE_RESOURCE_SUBTYPES = frozenset({"mercury", "sulfur", "crystal", "gems", "gold"})
-_SOLO_VIS_PURPOSES = ("BONUS_TEMP", "SPELL_SKILL", "MANA", "STAT_PERMANENT")
+_LOOT_RARE_RESOURCE_SUBTYPES = frozenset(
+    {Resource.MERCURY, Resource.SULFUR, Resource.CRYSTAL, Resource.GEMS, Resource.GOLD}
+)
+_SOLO_VIS_PURPOSES = (Purpose.BONUS_TEMP, Purpose.SPELL_SKILL, Purpose.MANA, Purpose.STAT_PERMANENT)
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
 
@@ -73,12 +77,14 @@ class _LootPools:
     @classmethod
     def of(cls, terrain: str) -> Self:
         pool_vis = [
-            i for i in DC.pool("STAT_PERMANENT", terrain) if i.type in _LOOT_HERO_STRUCTURE_TYPES
+            i
+            for i in DC.pool(Purpose.STAT_PERMANENT, terrain)
+            if i.type in _LOOT_HERO_STRUCTURE_TYPES
         ]
         pool_art = [
-            i for i in DC.pool("REWARD_PICKUP", terrain) if i.type not in _LOOT_ART_EXCL_TYPES
+            i for i in DC.pool(Purpose.REWARD_PICKUP, terrain) if i.type not in _LOOT_ART_EXCL_TYPES
         ]
-        pool_res = DC.pool("RESOURCE_PILE", terrain)
+        pool_res = DC.pool(Purpose.RESOURCE_PILE, terrain)
         kinds = LOOT_CHEST_TYPES + _LOOT_ZONE_CHEST_EXTRA_TYPES
         pool_chest = [i for i in pool_art if i.type in kinds]
         chest_kind_pools = {kind: [i for i in pool_chest if i.type == kind] for kind in kinds}
@@ -137,7 +143,11 @@ def _fill_hero_structures(zone: FillZone, pools: _LootPools, target: PlaceTarget
         if not candidates:
             continue
         spec = PlaceSpec(
-            "BONUS_TEMP", None, ident=zone.rng.choice(candidates), cache=True, interactive_only=True
+            Purpose.BONUS_TEMP,
+            None,
+            ident=zone.rng.choice(candidates),
+            cache=True,
+            interactive_only=True,
         )
         placed: list[Tile] = []
         for t in free:
@@ -165,16 +175,16 @@ def _roll_spec(
         )[0]
         ident = ON.identity_of(anim)
         return PlaceSpec(
-            "REWARD_PICKUP", pools.pool_art, ident=ident, cache=True, interactive_only=True
+            Purpose.REWARD_PICKUP, pools.pool_art, ident=ident, cache=True, interactive_only=True
         )
     if roll < 0.6 and chest_kinds:
         ident = rng.choice(pools.chest_kind_pools[rng.choice(chest_kinds)])
         return PlaceSpec(
-            "REWARD_PICKUP", pools.pool_art, ident=ident, cache=True, interactive_only=True
+            Purpose.REWARD_PICKUP, pools.pool_art, ident=ident, cache=True, interactive_only=True
         )
     if pools.pool_rare:
         return PlaceSpec(
-            "RESOURCE_PILE",
+            Purpose.RESOURCE_PILE,
             pools.pool_res,
             ident=rng.choice(pools.pool_rare),
             cache=True,
@@ -208,7 +218,7 @@ def _fill_tile(
 ) -> bool:
     if pools.pool_rare:
         spec = PlaceSpec(
-            "RESOURCE_PILE",
+            Purpose.RESOURCE_PILE,
             pools.pool_res,
             ident=zone.rng.choice(pools.pool_rare),
             cache=True,
@@ -216,7 +226,7 @@ def _fill_tile(
         )
         if place_one(target, spec, *t):
             return True
-    spec = PlaceSpec("RESOURCE_PILE", pools.pool_res, cache=True, interactive_only=True)
+    spec = PlaceSpec(Purpose.RESOURCE_PILE, pools.pool_res, cache=True, interactive_only=True)
     if place_one(target, spec, *t):
         return True
     return t not in zone.footprint and _fill_decor(zone, t, target.objs, cover)

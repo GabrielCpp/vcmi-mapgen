@@ -5,6 +5,7 @@ import os
 import pytest
 
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
@@ -34,13 +35,13 @@ def test_gameplay_layer_legal_and_deterministic() -> None:
     # GUARD monsters deliberately sit ON approaches/gates, and MINE_SEAL decorations
     # deliberately sit GAP-adjacent to the mine they seal off (no approach of their own) —
     # the rigid rules below apply to the buildings only.
-    core = [o for o in objs if o.purpose not in ("GUARD", "MINE_SEAL")]
-    for g in (o for o in objs if o.purpose == "GUARD"):
+    core = [o for o in objs if o.purpose not in (Purpose.GUARD, Purpose.MINE_SEAL)]
+    for g in (o for o in objs if o.purpose == Purpose.GUARD):
         # monster masks are V-padded to the sprite's tile extent (ground truth from
         # Maps/RandomMaps: every creature mask is ['VV', 'VA']), not a bare single cell.
         assert (g.x, g.y) in ts and g.mask == ("VV", "VA")
         assert (g.type or "").startswith("randomMonster"), "guards are random monsters"
-    for s in (o for o in objs if o.purpose == "MINE_SEAL"):
+    for s in (o for o in objs if o.purpose == Purpose.MINE_SEAL):
         assert (s.x, s.y) in ts and s.mask == ("B",), "a mine seal is a single blocking cell"
     # rigid rules: footprints in-zone, no overlap, approach tile free and in-zone
     seen: set[Tile] = set()
@@ -109,7 +110,7 @@ def test_forced_town_sits_on_zone_centroid() -> None:
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     objs = place_open_zone(ts, "grass", 4, player=True).gobjs
-    towns = [o for o in objs if o.purpose == "TOWN"]
+    towns = [o for o in objs if o.purpose == Purpose.TOWN]
     assert towns, "force_town guarantees a town in a 720-tile zone"
     t = towns[0]
     # player start towns are ALWAYS randomTown: VCMI resolves an owned random town to the
@@ -133,12 +134,14 @@ def test_town_zone_gets_wood_and_ore_next_to_town() -> None:
     ts = {(x, y) for x in range(30) for y in range(24)}
     for seed in (1, 4, 9):
         objs = place_open_zone(ts, "grass", seed, player=True).gobjs
-        towns = [o for o in objs if o.purpose == "TOWN"]
+        towns = [o for o in objs if o.purpose == Purpose.TOWN]
         assert towns, f"seed {seed}: forced town missing"
-        subs = {o.subtype for o in objs if o.purpose == "MINE"}
+        subs = {o.subtype for o in objs if o.purpose == Purpose.MINE}
         assert {"sawmill", "orePit"} <= subs, f"seed {seed}: economy pair missing ({subs})"
         t = towns[0]
-        for m in (o for o in objs if o.purpose == "MINE" and o.subtype in ("sawmill", "orePit")):
+        for m in (
+            o for o in objs if o.purpose == Purpose.MINE and o.subtype in ("sawmill", "orePit")
+        ):
             d = max(abs(m.x - t.x), abs(m.y - t.y))
             assert d <= 12, f"seed {seed}: {m.subtype} is {d} tiles from the town"
 
@@ -156,14 +159,14 @@ def test_mine_ledger_covers_basics_and_rations_gold() -> None:
     for seed in range(1, 8):
         ledger = PG.Ledger(missing=set(PG.BASIC_MINE_RES), towns=1, gold=0)
         objs = place_open_zone(ts, "grass", seed, ledger=ledger).gobjs
-        n_gold = sum(1 for o in objs if o.purpose == "MINE" and o.subtype == "goldMine")
+        n_gold = sum(1 for o in objs if o.purpose == Purpose.MINE and o.subtype == "goldMine")
         assert n_gold <= ledger.gold <= max(0, ledger.towns - 1), (
             f"seed {seed}: gold {n_gold} exceeds quota (towns={ledger.towns})"
         )
     # missing basics are drawn FIRST: a fresh ledger shrinks by every mine the zone placed
     ledger = PG.Ledger(missing=set(PG.BASIC_MINE_RES), towns=1, gold=0)
     objs = place_open_zone(ts, "grass", 3, ledger=ledger).gobjs
-    n_mines = sum(1 for o in objs if o.purpose == "MINE")
+    n_mines = sum(1 for o in objs if o.purpose == Purpose.MINE)
     assert len(ledger.missing) <= max(0, len(PG.BASIC_MINE_RES) - n_mines), (
         "every placed mine must come from the missing set while it is non-empty"
     )
@@ -179,7 +182,7 @@ def test_banks_placed_on_land_and_legal() -> None:
     ts = {(x, y) for x in range(45) for y in range(40)}
     banks: list[PlacedObject] = []
     for seed in range(1, 12):
-        banks += [o for o in place_open_zone(ts, "grass", seed).gobjs if o.purpose == "BANK"]
+        banks += [o for o in place_open_zone(ts, "grass", seed).gobjs if o.purpose == Purpose.BANK]
     assert banks, "a 1800-tile grass zone must produce banks across a dozen seeds"
     for b in banks:
         allc, _blk, approach = _footprint(b)
@@ -196,10 +199,10 @@ def test_mine_sprites_match_terrain() -> None:
     st = PG.load_gameplay()
     ts = {(x, y) for x in range(40) for y in range(30)}
     for terrain in ("grass", "snow"):
-        mw = st[terrain].anim_w["MINE"]
+        mw = st[terrain].anim_w[Purpose.MINE]
         for seed in range(1, 8):
             objs = place_open_zone(ts, terrain, seed).gobjs
-            for m in (o for o in objs if o.purpose == "MINE"):
+            for m in (o for o in objs if o.purpose == Purpose.MINE):
                 w = mw.get(m.animation.lower(), 0)
                 assert w > 0, (
                     f"{terrain}: mine variant {m.animation} "

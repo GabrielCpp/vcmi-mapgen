@@ -8,6 +8,7 @@ from functools import partial
 from typing import final
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.mines import load_gameplay
 from vcmi_mapgen.core.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
@@ -38,7 +39,7 @@ def _walk_and_hard_cells(objs: Sequence[PlacedObject]) -> tuple[set[Tile], set[T
     walk: set[Tile] = set()
     hard: set[Tile] = set()
     for o in objs:
-        soft = o.purpose in ("RESOURCE_PILE", "REWARD_PICKUP", "GUARD")
+        soft = o.purpose in (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD)
         for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
             if blk and not soft:
                 (hard if o.purpose else walk).add((cx, cy))
@@ -115,7 +116,7 @@ def place_reward_zone(
         return []
 
     n_res = max(4, area // 10) + max(2, area // 25)
-    pool_res = DC.pool("RESOURCE_PILE", terrain)
+    pool_res = DC.pool(Purpose.RESOURCE_PILE, terrain)
     objs: list[PlacedObject] = []
     val = 0
 
@@ -126,7 +127,7 @@ def place_reward_zone(
             break
         if place_one(
             PlaceTarget(objs, used, reach, rng, st, bounds=bounds, cover=cover),
-            PlaceSpec("RESOURCE_PILE", pool_res, cache=True),
+            PlaceSpec(Purpose.RESOURCE_PILE, pool_res, cache=True),
             t[0],
             t[1],
         ):
@@ -143,7 +144,7 @@ def place_reward_zone(
         for t in sorted(reach - used, key=partial(_centre_key, cx=cx, cy=cy)):
             if place_one(
                 PlaceTarget(objs, used, reach, rng, st, bounds=bounds, cover=cover),
-                PlaceSpec("GUARD", None, ident=gident),
+                PlaceSpec(Purpose.GUARD, None, ident=gident),
                 t[0],
                 t[1],
             ):
@@ -198,7 +199,7 @@ class _Enclave:
 
 
 def _portal_end(lvl: int, ident: Identity, node: Tile) -> PlacedObject:
-    return PlacedObject.at(ident, node, level=lvl, purpose="TRANSPORT")
+    return PlacedObject.at(ident, node, level=lvl, purpose=Purpose.TRANSPORT)
 
 
 def _level_state(objs: Sequence[PlacedObject], targets: Sequence[Tile]) -> _LevelState:
@@ -332,7 +333,7 @@ class _PortalRescue:
             for lvl in world.zones_by_level
         }
         self.towns: dict[int, list[Tile]] = {
-            lvl: [(o.x, o.y) for o in objs if o.purpose == "TOWN"]
+            lvl: [(o.x, o.y) for o in objs if o.purpose == Purpose.TOWN]
             for lvl, objs in world.objs_by_level.items()
         }
 
@@ -521,7 +522,7 @@ class _PortalRescue:
             gident,
             gtile,
             level=lvl,
-            purpose="GUARD",
+            purpose=Purpose.GUARD,
             options={"character": "hostile"},
         )
         far_appr = self._emit_end(lvl, ident, far_node, far_fit)

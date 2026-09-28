@@ -13,6 +13,7 @@ from operator import itemgetter
 from typing import Self, final
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
@@ -271,7 +272,7 @@ class GatedPlacer:
         self.objs_existing = list(objs_existing)
         self.seed = seed
         self.bounds = bounds
-        self.town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == "TOWN"}
+        self.town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == Purpose.TOWN}
         self.cover = CoverIndex(objs_existing)
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
         self.blocked = _blocking_cells(objs_existing)
@@ -429,7 +430,7 @@ class GatedPlacer:
         return nb_zr is None or t not in nb_zr.used
 
     def _commit_gate(self, zone: _LootZone, gate_ident: Identity, g: Tile, cells: _Cells) -> bool:
-        gate_obj = PlacedObject.at(gate_ident, g, purpose="QUEST_GATE")
+        gate_obj = PlacedObject.at(gate_ident, g, purpose=Purpose.QUEST_GATE)
         gate_obj.visitable_from = ("+++", "+-+", "+++")
         if not self.cover.try_add(gate_obj):
             return False
@@ -483,7 +484,7 @@ class GatedPlacer:
         self._seal(zone, sited)
         if not self._finish(zone, sited):
             return False
-        if not self._place_ext_partner(zone.zid, km_spot, key_ident, "QUEST_GATE"):
+        if not self._place_ext_partner(zone.zid, km_spot, key_ident, Purpose.QUEST_GATE):
             return False
         self.gate_count += 1
         self._record_access(zone.zid, sited)
@@ -538,14 +539,14 @@ class GatedPlacer:
             return False
         int_t, sited = found
         n0 = len(self.objs)
-        spec = PlaceSpec("TRANSPORT", None, ident=mono_ident, interactive_only=True)
+        spec = PlaceSpec(Purpose.TRANSPORT, None, ident=mono_ident, interactive_only=True)
         if not place_one(self._target(zone), spec, *int_t):
             return False
         self.blocked |= _blocking_cells(self.objs[n0:])
         self._seal(zone, sited)
         if not self._finish(zone, sited):
             return False
-        if not self._place_ext_partner(zone.zid, spot, mono_ident, "TRANSPORT"):
+        if not self._place_ext_partner(zone.zid, spot, mono_ident, Purpose.TRANSPORT):
             return False
         self.mono_count += 1
         self._record_access(zone.zid, sited)
@@ -636,7 +637,10 @@ class GatedPlacer:
         gident = rnd_monster(7)
         for clear_of in (OR.decor_blocking_cells(self.objs), None):
             if _try_guard_ring(
-                ext_zr, ext_t, target, PlaceSpec("GUARD", None, ident=gident, clear_of=clear_of)
+                ext_zr,
+                ext_t,
+                target,
+                PlaceSpec(Purpose.GUARD, None, ident=gident, clear_of=clear_of),
             ):
                 break
         self.blocked |= _blocking_cells(self.objs[n0:])

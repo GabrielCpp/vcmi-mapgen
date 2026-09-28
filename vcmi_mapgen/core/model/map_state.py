@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from vcmi_mapgen.core.model.objects import Cell, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import Purpose
 
 
 class Role(StrEnum):
@@ -97,7 +98,7 @@ def index_of(objs: list[PlacedObject]) -> dict[tuple[int, Tile], list[Cover]]:
     return index
 
 
-_PICKUPS = frozenset({"RESOURCE_PILE", "REWARD_PICKUP"})
+_PICKUPS = frozenset({Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP})
 
 
 def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str | None:
@@ -107,11 +108,13 @@ def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str 
     partly behind another object's sprite, so an overlay over a pickup is allowed."""
     if role is Role.APPROACH:
         return None
-    if role is Role.OVERLAY and (culprit.purpose == "GUARD" or victim.obj.purpose in _PICKUPS):
+    if role is Role.OVERLAY and (
+        culprit.purpose == Purpose.GUARD or victim.obj.purpose in _PICKUPS
+    ):
         return None
     if victim.obj is culprit or not victim.interactive:
         return None
-    if culprit.purpose == "GUARD" and victim.role is Role.APPROACH:
+    if culprit.purpose == Purpose.GUARD and victim.role is Role.APPROACH:
         return None
     return (
         f"{culprit.animation} at {tile} covers the {victim.role.name.lower()} tile"

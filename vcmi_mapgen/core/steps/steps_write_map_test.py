@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pytest
 
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps import (
     BorderStep,
@@ -150,13 +151,13 @@ def test_no_guard_stands_on_a_mine_visit_tile(pipeline_run: PipelineRun) -> None
     visit = {
         (o.level, tile)
         for o in pipeline_run.state.objs
-        if o.purpose == "MINE"
+        if o.purpose == Purpose.MINE
         for tile in mask_interactive_cells(o.mask, o.x, o.y)
     }
     guards = [
         o
         for o in pipeline_run.state.objs
-        if o.purpose == "GUARD" and (o.level, (o.x, o.y)) in visit
+        if o.purpose == Purpose.GUARD and (o.level, (o.x, o.y)) in visit
     ]
     assert guards == []
 
@@ -165,7 +166,7 @@ def test_scatter_piles_stay_out_of_every_guard_zone(pipeline_run: PipelineRun) -
     for level in (0, 1):
         level_objs = [o for o in pipeline_run.state.objs if o.level == level]
         zoc = guard_zoc(level_objs)
-        piles = [o for o in level_objs if o.purpose == "RESOURCE_PILE" and not o.cache]
+        piles = [o for o in level_objs if o.purpose == Purpose.RESOURCE_PILE and not o.cache]
         assert piles
         for o in piles:
             for cell in mask_interactive_cells(o.mask, o.x, o.y):
@@ -184,8 +185,8 @@ def test_every_step_keeps_the_objects_before_it(
 def test_a_late_guard_keeps_its_distance_from_every_other_guard(
     pipeline_run: PipelineRun, name: str
 ) -> None:
-    guards = [o for o in pipeline_run.state.objs if o.purpose == "GUARD"]
-    for g in (o for o in pipeline_run.added_by(name) if o.purpose == "GUARD"):
+    guards = [o for o in pipeline_run.state.objs if o.purpose == Purpose.GUARD]
+    for g in (o for o in pipeline_run.added_by(name) if o.purpose == Purpose.GUARD):
         others = [(o.x, o.y) for o in guards if o is not g and o.level == g.level]
         assert guard_spaced((g.x, g.y), others), f"{name} guard at {(g.x, g.y)} crowds another"
 
@@ -206,7 +207,7 @@ def test_gameplay_objects_sit_next_to_vegetation(pipeline_run: PipelineRun) -> N
         for x, y, blk in mask_cells(o.mask, o.x, o.y)
         if blk
     }
-    placed = [o for o in pipeline_run.added_by("gameplay") if o.purpose != "GUARD"]
+    placed = [o for o in pipeline_run.added_by("gameplay") if o.purpose != Purpose.GUARD]
     assert placed
     share = sum(_touches(o, blocking) for o in placed) / len(placed)
     assert share >= VEGETATION_TOUCH_FLOOR, f"only {share:.0%} of gameplay objects touch vegetation"

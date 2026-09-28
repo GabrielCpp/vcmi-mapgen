@@ -24,6 +24,7 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     Taxonomy,
     table_path,
 )
+from vcmi_mapgen.vcmi.config import VcmiConfig
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
 from vcmi_mapgen.vcmi.terrain import name_of
 
@@ -320,9 +321,18 @@ def write_tables(tree: Taxonomy, meta: dict[str, LeafMeta]) -> None:
     _ = table_path("leaf_meta.json").write_text(_fmt_leaf_meta(meta))
 
 
-def regenerate(index: LodIndex) -> Taxonomy:
-    """Derive the taxonomy + per-animation placement metadata from objects.txt and rewrite
-    both JSON tables."""
+def write_type_classes(config: VcmiConfig) -> None:
+    """Write VCMI's object type to class id table, which answers a type's purpose."""
+    types = {name: cid for cid, (name, _subs) in config.classes.items()}
+    _ = table_path("vcmi_types.json").write_text(
+        json.dumps(dict(sorted(types.items())), indent=1) + "\n"
+    )
+
+
+def regenerate(index: LodIndex, config: VcmiConfig) -> Taxonomy:
+    """Derive the taxonomy + per-animation placement metadata from objects.txt and the type
+    table from VCMI's config, and rewrite the three JSON tables."""
     tree = _derive_taxonomy(index)
     write_tables(tree, _derive_leaf_meta(index))
+    write_type_classes(config)
     return tree

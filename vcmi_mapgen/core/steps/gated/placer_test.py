@@ -4,6 +4,8 @@ steps.treasure.fill loot-zone content restrictions."""
 import collections
 
 from vcmi_mapgen.core.model import PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gated.placer import find_entry_corridor, place_gated_zones
 from vcmi_mapgen.core.steps.treasure.fill import LOOT_HERO_STRUCTURE_MIN_SEP, fill_loot_zones
 from vcmi_mapgen.kit import objects as OR
@@ -135,7 +137,9 @@ def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes() -> None:
                 continue
             ran_at_least_once = True
             access = next(
-                o for o in objs if o.purpose in ("QUEST_GATE", "TRANSPORT") and (o.x, o.y) in ts0
+                o
+                for o in objs
+                if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT) and (o.x, o.y) in ts0
             )
             leaks = _find_leaks(ts0, all_ts, objs_existing + objs, access)
             assert not leaks, (
@@ -175,7 +179,9 @@ def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_f
             objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=bounds)
             if n_placed != 1:
                 continue
-            access = next((o for o in objs if o.purpose in ("QUEST_GATE", "TRANSPORT")), None)
+            access = next(
+                (o for o in objs if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT)), None
+            )
             if access is None:
                 continue
             ran_at_least_once = True
@@ -223,7 +229,13 @@ def test_a_vegetation_wall_splitting_the_border_disqualifies_the_zone() -> None:
 
 _ALLOWED_CHEST_TYPES = {"campfire", "treasureChest", "pandoraBox", "scholar", "spellScroll"}
 _ALLOWED_ART_TYPES = {"randomArtifactMajor", "randomArtifactRelic"}
-_ALLOWED_RESOURCE_SUBTYPES = {"mercury", "sulfur", "crystal", "gems", "gold"}
+_ALLOWED_RESOURCE_SUBTYPES = {
+    Resource.MERCURY,
+    Resource.SULFUR,
+    Resource.CRYSTAL,
+    Resource.GEMS,
+    Resource.GOLD,
+}
 _ALLOWED_HERO_STRUCTURE_TYPES = {"learningStone", "gardenOfRevelation", "starAxis"}
 
 
@@ -245,7 +257,7 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories() -> None:
         typ = o.type
         if typ in _ALLOWED_HERO_STRUCTURE_TYPES:
             hero_structure_types_seen.append(typ)
-        elif purpose == "REWARD_PICKUP" and typ != "artifact":
+        elif purpose == Purpose.REWARD_PICKUP and typ != "artifact":
             if typ == "spellScroll":
                 # VCMI's spellScroll object has exactly one subtype ("object"); the
                 # spell itself lives in options.spell, never in subtype.
@@ -253,7 +265,7 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories() -> None:
                     violations.append(o)
             elif typ not in _ALLOWED_CHEST_TYPES | _ALLOWED_ART_TYPES:
                 violations.append(o)
-        elif purpose == "RESOURCE_PILE" and o.subtype not in _ALLOWED_RESOURCE_SUBTYPES:
+        elif purpose == Purpose.RESOURCE_PILE and o.subtype not in _ALLOWED_RESOURCE_SUBTYPES:
             violations.append(o)
     assert violations == []
     counts = collections.Counter(hero_structure_types_seen)
@@ -290,7 +302,7 @@ def test_loot_zone_fill_claims_every_non_access_tile() -> None:
             for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y):
                 if (cx, cy) in ts0:
                     claimed.add((cx, cy))
-            if o.purpose in ("QUEST_GATE", "TRANSPORT"):
+            if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT):
                 access_interactive |= set(OR.mask_interactive_cells(o.mask, o.x, o.y)) & ts0
                 access_interactive |= {
                     (cx, cy + 1) for cx, cy in OR.mask_interactive_cells(o.mask, o.x, o.y)
@@ -324,7 +336,7 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor() -> None:
             for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y):
                 if (cx, cy) in ts0:
                     claimed.add((cx, cy))
-            if o.purpose in ("QUEST_GATE", "TRANSPORT"):
+            if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT):
                 access_interactive |= set(OR.mask_interactive_cells(o.mask, o.x, o.y)) & ts0
                 access_interactive |= {
                     (cx, cy + 1) for cx, cy in OR.mask_interactive_cells(o.mask, o.x, o.y)
@@ -433,7 +445,7 @@ def test_loot_zone_fill_pass2_uses_the_20_40_40_split() -> None:
                 n_art += 1
             elif typ in _ALLOWED_CHEST_TYPES:
                 n_chest += 1
-            elif o.purpose == "RESOURCE_PILE":
+            elif o.purpose == Purpose.RESOURCE_PILE:
                 n_res += 1
     total = n_art + n_chest + n_res
     assert total > 500, "fixture too small to be statistically meaningful"
@@ -579,9 +591,9 @@ def test_a_narrow_loot_zones_access_object_always_has_a_usable_interior_doorway(
         objs, n_placed, _zids = _place(zone_records, objs_existing, seed=seed, bounds=(32, 14))
         if n_placed != 1:
             continue
-        access = next(o for o in objs if o.purpose in ("QUEST_GATE", "TRANSPORT"))
-        seen_gate = seen_gate or access.purpose == "QUEST_GATE"
-        seen_mono = seen_mono or access.purpose == "TRANSPORT"
+        access = next(o for o in objs if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT))
+        seen_gate = seen_gate or access.purpose == Purpose.QUEST_GATE
+        seen_mono = seen_mono or access.purpose == Purpose.TRANSPORT
         interactive = OR.mask_interactive_cells(access.mask, access.x, access.y)
         blocked: set[Tile] = set()
         for o in objs:

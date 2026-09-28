@@ -303,7 +303,7 @@ PURPOSE = {
 #   borderGate / borderGuard / questGuard -> GATE  (a physical separator between zones/terrains)
 #   seerHut / keymasterTent               -> QUEST_PAIR  (the half that implies a partner elsewhere)
 CLUSTERS = ("DECORATION", "VISIBLE", "GATE", "QUEST_PAIR")
-GATE_TYPES = {"borderGate", "borderGuard", "questGuard"}  # objlib `type` strings
+GATE_TYPES = {"borderGate", "borderGuard", "questGuard"}  # VCMI `type` strings
 GATE_NAMES = {"BORDER_GATE", "BORDERGUARD", "QUEST_GUARD"}  # ontology enum names
 
 
@@ -432,6 +432,13 @@ def taxonomy() -> Taxonomy:
     """The CLUSTER->PURPOSE->type->terrain->leaf tree from ``data/ontology/taxonomy.json``."""
     with open(table_path("taxonomy.json")) as fh:
         return cast(Taxonomy, json.load(fh))
+
+
+@cache
+def vcmi_type_classes() -> dict[str, int]:
+    """VCMI object type to its class id, from ``data/ontology/vcmi_types.json``."""
+    with open(table_path("vcmi_types.json")) as fh:
+        return cast(dict[str, int], json.load(fh))
 
 
 @cache

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import guard_spaced
 from vcmi_mapgen.core.steps.vegetation.border_plan import blocking_cells, cross_pairs, zone_owner
@@ -40,7 +41,7 @@ class _GuardPlacer:
         self._hard_avoid = hard_avoid
         self._cover = CoverIndex(objs)
         self._decor_blk = decor_blk
-        self._guards = [(o.x, o.y) for o in objs if o.purpose == "GUARD"]
+        self._guards = [(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD]
 
     @staticmethod
     def _covered(t: Tile, n: Tile, g_set: Collection[Tile]) -> bool:
@@ -65,7 +66,7 @@ class _GuardPlacer:
                 continue
             gident = rnd_monster(3 + (1 if self._rng.random() < 0.3 else 0))
             guard = PlacedObject.at(
-                gident, g, level=0, purpose="GUARD", options={"character": "hostile"}
+                gident, g, level=0, purpose=Purpose.GUARD, options={"character": "hostile"}
             )
             if self._cover.try_add(guard):
                 self._guards.append(g)
@@ -124,7 +125,7 @@ def guard_crossings(
     pairs, band_pairs = cross_pairs(open_all, owner, rules.bands, rules.skip_tiles)
     new_objs: list[PlacedObject] = []
 
-    existing_guards = {(o.x, o.y) for o in objs if o.purpose == "GUARD"}
+    existing_guards = {(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD}
 
     decor_blk = OR.decor_blocking_cells(objs + new_objs)
     placer = _GuardPlacer(rng, objs, rules.hard_avoid, decor_blk)

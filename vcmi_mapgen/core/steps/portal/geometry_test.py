@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.portal import geometry as GEO
 
@@ -50,13 +51,13 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
         _obj(Identity("pineTrees", "pineTrees", "avlpn0", ("B",)), (6, y), "") for y in range(size)
     ]
     picks = [
-        _obj(Identity("resource", "wood", "avtwood0", ("A",)), (2, 5), "RESOURCE_PILE"),
-        _obj(Identity("resource", "ore", "avtore0", ("A",)), (10, 5), "RESOURCE_PILE"),
+        _obj(Identity("resource", "wood", "avtwood0", ("A",)), (2, 5), Purpose.RESOURCE_PILE),
+        _obj(Identity("resource", "ore", "avtore0", ("A",)), (10, 5), Purpose.RESOURCE_PILE),
     ]
     targets = [(2, 5), (10, 5)]
     assert GEO.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
     assert GEO.unreachable_targets(size, grid, picks, targets) == []
-    hard_wall = [replace(o, purpose="DWELLING") for o in veg_wall]
+    hard_wall = [replace(o, purpose=Purpose.DWELLING) for o in veg_wall]
     assert GEO.unreachable_targets(size, grid, hard_wall + picks, targets) == []
 
 
@@ -71,8 +72,8 @@ def test_portal_reward_zone() -> None:
     def run() -> tuple[int, list[PlacedObject], list[Tile]]:
         objs = {
             0: [
-                _obj(Identity("town", "s", "X", ("A",)), (5, 5), "TOWN"),
-                _obj(Identity("mine", "s", "X", ("A",)), (31, 31), "MINE"),
+                _obj(Identity("town", "s", "X", ("A",)), (5, 5), Purpose.TOWN),
+                _obj(Identity("mine", "s", "X", ("A",)), (31, 31), Purpose.MINE),
             ]
         }
         targets = {0: [(5, 6)]}
@@ -92,7 +93,9 @@ def test_portal_reward_zone() -> None:
     near = [o for o in mono if (o.x, o.y) in ts1]
     assert len(far) == 1 and len(near) == 1, "one end inside, one end in the host zone"
     nx, ny = near[0].x, near[0].y
-    guards = [o for o in objs if o.purpose == "GUARD" and max(abs(o.x - nx), abs(o.y - ny)) == 1]
+    guards = [
+        o for o in objs if o.purpose == Purpose.GUARD and max(abs(o.x - nx), abs(o.y - ny)) == 1
+    ]
     assert guards and guards[0].options == {"character": "hostile"}, (
         "a hostile guard must sit adjacent to the reachable-side end"
     )
@@ -118,8 +121,8 @@ def test_portal_reward_zone_never_places_an_artifact() -> None:
     no_gates: set[Tile] = set()
     objs = {
         0: [
-            _obj(Identity("town", "s", "X", ("A",)), (5, 5), "TOWN"),
-            _obj(Identity("mine", "s", "X", ("A",)), (31, 31), "MINE"),
+            _obj(Identity("town", "s", "X", ("A",)), (5, 5), Purpose.TOWN),
+            _obj(Identity("mine", "s", "X", ("A",)), (31, 31), Purpose.MINE),
         ]
     }
     targets = {0: [(5, 6)]}
@@ -132,6 +135,6 @@ def test_portal_reward_zone_never_places_an_artifact() -> None:
 
     loot = [o for o in objs[0] if o.cache]
     assert len(loot) >= 6, "fixture assumption broke: expected a dense reward hoard"
-    assert not any(o.purpose == "REWARD_PICKUP" for o in loot), (
+    assert not any(o.purpose == Purpose.REWARD_PICKUP for o in loot), (
         "a portal-rescued zone's hoard must be resources only, never an artifact"
     )

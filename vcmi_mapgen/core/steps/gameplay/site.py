@@ -23,6 +23,7 @@ from typing import final
 from vcmi_mapgen.core.grid.components import STEPS4, components
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import ZoneWorkspace
 from vcmi_mapgen.core.steps.gameplay.mines import (
@@ -160,9 +161,9 @@ def es_key(rng: random.Random, weight: float) -> float:
 
 
 def options_for(purpose: str) -> dict[str, JsonValue] | None:
-    if purpose == "GUARD":
+    if purpose == Purpose.GUARD:
         return dict(GUARD_OPTIONS)
-    if purpose == "TOWN":
+    if purpose == Purpose.TOWN:
         return dict(TOWN_OPTIONS)
     return None
 
@@ -287,7 +288,7 @@ class ZoneSite:
         return (approach[0], approach[1] + 1) if walk_on_only(ident.mask) else approach
 
     def guard_ok(self, tile: Tile) -> bool:
-        probe = PlacedObject.at(GUARD_PROBE, tile, level=self.lf.level, purpose="GUARD")
+        probe = PlacedObject.at(GUARD_PROBE, tile, level=self.lf.level, purpose=Purpose.GUARD)
         return self.lf.accepts(probe)
 
     def _front_open(self, ident: Identity, fit: Fit) -> bool:
@@ -355,7 +356,7 @@ class ZoneSite:
         return self.nearest_order(ccx, ccy)
 
     def place(self, purpose: str, ident: Identity, centres: Iterable[Tile]) -> PlacedObject | None:
-        mine = purpose == "MINE"
+        mine = purpose == Purpose.MINE
         legal = {t: f for t in sorted(self.ts) if (f := self.fit(ident, t, mine)) is not None}
         rejected: set[Tile] = set()
         backs: dict[Tile, int] = {}
@@ -402,9 +403,9 @@ class ZoneSite:
         self.approaches.append(approach)
         self.reserved.add(approach)
         start = approach
-        if obj.purpose == "MINE":
+        if obj.purpose == Purpose.MINE:
             start = self._mine_front(obj, approach)
-        elif obj.purpose == "TOWN":
+        elif obj.purpose == Purpose.TOWN:
             mh = len(obj.mask)
             mw = max(len(r) for r in obj.mask)
             self.town_center = (obj.x - (mw - 1) / 2.0, obj.y - (mh - 1) / 2.0)
@@ -425,7 +426,11 @@ class ZoneSite:
 
     def add_guard(self, ident: Identity, tile: Tile) -> PlacedObject:
         guard = PlacedObject.at(
-            ident, tile, level=self.lf.level, purpose="GUARD", options=options_for("GUARD")
+            ident,
+            tile,
+            level=self.lf.level,
+            purpose=Purpose.GUARD,
+            options=options_for(Purpose.GUARD),
         )
         self.lf.covers.add(guard)
         self.lf.occupied.add(tile)
@@ -459,7 +464,7 @@ class ZoneSite:
         )
 
     def _seal(self, ident: Identity, s: Tile) -> None:
-        seal = PlacedObject.at(ident, s, level=self.lf.level, purpose="MINE_SEAL")
+        seal = PlacedObject.at(ident, s, level=self.lf.level, purpose=Purpose.MINE_SEAL)
         if not self.lf.accepts(seal):
             return
         reach = self.reach_without([s])

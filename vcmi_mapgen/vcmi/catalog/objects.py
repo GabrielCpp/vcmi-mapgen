@@ -3,8 +3,7 @@
 The catalog is the SINGLE SOURCE OF TRUTH for object identity, footprint mask, terrain coupling
 and decoration category. The whole generation pipeline (tile placement -> .vmap -> rendering)
 draws from these instead of the corpus. `type`/`subtype` in a placement identity come from
-`vcmi.config` (same as the corpus path), so a catalog identity is a drop-in for the old objlib
-identity.
+`vcmi.config`, the same as the corpus path.
 """
 
 from collections.abc import Iterator
@@ -12,6 +11,7 @@ from dataclasses import dataclass
 from functools import cache
 
 from vcmi_mapgen.core.model import Identity, Mask
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.vcmi import terrain as vterrain
 from vcmi_mapgen.vcmi.catalog.tables import (
     ARTIFACT_TIERS,
@@ -31,6 +31,7 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     Taxonomy,
     leaf_meta,
     taxonomy,
+    vcmi_type_classes,
 )
 from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, VcmiConfig
 
@@ -46,8 +47,8 @@ class _Indexes:
 
 def cluster_of(purpose: str, name: str | None = None, type_: str | None = None) -> str:
     """Macro-cluster for an object, from its purpose plus (when QUEST_GATE) its enum name
-    or objlib `type`. Usable from both the enum-name path (resolve) and the objlib-type
-    path (the catalog renderer)."""
+    or VCMI `type`. Usable from both the enum-name path (resolve) and the type path (the
+    catalog renderer)."""
     if purpose == "DECORATION":
         return "DECORATION"
     if purpose == "TRANSPORT":
@@ -202,8 +203,8 @@ def use_config(config: VcmiConfig) -> None:
 
 
 def identity_of(animation: str) -> Identity:
-    """Placement ``Identity`` (type, subtype, animation, mask) for an animation — a drop-in for
-    the corpus objlib identity, sourced entirely from the ontology + objects.txt metadata."""
+    """Placement ``Identity`` (type, subtype, animation, mask) for an animation, sourced
+    entirely from the ontology + objects.txt metadata."""
     cls, sub = cls_sub_of(animation)
     r = _CONFIG[0].resolve(cls, sub) if cls is not None and sub is not None else None
     return Identity(
@@ -314,7 +315,8 @@ def monsters_by_level(level: int) -> list[str]:
     return sorted(n for n, lvl in MONSTER_LEVELS.items() if lvl == level)
 
 
-def visitable_purposes() -> tuple[str, ...]:
-    """Gameplay purposes that are 'visitable' destinations — the guaranteed-minimum set so a zone is
-    never left with nothing to visit (a regression guard for the group-placement budget)."""
-    return ("MINE", "DWELLING", "STAT_PERMANENT", "SPELL_SKILL", "BONUS_TEMP", "MANA")
+def purpose_of_type(type_name: str | None) -> Purpose | None:
+    """The purpose of a VCMI object type, through its class id, or ``None`` when the type is
+    unknown."""
+    cid = vcmi_type_classes().get(type_name) if type_name is not None else None
+    return None if cid is None else Purpose(resolve(cid, 0).purpose)

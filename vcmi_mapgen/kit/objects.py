@@ -8,9 +8,8 @@ Two sources of truth, both already byte-exact:
     a real .vmap's own ``template.mask`` can't distinguish a blocked-entrance 'X' cell
     from a walk-on 'A' one, so it is never trusted directly). Use :func:`exact_identity`
     to reproduce a corpus object identically.
-  * ``data/objlib.json`` — ``purpose -> terrain_id -> [ {type, subtype, animation,
-    mask, weight}, ... ]`` — the catalog of interchangeable concrete objects per
-    purpose+terrain, harvested from the corpus.
+  * the catalog — :func:`purpose_of` answers an object's purpose from its VCMI type
+    through ``vcmi.catalog.objects.purpose_of_type``.
 
 The terrain cells in a faithful map ({t,view,rt,rd,ot,od,m}) are already what
 ``renderers.vmap.VmapRenderer`` / ``vcmi.formats.vmap.terrain.tile_string`` expect, so a generated
@@ -25,14 +24,13 @@ from collections.abc import Container, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.model import Cell, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.catalog import objects as ON
-from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.vmap.terrain import decode_tile_string
 
 ROOT = project_root()
-_OBJLIB = jv.as_object(jv.loads((ROOT / "data" / "objlib.json").read_text()))
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +73,7 @@ def load_faithful(name: str) -> FaithfulMap:
             x=o.x,
             y=o.y,
             level=o.level,
-            purpose=type_to_purpose(o.type) or "UNKNOWN",
+            purpose=ON.purpose_of_type(o.type) or Purpose.UNKNOWN,
             type=o.type,
             subtype=o.subtype,
             animation=o.animation,
@@ -112,24 +110,10 @@ def corpus_maps() -> list[FaithfulMap]:
 # Object classification & exact identity
 # ---------------------------------------------------------------------------
 
-_TYPE2PURPOSE: dict[str, str] = {
-    jv.as_str(jv.as_object(it).get("type")): p
-    for p, terr in _OBJLIB.items()
-    for items in jv.as_object(terr).values()
-    for it in jv.as_list(items)
-}
 
-
-def type_to_purpose(type_name: str | None) -> str | None:
-    """Purpose for an object TYPE alone -- built from the same objlib.json catalog
-    harvested from the corpus. The only lookup a real .vmap object's type/subtype
-    supports (it carries no raw h3m cls/sub)."""
-    return _TYPE2PURPOSE.get(type_name) if type_name is not None else None
-
-
-def purpose_of(obj: PlacedObject) -> str:
+def purpose_of(obj: PlacedObject) -> Purpose:
     """Purpose of a faithful (corpus) or generated object, keyed by its `type` alone."""
-    return type_to_purpose(obj.type) or "UNKNOWN"
+    return ON.purpose_of_type(obj.type) or Purpose.UNKNOWN
 
 
 def exact_identity(obj: PlacedObject) -> Identity:
@@ -229,7 +213,7 @@ def front_tiles(mask: Sequence[str], x: int, y: int) -> set[Tile]:
 
 if __name__ == "__main__":
     names = all_map_names()
-    print(f"faithful maps: {len(names)}  objlib purposes: {sorted(_OBJLIB)}")
+    print(f"faithful maps: {len(names)}")
     m = load_faithful("All for One")
     pc = Counter(purpose_of(o) for o in m.objects)
     print("All for One purposes:", dict(pc.most_common()))

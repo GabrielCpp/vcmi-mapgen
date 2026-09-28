@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
 from vcmi_mapgen.core.steps.gate.gates import (
     GATE_ANIM,
@@ -81,7 +82,7 @@ class _GatePlacer:
     def _commit(self, t: Tile, a: Side, b: Side) -> bool:
         staged: list[tuple[ZoneSite, Fit, PlacedObject, set[Tile]]] = []
         for level, (site, fit) in enumerate((a, b)):
-            obj = PlacedObject.at(self.ident, t, level=level, purpose="TRANSPORT")
+            obj = PlacedObject.at(self.ident, t, level=level, purpose=Purpose.TRANSPORT)
             if not site.lf.accepts(obj):
                 return False
             reach = site.reach_without(fit[1])

@@ -21,6 +21,8 @@ from vcmi_mapgen.core.model import (
     Tile,
     ZoneRecord,
 )
+from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gameplay.mines import TerrainStats, load_gameplay
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import (
@@ -130,7 +132,7 @@ def home_mine_protect_pairs(
 def _mine_cells(existing_objs: Sequence[PlacedObject]) -> set[Tile]:
     mine_cells: set[Tile] = set()
     for o in existing_objs:
-        if o.purpose == "MINE":
+        if o.purpose == Purpose.MINE:
             mask = o.mask
             if mask:
                 mine_cells |= {(cx, cy) for cx, cy, _b in OR.mask_cells(mask, o.x, o.y)}
@@ -144,7 +146,7 @@ def _is_mine_guard(o: PlacedObject, mine_cells: Iterable[Tile]) -> bool:
 def _base_blocked(existing_objs: Sequence[PlacedObject], mine_cells: set[Tile]) -> set[Tile]:
     base_blocked: set[Tile] = set()
     for o in existing_objs:
-        if o.purpose == "GUARD" and not _is_mine_guard(o, mine_cells):
+        if o.purpose == Purpose.GUARD and not _is_mine_guard(o, mine_cells):
             mask = o.mask
             if mask:
                 base_blocked |= _guard_stand(mask, o.x, o.y)
@@ -156,7 +158,7 @@ def _home_zone_pairs(
 ) -> list[tuple[frozenset[Tile], frozenset[Tile]]]:
     pairs: list[tuple[frozenset[Tile], frozenset[Tile]]] = []
     town = next(
-        (o for o in existing_objs if o.purpose == "TOWN" and (o.x, o.y) in ts),
+        (o for o in existing_objs if o.purpose == Purpose.TOWN and (o.x, o.y) in ts),
         None,
     )
     if town is None:
@@ -165,7 +167,9 @@ def _home_zone_pairs(
     if not town_ap:
         return pairs
     for o in existing_objs:
-        if not (o.purpose == "MINE" and o.subtype in ("sawmill", "orePit") and (o.x, o.y) in ts):
+        if not (
+            o.purpose == Purpose.MINE and o.subtype in ("sawmill", "orePit") and (o.x, o.y) in ts
+        ):
             continue
         mine_ap = _approach_tiles(o.mask, o.x, o.y, global_true)
         if mine_ap:
@@ -253,7 +257,7 @@ def _seerhut_reward(rng: random.Random) -> dict[str, JsonValue]:
     reward = dict(RW_REWARD)
     flavor = rng.choices(("gold", "experience", "creatures"), weights=(35, 40, 25), k=1)[0]
     if flavor == "gold":
-        reward["resources"] = {"gold": rng.choice((3000, 5000, 7500, 10000, 15000))}
+        reward["resources"] = {Resource.GOLD: rng.choice((3000, 5000, 7500, 10000, 15000))}
     elif flavor == "experience":
         reward["heroExperience"] = rng.choice((2500, 5000, 7500, 10000, 15000))
     else:
@@ -468,7 +472,7 @@ class _PocketCachePass:
         self.objs: list[PlacedObject] = []
         self.cover = CoverIndex(context.existing_objs)
         self.guards: list[Tile] = [
-            (o.x, o.y) for o in context.existing_objs if o.purpose == "GUARD"
+            (o.x, o.y) for o in context.existing_objs if o.purpose == Purpose.GUARD
         ]
 
     def _absorb(self, zr: ZoneRecord) -> None:
@@ -517,16 +521,17 @@ class _PocketCachePass:
     def _fill_chest(self, target: PlaceTarget, draw: _PocketDraw, t: Tile) -> None:
         ci = self._pick_spaced(draw.pool_chest, t, draw.rng)
         if not (
-            ci and place_one(target, _cache_spec("REWARD_PICKUP", draw.pool_art, ci), t[0], t[1])
+            ci
+            and place_one(target, _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, ci), t[0], t[1])
         ):
-            _ = place_one(target, _cache_spec("RESOURCE_PILE", draw.pool_res), t[0], t[1])
+            _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
         else:
             self._register(ci, t[0], t[1])
 
     def _fill_visit(self, target: PlaceTarget, draw: _PocketDraw, t: Tile) -> None:
         vi = self._pick_spaced(draw.pool_vis, t, draw.rng)
-        if not (vi and place_one(target, _cache_spec("BONUS_TEMP", None, vi), t[0], t[1])):
-            _ = place_one(target, _cache_spec("RESOURCE_PILE", draw.pool_res), t[0], t[1])
+        if not (vi and place_one(target, _cache_spec(Purpose.BONUS_TEMP, None, vi), t[0], t[1])):
+            _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
         else:
             self._register(vi, t[0], t[1])
 
@@ -547,7 +552,7 @@ class _PocketCachePass:
         for t in fill_spots:
             roll = draw.rng.random()
             if roll < 0.50:
-                _ = place_one(target, _cache_spec("RESOURCE_PILE", draw.pool_res), t[0], t[1])
+                _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
             elif roll < 0.75:
                 self._fill_chest(target, draw, t)
             else:
@@ -591,15 +596,15 @@ class _PocketCachePass:
             c in self.decor_blk for c in OR.mask_interactive_cells(guard_mask, cand_g[0], cand_g[1])
         ):
             return False
-        return self.cover.accepts(PlacedObject.at(self.guard_ident, cand_g, purpose="GUARD"))
+        return self.cover.accepts(PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD))
 
     def _pickup_fits(self, t: Tile, *covers: CoverIndex) -> bool:
-        probe = PlacedObject.at(self.pickup_ident, t, purpose="REWARD_PICKUP")
+        probe = PlacedObject.at(self.pickup_ident, t, purpose=Purpose.REWARD_PICKUP)
         return all(cover.accepts(probe) for cover in (self.cover, *covers))
 
     def _leaves_cache_spot(self, cand_g: Tile, cand_pocket: frozenset[Tile]) -> bool:
         guard_cells = {(x, y) for x, y, _b in OR.mask_cells(self.guard_mask, cand_g[0], cand_g[1])}
-        with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose="GUARD")])
+        with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD)])
         return any(
             t not in self.used
             and t in self.global_place
@@ -649,8 +654,8 @@ class _PocketCachePass:
 
         terrain = self.terrain_of[pick.zid]
         st = load_gameplay()[terrain]
-        pool_res = DC.pool("RESOURCE_PILE", terrain)
-        pool_art = DC.pool("REWARD_PICKUP", terrain)
+        pool_res = DC.pool(Purpose.RESOURCE_PILE, terrain)
+        pool_art = DC.pool(Purpose.REWARD_PICKUP, terrain)
         rng = random.Random(self.seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)
         # Pocket tiles are passable (in global_true) and reachable (in global_reach8);
         # some may be approach cells of adjacent gameplay objects (excluded from
@@ -719,7 +724,7 @@ class _PocketCachePass:
         gident = rnd_monster(lvl)
         if not place_one(
             self._target(self.global_place, draw),
-            PlaceSpec("GUARD", None, ident=gident, interactive_only=True),
+            PlaceSpec(Purpose.GUARD, None, ident=gident, interactive_only=True),
             guard_tile[0],
             guard_tile[1],
         ):
@@ -732,9 +737,9 @@ class _PocketCachePass:
 
     def _place_artifact(self, t: Tile, anim: str, draw: _PocketDraw) -> None:
         target = self._target(self.global_place, draw)
-        art = _cache_spec("REWARD_PICKUP", draw.pool_art, ON.identity_of(anim))
+        art = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, ON.identity_of(anim))
         if not place_one(target, art, t[0], t[1]):
-            _ = place_one(target, _cache_spec("RESOURCE_PILE", draw.pool_res), t[0], t[1])
+            _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
 
     def _record_depths(self, pick: _PocketPick, cache_spots: list[Tile]) -> None:
         pocket = pick.pocket
@@ -857,7 +862,7 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     hut_zr = eligible[idx_hut]
 
     pool_hut = sorted(
-        (h for h in DC.pool("QUEST_GATE", hut_zr.terrain) if h.type == "seerHut"),
+        (h for h in DC.pool(Purpose.QUEST_GATE, hut_zr.terrain) if h.type == "seerHut"),
         key=lambda h: h.animation,
     )
     if not pool_hut:
@@ -900,7 +905,7 @@ def _pick_art_zone(
         cand_pool_art = sorted(
             (
                 a
-                for a in DC.pool("REWARD_PICKUP", cand_art_zr.terrain)
+                for a in DC.pool(Purpose.REWARD_PICKUP, cand_art_zr.terrain)
                 if a.type == "artifact" and a.subtype not in env.used_artifacts
             ),
             key=lambda a: a.animation,
@@ -921,7 +926,7 @@ def _place_art(
     target = PlaceTarget(
         env.objs, art_zr.used, art_zr.reach, rng, st_art, bounds=env.bounds, cover=env.cover
     )
-    spec = PlaceSpec("REWARD_PICKUP", None, ident=art_ident)
+    spec = PlaceSpec(Purpose.REWARD_PICKUP, None, ident=art_ident)
     for t in art_cands:
         if place_one(target, spec, t[0], t[1]):
             return t
@@ -938,5 +943,5 @@ def _place_hut(
     target = PlaceTarget(
         env.objs, hut_zr.used, hut_zr.reach, rng, st_hut, bounds=env.bounds, cover=env.cover
     )
-    spec = PlaceSpec("QUEST_GATE", None, ident=hut_ident, options=options)
+    spec = PlaceSpec(Purpose.QUEST_GATE, None, ident=hut_ident, options=options)
     return any(place_one(target, spec, t[0], t[1]) for t in hut_cands)

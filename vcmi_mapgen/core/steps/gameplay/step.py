@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import (
     LevelWorkspace,
@@ -52,8 +53,8 @@ def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> None:
     """Place a zone's town: a player town pulls toward the zone centre, a neutral one follows
     the corpus intensity."""
     if draw.town is not None:
-        centres = site.centroid_order(draw.town) if player else site.intensity_order("TOWN")
-        if site.place("TOWN", draw.town, centres) is None:
+        centres = site.centroid_order(draw.town) if player else site.intensity_order(Purpose.TOWN)
+        if site.place(Purpose.TOWN, draw.town, centres) is None:
             if player:
                 print(
                     f"  WARNING: player zone {site.zid} (level {site.lf.level}) "
@@ -71,10 +72,10 @@ def place_mines(site: ZoneSite, draw: ZoneDraw, ledger: Ledger, placed_res: set[
         centres = (
             site.nearest_order(*centre)
             if centre is not None and i < 2
-            else site.intensity_order("MINE")
+            else site.intensity_order(Purpose.MINE)
         )
         res = str(ident.subtype)
-        if site.place("MINE", ident, centres) is not None:
+        if site.place(Purpose.MINE, ident, centres) is not None:
             placed_res.add(res)
             continue
         print(f"  zone {site.zid}: no spot for MINE {ident.animation}")
@@ -272,7 +273,7 @@ class GameplayStep(PipelineStep):
         for site in _town_hosts(sites):
             if need <= 0:
                 return
-            if site.place("TOWN", ident, _town_order(site, ident)) is not None:
+            if site.place(Purpose.TOWN, ident, _town_order(site, ident)) is not None:
                 site.spent += TOWN_SLOTS
                 need -= 1
                 print(f"  player town moved to zone {site.zid} (level {site.lf.level})")
@@ -330,7 +331,7 @@ class GameplayStep(PipelineStep):
                 site.write_back()
                 tie_dwellings(site.zw.gobjs)
                 self.objs.extend(site.objs)
-                zone_towns = [o for o in site.objs if o.purpose == "TOWN"]
+                zone_towns = [o for o in site.objs if o.purpose == Purpose.TOWN]
                 if zone_towns:
                     lw.town_of_zone[zid] = zone_towns[0]
                     towns[level, zid] = zone_towns

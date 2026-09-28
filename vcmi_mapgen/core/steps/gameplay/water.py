@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile, Zone, footprint
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RND_ART,
@@ -56,9 +57,9 @@ def pick_identity(
     the random-artifact probability for REWARD_PICKUP: high for guarded caches, low for
     unguarded scatter (which draws the fixed LOOT pool — treasure chests, campfires —
     weighted by the corpus mix, where the chest dominates)."""
-    if purpose == "RESOURCE_PILE" and rng.random() < 0.6:
+    if purpose == Purpose.RESOURCE_PILE and rng.random() < 0.6:
         return ON.identity_of(RND_RES)
-    if purpose == "REWARD_PICKUP" and rng.random() < art_share:
+    if purpose == Purpose.REWARD_PICKUP and rng.random() < art_share:
         anim = rng.choices([a for a, _w, _v in RND_ART], weights=[w for _a, w, _v in RND_ART], k=1)[
             0
         ]
@@ -262,7 +263,7 @@ def _structure_fronts(objs: Iterable[PlacedObject]) -> tuple[set[Tile], list[set
     structure_blk: set[Tile] = set()
     structure_fronts: list[set[Tile]] = []
     for o in objs:
-        if o.purpose == "GUARD":
+        if o.purpose == Purpose.GUARD:
             continue
         mask_rows = o.mask
         if not mask_rows:
@@ -367,7 +368,7 @@ class _SeaportPlanner:
                 self.interactive_tiles.add(tile)
 
     def _stacks_on_others(self, ident: Identity, ax: int, ay: int) -> bool:
-        probe = PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT")
+        probe = PlacedObject.at(ident, (ax, ay), purpose=Purpose.WATER_TRANSPORT)
         for tile, role in footprint(probe):
             if role is Role.APPROACH:
                 if tile in self.covered_tiles:
@@ -406,7 +407,9 @@ class _SeaportPlanner:
         ):
             return False
         accept = self.sea.accept
-        return accept is None or accept(PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT"))
+        return accept is None or accept(
+            PlacedObject.at(ident, (ax, ay), purpose=Purpose.WATER_TRANSPORT)
+        )
 
     def _do_place(self, ident: Identity, ax: int, ay: int) -> PlacedObject:
         _, blk, _ = _seaport_footprint(ax, ay, ident.mask)
@@ -416,7 +419,7 @@ class _SeaportPlanner:
         if front:
             self.structure_fronts.append(front)
         self.placed_anchors.append((ax, ay))
-        o = PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT")
+        o = PlacedObject.at(ident, (ax, ay), purpose=Purpose.WATER_TRANSPORT)
         self.new_objs.append(o)
         self._register(o)
         if self.sea.placed is not None:
@@ -501,7 +504,11 @@ class _SeaportPlanner:
 
     def _shipyard_ident(self, terrain: str) -> Identity | None:
         return next(
-            (i for i in self.ontology.pool("WATER_TRANSPORT", terrain) if i.type == "shipyard"),
+            (
+                i
+                for i in self.ontology.pool(Purpose.WATER_TRANSPORT, terrain)
+                if i.type == "shipyard"
+            ),
             None,
         )
 

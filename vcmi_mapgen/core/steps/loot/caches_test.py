@@ -7,6 +7,7 @@ import pytest
 
 from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import legal_cells
@@ -59,7 +60,7 @@ def test_pickup_layer_legal_and_deterministic() -> None:
     used: set[Tile] = set()
     no_used: set[Tile] = set()
     for o in o1:
-        if o.purpose == "GUARD":
+        if o.purpose == Purpose.GUARD:
             # a guard's decorative sprite-bleed cells MAY overlap terrain or already-placed
             # cache pickups (the pocket it seals is packed by design); only its interactive
             # cell — the tile the monster actually stands on — must be free and unique
@@ -182,7 +183,7 @@ def test_scatter_places_resource_piles() -> None:
     piles: list[PlacedObject] = []
     for seed in range(1, 10):
         objs = _pickups(ts, zones, set(ts), prot, seed=seed)
-        piles += [o for o in objs if o.purpose == "RESOURCE_PILE"]
+        piles += [o for o in objs if o.purpose == Purpose.RESOURCE_PILE]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"
     assert any(o.type == "resource" for o in piles), "fixed resource piles must appear"
@@ -215,9 +216,9 @@ def test_pocket_guard_level_matches_artifact_tier_exactly() -> None:
     zr = _field_with_room(room, {(5, 4), (6, 4)})
     objs, n_pockets, _depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
     assert n_pockets == 1, "fixture assumption broke: expected exactly one pocket"
-    guard = next(o for o in objs if o.purpose == "GUARD")
+    guard = next(o for o in objs if o.purpose == Purpose.GUARD)
     art = next(
-        o for o in objs if o.purpose == "REWARD_PICKUP" and "artifact" in str(o.type).lower()
+        o for o in objs if o.purpose == Purpose.REWARD_PICKUP and "artifact" in str(o.type).lower()
     )
     match = re.match(r"randomMonsterLevel(\d)", guard.type or "")
     assert match is not None
@@ -244,7 +245,7 @@ def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_fil
     zr = _field_with_room(room, {(5, 4), (6, 4)})
     zr.used |= room
     objs, _n_pockets, depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
-    assert not any(o.purpose == "GUARD" for o in objs)
+    assert not any(o.purpose == Purpose.GUARD for o in objs)
     assert not depth, f"pocket tiles marked magenta with nothing placed: {sorted(depth)}"
 
 
@@ -287,8 +288,8 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None
     mouth_extra = {(7, 3)}
     ts = left | right | isthmus | room | mouth_extra
 
-    town = _obj(2, 2, "TOWN", "randomTown", "object")
-    mine = _obj(12, 2, "MINE", "mine", "sawmill")
+    town = _obj(2, 2, Purpose.TOWN, "randomTown", "object")
+    mine = _obj(12, 2, Purpose.MINE, "mine", "sawmill")
     zr = ZoneRecord(
         zid=0,
         terrain="grass",
@@ -306,7 +307,10 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None
     )
 
     stands = {
-        c for o in objs if o.purpose == "GUARD" for c in OR.mask_interactive_cells(o.mask, o.x, o.y)
+        c
+        for o in objs
+        if o.purpose == Purpose.GUARD
+        for c in OR.mask_interactive_cells(o.mask, o.x, o.y)
     }
     open_tiles = ts - stands
     seen = {(0, 8)}
@@ -341,7 +345,7 @@ def test_pocket_chest_fill_uses_only_the_allowed_types() -> None:
         objs, _n_pockets, _depth = CA.place_pocket_caches([zr], seed=seed, bounds=(20, 20))
         for o in objs:
             if (
-                o.purpose == "REWARD_PICKUP"
+                o.purpose == Purpose.REWARD_PICKUP
                 and "artifact" not in str(o.type).lower()
                 and o.type not in allowed
             ):
