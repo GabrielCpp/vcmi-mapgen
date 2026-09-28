@@ -37,6 +37,7 @@ from PIL import Image
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Cell, JsonValue, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.terrain_gen import markov as MT
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
@@ -49,7 +50,6 @@ ROOT = project_root()
 STATS_PATH = str(ROOT / "data" / "pp" / "macro_stats.json")
 STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "macro_stats_underground.json")
 SOURCE = "vcmi_mapgen.core.steps.terrain_gen.macro_topo.mine_macro"
-WATER, ROCK = 8, 9
 MIN_ZONE_AREA = 40  # floor for sampled target areas
 JITTER = 1.4  # growth-cost noise amplitude (0 = pure Voronoi-like fronts)
 BAND = 2  # boundary-texturing band half-width (tiles)
@@ -111,7 +111,7 @@ def _mine_zones(
     big = 0
     for z in zones.values():
         t = z.terrain_type
-        if 0 <= t < 8:
+        if t.is_land:
             areas.append(z.area)
             terr_share[t] += z.area
             if z.area >= 60:
@@ -126,7 +126,7 @@ def _mine_adjacency(T: list[list[int]], W: int, H: int, adj: collections.Counter
             for dx, dy in ((1, 0), (0, 1)):
                 if x + dx < W and y + dy < H:
                     b = T[y + dy][x + dx]
-                    if a != b and 0 <= a < 8 and 0 <= b < 8:
+                    if a != b and Terrain(a).is_land and Terrain(b).is_land:
                         adj[f"{min(a, b)}|{max(a, b)}"] += 1
 
 
@@ -136,7 +136,7 @@ def mine_macro(level: int, maps: Iterable[OR.FaithfulMap]) -> MacroStats:
     maps — real underground zone areas/adjacency/barrier fraction are statistically distinct
     from the surface (rock, not subterr, is the dominant barrier terrain there; see corpus
     histograms in the design notes), so it is never derived from or blended with level-0 stats."""
-    barrier = WATER if level == 0 else ROCK
+    barrier = Terrain.WATER if level == 0 else Terrain.ROCK
     areas: list[int] = []
     barrier_fracs: list[float] = []
     terr_share = collections.Counter[int]()
@@ -552,7 +552,7 @@ def generate(
     level = opts.level
     rng = random.Random(seed)
     st = load_macro(level=level)
-    barrier = WATER if level == 0 else ROCK
+    barrier = Terrain.WATER if level == 0 else Terrain.ROCK
     protect: set[Tile] = set()
     if level == 1:
         rf = rng.choice(st.barrier_fracs) if water is None else water
@@ -632,7 +632,7 @@ def main() -> None:
     for y, row in enumerate(grid):
         for x, t in enumerate(row):
             box = (x * _TILE, y * _TILE, (x + 1) * _TILE, (y + 1) * _TILE)
-            img.paste(TERRAIN_RGB.get(t, (0, 0, 0)), box)
+            img.paste(TERRAIN_RGB[Terrain(t)], box)
     out = str(ROOT / "out" / "render" / "pp" / f"macro_s{args.seed}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     img.save(out)

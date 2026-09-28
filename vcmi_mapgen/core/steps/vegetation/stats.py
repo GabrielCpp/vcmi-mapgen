@@ -13,7 +13,7 @@ extracts, per terrain, the DECORATION anchor pattern —
   - corpus run-length histogram of the veg-only open field (the M1 validation yardstick).
 
 Categories are the ontology's decoration types (`veg_categories`); water features
-(`kit.terrain_lookup.EXCLUDE_DECOR_TYPES`) are dropped everywhere. Cached per terrain in
+(`vcmi.catalog.decor.EXCLUDE_DECOR_TYPES`) are dropped everywhere. Cached per terrain in
 ``data/pp/veg_<terrain>.json``.
 
     uv run python -m vcmi_mapgen.core.steps.vegetation.stats --report grass
@@ -35,10 +35,11 @@ from vcmi_mapgen.core.model import JsonValue, Tile
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
 from vcmi_mapgen.vcmi.catalog import decor as DC
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.vcmi.formats import json_value
+from vcmi_mapgen.vcmi.terrain import LAND_NAMES, name_of
 
 ROOT = project_root()
 PP_DIR = str(ROOT / "data" / "pp")
@@ -46,7 +47,6 @@ SOURCE = "vcmi_mapgen.core.steps.vegetation.stats.mine"
 RMAX = 6  # pair-correlation rings 0..RMAX (Chebyshev)
 MIN_AREA = 60  # same zone-size floor as the field learner
 CELL = 6  # coarse-cell size for the overdispersion (Cox field) statistic
-LAND = ("dirt", "sand", "grass", "snow", "swamp", "rough", "subterr", "lava")
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,11 +309,11 @@ def _accumulate_zone(a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
 
 
 def mine(maps: Iterable[OR.FaithfulMap]) -> dict[str, VegStats]:
-    acc = {t: _Acc() for t in LAND}
+    acc = {t: _Acc() for t in LAND_NAMES}
     for fm in maps:
         zones, _zl, _ = segment_level(fm.terrain[0])
         for z in zones.values():
-            terr = TNAME.get(z.terrain_type)
+            terr = name_of(z.terrain_type)
             if terr not in acc or z.area < MIN_AREA:
                 continue
             _accumulate_zone(acc[terr], fm, set(z.tiles_set))

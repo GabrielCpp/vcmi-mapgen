@@ -23,6 +23,7 @@ from typing import final
 from vcmi_mapgen.core.grid.components import STEPS4, components
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import ZoneWorkspace
 from vcmi_mapgen.core.steps.gameplay.mines import (
     CORE_SPELLS,
@@ -43,14 +44,12 @@ from vcmi_mapgen.core.steps.gate.gates import (
     rnd_monster,
 )
 from vcmi_mapgen.core.steps.placement import web_dist
-from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
 
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3
 MIN_WEIGHT = 1e-300
-WATER = 8
-ROCK = 9
 TOWN_OPTIONS: dict[str, JsonValue] = {
     "buildings": {"allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]},
     "possibleSpells": CORE_SPELLS,
@@ -196,7 +195,7 @@ class LevelField:
         legal: Callable[[PlacedObject], bool],
     ) -> LevelField:
         unwalkable = {
-            (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c in (WATER, ROCK)
+            (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if Terrain(c).is_barrier
         }
         occupied: set[Tile] = set()
         near: set[Tile] = set()
@@ -230,7 +229,7 @@ class LevelField:
 
 def _on_land(grid: Sequence[Sequence[int]], t: Tile) -> bool:
     x, y = t
-    return 0 <= y < len(grid) and 0 <= x < len(grid[y]) and grid[y][x] != WATER
+    return 0 <= y < len(grid) and 0 <= x < len(grid[y]) and grid[y][x] != Terrain.WATER
 
 
 @final

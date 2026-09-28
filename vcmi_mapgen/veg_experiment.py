@@ -4,7 +4,7 @@ from vcmi_mapgen.core.grid.geometry import run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.steps.vegetation.sample import ZoneRef, build_model, sample_zone
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import TNAME
+from vcmi_mapgen.vcmi.terrain import name_of
 
 
 def m1_experiment(map_name: str, zid: int, seed: int = 1) -> None:
@@ -13,7 +13,7 @@ def m1_experiment(map_name: str, zid: int, seed: int = 1) -> None:
     fm = OR.load_faithful(map_name)
     zones, _zl, _ = segment_level(fm.terrain[0])
     z = zones[zid]
-    terrain = TNAME[z.terrain_type]
+    terrain = name_of(z.terrain_type)
     ts = set(z.tiles_set)
     model = build_model(terrain)
     head = f"model[{terrain}]: {len(model.cats)} categories, "

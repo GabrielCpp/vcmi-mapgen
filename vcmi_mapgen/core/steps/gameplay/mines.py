@@ -23,15 +23,16 @@ from pathlib import Path
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Identity, JsonValue, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gate.gates import MIN_AREA_STATS
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 from vcmi_mapgen.vcmi.catalog import decor as DC
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
+from vcmi_mapgen.vcmi.terrain import LAND_NAMES, name_of
 
 ROOT = project_root()
 STATS_PATH = str(ROOT / "data" / "pp" / "gameplay_stats.json")
@@ -147,7 +148,7 @@ CORE_SPELLS: list[JsonValue] = [
         "blind",
     )
 ]
-LAND = ("dirt", "sand", "grass", "snow", "swamp", "rough", "subterr", "lava")
+LAND = LAND_NAMES
 MINED_TERR = (*LAND, "water")
 EB, GB, OB = 6, 4, 4  # covariate bins: edge-dist, gate-dist, openness
 
@@ -352,7 +353,10 @@ class _CorpusLevel:
 
 def _accumulate_water(aw: _TerrainAcc, fm: OR.FaithfulMap, level: int) -> None:
     wtiles = {
-        (x, y) for y, row in enumerate(fm.terrain[level]) for x, c in enumerate(row) if c.t == 8
+        (x, y)
+        for y, row in enumerate(fm.terrain[level])
+        for x, c in enumerate(row)
+        if c.t == Terrain.WATER
     }
     if not wtiles:
         return
@@ -434,7 +438,7 @@ def _accumulate_map(acc: dict[str, _TerrainAcc], fm: OR.FaithfulMap, level: int)
     _accumulate_water(acc["water"], fm, level)
     cl = _CorpusLevel(fm, level, zones, guards)
     for zid, z in zones.items():
-        terr = TNAME.get(z.terrain_type)
+        terr = name_of(z.terrain_type)
         if terr not in acc or z.area < MIN_AREA_STATS:
             continue
         _accumulate_zone(acc[terr], cl, zid, z)
@@ -666,7 +670,7 @@ def select_player_zones(
         (z.area, level, zid, z.centroid)
         for level, zones in zones_by_level.items()
         for zid, z in zones.items()
-        if TNAME.get(z.terrain_type) in LAND and z.area >= 60 and can_host(level, zid)
+        if z.terrain_type.is_land and z.area >= 60 and can_host(level, zid)
     ]
     if not cand or players <= 0:
         return []

@@ -20,12 +20,12 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     GATE_COLORS,
     LEAF_TERRAINS,
     SUBTYPE_KEYED_NAMES,
-    TERRAIN_NAMES,
     LeafMeta,
     Taxonomy,
     table_path,
 )
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
+from vcmi_mapgen.vcmi.terrain import name_of
 
 
 def _decode_mask(passability: str, triggers: str) -> Mask:
@@ -213,7 +213,7 @@ def _objects_txt_records(index: LodIndex) -> list[tuple[str, str, str, int, int,
 
 def _mask_terrains(mask: str) -> set[str]:
     """9-bit objects.txt terrain mask -> set of land/water terrain names (bit i -> terrain 8-i)."""
-    return {TERRAIN_NAMES[8 - i] for i, c in enumerate(mask) if c == "1"}
+    return {name_of(8 - i) for i, c in enumerate(mask) if c == "1"}
 
 
 def _template_terrains(allowed_mask: str, native_mask: str, coupled: bool) -> list[str]:

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile, Zone, footprint
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RND_ART,
     RND_RES,
@@ -24,10 +25,10 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     load_gameplay,
 )
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.vcmi.catalog import decor as DC
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import Ontology
+from vcmi_mapgen.vcmi.terrain import name_of
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
@@ -40,7 +41,6 @@ SEAPORT_SEARCH_HOPS = 2  # near-coastal search depth (s10 diagnosis, 2026-09: th
 # otherwise perfectly placeable shore, even after grouping by
 # shore instead of by land zone
 
-_WATER, _ROCK = 8, 9
 _NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
@@ -224,7 +224,9 @@ def ensure_water_seaports(
     purpose rather than by accident).
 
     Returns list of new shipyard objects to append to `objs`."""
-    water_tiles = {(x, y) for y in range(sea.H) for x in range(sea.W) if sea.grid[y][x] == _WATER}
+    water_tiles = {
+        (x, y) for y in range(sea.H) for x in range(sea.W) if sea.grid[y][x] == Terrain.WATER
+    }
     if not water_tiles:
         return []
     return _SeaportPlanner(sea, water_tiles, objs, seed, ontology).run()
@@ -233,7 +235,7 @@ def ensure_water_seaports(
 def _land_zone_of(zones: Mapping[int, Zone]) -> dict[Tile, int]:
     land_zone_of: dict[Tile, int] = {}
     for zid, z in zones.items():
-        if TNAME.get(z.terrain_type) in (None, "water", "rock"):
+        if z.terrain_type.is_barrier:
             continue
         for t in z.tiles_set:
             land_zone_of[t] = zid
@@ -506,10 +508,7 @@ class _SeaportPlanner:
     def _shore_shipyard(self, zids_here: Iterable[int]) -> Identity | None:
         ident: Identity | None = None
         for zid in zids_here:
-            terrain = TNAME.get(self.sea.zones[zid].terrain_type)
-            if terrain is None:
-                continue
-            ident = self._shipyard_ident(terrain)
+            ident = self._shipyard_ident(name_of(self.sea.zones[zid].terrain_type))
             if ident is not None:
                 break
         return ident
@@ -550,7 +549,9 @@ class _SeaportPlanner:
             t
             for t in ts_set
             if any(
-                0 <= t[0] + dx < W and 0 <= t[1] + dy < H and grid[t[1] + dy][t[0] + dx] == _WATER
+                0 <= t[0] + dx < W
+                and 0 <= t[1] + dy < H
+                and grid[t[1] + dy][t[0] + dx] == Terrain.WATER
                 for dx, dy in _NB4
             )
         }
@@ -560,9 +561,7 @@ class _SeaportPlanner:
         ts_set = set(z.tiles_set)
         if self._zone_has_seaport(zid, ts_set):
             return True
-        terrain = TNAME.get(z.terrain_type)
-        if terrain is None:
-            return False
+        terrain = name_of(z.terrain_type)
         ident = self._shipyard_ident(terrain)
         if ident is None:
             self._warn(
@@ -601,7 +600,7 @@ class _SeaportPlanner:
     def _is_island(self, ts_set: AbstractSet[Tile]) -> bool:
         W, H, grid = self.sea.W, self.sea.H, self.sea.grid
         return all(
-            grid[ny][nx] in (_WATER, _ROCK)
+            Terrain(grid[ny][nx]).is_barrier
             for x, y in ts_set
             for dx, dy in _NB4
             for nx, ny in [(x + dx, y + dy)]
@@ -623,8 +622,7 @@ class _SeaportPlanner:
 
         # ── 2. Island guarantee ───────────────────────────────────────────────────
         for zid, z in sorted(self.sea.zones.items()):
-            terrain = TNAME.get(z.terrain_type)
-            if terrain in (None, "water", "rock") or z.area < ISLAND_MIN_AREA:
+            if z.terrain_type.is_barrier or z.area < ISLAND_MIN_AREA:
                 continue
             ts_set = set(z.tiles_set)
             is_island = self._is_island(ts_set)

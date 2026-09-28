@@ -5,7 +5,7 @@ from typing import final
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile
 from vcmi_mapgen.kit.objects import mask_cells
 from vcmi_mapgen.vcmi.catalog.adapter import Ontology
-from vcmi_mapgen.vcmi.catalog.tables import TERRAIN_NAMES
+from vcmi_mapgen.vcmi.terrain import name_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,7 @@ def footprint_violations(
             continue
         code = grid[ty][tx].t
         if not ontology.allowed_on(obj.animation, code):
-            yield TerrainViolation(obj, (tx, ty), TERRAIN_NAMES.get(code, str(code)))
+            yield TerrainViolation(obj, (tx, ty), name_of(code) or str(code))
 
 
 @final

@@ -15,8 +15,8 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from vcmi_mapgen.core.grid import segment as TS
 from vcmi_mapgen.core.model import Cell, JsonValue, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
@@ -261,7 +261,7 @@ class _Despeckler:
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < W and 0 <= ny < H and ids[ny][nx] != t:
                     nbr_all[ids[ny][nx]] += 1
-                    if ids[ny][nx] < TS.WATER:
+                    if Terrain(ids[ny][nx]).is_land:
                         nbr_land[ids[ny][nx]] += 1
         nbr = nbr_land or nbr_all
         if nbr:

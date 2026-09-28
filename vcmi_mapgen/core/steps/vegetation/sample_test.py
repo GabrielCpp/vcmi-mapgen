@@ -6,6 +6,7 @@ import pytest
 
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
@@ -15,7 +16,7 @@ from vcmi_mapgen.vcmi.catalog import objects as ON
 
 def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
     return Zone(
-        terrain_type=terrain_type,
+        terrain_type=Terrain(terrain_type),
         area=len(ts),
         centroid=(cx, cy),
         tiles=sorted(ts),

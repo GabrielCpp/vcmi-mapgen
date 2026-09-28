@@ -1,6 +1,7 @@
 """Reliability tests for the border plan (vegetation) and the border guards (border)."""
 
 from vcmi_mapgen.core.model import Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.border import border_seal as BS
 from vcmi_mapgen.core.steps.placement import guard_spaced
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
@@ -14,14 +15,14 @@ def _zones() -> tuple[dict[int, Zone], set[Tile], set[Tile]]:
     ts2 = {(x, y) for x in range(10, S) for y in range(S)}
     zones = {
         1: Zone(
-            terrain_type=GRASS,
+            terrain_type=Terrain(GRASS),
             area=len(ts1),
             centroid=(4.5, 9.5),
             tiles=sorted(ts1),
             tiles_set=frozenset(ts1),
         ),
         2: Zone(
-            terrain_type=GRASS,
+            terrain_type=Terrain(GRASS),
             area=len(ts2),
             centroid=(14.5, 9.5),
             tiles=sorted(ts2),

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from functools import cache
 
 from vcmi_mapgen.core.model import Identity, Mask
+from vcmi_mapgen.vcmi import terrain as vterrain
 from vcmi_mapgen.vcmi.catalog.tables import (
     ARTIFACT_TIERS,
     CLASS_NAMES,
@@ -26,7 +27,6 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     RESOURCE,
     SPELL_LEVELS,
     TERRAIN_COUPLED,
-    TERRAIN_NAMES,
     ClassInfo,
     Taxonomy,
     leaf_meta,
@@ -148,7 +148,7 @@ def indexes() -> _Indexes:
 
 
 def terrain_name(terrain: str | int) -> str:
-    return terrain if isinstance(terrain, str) else TERRAIN_NAMES.get(terrain, "")
+    return terrain if isinstance(terrain, str) else vterrain.name_of(terrain)
 
 
 def has_animation(animation: str) -> bool:

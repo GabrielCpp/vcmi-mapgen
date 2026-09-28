@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.portal import geometry as GEO
 
 GRASS, ROCK = 2, 9
@@ -23,14 +24,14 @@ def _enclave_fixture() -> tuple[int, list[list[int]], dict[int, Zone], set[Tile]
     ts1 = {(x, y) for x in range(size) for y in range(size) if grid[y][x] == GRASS} - inner
     zones = {
         1: Zone(
-            terrain_type=GRASS,
+            terrain_type=Terrain(GRASS),
             area=len(ts1),
             centroid=(sum(x for x, _ in ts1) / len(ts1), sum(y for _, y in ts1) / len(ts1)),
             tiles=sorted(ts1),
             tiles_set=frozenset(ts1),
         ),
         2: Zone(
-            terrain_type=GRASS,
+            terrain_type=Terrain(GRASS),
             area=len(inner),
             centroid=(33.5, 33.5),
             tiles=sorted(inner),

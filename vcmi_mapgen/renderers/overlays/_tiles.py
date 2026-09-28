@@ -9,9 +9,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.terrain import BY_PREFIX
 
-_WATER, _ROCK = 8, 9
 NB8: list[Tile] = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
 
 # A visitable object whose visit tile is "owned" by the structure for pocket geometry
@@ -31,29 +32,12 @@ STRUCTURE_PURPOSES = frozenset(
     }
 )
 
-_PREFIX_TO_CODE: dict[str, int] = {
-    "dt": 0,
-    "sa": 1,
-    "gr": 2,
-    "sn": 3,
-    "sw": 4,
-    "rg": 5,
-    "sb": 6,
-    "lv": 7,
-    "wt": 8,
-    "ro": 9,
-    "hl": 10,
-    "wa": 11,
-}
 
-
-def terrain_code(cell: str | Cell) -> int:
-    """Extract the integer terrain code from a tile string or a tile cell."""
+def terrain_code(cell: str | Cell) -> Terrain:
+    """The terrain of a tile string or a tile cell. An unknown prefix reads as dirt."""
     if isinstance(cell, Cell):
-        return cell.t
-    if len(cell) >= 2:
-        return _PREFIX_TO_CODE.get(cell[:2], 0)
-    return 0
+        return Terrain(cell.t)
+    return BY_PREFIX.get(cell[:2], Terrain.DIRT)
 
 
 def passable_tiles(
@@ -61,12 +45,7 @@ def passable_tiles(
 ) -> set[Tile]:
     """Land tiles (not water/rock) minus any object's blocking footprint on `level`."""
     H, W = len(surf), len(surf[0])
-    land = {
-        (x, y)
-        for y in range(H)
-        for x in range(W)
-        if terrain_code(surf[y][x]) not in (_WATER, _ROCK)
-    }
+    land = {(x, y) for y in range(H) for x in range(W) if terrain_code(surf[y][x]).is_land}
     blocked: set[Tile] = set()
     for o in objs:
         if o.level != level:

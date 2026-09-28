@@ -397,18 +397,6 @@ DECOR_NAMES = {
 }
 
 
-TERRAIN_NAMES = {
-    0: "dirt",
-    1: "sand",
-    2: "grass",
-    3: "snow",
-    4: "swamp",
-    5: "rough",
-    6: "subterr",
-    7: "lava",
-    8: "water",
-    9: "rock",
-}
 # Objects keyed by player colour (quest lock/key). Colour is terrain-independent, so they bucket
 # under a single "land" terrain node and their leaves are named by colour (all 8 enumerated).
 COLOR_KEYED_NAMES = {"BORDER_GATE", "BORDERGUARD", "KEYMASTER"}

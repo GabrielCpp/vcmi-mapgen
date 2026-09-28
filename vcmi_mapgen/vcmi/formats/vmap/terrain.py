@@ -6,21 +6,10 @@ import re
 from collections.abc import Sequence
 
 from vcmi_mapgen.core.model import Cell, PlacedObject
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.terrain import BY_PREFIX, prefix_of
 
-TCODE = {
-    0: "dt",
-    1: "sa",
-    2: "gr",
-    3: "sn",
-    4: "sw",
-    5: "rg",
-    6: "sb",
-    7: "lv",
-    8: "wt",
-    9: "rc",
-}
-_TCODE_REV = {v: k for k, v in TCODE.items()}
 RIVER = {1: "clrv", 2: "icyrv", 3: "mudrv", 4: "lavrv"}
 _RIVER_REV = {v: k for k, v in RIVER.items()}
 ROAD = {1: "dirtrd", 2: "gravrd", 3: "cobbrd"}
@@ -43,7 +32,7 @@ def _mir_code(ch: str) -> int:
 
 
 def tile_string(c: Cell) -> str:
-    s = f"{TCODE.get(c.t, 'gr')}{c.view}{_mir(c.m)}"
+    s = f"{prefix_of(c.t)}{c.view}{_mir(c.m)}"
     if c.rt:
         s += f"{RIVER.get(c.rt, 'clrv')}{c.rd}_"
     if c.ot:
@@ -58,7 +47,7 @@ def decode_tile_string(s: str) -> Cell:
         raise ValueError(f"not a VCMI tile string: {s!r}")
     river, rd, road, od = m["river"], m["rd"], m["road"], m["od"]
     return Cell(
-        t=_TCODE_REV.get(m["t"], 2),
+        t=int(BY_PREFIX.get(m["t"], Terrain.GRASS)),
         view=int(m["view"]),
         m=_mir_code(m["mir"]),
         rt=_RIVER_REV.get(river, 0),

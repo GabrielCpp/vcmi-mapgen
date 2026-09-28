@@ -8,13 +8,14 @@ from functools import partial
 from typing import final
 
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.mines import load_gameplay
 from vcmi_mapgen.core.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.vcmi.catalog import decor as DC
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.terrain import name_of
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 
@@ -232,7 +233,7 @@ def _terrain_reach(
     `traverse._gate_links` pairs them. Returns the reached (x, y, level) set."""
     lvl0, (sx, sy) = start
     reached: set[tuple[int, int, int]] = set()
-    if grids.get(lvl0) is not None and grids[lvl0][sy][sx] < 8:
+    if grids.get(lvl0) is not None and Terrain(grids[lvl0][sy][sx]).is_land:
         reached = {(sx, sy, lvl0)}
     q = collections.deque(reached)
     H = len(grids[lvl0])
@@ -241,7 +242,7 @@ def _terrain_reach(
         x, y, lvl = q.popleft()
         if (x, y) in gate_xy:
             for l2, g2 in grids.items():
-                if l2 != lvl and g2[y][x] < 8 and (x, y, l2) not in reached:
+                if l2 != lvl and Terrain(g2[y][x]).is_land and (x, y, l2) not in reached:
                     reached.add((x, y, l2))
                     q.append((x, y, l2))
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
@@ -249,7 +250,7 @@ def _terrain_reach(
             if (
                 0 <= nx < W
                 and 0 <= ny < H
-                and grids[lvl][ny][nx] < 8
+                and Terrain(grids[lvl][ny][nx]).is_land
                 and (nx, ny, lvl) not in reached
             ):
                 reached.add((nx, ny, lvl))
@@ -288,7 +289,7 @@ def rescue_unreachable_zones(
 def _is_coastal(grid: Sequence[Sequence[int]], ts: set[Tile], size: int) -> bool:
     W = H = size
     return any(
-        0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] == 8
+        0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] == Terrain.WATER
         for (x, y) in ts
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
     )
@@ -301,9 +302,9 @@ def _candidates(
     for lvl in sorted(world.zones_by_level):
         grid = world.grids[lvl]
         for zid, z in sorted(world.zones_by_level[lvl].items()):
-            terrain = TNAME.get(z.terrain_type)
-            if terrain is None or terrain in ("water", "rock") or z.area < PORTAL_MIN_AREA:
+            if z.terrain_type.is_barrier or z.area < PORTAL_MIN_AREA:
                 continue
+            terrain = name_of(z.terrain_type)
             ts = set(z.tiles_set)
             if any((x, y, lvl) in reached for (x, y) in ts):
                 continue
@@ -367,7 +368,7 @@ class _PortalRescue:
             g = (appr[0] + dx, appr[1] + dy)
             if (
                 not (0 <= g[0] < W and 0 <= g[1] < H)
-                or grid[g[1]][g[0]] >= 8
+                or Terrain(grid[g[1]][g[0]]).is_barrier
                 or g in st.occupied
                 or g in own_cells
                 or g in st.reserved
@@ -376,7 +377,7 @@ class _PortalRescue:
             if all(
                 0 <= gx < W
                 and 0 <= gy < H
-                and grid[gy][gx] < 8
+                and Terrain(grid[gy][gx]).is_land
                 and (gx, gy) not in st.occupied
                 and (gx, gy) not in own_cells
                 for gx, gy in OR.mask_interactive_cells(gident.mask, g[0], g[1])
@@ -419,7 +420,7 @@ class _PortalRescue:
         lvl = zone.lvl
         hosts: list[tuple[float, int, int]] = []
         for hzid, hz in sorted(self.world.zones_by_level[lvl].items()):
-            if hzid == zone.zid or TNAME.get(hz.terrain_type) in (None, "water", "rock"):
+            if hzid == zone.zid or hz.terrain_type.is_barrier:
                 continue
             if hz.area < MIN_AREA:
                 continue

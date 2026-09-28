@@ -7,7 +7,6 @@ from vcmi_mapgen.vcmi.formats.vmap.reader import header_fields, read, read_heade
 from vcmi_mapgen.vcmi.formats.vmap.terrain import (
     RIVER,
     ROAD,
-    TCODE,
     decode_tile_string,
     export_mask,
     tile_string,
@@ -19,7 +18,6 @@ from vcmi_mapgen.vcmi.formats.vmap.writer import write
 __all__ = [
     "RIVER",
     "ROAD",
-    "TCODE",
     "PlayerSlot",
     "VmapDocument",
     "VmapObject",

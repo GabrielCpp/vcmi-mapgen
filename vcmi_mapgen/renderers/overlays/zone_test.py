@@ -1,6 +1,7 @@
 from PIL import Image
 
 from vcmi_mapgen.core.model import Cell, MapState, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.renderers.overlays.zone import ZoneOverlay
 
 TILE = 32
@@ -15,7 +16,7 @@ def _state() -> MapState:
     ts = {(x, y) for y in range(4) for x in range(4)}
     zones = {
         0: Zone(
-            terrain_type=2,
+            terrain_type=Terrain.GRASS,
             area=len(ts),
             centroid=(2, 2),
             tiles=sorted(ts),

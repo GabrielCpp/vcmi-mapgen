@@ -1,6 +1,7 @@
 """Reliability tests for the entrance guards BorderStep places."""
 
 from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entrances
 from vcmi_mapgen.core.steps.placement import guard_spaced
 from vcmi_mapgen.kit.topology import plan_entrances
@@ -10,7 +11,7 @@ GRASS = 2
 
 def _zone(ts: set[Tile], cx: float, cy: float) -> Zone:
     return Zone(
-        terrain_type=GRASS,
+        terrain_type=Terrain(GRASS),
         area=len(ts),
         centroid=(cx, cy),
         tiles=sorted(ts),

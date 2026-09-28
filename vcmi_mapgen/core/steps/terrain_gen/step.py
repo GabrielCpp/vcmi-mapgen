@@ -17,8 +17,8 @@ import random
 from dataclasses import dataclass, field
 from typing import override
 
-from vcmi_mapgen.core.grid import segment as TSG
 from vcmi_mapgen.core.model import Cell, MapState, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MTOPO
 from vcmi_mapgen.kit import tiling as TL
@@ -82,7 +82,7 @@ def _carve_gate_sites(
     H = len(grid0)
     W = len(grid0[0])
     land0 = collections.Counter(
-        grid0[y][x] for y in range(H) for x in range(W) if grid0[y][x] != TSG.WATER
+        grid0[y][x] for y in range(H) for x in range(W) if grid0[y][x] != Terrain.WATER
     )
     fill0 = land0.most_common(1)[0][0] if land0 else 2
     protect1: set[Tile] = set()
@@ -94,12 +94,10 @@ def _carve_gate_sites(
         return protect1
 
     land1 = collections.Counter(
-        grid1[y][x] for y in range(H) for x in range(W) if grid1[y][x] not in (TSG.WATER, TSG.ROCK)
+        grid1[y][x] for y in range(H) for x in range(W) if Terrain(grid1[y][x]).is_land
     )
     fill1 = land1.most_common(1)[0][0] if land1 else 6
-    land1_before = {
-        (x, y) for y in range(H) for x in range(W) if grid1[y][x] not in (TSG.WATER, TSG.ROCK)
-    }
+    land1_before = {(x, y) for y in range(H) for x in range(W) if Terrain(grid1[y][x]).is_land}
     rng = random.Random(seed ^ 0xC0DE)
     for ax, ay in anchors:
         for x, y in _gate_site_cells(ax, ay, pad):
@@ -122,11 +120,11 @@ def _tunnel_underground(
 ) -> None:
     H = len(grid1)
     W = len(grid1[0])
-    land_bool = [[grid1[y][x] not in (TSG.WATER, TSG.ROCK) for x in range(W)] for y in range(H)]
+    land_bool = [[Terrain(grid1[y][x]).is_land for x in range(W)] for y in range(H)]
     MTOPO.carve_corridor(land_bool, span, rng, half_w=1, protect=protect1)
     for y in range(H):
         for x in range(W):
-            if land_bool[y][x] and grid1[y][x] in (TSG.WATER, TSG.ROCK):
+            if land_bool[y][x] and Terrain(grid1[y][x]).is_barrier:
                 grid1[y][x] = fill1
 
 

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import (
     LevelWorkspace,
     PipelineStep,
@@ -37,8 +38,6 @@ from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 NO_TILES: frozenset[Tile] = frozenset()
-WATER = 8
-LAND = 2
 
 
 @dataclass
@@ -151,7 +150,7 @@ def place_open_zone(
         open_set=frozenset(ts),
         passable=frozenset(ts),
     )
-    lf = LevelField.build(0, [[LAND] * w for _ in range(h)], [], lambda _o: True)
+    lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [], lambda _o: True)
     site = ZoneSite(1, zw, lf, seed)
     ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
     spec = DrawSpec(1, terrain, len(ts), player=player)
@@ -309,7 +308,7 @@ class GameplayStep(PipelineStep):
             area=len(site.zw.ts_full),
             player=(level, site.zid) in self._player_zids,
             gates=site.gates,
-            has_water=any(WATER in row for row in self._grids[level]),
+            has_water=any(Terrain.WATER in row for row in self._grids[level]),
             has_subterrain=self.subterrain,
         )
         return ZoneDrawer(spec, site.st, ledger, self.seed + level).draw()

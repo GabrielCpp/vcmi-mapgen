@@ -7,6 +7,7 @@ import pytest
 
 from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import legal_cells
 from vcmi_mapgen.core.steps.loot import caches as CA
@@ -77,7 +78,7 @@ def test_pickup_layer_legal_and_deterministic() -> None:
 
 def _zone(ts: set[Tile]) -> Zone:
     return Zone(
-        terrain_type=2,
+        terrain_type=Terrain.GRASS,
         area=len(ts),
         centroid=(14.5, 11.5),
         tiles=sorted(ts),

@@ -42,7 +42,7 @@ class TileTypeOverlay(MapOverlay):
         for y, row in enumerate(surf):
             for x, cell in enumerate(row):
                 t = terrain_code(cell)
-                r, g, b = TERRAIN_RGB.get(t, (0, 0, 0))
+                r, g, b = TERRAIN_RGB[t]
                 color = (r, g, b, self._alpha)
                 x0, y0 = x * TILE, y * TILE
                 for dy in range(TILE):

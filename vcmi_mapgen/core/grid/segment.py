@@ -21,8 +21,8 @@ import numpy as np
 import numpy.typing as npt
 
 from vcmi_mapgen.core.model import Cell, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 
-WATER, ROCK = 8, 9
 DIM_STATIC = 32  # feature vector length (see compute_static_features docstring)
 
 
@@ -90,7 +90,7 @@ def _flood_fill(terrain_level: list[list[Cell]]) -> list[list[int]]:
     for y0 in range(H):
         for x0 in range(W):
             t0 = terrain_level[y0][x0].t
-            if t0 in (WATER, ROCK) or zone_label[y0][x0] != -1:
+            if Terrain(t0).is_barrier or zone_label[y0][x0] != -1:
                 continue
             zone_label[y0][x0] = zone_id
             dq: collections.deque[Tile] = collections.deque([(x0, y0)])
@@ -136,7 +136,7 @@ def _boundary_and_adjacent(
             else:
                 nt = terrain_level[ny][nx].t
                 nz = zone_label[ny][nx]
-                if nt in (WATER, ROCK):
+                if Terrain(nt).is_barrier:
                     is_bnd = True
                 elif nz != zid:
                     is_bnd = True
@@ -155,7 +155,7 @@ def _chokepoints(terrain_level: list[list[Cell]], boundary: set[Tile]) -> set[Ti
         for dy in range(-2, 3):
             for dx in range(-2, 3):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < W and 0 <= ny < H and terrain_level[ny][nx].t not in (WATER, ROCK):
+                if 0 <= nx < W and 0 <= ny < H and Terrain(terrain_level[ny][nx].t).is_land:
                     passable_count += 1
         if passable_count <= 10:
             chokepoints.add((x, y))
@@ -183,7 +183,7 @@ def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]])
         chokepoints = _chokepoints(terrain_level, boundary)
 
         zones[zid] = Zone(
-            terrain_type=t0,
+            terrain_type=Terrain(t0),
             area=area,
             centroid=(cx, cy),
             tiles=tiles,
@@ -282,10 +282,12 @@ def _compute_static_features(
     terr_arr = np.array(
         [[terrain_level[y][x].t for x in range(W)] for y in range(H)], dtype=np.int32
     )
-    passable: npt.NDArray[np.bool_] = np.not_equal(terr_arr, WATER) & np.not_equal(terr_arr, ROCK)
+    passable: npt.NDArray[np.bool_] = np.not_equal(terr_arr, Terrain.WATER) & np.not_equal(
+        terr_arr, Terrain.ROCK
+    )
 
     # --- dist_water: BFS from all water tiles across the whole map ---
-    water_sources = {(x, y) for y in range(H) for x in range(W) if terr_arr[y, x] == WATER}
+    water_sources = {(x, y) for y in range(H) for x in range(W) if terr_arr[y, x] == Terrain.WATER}
     dist_water_arr = _bfs_global(H, W, water_sources, set())
 
     # --- per-zone BFS within zone from boundary tiles (dist_boundary) ---

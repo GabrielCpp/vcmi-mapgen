@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import NamedTuple
 
+from vcmi_mapgen.core.model.terrain import Terrain
+
 type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 type Tile = tuple[int, int]
 type Mask = tuple[str, ...]
@@ -74,7 +76,7 @@ class Cell:
 
 @dataclass(slots=True)
 class Zone:
-    terrain_type: int
+    terrain_type: Terrain
     area: int
     centroid: tuple[float, float]
     tiles: list[Tile]

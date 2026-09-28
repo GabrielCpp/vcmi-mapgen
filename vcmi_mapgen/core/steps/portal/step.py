@@ -13,7 +13,6 @@ from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.core.steps.portal import geometry as GEO
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
-from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.validate import TerrainGate
 from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
@@ -39,7 +38,7 @@ def _find_start(
             return (lvl, (t.x, t.y))
     zones0 = zones_by_level.get(0, {})
     big = max(
-        (z for z in zones0.values() if TNAME.get(z.terrain_type) not in (None, "water", "rock")),
+        (z for z in zones0.values() if z.terrain_type.is_land),
         key=lambda z: z.area,
         default=None,
     )

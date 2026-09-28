@@ -1,6 +1,7 @@
 from PIL import Image
 
 from vcmi_mapgen.core.model import Cell, MapState, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.renderers.overlays.passage import PassageOverlay
 
 TILE = 32
@@ -12,7 +13,7 @@ def _cell(t: int = 2) -> Cell:
 
 def _zone(tiles: set[Tile], centroid: tuple[float, float]) -> Zone:
     return Zone(
-        terrain_type=2,
+        terrain_type=Terrain.GRASS,
         area=len(tiles),
         centroid=centroid,
         tiles=sorted(tiles),

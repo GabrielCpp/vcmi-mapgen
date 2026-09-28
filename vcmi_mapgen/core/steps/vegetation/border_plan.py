@@ -9,8 +9,9 @@ from typing import final
 
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
 from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
+from vcmi_mapgen.vcmi.terrain import name_of
 
 
 def blocking_cells(o: PlacedObject) -> list[Tile]:
@@ -22,9 +23,9 @@ def zone_owner(zones: Mapping[int, Zone]) -> tuple[dict[Tile, int], dict[Tile, s
     owner: dict[Tile, int] = {}
     tname: dict[Tile, str] = {}
     for zid, z in sorted(zones.items()):
-        terr = TNAME.get(z.terrain_type)
-        if terr is None or terr in ("water", "rock"):
+        if z.terrain_type.is_barrier:
             continue
+        terr = name_of(z.terrain_type)
         for t in z.tiles_set:
             owner[t] = zid
             tname[t] = terr

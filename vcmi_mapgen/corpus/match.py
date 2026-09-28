@@ -17,6 +17,7 @@ from typing import final
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.draw import COUNTED
 from vcmi_mapgen.core.steps.gameplay.mines import gate_dist
 from vcmi_mapgen.core.steps.gameplay.site import back_score, mask_tiles
@@ -25,8 +26,6 @@ from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 
 MEASURES = ("depth", "gate", "open", "back")
 EDGES = (20, 60, 100, 150, 250, 500, 1000)
-WATER = 8
-ROCK = 9
 VEGETATION = ("", "DECORATION")
 
 
@@ -55,7 +54,7 @@ def _entrance(o: PlacedObject) -> Tile:
 
 def _field(grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]) -> _Field:
     unwalkable = {
-        (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c.t in (WATER, ROCK)
+        (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if Terrain(c.t).is_barrier
     }
     veg: set[Tile] = set()
     for o in objs:

@@ -46,9 +46,9 @@ from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gate_bands
 from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)

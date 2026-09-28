@@ -1,6 +1,7 @@
 """Reliability tests for steps.scatter.scatter (unguarded resource piles)."""
 
 from vcmi_mapgen.core.model import Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.scatter import scatter as SC
 
 
@@ -15,7 +16,7 @@ def test_place_scatter_handles_a_zone_with_no_reachable_open_tile() -> None:
     ts = {(x, y) for x in range(30) for y in range(24)}
     zones = {
         1: Zone(
-            terrain_type=2,
+            terrain_type=Terrain.GRASS,
             area=len(ts),
             centroid=(14.5, 11.5),
             tiles=sorted(ts),

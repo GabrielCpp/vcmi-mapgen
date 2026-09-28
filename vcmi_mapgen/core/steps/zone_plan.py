@@ -15,6 +15,7 @@ from vcmi_mapgen.core.grid.components import STEPS4
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspace
 from vcmi_mapgen.core.steps.gameplay import mines as MN
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
@@ -24,15 +25,14 @@ from vcmi_mapgen.core.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import plan_entrances
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import Ontology
+from vcmi_mapgen.vcmi.terrain import name_of
 
 NO_TILES: frozenset[Tile] = frozenset()
 
 MIN_AREA = 25
-WATER = 8
 
 
 def _rim8(zones: Mapping[int, Zone]) -> set[Tile]:
@@ -152,7 +152,7 @@ class SeaPlan:
 
 
 def _water_bodies(grid: Sequence[Sequence[int]]) -> list[set[Tile]]:
-    water = {(x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c == WATER}
+    water = {(x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c == Terrain.WATER}
     seen: set[Tile] = set()
     bodies: list[set[Tile]] = []
     for t0 in sorted(water):
@@ -230,10 +230,9 @@ class _ZonePlanner:
     def level(self) -> LevelWorkspace:
         zws: dict[int, ZoneWorkspace] = {}
         for zid, z in sorted(self.lp.zones.items()):
-            terrain = TNAME.get(z.terrain_type)
-            if terrain in (None, "water", "rock") or z.area < MIN_AREA:
+            if z.terrain_type.is_barrier or z.area < MIN_AREA:
                 continue
-            zws[zid] = self.workspace(zid, z, terrain)
+            zws[zid] = self.workspace(zid, z, name_of(z.terrain_type))
         return LevelWorkspace(
             zones=zws, entrance_plan=self.entrance_plan, ridge=frozenset(self.ridge)
         )

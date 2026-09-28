@@ -1,4 +1,9 @@
-"""Decoration pools and categories, and object-class pools built over them."""
+"""Decoration pools and categories, and object-class pools built over them.
+
+`EXCLUDE_DECOR_TYPES` names the water-feature categories no terrain ever takes. The catalog
+marks them blocking, but they read as misplaced water rather than as an obstacle, so the
+pools, the category learning and the decode all skip them.
+"""
 
 from collections.abc import Iterable
 from random import Random
@@ -13,7 +18,9 @@ from vcmi_mapgen.vcmi.catalog.objects import (
     terrain_keys,
     terrain_name,
 )
-from vcmi_mapgen.vcmi.catalog.tables import TERRAIN_NAMES
+from vcmi_mapgen.vcmi.terrain import TERRAINS
+
+EXCLUDE_DECOR_TYPES: set[str] = {"LAKE", "FROZEN_LAKE", "RIVER_DELTA", "KELP", "REEF", "LAKE_2"}
 
 
 def decor_pool(
@@ -115,12 +122,12 @@ def decode_identity(
 
 
 def category_terrain_matrix() -> list[list[bool]]:
-    """bool[len(TERRAIN_NAMES)][len(categories)]: a category is present on a terrain (incl. the
+    """bool[len(TERRAINS)][len(categories)]: a category is present on a terrain (incl. the
     terrain-independent 'land'/'water' bucket) in the taxonomy."""
     idx = indexes()
     cidx = {t: i for i, t in enumerate(idx.veg_categories)}
-    M = [[False] * len(idx.veg_categories) for _ in range(len(TERRAIN_NAMES))]
-    for tid, name in TERRAIN_NAMES.items():
+    M = [[False] * len(idx.veg_categories) for _ in range(len(TERRAINS))]
+    for tid, name in ((t.value, c.name) for t, c in TERRAINS.items()):
         for k in terrain_keys(name):
             for anim in idx.decor_by_terrain.get(k, ()):
                 cat = idx.anim_category.get(anim)

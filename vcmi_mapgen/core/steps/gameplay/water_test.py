@@ -8,6 +8,7 @@ from collections.abc import Iterable, Sequence
 import pytest
 
 from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
@@ -20,7 +21,7 @@ Grid = list[list[int]]
 def _zone(tiles: Iterable[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
     ts = frozenset(tiles)
     return Zone(
-        terrain_type=terrain_type,
+        terrain_type=Terrain(terrain_type),
         area=len(ts),
         centroid=(cx, cy),
         tiles=sorted(ts),

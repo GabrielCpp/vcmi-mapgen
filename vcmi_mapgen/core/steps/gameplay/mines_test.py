@@ -5,6 +5,7 @@ import os
 import pytest
 
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
 from vcmi_mapgen.core.steps.gate.gates import GAP, footprint_cells
@@ -68,7 +69,13 @@ def test_select_player_zones_far_apart() -> None:
     """Player zones must be big AND mutually far apart — never all clustered together."""
 
     def zone(cx: float, cy: float, area: int) -> Zone:
-        return Zone(terrain_type=2, area=area, centroid=(cx, cy), tiles=[], tiles_set=frozenset())
+        return Zone(
+            terrain_type=Terrain.GRASS,
+            area=area,
+            centroid=(cx, cy),
+            tiles=[],
+            tiles_set=frozenset(),
+        )
 
     zones = {
         0: zone(36, 36, 500),  # big centre
