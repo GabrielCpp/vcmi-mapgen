@@ -229,9 +229,9 @@ data the Map file writes.
 | Water population | Exists | `core/steps/zone_plan.py`, `core/steps/gameplay/water.py` | Drawn before vegetation, committed first by the gameplay layer. See M3. |
 | Landing | Exists | `core/steps/zone_plan.py` | One landing per shore, joined to the web, kept free of vegetation. |
 | Reachability audit | New | Reshape `kit/reachability.py` into a check the CLI runs before writing | That module is imported by one test only, and its docstring names deleted modules. Vegetation raises on a walled-off pocket, and a portal pair rescues an unreachable zone. No check runs on the finished map. See M8. |
-| Scenario | Reshape | `renderers/vmap.py` | The writer applies slots, teams, owners and victory after building the document. It sizes the slots from the towns placed, not from the players asked for. See M6. |
+| Scenario | Reshape | `vcmi/players.py` | The writer applies slots, teams, owners and victory after building the document. It sizes the slots from the towns placed, not from the players asked for. See M6. |
 | Map | Exists | `core/model/map_state.py` | Appends and checks only the new objects. `set_objs` replaces the list and has no caller. |
-| Map file | Exists | `renderers/vmap.py`, `vcmi/formats/vmap/` | Sets visitable directions on every object. |
+| Map file | Exists | `vcmi/export.py`, `renderers/vmap.py`, `vcmi/formats/vmap/` | Sets visitable directions on every object. |
 | Preview | Exists | `renderers/png.py` | |
 | Likeness report | Reshape | `corpus/match.py`, `cli corpus-match` | Measures the four measures and the per-zone counts, and prints means and percentiles. No tolerance, no verdict, not in `make check`. It builds its maps from `cli/steps.py` `build_steps`. See M9. |
 

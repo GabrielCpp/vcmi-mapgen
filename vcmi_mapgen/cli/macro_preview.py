@@ -13,8 +13,8 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.terrain_gen.macro import MacroOptions, generate, report
 from vcmi_mapgen.corpus.macro import load_macro
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
-from vcmi_mapgen.kit.render_palette import TERRAIN_TILE_PX as _TILE
+from vcmi_mapgen.renderers.palette import TERRAIN_RGB
+from vcmi_mapgen.renderers.palette import TERRAIN_TILE_PX as _TILE
 
 ROOT = project_root()
 

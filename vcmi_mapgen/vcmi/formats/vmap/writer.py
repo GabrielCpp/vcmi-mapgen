@@ -4,7 +4,7 @@ Builds `header.json` from `doc.extra` (whatever this document didn't specificall
 model -- rumors, disposedHeroes, allowed*, version numbers, ...) overlaid with the
 modeled fields (name, mapLevels, players, teams, victory/defeat) -- the direct
 replacement for both the old "clone a template and patch two keys" writer and
-`VmapRenderer._apply_playability`'s raw zip surgery.
+`vcmi.players.apply_playability`'s raw zip surgery.
 """
 
 from __future__ import annotations

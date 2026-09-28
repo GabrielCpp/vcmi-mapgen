@@ -53,8 +53,8 @@ def tie_dwellings(objs: Iterable[PlacedObject]) -> None:
     # tie the zone's RANDOM dwellings to its town: VCMI's `sameAsTown` link makes the
     # dwelling resolve to the town's (lobby-picked) faction at game start, so the creatures
     # around a random town are its own. Instance names are minted only at export, so the
-    # marker carries the town's coordinates; `renderers.vmap.VmapRenderer._build_document`
-    # swaps in the instanceName.
+    # marker carries the town's coordinates; `vcmi.export.build_document` swaps
+    # in the instanceName.
     town = next((o for o in objs if o.purpose == Purpose.TOWN), None)
     if town is not None:
         for o in objs:

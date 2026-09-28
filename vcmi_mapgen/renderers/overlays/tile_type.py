@@ -7,9 +7,9 @@ from typing import override
 from PIL import Image
 
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
 from vcmi_mapgen.renderers.overlays._tiles import terrain_code
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
+from vcmi_mapgen.renderers.palette import TERRAIN_RGB
 
 _ALPHA = 90  # overlay opacity; low enough to keep sprites legible
 
