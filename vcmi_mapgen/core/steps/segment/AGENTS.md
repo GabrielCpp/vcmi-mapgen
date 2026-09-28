@@ -2,5 +2,5 @@
 
 ## Map
 
-- `step.py`: `SegmentStep`, the flood-fill zone segmentation per level. It provides
-  `Segmentation`, each level's zones and zone label grid.
+- `result.py`: `Segmentation`, each level's zones and zone label grid.
+- `step.py`: `SegmentStep`, the flood-fill zone segmentation per level.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -18,17 +17,11 @@ from vcmi_mapgen.core.pipeline import (
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning import zone_plan as ZPL
-from vcmi_mapgen.core.steps.segment.step import Segmentation
-from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
+from vcmi_mapgen.core.steps.segment.result import Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
-
-
-@dataclass
-class VegetationResult:
-    """Diagnostic log lines for the CLI to print."""
-
-    log: list[str] = field(default_factory=list)
+from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 
 
 def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> None:

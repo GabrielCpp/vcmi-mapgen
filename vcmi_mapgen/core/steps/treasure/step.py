@@ -9,7 +9,7 @@ from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
-from vcmi_mapgen.core.steps.gated.step import GatedResult
+from vcmi_mapgen.core.steps.gated.result import GatedResult
 from vcmi_mapgen.core.steps.treasure.fill import LootLevel, fill_loot_zones
 
 

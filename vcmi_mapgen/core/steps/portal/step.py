@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -11,17 +10,10 @@ from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
-from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateResult
-from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
 from vcmi_mapgen.core.steps.portal import geometry as GEO
-from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-
-
-@dataclass
-class PortalResult:
-    """Diagnostic log lines for the CLI to print."""
-
-    log: list[str] = field(default_factory=list)
+from vcmi_mapgen.core.steps.portal.result import PortalResult
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
 
 def _find_start(

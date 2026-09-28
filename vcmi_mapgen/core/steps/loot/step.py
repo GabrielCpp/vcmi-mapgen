@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -12,16 +11,9 @@ from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
-from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
 from vcmi_mapgen.core.steps.loot import caches as CA
-
-
-@dataclass
-class LootResult:
-    """Pocket geometry for PocketOverlay (level -> {tile: normalized depth 0..1}). Disposable
-    analysis, not a map fact, so it is not a MapState field."""
-
-    pockets: Pockets = field(default_factory=dict)
+from vcmi_mapgen.core.steps.loot.result import LootResult
 
 
 def _precompute_pockets(

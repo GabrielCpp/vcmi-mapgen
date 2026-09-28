@@ -3,4 +3,5 @@
 ## Map
 
 - `geometry.py`: the reachability check and the portal rescue of unreachable zones.
-- `step.py`: `PortalStep` and its `PortalResult`.
+- `result.py`: `PortalResult`, which `PortalStep` publishes.
+- `step.py`: `PortalStep`.

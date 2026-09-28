@@ -14,7 +14,7 @@ from __future__ import annotations
 import collections
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -22,20 +22,9 @@ from vcmi_mapgen.core.model import Cell, MapState, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MTOPO
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 from vcmi_mapgen.kit import tiling as TL
 from vcmi_mapgen.vcmi.formats import vmap as VM
-
-
-@dataclass
-class TerrainGrids:
-    """Post-despeckle terrain-code grids + tunnel-corridor protect cells — disposable
-    analysis SegmentStep/VegetationStep/GameplayStep/BorderStep need, never a MapState fact itself:
-    MapState's terrain fields are `cells`/`surfs` (the VCMI tile-string form TerrainStep
-    derives FROM these grids), not the raw terrain-code grid (see
-    vcmi_mapgen/core/model/AGENTS.md)."""
-
-    grids: dict[int, list[list[int]]] = field(default_factory=dict)
-    tunnel_protect: frozenset[Tile] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)

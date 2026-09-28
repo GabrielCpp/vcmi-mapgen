@@ -3,4 +3,5 @@
 ## Map
 
 - `caches.py`: the guarded pocket caches and the seer-hut quests.
-- `step.py`: `LootStep` and its `LootResult`, which carries the pockets.
+- `result.py`: `LootResult`, which carries the pockets `LootStep` publishes.
+- `step.py`: `LootStep`.

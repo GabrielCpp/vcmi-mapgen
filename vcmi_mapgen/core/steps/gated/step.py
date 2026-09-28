@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -10,14 +9,8 @@ from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import build_zone_index
-from vcmi_mapgen.core.steps.gated.placer import LootAccess, place_gated_zones
-
-
-@dataclass
-class GatedResult:
-    """The access of every loot zone, per level and zone id."""
-
-    access: dict[int, dict[int, LootAccess]] = field(default_factory=dict)
+from vcmi_mapgen.core.steps.gated.placer import place_gated_zones
+from vcmi_mapgen.core.steps.gated.result import GatedResult
 
 
 def _report_loot(level: int, n_loot: int, loot_zids: set[int]) -> None:

@@ -18,7 +18,7 @@ from vcmi_mapgen.core.pipeline import (
 )
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps import ScatterStep
-from vcmi_mapgen.core.steps.segment.step import Segmentation
+from vcmi_mapgen.core.steps.segment.result import Segmentation
 
 PILE = Identity("fakePile", "gold", "fake_pile", Footprint.one(Role.VISIT))
 

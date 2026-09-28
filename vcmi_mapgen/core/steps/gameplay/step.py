@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -27,7 +27,7 @@ from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.placement.site import LevelField, SiteIndex, ZoneSite
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.steps.gameplay.draw import TOWN_SLOTS, DrawSpec, ZoneDraw, ZoneDrawer
-from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateResult, place_gate_pairs
+from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.mines import (
     BASIC_MINE_RES,
     RND_TOWN,
@@ -35,18 +35,11 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     Ledger,
     tie_dwellings,
 )
+from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
-from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
 NO_TILES: frozenset[Tile] = frozenset()
-
-
-@dataclass
-class TownsIndex:
-    """Which zones host a player town: PortalStep's, LootStep's, BorderStep's and the CLI's
-    input. A run stopped before GameplayStep reads the empty default."""
-
-    player_zids: list[tuple[int, int]] = field(default_factory=list)
 
 
 def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> None:

@@ -18,21 +18,13 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.guards import NO_TILES, Fit, rnd_monster
 from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
 from vcmi_mapgen.core.priors.gates import GATE_ANIM
+from vcmi_mapgen.core.steps.gameplay.result import GateResult
 from vcmi_mapgen.corpus.gates import load_gate_stats
 
 GUARD_P = 0.65
 GUARD_SALT = 0x6A7F
 
 type Side = tuple[ZoneSite, Fit]
-
-
-@dataclass
-class GateResult:
-    """The gate pairs with their guards and the cells they block per level. PortalStep reads
-    it with ``ctx.get(GateResult, GateResult())``: a map without subterrain has none."""
-
-    gate_objs: list[PlacedObject] = field(default_factory=list)
-    gate_blk: dict[int, frozenset[Tile]] = field(default_factory=dict)
 
 
 def _side(idx: SiteIndex) -> GateSide:

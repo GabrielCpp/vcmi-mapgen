@@ -13,7 +13,7 @@ from vcmi_mapgen.core.placement import scatter as SC
 from vcmi_mapgen.core.placement.guards import guard_zoc
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
-from vcmi_mapgen.core.steps.segment.step import Segmentation
+from vcmi_mapgen.core.steps.segment.result import Segmentation
 
 
 class ScatterStep(PipelineStep):

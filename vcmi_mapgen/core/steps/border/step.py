@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -17,15 +16,9 @@ from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps.border import border_seal as BS
 from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entrances
-from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
-from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-
-
-@dataclass
-class BorderResult:
-    """Diagnostic log lines for the CLI to print."""
-
-    log: list[str] = field(default_factory=list)
+from vcmi_mapgen.core.steps.border.result import BorderResult
+from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
 
 def _loot_tiles(zone_records: list[ZoneRecord]) -> set[Tile]:

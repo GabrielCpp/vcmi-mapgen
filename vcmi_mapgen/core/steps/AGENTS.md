@@ -72,8 +72,9 @@ duplicate guards.
 
 Never a raw string-keyed `ctx["key"] = value` entry. Instead:
 
-1. Define a `@dataclass` for the value, next to the step that produces it (e.g.
-   `GateResult` in `steps/gameplay/gate_pairs.py`, `GatedResult` in `steps/gated/step.py`).
+1. Define a `@dataclass` for the value in the producing step's `result.py` (e.g.
+   `GateResult` in `gameplay/result.py`, `GatedResult` in `gated/result.py`). A step may
+   import another step's `result` module, and nothing else from that step.
 2. The producing step's `run()` calls `self._ctx.provide(SomeResult(...))` once it has
    computed the value (`self._ctx` is whatever `inject()` was given — store it there).
 3. A later step's `inject()` reads it back:

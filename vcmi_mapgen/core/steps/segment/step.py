@@ -3,22 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
 from vcmi_mapgen.core.model import MapState, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-
-
-@dataclass(frozen=True, slots=True)
-class Segmentation:
-    """Each level's zones and its zone label grid, read ``[y][x]``, -1 on a barrier tile."""
-
-    zones: Mapping[int, Mapping[int, Zone]]
-    zone_label: Mapping[int, ZoneLabel]
+from vcmi_mapgen.core.steps.segment.result import Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
 
 def _warn_sliver_zones(
