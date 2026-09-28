@@ -21,7 +21,7 @@ from vcmi_mapgen.steps import (
     VegetationStep,
 )
 from vcmi_mapgen.steps.placement import guard_spaced, guard_zoc
-from vcmi_mapgen.validate import terrain_violations
+from vcmi_mapgen.validate import footprint_violations
 
 SIZE = 48
 SEED = 7
@@ -137,7 +137,12 @@ def test_placement_steps_change_objs(
 
 
 def test_no_object_stands_on_a_disallowed_terrain(pipeline_run: PipelineRun) -> None:
-    violations = list(terrain_violations(pipeline_run.ontology, pipeline_run.state))
+    violations = [
+        v
+        for o in pipeline_run.state.objs
+        if (grid := pipeline_run.state.cells.get(o.level)) is not None
+        for v in footprint_violations(pipeline_run.ontology, grid, o)
+    ]
     assert violations == []
 
 

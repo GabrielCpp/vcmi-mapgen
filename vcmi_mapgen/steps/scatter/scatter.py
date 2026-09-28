@@ -17,7 +17,7 @@ from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.placement import PlaceSpec, PlaceTarget, place_one, web_dist
 
 CAPS = {"RESOURCE_PILE": 16, "REWARD_PICKUP": 8}  # base floors; caps scale (scatter only --
-# pocket guards/caches are deterministic, see place_pickups)
+# pocket guards/caches are deterministic, see place_pocket_caches)
 SCATTER_ART_SHARE = 0.15  # unguarded scatter: mostly LOOT (chests/campfires); the
 # tiered random artifacts live behind cache guards instead
 

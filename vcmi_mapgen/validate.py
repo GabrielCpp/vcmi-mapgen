@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.kit.objects import mask_cells
-from vcmi_mapgen.models import Cell, MapState, PlacedObject, Tile
+from vcmi_mapgen.models import Cell, PlacedObject, Tile
 from vcmi_mapgen.ontology import TERRAIN_NAMES, Ontology
 
 
@@ -26,13 +26,6 @@ def footprint_violations(
         code = grid[ty][tx].t
         if not ontology.allowed_on(obj.animation, code):
             yield TerrainViolation(obj, (tx, ty), TERRAIN_NAMES.get(code, str(code)))
-
-
-def terrain_violations(ontology: Ontology, state: MapState) -> Iterator[TerrainViolation]:
-    for obj in state.objs:
-        grid = state.cells.get(obj.level)
-        if grid is not None:
-            yield from footprint_violations(ontology, grid, obj)
 
 
 @final

@@ -279,11 +279,3 @@ class MapState:
         if problems:
             raise PlacementError("; ".join(problems))
         self.objs = objs
-
-    def set_objs(self, objs: list[PlacedObject], rules: PlacementRules) -> None:
-        index = index_of(objs)
-        for obj in objs:
-            problems = rules.check(obj, self.cells) + covering_problems(obj, index)
-            if problems:
-                raise PlacementError("; ".join(problems))
-        self.objs = objs

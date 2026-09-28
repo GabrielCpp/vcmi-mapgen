@@ -80,7 +80,7 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 | Faithful data pipeline | `h3m.py`, `vcmi_ids.py`, `h3m2vmap.py`, `extract_faithful.py` → `maps_json/` |
 | Segment | `terrain_segment.py` |
 | Record / replay / stretch | `zone_engine.py` (the CLI), `obj_resolve.py`, `ontology.py` |
-| Emit | `faithful.py`, `vmapwrite.py`, `traverse.py` |
+| Emit | `faithful.py`, `vmapwrite.py` |
 | Render & inspect | `render_editor.py`, `render.py`, `render_editor_test.py` |
 | Terrain generation | `markov_terrain.py` (Markov chain learned from the corpus) |
 | Corpus statistics | `mine_stats.py`, run as `cli mine-stats`, writes `data/pp/*.json` |

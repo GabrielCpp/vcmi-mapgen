@@ -56,13 +56,6 @@ class LodIndex:
         except zlib.error:
             return raw
 
-    def has(self, name: str) -> bool:
-        k = name.lower()
-        return k in self._files or (k + ".def") in self._files
-
-    def def_count(self) -> int:
-        return sum(1 for k in self._files if k.endswith(".def"))
-
 
 @cache
 def lod() -> LodIndex:

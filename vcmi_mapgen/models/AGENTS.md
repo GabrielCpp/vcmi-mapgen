@@ -8,12 +8,11 @@ it belongs somewhere else.
 The one exception is `MapState`, which is the map's grid API: `MapState(size=...)`,
 `at(level, x, y)` (a `TileView` with terrain, zone, covering objects and their roles, or
 the blocking `BORDER` sentinel outside the map), `taken_tiles(level)`, `conflicts(obj)`,
-`place`, `add_objs` and `set_objs`. Those methods answer questions about tiles and objects
-that are already on the map. They never search or score. Every placement step writes its
-objects through `add_objs(new, rules)`, which refuses an object that covers another object's
-visit, entrance or approach tile, or that `rules` rejects. No placement step calls
-`set_objs`. A guard may stand on an approach tile, and any overlay may sit over a
-resource pile or reward pickup. A placer never relies on that refusal. It asks a
+`place` and `add_objs`. Those methods answer questions about tiles and objects that are
+already on the map. They never search or score. Every placement step writes its objects
+through `add_objs(new, rules)`, which refuses an object that covers another object's
+visit, entrance or approach tile, or that `rules` rejects. A guard may stand on an
+approach tile, and any overlay may sit over a resource pile or reward pickup. A placer never relies on that refusal. It asks a
 `CoverIndex` before each placement and skips the spot.
 
 ## Map

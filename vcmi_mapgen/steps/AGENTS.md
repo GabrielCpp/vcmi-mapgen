@@ -56,8 +56,7 @@ of step, it is a sign one of two things happened:
 ## Every placement step is additive
 
 A step appends its own objects with `map_state.add_objs(new, rules)`. It never removes,
-moves or replaces an object an earlier step placed, so `map_state.set_objs` has no caller
-among the placement steps. Plan into a scratch list and commit only what fits: pre-check
+moves or replaces an object an earlier step placed. Plan into a scratch list and commit only what fits: pre-check
 each object with `CoverIndex.try_add` and the terrain gate, and try the next candidate
 when one is refused. Only `VegetationStep` may raise, when it walls off a pocket.
 

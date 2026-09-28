@@ -299,13 +299,6 @@ def read_real(name: str) -> tuple[list[list[str]], list[PlacedObject]]:
 
 
 # --------------------------------------------------------------------------- compositing
-def paint_sort(objs: Sequence[PlacedObject]) -> list[PlacedObject]:
-    """Canonical paint order so overlapping sprites stack identically across renders.
-    ``render_map`` re-sorts stably by (l!=0, y, x), so this only fixes ties."""
-    return sorted(
-        objs,
-        key=lambda o: (o.y, o.x, o.type or "", o.subtype or "", o.animation),
-    )
 
 
 def render_map(

@@ -12,7 +12,6 @@ module here has its own `__main__`.
 - `objects.py`: the corpus catalog: map names, `load_faithful`, `corpus_maps` and footprint mask expansion.
 - `paths.py`: where the VCMI data directory and the repository root are on this machine.
 - `pp_cache.py`: how a `data/pp/` statistics file is read and written, and the error when one is missing.
-- `reachability.py`: the tile-level check that a hero can walk from the start town to every zone.
 - `render_palette.py`: the terrain colours the renderers use.
 - `segmentation.py`: zone segmentation composed with each tile's position inside its zone.
 - `terrain_lookup.py`: terrain-code names and the terrain sets shared by the CLI and the steps.

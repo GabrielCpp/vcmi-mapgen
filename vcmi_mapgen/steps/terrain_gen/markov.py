@@ -82,33 +82,6 @@ def sample(counter: collections.Counter[int], rnd: random.Random) -> int:
     return next(iter(counter))
 
 
-def generate(
-    model: MarkovModel, W: int, H: int, rnd: random.Random, thresh: int = 12
-) -> list[list[int]]:
-    g = [[0] * W for _ in range(H)]
-    for y in range(H):
-        for x in range(W):
-            lf = g[y][x - 1] if x > 0 else None
-            u = g[y - 1][x] if y > 0 else None
-            ul = g[y - 1][x - 1] if (x > 0 and y > 0) else None
-            dist: collections.Counter[int]
-            if (
-                lf is not None
-                and u is not None
-                and ul is not None
-                and sum(model.full[(lf, u, ul)].values()) >= thresh
-            ):
-                dist = model.full[(lf, u, ul)]
-            elif lf is not None and u is not None and sum(model.pair[(lf, u)].values()) >= thresh:
-                dist = model.pair[(lf, u)]
-            elif lf is not None and sum(model.one[(lf,)].values()) >= 1:
-                dist = model.one[(lf,)]
-            else:
-                dist = model.marg
-            g[y][x] = sample(dist, rnd)
-    return g
-
-
 def learn4(level_index: int, maps: Iterable[OR.FaithfulMap]) -> MarkovModel4:
     """P(center | left,up,right,down) for isotropic Gibbs, with back-off tables."""
     full: collections.defaultdict[tuple[int, int, int, int], collections.Counter[int]] = (
@@ -209,54 +182,3 @@ def load_tables(level: int) -> MarkovTables:
         vert=_table_from_json(raw.get("vert")),
     )
     return MarkovTables(chain=chain, chain4=chain4)
-
-
-@dataclass(frozen=True, slots=True)
-class Gibbs4:
-    M4: MarkovModel4
-    marg: collections.Counter[int]
-
-
-def gibbs(
-    grid: list[list[int]],
-    model: Gibbs4,
-    rnd: random.Random,
-    sweeps: int = 5,
-    thresh: int = 10,
-) -> list[list[int]]:
-    M4 = model.M4
-    marg = model.marg
-    H = len(grid)
-    W = len(grid[0])
-    for _ in range(sweeps):
-        for y in range(1, H - 1):
-            for x in range(1, W - 1):
-                lf = grid[y][x - 1]
-                u = grid[y - 1][x]
-                r = grid[y][x + 1]
-                d = grid[y + 1][x]
-                if sum(M4.full[(lf, u, r, d)].values()) >= thresh:
-                    dist = M4.full[(lf, u, r, d)]
-                else:
-                    dist = collections.Counter[int]()
-                    dist.update(M4.horiz[(lf, r)])
-                    dist.update(M4.vert[(u, d)])
-                    if not dist:
-                        dist = marg
-                grid[y][x] = sample(dist, rnd)
-    return grid
-
-
-if __name__ == "__main__":
-    rnd = random.Random(3)
-    tables = load_tables(0)
-    M = tables.chain
-    M4 = tables.chain4
-    marginal = dict(M.marg.most_common())
-    print(f"  contexts: full={len(M.full)} pair={len(M.pair)}  marginal terrains={marginal}")
-    W = H = 72
-    gen = generate(M, W, H, rnd)  # raster init
-    geng = [row[:] for row in gen]
-    _ = gibbs(geng, Gibbs4(M4, M.marg), rnd, sweeps=6)  # isotropic smoothing
-    hist = collections.Counter(t for row in geng for t in row)
-    print("  post-Gibbs terrain histogram:", dict(hist.most_common()))

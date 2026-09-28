@@ -2,9 +2,7 @@
 
 from dataclasses import replace
 
-from vcmi_mapgen.kit import reachability as TR
-from vcmi_mapgen.kit.objects import FaithfulMap
-from vcmi_mapgen.models import Cell, Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.models import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.steps.portal import geometry as GEO
 
 GRASS, ROCK = 2, 9
@@ -106,16 +104,9 @@ def test_portal_reward_zone() -> None:
     n2, objs2, _ = run()
     assert n2 == n and objs2 == objs
 
-    fm = FaithfulMap(
-        name="synthetic",
-        width=size,
-        height=size,
-        two_level=False,
-        terrain=[[[Cell(t=grid[y][x]) for x in range(size)] for y in range(size)]],
-        objects=objs,
+    assert GEO.unreachable_targets(size, grid, objs, [(5, 6), (nx, ny)]) == [], (
+        "the reachable-side portal end must be walkable from the start"
     )
-    rep = TR.traverse(fm)
-    assert rep.unreachable_mines == [], "the enclosed mine must be reachable via portal"
 
 
 def test_portal_reward_zone_never_places_an_artifact() -> None:

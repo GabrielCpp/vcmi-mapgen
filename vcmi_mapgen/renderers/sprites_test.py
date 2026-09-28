@@ -64,12 +64,6 @@ def _nonempty(img: Image.Image) -> bool:
 
 
 # --------------------------------------------------------------------------- tests
-def test_lod_index_loaded() -> None:
-    """The LOD index should expose the thousands of DEFs the renderer relies on."""
-    n_defs = lod().def_count()
-    assert n_defs > 1000, f"only {n_defs} DEFs indexed — LOD load looks broken"
-
-
 @pytest.mark.parametrize("fmt,defname", sorted(FORMAT_REPRESENTATIVES.items()))
 def test_all_four_def_formats_decode(fmt: int, defname: str) -> None:
     """Each of the four H3 sprite formats decodes to a frame of the header's
@@ -155,7 +149,7 @@ def test_render_is_deterministic() -> None:
         PlacedObject(4, 4, 0, "", "", None, "AVLpntr7", ()),
         PlacedObject(2, 5, 0, "", "", None, "AVLman30", ()),
     ]
-    a = RE.render_map(surf, RE.paint_sort(objs))
-    b = RE.render_map(surf, RE.paint_sort(objs))
+    a = RE.render_map(surf, objs)
+    b = RE.render_map(surf, objs)
     assert a.size == b.size
     assert a.tobytes() == b.tobytes(), "renderer is not deterministic"

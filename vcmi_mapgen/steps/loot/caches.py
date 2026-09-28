@@ -21,7 +21,6 @@ from vcmi_mapgen.models import (
     Mask,
     PlacedObject,
     Tile,
-    Zone,
     ZoneRecord,
 )
 from vcmi_mapgen.steps.gameplay.mines import TerrainStats, load_gameplay
@@ -36,7 +35,6 @@ from vcmi_mapgen.steps.placement import (
     guard_spaced,
     place_one,
 )
-from vcmi_mapgen.steps.scatter.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.steps.treasure.fill import (
     FILL_EXCL_ANIMS,
     LOOT_CHEST_TYPES,
@@ -941,45 +939,3 @@ def _place_hut(
     )
     spec = PlaceSpec("QUEST_GATE", None, ident=hut_ident, options=options)
     return any(place_one(target, spec, t[0], t[1]) for t in hut_cands)
-
-
-@dataclass(frozen=True, slots=True)
-class PickupZone:
-    ts: AbstractSet[Tile]
-    zones: Mapping[int, Zone]
-    zid: int
-    terrain: str
-    open_set: set[Tile]
-    prot: Collection[Tile]
-
-
-def place_pickups(
-    zone: PickupZone,
-    seed: int = 1,
-    bounds: tuple[int, int] | None = None,
-) -> list[PlacedObject]:
-    """Single-zone convenience wrapper (scatter + pocket caches over just this one zone's
-    own reach) — used by tests and any other single-zone caller. Production multi-zone maps
-    must NOT use this: call `place_scatter` per zone and `place_pocket_caches` ONCE globally
-    instead (see `pp_map.build`), so pocket detection runs against the whole map's reachable
-    field rather than one zone's alone."""
-    cover = CoverIndex()
-    sobjs, sused, reach = place_scatter(
-        ScatterZone(zone.ts, zone.zones, zone.zid, zone.terrain, zone.open_set, zone.prot),
-        ScatterConfig(seed=seed, bounds=bounds, cover=cover),
-    )
-    zone_records = [
-        ZoneRecord(
-            zid=zone.zid,
-            terrain=zone.terrain,
-            ts=frozenset(zone.ts),
-            open_set=zone.open_set,
-            passable=set(zone.open_set),
-            reach=reach,
-            used=sused,
-        )
-    ]
-    cobjs, _n, _depths = place_pocket_caches(
-        zone_records, seed=seed, bounds=bounds, context=PocketContext(existing_objs=sobjs)
-    )
-    return sobjs + cobjs

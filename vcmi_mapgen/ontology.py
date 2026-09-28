@@ -497,7 +497,6 @@ GATE_COLORS = {
     6: "white",
     7: "black",
 }
-TREE_CACHE = os.path.join(os.path.dirname(_HERE), "out", "ontology_tree.json")
 
 # === BEGIN GENERATED TAXONOMY (regenerate with `python -m vcmi_mapgen.ontology --regen`) ===
 TAXONOMY: Taxonomy = {
@@ -4108,9 +4107,6 @@ def regenerate() -> Taxonomy:
     both the TAXONOMY and LEAF_META literals in this file."""
     tree = _derive_taxonomy()
     meta = _derive_leaf_meta()
-    os.makedirs(os.path.dirname(TREE_CACHE), exist_ok=True)
-    with open(TREE_CACHE, "w") as fh:
-        json.dump(tree, fh, indent=1, sort_keys=True)
     path = os.path.join(_HERE, "ontology.py")
     with open(path) as fh:
         src = fh.read()

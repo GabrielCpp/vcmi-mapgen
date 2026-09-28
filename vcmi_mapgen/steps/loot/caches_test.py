@@ -1,4 +1,4 @@
-"""Reliability tests for steps.loot.caches (pocket caches, seer-hut quests, place_pickups)."""
+"""Reliability tests for steps.loot.caches (pocket caches, seer-hut quests, scatter)."""
 
 import os
 import re
@@ -7,14 +7,37 @@ import pytest
 
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import find_pockets
-from vcmi_mapgen.models import Identity, PlacedObject, Tile, Zone, ZoneRecord
+from vcmi_mapgen.models import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.steps.gameplay import mines as PG
 from vcmi_mapgen.steps.gameplay.water import legal_cells
 from vcmi_mapgen.steps.loot import caches as CA
+from vcmi_mapgen.steps.scatter.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.steps.vegetation import stats as PS
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
+
+
+def _pickups(
+    ts: set[Tile], zones: dict[int, Zone], open_set: set[Tile], prot: set[Tile], seed: int
+) -> list[PlacedObject]:
+    sobjs, sused, reach = place_scatter(
+        ScatterZone(ts, zones, 1, "grass", open_set, prot),
+        ScatterConfig(seed=seed, cover=CoverIndex()),
+    )
+    record = ZoneRecord(
+        zid=1,
+        terrain="grass",
+        ts=frozenset(ts),
+        open_set=open_set,
+        passable=set(open_set),
+        reach=reach,
+        used=sused,
+    )
+    cobjs, _n, _depths = CA.place_pocket_caches(
+        [record], seed=seed, context=CA.PocketContext(existing_objs=sobjs)
+    )
+    return sobjs + cobjs
 
 
 @needs_stats
@@ -27,8 +50,8 @@ def test_pickup_layer_legal_and_deterministic() -> None:
     # synthetic open field with a sealed-off pocket-ish structure: a web cross + nooks
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     open_set = set(ts)
-    o1 = CA.place_pickups(CA.PickupZone(ts, zones, 1, "grass", open_set, prot), seed=6)
-    o2 = CA.place_pickups(CA.PickupZone(ts, zones, 1, "grass", open_set, prot), seed=6)
+    o1 = _pickups(ts, zones, open_set, prot, seed=6)
+    o2 = _pickups(ts, zones, open_set, prot, seed=6)
     assert o1 == o2, "pickup layer must be seed-deterministic"
     assert o1, "a 720-tile grass zone should hold pickups"
 
@@ -157,7 +180,7 @@ def test_scatter_places_resource_piles() -> None:
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     piles: list[PlacedObject] = []
     for seed in range(1, 10):
-        objs = CA.place_pickups(CA.PickupZone(ts, zones, 1, "grass", set(ts), prot), seed=seed)
+        objs = _pickups(ts, zones, set(ts), prot, seed=seed)
         piles += [o for o in objs if o.purpose == "RESOURCE_PILE"]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"

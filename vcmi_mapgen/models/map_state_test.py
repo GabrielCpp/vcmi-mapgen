@@ -46,7 +46,7 @@ def test_overlay_over_a_visit_tile_is_refused() -> None:
     canopy = _obj(3, 3, ("VV", "VV"))
     state = MapState(size=5)
     with pytest.raises(PlacementError):
-        state.set_objs([mine, canopy], _NoRules())
+        state.add_objs([mine, canopy], _NoRules())
 
 
 def test_overlay_over_an_approach_tile_is_refused() -> None:
@@ -54,14 +54,14 @@ def test_overlay_over_an_approach_tile_is_refused() -> None:
     canopy = _obj(2, 3, ("V",))
     state = MapState(size=5)
     with pytest.raises(PlacementError):
-        state.set_objs([mine, canopy], _NoRules())
+        state.add_objs([mine, canopy], _NoRules())
 
 
 def test_guard_may_stand_on_an_approach_tile() -> None:
     mine = _obj(2, 2, ("X",), purpose="MINE")
     guard = _obj(2, 3, ("B",), purpose="GUARD")
     state = MapState(size=5)
-    state.set_objs([mine, guard], _NoRules())
+    state.add_objs([mine, guard], _NoRules())
     assert Role.APPROACH in {c.role for c in state.covers_at(0, 2, 3)}
 
 
