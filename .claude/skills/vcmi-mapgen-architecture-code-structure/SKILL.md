@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-architecture-code-structure
-description: "The language-neutral rules for where code lives *inside* a layer — when a pile of functions becomes an object, when a module becomes two, when a forwarding wrapper should collapse, when a value crossing a boundary needs a name, where configuration and side effects are allowed to appear, when a branch chain is a table, when a loop does too many jobs, and which assumptions must raise instead of defaulting. Every rule carries a mechanically detectable trigger, so a violation is a finding rather than a matter of taste. Load when adding a module, growing a parameter list, choosing between a function and a class, finding one function that only forwards to another, writing an if/elif chain on a kind, nesting a loop, adding a boolean parameter, reading a value another stage fills, or reviewing structure; hexagonal-architecture governs the boundaries *between* layers, and the stack architecture skill (go-architecture, python-architecture, flutter-architecture, typescript-architecture) supplies the mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
+description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.ts,**/*.tsx,**/*.py."
 metadata:
   generated_by: farrier
   source: library/skills/architecture/code-structure/SKILL.md
@@ -60,7 +60,7 @@ reason the rule exists. Each carries a quarter of the rule set:
   designing a checkpoint, a wire format, or a reader for another tool's output.
 - **[references/config-and-effects.md](references/config-and-effects.md)** — rules 4.1–4.3. Where
   configuration may be read and where a side effect may live. Read it when adding a setting, a
-  default parameter, a cache write, or a `sleep`.
+  file path, a default parameter, a cache write, or a `sleep`.
 
 - **[references/control-flow.md](references/control-flow.md)**: rules 6.1 to 6.5. When a branch
   chain is a table, and when a loop is doing more than one job. Read it when you write an `elif` on
@@ -72,8 +72,9 @@ reason the rule exists. Each carries a quarter of the rule set:
 
 Rules 2.5 to 2.10 in modules.md cover where shared code lives: below every feature that uses it,
 in a module whose name predicts it, in a directory of its kind, with one owner per decoding,
-constant and domain fact, and no module that only tests import. Rules 1.5 and 1.6 in objects.md
-keep derived analysis off a core model and keep one model per entity.
+constant and domain fact, and no module that only tests import. Rules 1.5 to 1.8 in objects.md
+keep derived analysis off a core model, keep one model per entity, keep an index read-only after it
+is built, and keep a function's parameters to the data it reads.
 
 Rule 5 stays here, because it is the one to carry without looking anything up.
 
@@ -113,6 +114,8 @@ but this is the exception that is real.
 | [1.4](references/objects.md) | a class with no fields | make it a module |
 | [1.5](references/objects.md) | a model field one stage derives from the model's other fields | its own value, passed explicitly |
 | [1.6](references/objects.md) | a second representation rebuilding a query the main model answers | convert at the edge |
+| [1.7](references/objects.md) | a later stage writing into an index it was handed, or snapshotting it to undo | freeze it, the owner takes the writes |
+| [1.8](references/objects.md) | a container parameter whose body reads one or two of its fields | pass the fields |
 | [2.1](references/modules.md) | a module docstring that needs bullets | one module per bullet |
 | [2.2](references/modules.md) | wiring and >1 command body in one file | one module per command |
 | [2.3](references/modules.md) | one caller only forwards to one private helper | inline the helper |
@@ -126,7 +129,7 @@ but this is the exception that is real.
 | [3.1](references/boundaries.md) | literal in, key-lookup-with-default out | one model owns both directions |
 | [3.2](references/boundaries.md) | 3+-tuple, documented map keys, mutated argument | a named record |
 | [3.3](references/boundaries.md) | a strict model mirroring a foreign schema | tolerant read, owned type |
-| [4.1](references/config-and-effects.md) | config read at module scope or below the edge | inject immutable settings |
+| [4.1](references/config-and-effects.md) | config read, or an environment fact written, below the edge | inject immutable settings |
 | [4.2](references/config-and-effects.md) | a decision function that writes or sleeps | split; inject the clock |
 | [4.3](references/config-and-effects.md) | an effect in a function named for something else | move it to the invariant's owner |
 | [5](#5-the-question-that-catches-most-of-the-above) | a test patching a private name | add the injection point |

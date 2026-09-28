@@ -62,6 +62,23 @@ class LootStep(PipelineStep):
 `grep -n "provide(" vcmi_mapgen/steps/*/step.py` lists every value currently published.
 Never key the registry by string. There is no `ctx["name"]` channel.
 
+## `run` reads, calls and writes
+
+`run` is the step's shell. It reads what it needs from `map_state` and from the values
+`inject` pulled out of the registry. It calls functions that decide, and it writes their
+results back. The decisions live in functions in the step's package. Those functions take
+plain values and return plain values, so a test calls them with a few literal tiles and no
+pipeline.
+
+A loop inside `run` that chooses tiles, zones or objects is a function that has not been
+moved out yet. Move it to the step's package before adding to it.
+
+The `code-structure` skill's rules 1.7 and 1.8 cover the values those functions take. A
+value a step receives from the registry is read, not written. A function takes the fields
+it reads, not the whole workspace or zone map. `ZoneRecord.used` and `PlacementWorkspace`
+break the first rule today, because later steps write into them. Do not add another field
+of that kind.
+
 ## `Pipeline` sequences, it does not resolve
 
 `Pipeline(ontology, size)` creates the `MapState` and one `ProviderRegistry`. `add_step`

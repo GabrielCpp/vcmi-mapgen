@@ -147,3 +147,72 @@ every decision the main model makes, such as which footprint cells block, so a f
 reaches the other.
 
 **Counter-case.** The reader or writer for that representation. Converting is its whole job.
+
+## 1.7 An index answers questions and never changes after it is built
+
+**Statement.** An object built once so that later code can ask it questions is a value. It changes
+in its constructor and nowhere else. Its methods answer questions about the data it holds. A
+computation that brings its own inputs or its own policy is a function that takes what the index
+returns.
+
+**Trigger.** Any of these shapes fires the rule:
+
+- A stage builds an object and hands it to later stages, and a later stage writes one of its fields
+  or a container inside it, for example `record.used.add(t)`.
+- Code snapshots such an object and restores it to undo a failed attempt.
+- A method on the index takes a tuning parameter, a threshold or a random generator.
+- A method fills a cache on its first call.
+
+**Fix.** Freeze the index, and do all its work in its constructor or in the function that builds
+it. Move the part that changes to the one object that owns the invariant it tracks, as rule 4.3
+says, and give that owner the undo. Move a method that needs outside inputs out to a function.
+
+```text
+# ✗ The index is shared, and later stages write claims into its records.
+index = build_zone_index(workspace)
+index.records[z].used.add(t)                   # one stage claims a tile
+snap = [set(r.used) for r in index.records]    # another stage rolls back by hand
+
+# ✓ The index only answers. Claims live with the object that refuses overlaps.
+index = ZoneIndex.build(labels)
+index.fronts(z)
+mark = cover.mark()
+cover.claim(cells)
+cover.rollback(mark)
+```
+
+A shared index that changes makes call order part of every reader's input. A stage that reads it
+sees whatever each earlier stage wrote, and nothing in its signature says so. The hand-written
+snapshot is the symptom. The code had to write its own transaction because no owner offered one.
+
+**Counter-case.** An object whose job is to keep a changing invariant, such as a cover index that
+refuses overlapping objects. That is state with invariants under rule 1.4, and it offers the writes
+itself. The trigger is a write from outside into an object that exists to be read.
+
+## 1.8 A function takes what it reads
+
+**Statement.** A function's parameters name the data it uses. It does not take a container in order
+to reach one or two fields inside it.
+
+**Trigger.** A parameter typed as a stage-wide container, such as a workspace, a registry, an index
+or a statistics record, where the function body reads at most two of its fields and passes it
+nowhere else.
+
+**Fix.** Pass those fields. The caller does the lookup.
+
+```text
+# ✗ Takes the whole zone map and an id, and uses them only to find one zone's fronts.
+gate_bands(tiles, zones, zone_id, open_frac)
+
+# ✓ The caller asks the index. A test calls this with a handful of tiles.
+gate_bands(tiles, index.fronts(zone_id), open_frac)
+```
+
+A test of the wide version must build the whole container to exercise one field of it. The
+signature hides which data the function depends on. Every change to the container becomes a
+possible change to the function, so a reviewer has to read the body to rule it out.
+
+**Counter-case.** A function whose job is the whole object, such as a renderer or a serializer. A
+method of the container itself. Rule 1.1 also wins when several functions take the same fields,
+because those fields are then an object's state and the object is the right parameter. The trigger
+is a large container used thinly, not a small one used fully.

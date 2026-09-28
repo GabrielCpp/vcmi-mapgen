@@ -64,10 +64,13 @@ naming handlers, go in `.agent-checks.toml`:
 roots = ["myapp.plugins.loader", "myapp.handlers"]
 ```
 
+The first command prints the report. `--root` adds a root for one run. `--check` exits 1
+when anything is dead.
+
 ```bash
-python3 <skill>/scripts/py_unreachable.py            # report
-python3 <skill>/scripts/py_unreachable.py --root x.y # add a root for this run
-python3 <skill>/scripts/py_unreachable.py --check    # exit 1 when anything is dead
+python3 <skill>/scripts/py_unreachable.py
+python3 <skill>/scripts/py_unreachable.py --root x.y
+python3 <skill>/scripts/py_unreachable.py --check
 ```
 
 The report splits unreachable modules into "imported by tests only" and "imported by

@@ -2,7 +2,7 @@
   "status": "draft",
   "oracle": "make golden",
   "check": "make check",
-  "touches_note": "touches name paths as they are before the plan; a path moved by an earlier slice lives at its fate's 'to'.",
+  "touches_note": "touches name paths as they are before the plan; a path moved by an earlier slice lives at its fate's 'to', and s36-core moves every file under models/ and steps/ to core/.",
   "fates": {
     "vcmi_mapgen/__init__.py": {
       "fate": "keep"
@@ -10,9 +10,9 @@
     "vcmi_mapgen/cli.py": {
       "fate": "split",
       "to": [
+        "vcmi_mapgen/cli/__main__.py",
         "vcmi_mapgen/cli/generate.py",
-        "vcmi_mapgen/cli/steps.py",
-        "vcmi_mapgen/cli/__main__.py"
+        "vcmi_mapgen/cli/steps.py"
       ],
       "slice": "s03-cli"
     },
@@ -36,7 +36,7 @@
     },
     "vcmi_mapgen/h3m.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/h3m.py",
+      "to": "vcmi_mapgen/vcmi/formats/h3m.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/__init__.py": {
@@ -45,29 +45,30 @@
     },
     "vcmi_mapgen/kit/geometry.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/grid/geometry.py",
+      "to": "vcmi_mapgen/core/grid/geometry.py",
       "slice": "s04-grid"
     },
     "vcmi_mapgen/kit/json_value.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/json_value.py",
+      "to": "vcmi_mapgen/vcmi/formats/json_value.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/lod.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/lod.py",
+      "to": "vcmi_mapgen/vcmi/formats/lod.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/noise.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/grid/noise.py",
+      "to": "vcmi_mapgen/core/grid/noise.py",
       "slice": "s04-grid"
     },
     "vcmi_mapgen/kit/objects.py": {
       "fate": "split",
       "to": [
         "vcmi_mapgen/corpus/maps.py",
-        "vcmi_mapgen/placement/footprint.py"
+        "vcmi_mapgen/vcmi/load.py",
+        "vcmi_mapgen/core/placement/footprint.py"
       ],
       "slice": "s08-corpus"
     },
@@ -75,14 +76,18 @@
       "fate": "split",
       "to": [
         "vcmi_mapgen/corpus/maps_test.py",
-        "vcmi_mapgen/placement/footprint_test.py"
+        "vcmi_mapgen/vcmi/load_test.py",
+        "vcmi_mapgen/core/placement/footprint_test.py"
       ],
       "slice": "s08-corpus"
     },
     "vcmi_mapgen/kit/paths.py": {
-      "fate": "move",
-      "to": "vcmi_mapgen/formats/paths.py",
-      "slice": "s02-formats"
+      "fate": "split",
+      "to": [
+        "vcmi_mapgen/vcmi/install.py",
+        "vcmi_mapgen/cli/settings.py"
+      ],
+      "slice": "s32-settings"
     },
     "vcmi_mapgen/kit/reachability.py": {
       "fate": "delete",
@@ -95,161 +100,179 @@
     },
     "vcmi_mapgen/kit/segmentation.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/grid/segment.py",
+      "to": "vcmi_mapgen/core/grid/segment.py",
       "slice": "s04-grid"
     },
     "vcmi_mapgen/kit/terrain_lookup.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/models/terrain.py",
-        "vcmi_mapgen/ontology/decor.py"
+        "vcmi_mapgen/core/model/terrain.py",
+        "vcmi_mapgen/vcmi/terrain.py",
+        "vcmi_mapgen/vcmi/catalog/decor.py"
       ],
       "slice": "s06-terrain"
     },
     "vcmi_mapgen/kit/terrain_segment.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/grid/segment.py",
+      "to": "vcmi_mapgen/core/grid/segment.py",
       "slice": "s04-grid"
     },
     "vcmi_mapgen/kit/tiling.py": {
-      "fate": "move",
-      "to": "vcmi_mapgen/steps/terrain_gen/tiling.py",
-      "slice": "s17-terrain-gen"
+      "fate": "split",
+      "to": [
+        "vcmi_mapgen/vcmi/tiles.py",
+        "vcmi_mapgen/corpus/mine/tiler.py",
+        "vcmi_mapgen/corpus/tiler.py"
+      ],
+      "slice": "s31-tile-art"
     },
     "vcmi_mapgen/kit/tiling_test.py": {
-      "fate": "move",
-      "to": "vcmi_mapgen/steps/terrain_gen/tiling_test.py",
-      "slice": "s17-terrain-gen"
+      "fate": "split",
+      "to": [
+        "vcmi_mapgen/vcmi/tiles_test.py",
+        "vcmi_mapgen/corpus/mine/tiler_test.py",
+        "vcmi_mapgen/corpus/tiler_test.py"
+      ],
+      "slice": "s31-tile-art"
     },
     "vcmi_mapgen/kit/topology.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/grid/pockets.py",
-        "vcmi_mapgen/grid/paths.py",
-        "vcmi_mapgen/planning/entrances.py"
+        "vcmi_mapgen/core/grid/pockets.py",
+        "vcmi_mapgen/core/grid/paths.py",
+        "vcmi_mapgen/core/planning/entrances.py"
       ],
       "slice": "s10-planning"
     },
     "vcmi_mapgen/kit/topology_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/grid/pockets_test.py",
-        "vcmi_mapgen/grid/paths_test.py",
-        "vcmi_mapgen/planning/entrances_test.py"
+        "vcmi_mapgen/core/grid/pockets_test.py",
+        "vcmi_mapgen/core/grid/paths_test.py",
+        "vcmi_mapgen/core/planning/entrances_test.py"
       ],
       "slice": "s10-planning"
     },
     "vcmi_mapgen/kit/vcmi_config.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vcmi_config.py",
-      "slice": "s02-formats"
+      "to": "vcmi_mapgen/vcmi/config.py",
+      "slice": "s32-settings"
     },
     "vcmi_mapgen/kit/vcmi_config_test.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vcmi_config_test.py",
-      "slice": "s02-formats"
+      "to": "vcmi_mapgen/vcmi/vcmi_config_test.py",
+      "slice": "s32-settings"
     },
     "vcmi_mapgen/kit/vmap/__init__.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/__init__.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/__init__.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/document.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/document.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/document.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/mask.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/mask.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/mask.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/reader.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/reader.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/reader.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/reader_test.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/reader_test.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/reader_test.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/terrain.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/terrain.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/terrain.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/terrain_test.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/terrain_test.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/terrain_test.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/writer.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/writer.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/writer.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/kit/vmap/writer_test.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/formats/vmap/writer_test.py",
+      "to": "vcmi_mapgen/vcmi/formats/vmap/writer_test.py",
       "slice": "s02-formats"
     },
     "vcmi_mapgen/models/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/model/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/models/map_state.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/model/map_state.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/models/map_state_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/model/map_state_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/models/objects.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/model/objects.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/models/pockets.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/grid/pockets.py",
+      "to": "vcmi_mapgen/core/grid/pockets.py",
       "slice": "s10-planning"
     },
     "vcmi_mapgen/models/zone_record.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/planning/zone_index.py",
+      "to": "vcmi_mapgen/core/planning/zone_index.py",
       "slice": "s10-planning"
     },
     "vcmi_mapgen/ontology.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/ontology/__init__.py",
-        "vcmi_mapgen/ontology/tables.py",
-        "vcmi_mapgen/ontology/objects.py",
-        "vcmi_mapgen/ontology/decor.py",
-        "vcmi_mapgen/ontology/regen.py",
+        "vcmi_mapgen/vcmi/catalog/tables.py",
+        "vcmi_mapgen/vcmi/catalog/objects.py",
+        "vcmi_mapgen/vcmi/catalog/decor.py",
+        "vcmi_mapgen/vcmi/catalog/regen.py",
         "data/ontology/taxonomy.json",
         "data/ontology/leaf_meta.json"
       ],
-      "slice": "s05-ontology"
+      "slice": "s05-catalog-tables"
     },
     "vcmi_mapgen/ontology_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/ontology/__init___test.py",
-        "vcmi_mapgen/ontology/tables_test.py",
-        "vcmi_mapgen/ontology/objects_test.py",
-        "vcmi_mapgen/ontology/decor_test.py",
-        "vcmi_mapgen/ontology/regen_test.py"
+        "vcmi_mapgen/vcmi/catalog/tables_test.py",
+        "vcmi_mapgen/vcmi/catalog/objects_test.py",
+        "vcmi_mapgen/vcmi/catalog/decor_test.py",
+        "vcmi_mapgen/vcmi/catalog/regen_test.py"
       ],
-      "slice": "s05-ontology"
+      "slice": "s05-catalog-tables"
     },
     "vcmi_mapgen/pipeline.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/pipeline.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/readers/__init__.py": {
       "fate": "delete",
-      "slice": "s01-dead"
+      "slice": "s08-corpus"
     },
     "vcmi_mapgen/readers/vmap_reader.py": {
-      "fate": "delete",
-      "slice": "s01-dead"
+      "fate": "merge",
+      "to": "vcmi_mapgen/vcmi/load.py",
+      "slice": "s08-corpus"
     },
     "vcmi_mapgen/renderers/__init__.py": {
       "fate": "keep"
@@ -311,7 +334,7 @@
     "vcmi_mapgen/renderers/sprites.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/formats/defs.py",
+        "vcmi_mapgen/vcmi/formats/defs.py",
         "vcmi_mapgen/renderers/sprites.py",
         "vcmi_mapgen/cli/render_sprites.py"
       ],
@@ -320,7 +343,7 @@
     "vcmi_mapgen/renderers/sprites_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/formats/defs_test.py",
+        "vcmi_mapgen/vcmi/formats/defs_test.py",
         "vcmi_mapgen/renderers/sprites_test.py",
         "vcmi_mapgen/cli/render_sprites_test.py"
       ],
@@ -330,7 +353,8 @@
       "fate": "split",
       "to": [
         "vcmi_mapgen/renderers/vmap.py",
-        "vcmi_mapgen/renderers/vmap_players.py"
+        "vcmi_mapgen/vcmi/export.py",
+        "vcmi_mapgen/vcmi/players.py"
       ],
       "slice": "s19-renderers"
     },
@@ -338,57 +362,73 @@
       "fate": "split",
       "to": [
         "vcmi_mapgen/renderers/vmap_test.py",
-        "vcmi_mapgen/renderers/vmap_players_test.py"
+        "vcmi_mapgen/vcmi/export_test.py",
+        "vcmi_mapgen/vcmi/players_test.py"
       ],
       "slice": "s19-renderers"
     },
     "vcmi_mapgen/steps/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/border/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/border/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/border/border_seal.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/steps/border/crossings.py",
+      "to": "vcmi_mapgen/core/steps/border/crossings.py",
       "slice": "s18-crossings"
     },
     "vcmi_mapgen/steps/border/border_seal_test.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/steps/border/crossings_test.py",
+      "to": "vcmi_mapgen/core/steps/border/crossings_test.py",
       "slice": "s18-crossings"
     },
     "vcmi_mapgen/steps/border/entrances.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/border/entrances.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/border/entrances_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/border/entrances_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/border/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/border/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gameplay/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gameplay/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gameplay/draw.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/gameplay/draw.py",
-        "vcmi_mapgen/placement/intensity.py",
-        "vcmi_mapgen/placement/identity.py"
+        "vcmi_mapgen/core/steps/gameplay/draw.py",
+        "vcmi_mapgen/core/placement/intensity.py",
+        "vcmi_mapgen/core/placement/identity.py"
       ],
       "slice": "s13-gameplay"
     },
     "vcmi_mapgen/steps/gameplay/gate_pairs.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gameplay/gate_pairs.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gameplay/mines.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/gameplay/economy.py",
+        "vcmi_mapgen/core/steps/gameplay/economy.py",
+        "vcmi_mapgen/core/priors/gameplay.py",
         "vcmi_mapgen/corpus/mine/gameplay.py",
         "vcmi_mapgen/corpus/gameplay.py",
-        "vcmi_mapgen/planning/player_zones.py",
+        "vcmi_mapgen/core/planning/player_zones.py",
         "vcmi_mapgen/cli/audit.py"
       ],
       "slice": "s13-gameplay"
@@ -396,47 +436,54 @@
     "vcmi_mapgen/steps/gameplay/mines_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/gameplay/economy_test.py",
+        "vcmi_mapgen/core/steps/gameplay/economy_test.py",
+        "vcmi_mapgen/core/priors/gameplay_test.py",
         "vcmi_mapgen/corpus/mine/gameplay_test.py",
         "vcmi_mapgen/corpus/gameplay_test.py",
-        "vcmi_mapgen/planning/player_zones_test.py",
+        "vcmi_mapgen/core/planning/player_zones_test.py",
         "vcmi_mapgen/cli/audit_test.py"
       ],
       "slice": "s13-gameplay"
     },
     "vcmi_mapgen/steps/gameplay/shipyards.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gameplay/shipyards.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gameplay/site.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/placement/site.py",
-        "vcmi_mapgen/placement/footprint.py",
-        "vcmi_mapgen/grid/components.py"
+        "vcmi_mapgen/core/placement/site.py",
+        "vcmi_mapgen/core/placement/footprint.py",
+        "vcmi_mapgen/core/grid/components.py"
       ],
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/gameplay/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gameplay/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gameplay/step_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gameplay/step_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gameplay/water.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/gameplay/water.py",
-        "vcmi_mapgen/placement/cells.py",
-        "vcmi_mapgen/placement/identity.py"
+        "vcmi_mapgen/core/steps/gameplay/water.py",
+        "vcmi_mapgen/core/placement/cells.py",
+        "vcmi_mapgen/core/placement/identity.py"
       ],
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/gameplay/water_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/gameplay/water_test.py",
-        "vcmi_mapgen/placement/cells_test.py",
-        "vcmi_mapgen/placement/identity_test.py"
+        "vcmi_mapgen/core/steps/gameplay/water_test.py",
+        "vcmi_mapgen/core/placement/cells_test.py",
+        "vcmi_mapgen/core/placement/identity_test.py"
       ],
       "slice": "s09-placement"
     },
@@ -447,114 +494,140 @@
     "vcmi_mapgen/steps/gate/gates.py": {
       "fate": "split",
       "to": [
+        "vcmi_mapgen/core/priors/gates.py",
         "vcmi_mapgen/corpus/mine/gates.py",
         "vcmi_mapgen/corpus/gates.py",
-        "vcmi_mapgen/placement/footprint.py",
-        "vcmi_mapgen/placement/guards.py"
+        "vcmi_mapgen/core/placement/footprint.py",
+        "vcmi_mapgen/core/placement/guards.py"
       ],
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/gate/gates_test.py": {
       "fate": "split",
       "to": [
+        "vcmi_mapgen/core/priors/gates_test.py",
         "vcmi_mapgen/corpus/mine/gates_test.py",
         "vcmi_mapgen/corpus/gates_test.py",
-        "vcmi_mapgen/placement/footprint_test.py",
-        "vcmi_mapgen/placement/guards_test.py"
+        "vcmi_mapgen/core/placement/footprint_test.py",
+        "vcmi_mapgen/core/placement/guards_test.py"
       ],
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/gated/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gated/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gated/placer.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gated/placer.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gated/placer_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gated/placer_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gated/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gated/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/gated/step_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/gated/step_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/loot/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/loot/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/loot/caches.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/loot/pockets.py",
-        "vcmi_mapgen/steps/loot/quests.py",
-        "vcmi_mapgen/steps/loot/pickups.py",
-        "vcmi_mapgen/placement/rewards.py"
+        "vcmi_mapgen/core/steps/loot/pockets.py",
+        "vcmi_mapgen/core/steps/loot/quests.py",
+        "vcmi_mapgen/core/steps/loot/pickups.py",
+        "vcmi_mapgen/core/placement/rewards.py"
       ],
       "slice": "s14-loot"
     },
     "vcmi_mapgen/steps/loot/caches_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/loot/pockets_test.py",
-        "vcmi_mapgen/steps/loot/quests_test.py",
-        "vcmi_mapgen/steps/loot/pickups_test.py",
-        "vcmi_mapgen/placement/rewards_test.py"
+        "vcmi_mapgen/core/steps/loot/pockets_test.py",
+        "vcmi_mapgen/core/steps/loot/quests_test.py",
+        "vcmi_mapgen/core/steps/loot/pickups_test.py",
+        "vcmi_mapgen/core/placement/rewards_test.py"
       ],
       "slice": "s14-loot"
     },
     "vcmi_mapgen/steps/loot/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/loot/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/placement.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/placement/guards.py",
-        "vcmi_mapgen/placement/place.py",
-        "vcmi_mapgen/placement/rewards.py"
+        "vcmi_mapgen/core/placement/guards.py",
+        "vcmi_mapgen/core/placement/place.py",
+        "vcmi_mapgen/core/placement/rewards.py"
       ],
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/portal/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/portal/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/portal/geometry.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/portal/rescue.py",
-        "vcmi_mapgen/grid/reach.py",
-        "vcmi_mapgen/steps/loot/reward_zone.py"
+        "vcmi_mapgen/core/steps/portal/rescue.py",
+        "vcmi_mapgen/core/grid/reach.py",
+        "vcmi_mapgen/core/steps/loot/reward_zone.py"
       ],
       "slice": "s15-portal"
     },
     "vcmi_mapgen/steps/portal/geometry_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/portal/rescue_test.py",
-        "vcmi_mapgen/grid/reach_test.py"
+        "vcmi_mapgen/core/steps/portal/rescue_test.py",
+        "vcmi_mapgen/core/grid/reach_test.py"
       ],
       "slice": "s15-portal"
     },
     "vcmi_mapgen/steps/portal/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/portal/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/scatter/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/scatter/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/scatter/scatter.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/placement/scatter.py",
+      "to": "vcmi_mapgen/core/placement/scatter.py",
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/scatter/scatter_test.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/placement/scatter_test.py",
+      "to": "vcmi_mapgen/core/placement/scatter_test.py",
       "slice": "s09-placement"
     },
     "vcmi_mapgen/steps/scatter/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/scatter/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/seed_sweep_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/seed_sweep_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/segment/__init__.py": {
       "fate": "delete",
@@ -562,19 +635,24 @@
     },
     "vcmi_mapgen/steps/segment/step.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/steps/terrain_gen/step.py",
+      "to": "vcmi_mapgen/core/steps/terrain_gen/step.py",
       "slice": "s12-segment-fold"
     },
     "vcmi_mapgen/steps/steps_write_map_test.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/steps_write_map_test.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/terrain_gen/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/terrain_gen/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/terrain_gen/macro_topo.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/terrain_gen/macro.py",
+        "vcmi_mapgen/core/steps/terrain_gen/macro.py",
+        "vcmi_mapgen/core/priors/macro.py",
         "vcmi_mapgen/corpus/mine/macro.py",
         "vcmi_mapgen/corpus/macro.py"
       ],
@@ -583,7 +661,8 @@
     "vcmi_mapgen/steps/terrain_gen/macro_topo_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/terrain_gen/macro_test.py",
+        "vcmi_mapgen/core/steps/terrain_gen/macro_test.py",
+        "vcmi_mapgen/core/priors/macro_test.py",
         "vcmi_mapgen/corpus/mine/macro_test.py",
         "vcmi_mapgen/corpus/macro_test.py"
       ],
@@ -592,57 +671,70 @@
     "vcmi_mapgen/steps/terrain_gen/markov.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/terrain_gen/texture.py",
-        "vcmi_mapgen/corpus/mine/markov.py"
+        "vcmi_mapgen/core/steps/terrain_gen/texture.py",
+        "vcmi_mapgen/core/priors/markov.py",
+        "vcmi_mapgen/corpus/mine/markov.py",
+        "vcmi_mapgen/corpus/markov.py"
       ],
       "slice": "s17-terrain-gen"
     },
     "vcmi_mapgen/steps/terrain_gen/markov_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/terrain_gen/texture_test.py",
-        "vcmi_mapgen/corpus/mine/markov_test.py"
+        "vcmi_mapgen/core/steps/terrain_gen/texture_test.py",
+        "vcmi_mapgen/core/priors/markov_test.py",
+        "vcmi_mapgen/corpus/mine/markov_test.py",
+        "vcmi_mapgen/corpus/markov_test.py"
       ],
       "slice": "s17-terrain-gen"
     },
     "vcmi_mapgen/steps/terrain_gen/step.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/terrain_gen/step.py",
-        "vcmi_mapgen/steps/terrain_gen/gate_sites.py"
+        "vcmi_mapgen/core/steps/terrain_gen/step.py",
+        "vcmi_mapgen/core/steps/terrain_gen/gate_sites.py",
+        "vcmi_mapgen/core/steps/terrain_gen/despeckle.py"
       ],
       "slice": "s17-terrain-gen"
     },
     "vcmi_mapgen/steps/treasure/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/treasure/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/treasure/fill.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/treasure/fill.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/treasure/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/treasure/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/vegetation/__init__.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/vegetation/__init__.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/vegetation/border_plan.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/vegetation/border_plan.py",
-        "vcmi_mapgen/placement/footprint.py",
-        "vcmi_mapgen/planning/borders.py"
+        "vcmi_mapgen/core/steps/vegetation/border_plan.py",
+        "vcmi_mapgen/core/placement/footprint.py",
+        "vcmi_mapgen/core/planning/borders.py"
       ],
       "slice": "s16-vegetation"
     },
     "vcmi_mapgen/steps/vegetation/islands.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/grid/components.py",
+      "to": "vcmi_mapgen/core/grid/components.py",
       "slice": "s04-grid"
     },
     "vcmi_mapgen/steps/vegetation/sample.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/vegetation/sample.py",
+        "vcmi_mapgen/core/steps/vegetation/sample.py",
         "vcmi_mapgen/cli/veg_experiment.py"
       ],
       "slice": "s16-vegetation"
@@ -650,7 +742,7 @@
     "vcmi_mapgen/steps/vegetation/sample_test.py": {
       "fate": "split",
       "to": [
-        "vcmi_mapgen/steps/vegetation/sample_test.py",
+        "vcmi_mapgen/core/steps/vegetation/sample_test.py",
         "vcmi_mapgen/cli/veg_experiment_test.py"
       ],
       "slice": "s16-vegetation"
@@ -658,6 +750,7 @@
     "vcmi_mapgen/steps/vegetation/stats.py": {
       "fate": "split",
       "to": [
+        "vcmi_mapgen/core/priors/vegetation.py",
         "vcmi_mapgen/corpus/mine/vegetation.py",
         "vcmi_mapgen/corpus/vegetation.py"
       ],
@@ -666,40 +759,43 @@
     "vcmi_mapgen/steps/vegetation/stats_test.py": {
       "fate": "split",
       "to": [
+        "vcmi_mapgen/core/priors/vegetation_test.py",
         "vcmi_mapgen/corpus/mine/vegetation_test.py",
         "vcmi_mapgen/corpus/vegetation_test.py"
       ],
       "slice": "s16-vegetation"
     },
     "vcmi_mapgen/steps/vegetation/step.py": {
-      "fate": "keep"
+      "fate": "move",
+      "to": "vcmi_mapgen/core/steps/vegetation/step.py",
+      "slice": "s36-core"
     },
     "vcmi_mapgen/steps/zone_index.py": {
       "fate": "merge",
-      "to": "vcmi_mapgen/planning/zone_index.py",
+      "to": "vcmi_mapgen/core/planning/zone_index.py",
       "slice": "s10-planning"
     },
     "vcmi_mapgen/steps/zone_plan.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/planning/zone_plan.py",
+      "to": "vcmi_mapgen/core/planning/zone_plan.py",
       "slice": "s10-planning"
     },
     "vcmi_mapgen/validate.py": {
       "fate": "move",
-      "to": "vcmi_mapgen/placement/rules.py",
+      "to": "vcmi_mapgen/core/placement/rules.py",
       "slice": "s09-placement"
     }
   },
   "slices": [
     {
       "id": "s00-oracle",
-      "goal": "Add the golden oracle, the import-linter dependency and the checker config before any code moves.",
+      "goal": "Golden oracle, import-linter, checker config",
       "touches": [
         ".agent-checks.toml",
         "Makefile",
         "data/golden.json",
         "pyproject.toml",
-        "vcmi_mapgen/vcmi_mapgen/golden_test.py"
+        "vcmi_mapgen/golden_test.py"
       ],
       "depends_on": [],
       "done_when": [
@@ -709,13 +805,55 @@
       ],
       "rules": [
         "Waits until the in-flight gameplay-after-vegetation work is committed.",
-        "golden_test hashes surfs, cells, sorted objs, gate_blk and player_towns for (seed 1, size 48) and (seed 3, size 72, subterrain).",
+        "golden_test hashes the exported terrain tile strings, the sorted exported objects, gate_blk and player_towns for (seed 1, size 48) and (seed 3, size 72, subterrain).",
         "GOLDEN_UPDATE=1 rewrites data/golden.json; only behaviour slices may run it."
       ]
     },
     {
+      "id": "s24a-cache",
+      "goal": "`cli.py mine-stats` writes every corpus cache, including new Markov and tiler files; `generate` only reads them",
+      "touches": [
+        "README.md",
+        "data/pp/*",
+        "docs/architecture.md",
+        "vcmi_mapgen/cli.py",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/tiling.py",
+        "vcmi_mapgen/kit/vmap/writer.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/steps/gameplay/water_test.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/steps/terrain_gen/markov.py",
+        "vcmi_mapgen/steps/terrain_gen/markov_test.py",
+        "vcmi_mapgen/steps/vegetation/stats.py"
+      ],
+      "depends_on": [
+        "s00-oracle"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE 'all_map_names|load_faithful' vcmi_mapgen/steps vcmi_mapgen/pipeline.py --include=*.py",
+        "test $(uv run python -c \"import time,subprocess,sys;t=time.time();subprocess.run([sys.executable,'-m','vcmi_mapgen.cli','generate','--seed','1','--size','48','--renderers','vmap','--overlays','none'],check=True,capture_output=True);print(int(time.time()-t))\") -lt 20"
+      ],
+      "rules": [
+        "A missing cache is an error that names `mine-stats`.",
+        "The Markov tables (learn and learn4, per level) and the autotiler tables (_learn_terrain_tiler) join data/pp as markov_<level>.json and tiler.json.",
+        "Serialise each Counter in its iteration order so sampling draws the same values; make golden proves it.",
+        "Each file names its builder under a _source key.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
       "id": "s01-dead",
-      "goal": "Delete code with no production caller, together with the tests that only exercise it.",
+      "goal": "Delete code with no production caller",
       "touches": [
         "docs/architecture.md",
         "vcmi_mapgen/kit/lod.py",
@@ -725,33 +863,27 @@
         "vcmi_mapgen/models/map_state.py",
         "vcmi_mapgen/models/map_state_test.py",
         "vcmi_mapgen/ontology.py",
-        "vcmi_mapgen/readers/__init__.py",
-        "vcmi_mapgen/readers/vmap_reader.py",
         "vcmi_mapgen/renderers/overlays/_tiles.py",
         "vcmi_mapgen/renderers/sprites.py",
         "vcmi_mapgen/renderers/sprites_test.py",
         "vcmi_mapgen/steps/loot/caches.py",
         "vcmi_mapgen/steps/loot/caches_test.py",
         "vcmi_mapgen/steps/portal/geometry_test.py",
-        "vcmi_mapgen/steps/scatter/scatter.py",
-        "vcmi_mapgen/steps/steps_write_map_test.py",
         "vcmi_mapgen/steps/terrain_gen/markov.py",
         "vcmi_mapgen/steps/terrain_gen/markov_test.py",
         "vcmi_mapgen/validate.py"
       ],
       "depends_on": [
-        "s00-oracle"
+        "s24a-cache"
       ],
       "done_when": [
         "make check",
         "make golden",
         "test ! -e vcmi_mapgen/kit/reachability.py",
-        "test ! -e vcmi_mapgen/readers",
-        "! grep -rnE 'def (set_objs|terrain_violations|place_pickups|paint_sort|slug|loot_zone_tiles|gibbs)\\b' vcmi_mapgen --include=*.py",
-        "! grep -rnE 'TREE_CACHE' vcmi_mapgen --include=*.py"
+        "! grep -rnE 'def (set_objs|terrain_violations|place_pickups|paint_sort|slug|loot_zone_tiles|gibbs)\\b|TREE_CACHE' vcmi_mapgen --include=*.py"
       ],
       "rules": [
-        "Delete: kit/reachability.py, readers/, markov generate/gibbs/Gibbs4/__main__, _tiles loot_zone_tiles/_town_tiles/_boundary_clusters, MapState.set_objs, validate.terrain_violations, caches.place_pickups, sprites.paint_sort, Lod.has, Lod.def_count, paths.slug, ontology.TREE_CACHE.",
+        "Delete: kit/reachability.py, markov generate/gibbs/Gibbs4/__main__, _tiles loot_zone_tiles/_town_tiles/_boundary_clusters, MapState.set_objs, validate.terrain_violations, caches.place_pickups, sprites.paint_sort, Lod.has, Lod.def_count, paths.slug, ontology.TREE_CACHE.",
         "Keep the unused ontology accessors (spell_level, artifact_tier, monster_level, visitable_purposes, decode_identity, category_terrain_matrix): s20 wires them in.",
         "Rerun the dead-code scan afterwards and record what it still reports.",
         "Behaviour-preserving: make golden must match data/golden.json unchanged."
@@ -759,20 +891,16 @@
     },
     {
       "id": "s02-formats",
-      "goal": "Gather every file-format reader and writer under formats/.",
+      "goal": "File formats under `vcmi/formats/`",
       "touches": [
         "docs/architecture.md",
-        "vcmi_mapgen/cli.py",
         "vcmi_mapgen/extract_vmap.py",
-        "vcmi_mapgen/formats/*",
         "vcmi_mapgen/h3m.py",
         "vcmi_mapgen/kit/json_value.py",
         "vcmi_mapgen/kit/lod.py",
         "vcmi_mapgen/kit/objects.py",
         "vcmi_mapgen/kit/objects_test.py",
-        "vcmi_mapgen/kit/paths.py",
         "vcmi_mapgen/kit/vcmi_config.py",
-        "vcmi_mapgen/kit/vcmi_config_test.py",
         "vcmi_mapgen/kit/vmap/__init__.py",
         "vcmi_mapgen/kit/vmap/document.py",
         "vcmi_mapgen/kit/vmap/mask.py",
@@ -784,8 +912,6 @@
         "vcmi_mapgen/kit/vmap/writer_test.py",
         "vcmi_mapgen/ontology.py",
         "vcmi_mapgen/readers/vmap_reader.py",
-        "vcmi_mapgen/renderers/ontology_render.py",
-        "vcmi_mapgen/renderers/png.py",
         "vcmi_mapgen/renderers/sprites.py",
         "vcmi_mapgen/renderers/sprites_test.py",
         "vcmi_mapgen/renderers/vmap.py",
@@ -794,10 +920,11 @@
         "vcmi_mapgen/steps/gate/gates.py",
         "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
         "vcmi_mapgen/steps/terrain_gen/step.py",
-        "vcmi_mapgen/steps/vegetation/stats.py"
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/vcmi/__init__.py",
+        "vcmi_mapgen/vcmi/formats/*"
       ],
       "depends_on": [
-        "s00-oracle",
         "s01-dead"
       ],
       "done_when": [
@@ -805,8 +932,7 @@
         "make golden",
         "test ! -e vcmi_mapgen/kit/vmap",
         "test ! -e vcmi_mapgen/h3m.py",
-        "! grep -rnE 'kit\\.(vmap|lod|json_value|vcmi_config|paths)\\b' vcmi_mapgen --include=*.py",
-        "! grep -rnE 'vcmi_mapgen\\.h3m\\b' vcmi_mapgen --include=*.py"
+        "! grep -rnE 'kit\\.(vmap|lod|json_value)\\b|vcmi_mapgen\\.h3m\\b' vcmi_mapgen --include=*.py"
       ],
       "rules": [
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
@@ -816,19 +942,19 @@
     },
     {
       "id": "s03-cli",
-      "goal": "Make cli/ the only home of entry points, with build_steps as the one step list.",
+      "goal": "`cli/` is the only entry point; one step list",
       "touches": [
         "Makefile",
         "README.md",
         "vcmi_mapgen/cli.py",
         "vcmi_mapgen/cli/*",
         "vcmi_mapgen/cli_test.py",
-        "vcmi_mapgen/corpus/*",
+        "vcmi_mapgen/corpus/__init__.py",
+        "vcmi_mapgen/corpus/match.py",
         "vcmi_mapgen/corpus_match.py",
         "vcmi_mapgen/extract_vmap.py"
       ],
       "depends_on": [
-        "s00-oracle",
         "s02-formats"
       ],
       "done_when": [
@@ -848,12 +974,201 @@
       ]
     },
     {
+      "id": "s36-core",
+      "goal": "`models/`, `pipeline.py` and `steps/` move under `core/` whole",
+      "touches": [
+        "README.md",
+        "docs/architecture.md",
+        "vcmi_mapgen/cli.py",
+        "vcmi_mapgen/core/*",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/extract_vmap.py",
+        "vcmi_mapgen/kit/geometry.py",
+        "vcmi_mapgen/kit/json_value.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/objects_test.py",
+        "vcmi_mapgen/kit/reachability.py",
+        "vcmi_mapgen/kit/segmentation.py",
+        "vcmi_mapgen/kit/terrain_segment.py",
+        "vcmi_mapgen/kit/tiling.py",
+        "vcmi_mapgen/kit/topology.py",
+        "vcmi_mapgen/kit/topology_test.py",
+        "vcmi_mapgen/kit/vcmi_config.py",
+        "vcmi_mapgen/kit/vmap/document.py",
+        "vcmi_mapgen/kit/vmap/reader.py",
+        "vcmi_mapgen/kit/vmap/reader_test.py",
+        "vcmi_mapgen/kit/vmap/terrain.py",
+        "vcmi_mapgen/kit/vmap/terrain_test.py",
+        "vcmi_mapgen/kit/vmap/writer.py",
+        "vcmi_mapgen/kit/vmap/writer_test.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/models/__init__.py",
+        "vcmi_mapgen/models/map_state.py",
+        "vcmi_mapgen/models/map_state_test.py",
+        "vcmi_mapgen/models/objects.py",
+        "vcmi_mapgen/models/pockets.py",
+        "vcmi_mapgen/models/zone_record.py",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/pipeline.py",
+        "vcmi_mapgen/readers/vmap_reader.py",
+        "vcmi_mapgen/renderers/overlays/_tiles.py",
+        "vcmi_mapgen/renderers/overlays/base.py",
+        "vcmi_mapgen/renderers/overlays/blocking.py",
+        "vcmi_mapgen/renderers/overlays/blocking_test.py",
+        "vcmi_mapgen/renderers/overlays/grid.py",
+        "vcmi_mapgen/renderers/overlays/grid_test.py",
+        "vcmi_mapgen/renderers/overlays/guard.py",
+        "vcmi_mapgen/renderers/overlays/guard_test.py",
+        "vcmi_mapgen/renderers/overlays/passage.py",
+        "vcmi_mapgen/renderers/overlays/passage_test.py",
+        "vcmi_mapgen/renderers/overlays/pocket.py",
+        "vcmi_mapgen/renderers/overlays/pocket_test.py",
+        "vcmi_mapgen/renderers/overlays/tile_type.py",
+        "vcmi_mapgen/renderers/overlays/zone.py",
+        "vcmi_mapgen/renderers/overlays/zone_test.py",
+        "vcmi_mapgen/renderers/png.py",
+        "vcmi_mapgen/renderers/sprites.py",
+        "vcmi_mapgen/renderers/sprites_test.py",
+        "vcmi_mapgen/renderers/vmap.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/__init__.py",
+        "vcmi_mapgen/steps/border/__init__.py",
+        "vcmi_mapgen/steps/border/border_seal.py",
+        "vcmi_mapgen/steps/border/border_seal_test.py",
+        "vcmi_mapgen/steps/border/entrances.py",
+        "vcmi_mapgen/steps/border/entrances_test.py",
+        "vcmi_mapgen/steps/border/step.py",
+        "vcmi_mapgen/steps/gameplay/__init__.py",
+        "vcmi_mapgen/steps/gameplay/draw.py",
+        "vcmi_mapgen/steps/gameplay/gate_pairs.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/steps/gameplay/shipyards.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
+        "vcmi_mapgen/steps/gameplay/step.py",
+        "vcmi_mapgen/steps/gameplay/step_test.py",
+        "vcmi_mapgen/steps/gameplay/water.py",
+        "vcmi_mapgen/steps/gameplay/water_test.py",
+        "vcmi_mapgen/steps/gate/__init__.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/gate/gates_test.py",
+        "vcmi_mapgen/steps/gated/__init__.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/gated/placer_test.py",
+        "vcmi_mapgen/steps/gated/step.py",
+        "vcmi_mapgen/steps/gated/step_test.py",
+        "vcmi_mapgen/steps/loot/__init__.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/loot/step.py",
+        "vcmi_mapgen/steps/placement.py",
+        "vcmi_mapgen/steps/portal/__init__.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/portal/geometry_test.py",
+        "vcmi_mapgen/steps/portal/step.py",
+        "vcmi_mapgen/steps/scatter/__init__.py",
+        "vcmi_mapgen/steps/scatter/scatter.py",
+        "vcmi_mapgen/steps/scatter/scatter_test.py",
+        "vcmi_mapgen/steps/scatter/step.py",
+        "vcmi_mapgen/steps/seed_sweep_test.py",
+        "vcmi_mapgen/steps/segment/__init__.py",
+        "vcmi_mapgen/steps/segment/step.py",
+        "vcmi_mapgen/steps/steps_write_map_test.py",
+        "vcmi_mapgen/steps/terrain_gen/__init__.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo_test.py",
+        "vcmi_mapgen/steps/terrain_gen/markov.py",
+        "vcmi_mapgen/steps/terrain_gen/markov_test.py",
+        "vcmi_mapgen/steps/terrain_gen/step.py",
+        "vcmi_mapgen/steps/treasure/__init__.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/steps/treasure/step.py",
+        "vcmi_mapgen/steps/vegetation/__init__.py",
+        "vcmi_mapgen/steps/vegetation/border_plan.py",
+        "vcmi_mapgen/steps/vegetation/islands.py",
+        "vcmi_mapgen/steps/vegetation/sample.py",
+        "vcmi_mapgen/steps/vegetation/sample_test.py",
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/steps/vegetation/stats_test.py",
+        "vcmi_mapgen/steps/vegetation/step.py",
+        "vcmi_mapgen/steps/zone_index.py",
+        "vcmi_mapgen/steps/zone_plan.py",
+        "vcmi_mapgen/validate.py"
+      ],
+      "depends_on": [
+        "s03-cli"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "test ! -e vcmi_mapgen/pipeline.py",
+        "test ! -e vcmi_mapgen/steps",
+        "test ! -e vcmi_mapgen/models",
+        "! grep -rnE 'vcmi_mapgen\\.(steps|models|pipeline)\\b' vcmi_mapgen --include=*.py",
+        "uv run python -m vcmi_mapgen.cli generate --seed 3 --size 48 --stop-after terrain"
+      ],
+      "rules": [
+        "Behaviour-preserving: make golden must match data/golden.json unchanged.",
+        "Move code verbatim first, then fix imports. No logic edits in the same slice.",
+        "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
+        "Every file under models/ and steps/ moves, including files a later slice splits; a later slice's touches resolve through this move.",
+        "models/pockets.py and models/zone_record.py move too, and s10 merges them from core/model/."
+      ]
+    },
+    {
+      "id": "s32-settings",
+      "goal": "Environment facts resolved once in `cli/settings.py`; `vcmi/install.py` finds the install from the environment it is handed",
+      "touches": [
+        "vcmi_mapgen/cli.py",
+        "vcmi_mapgen/cli/settings.py",
+        "vcmi_mapgen/extract_vmap.py",
+        "vcmi_mapgen/kit/lod.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/paths.py",
+        "vcmi_mapgen/kit/vcmi_config.py",
+        "vcmi_mapgen/kit/vcmi_config_test.py",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/renderers/ontology_render.py",
+        "vcmi_mapgen/renderers/png.py",
+        "vcmi_mapgen/renderers/sprites.py",
+        "vcmi_mapgen/renderers/sprites_test.py",
+        "vcmi_mapgen/renderers/vmap.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/vcmi/config.py",
+        "vcmi_mapgen/vcmi/install.py"
+      ],
+      "depends_on": [
+        "s36-core"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE 'os\\.environ|sys\\.platform|expanduser|/home/|flatpak' vcmi_mapgen --exclude=settings.py --exclude=install.py --exclude=*_test.py --include=*.py",
+        "! grep -rnE '^(LOD_DIR|_BASES) *=' vcmi_mapgen --include=*.py",
+        "env -u VCMI_HOME HOME=/nonexistent uv run python -m vcmi_mapgen.cli render-sprites 2>&1 | grep -q VCMI_HOME"
+      ],
+      "rules": [
+        "Behaviour-preserving: make golden must match data/golden.json unchanged.",
+        "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "cli/settings.py holds Settings.from_env(environ, platform), the only reader of os.environ and sys.platform.",
+        "vcmi/install.py find_install tries each platform convention in order and raises naming VCMI_HOME when none exists; no fallback to the first candidate.",
+        "A command that needs no install never looks for one.",
+        "No module computes a path at import: LOD_DIR and _BASES become values built from the VcmiInstall the caller hands in."
+      ]
+    },
+    {
       "id": "s04-grid",
-      "goal": "Collect pure grid algorithms under grid/: geometry, noise, segmentation, components.",
+      "goal": "Pure grid algorithms under `core/grid/`",
       "touches": [
         "docs/architecture.md",
+        "vcmi_mapgen/core/grid/*",
         "vcmi_mapgen/corpus_match.py",
-        "vcmi_mapgen/grid/*",
         "vcmi_mapgen/kit/geometry.py",
         "vcmi_mapgen/kit/noise.py",
         "vcmi_mapgen/kit/segmentation.py",
@@ -875,10 +1190,7 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli"
+        "s32-settings"
       ],
       "done_when": [
         "make check",
@@ -891,12 +1203,12 @@
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
         "Move code verbatim first, then fix imports. No logic edits in the same slice.",
         "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
-        "terrain_segment and segmentation merge into one grid/segment.py with one public segment_level."
+        "terrain_segment and segmentation merge into one core/grid/segment.py with one public segment_level."
       ]
     },
     {
-      "id": "s05-ontology",
-      "goal": "Turn ontology.py into a package whose literal tables load from data/ontology/*.json.",
+      "id": "s05-catalog-tables",
+      "goal": "Ontology tables and queries under `vcmi/catalog/`; tables in JSON",
       "touches": [
         "data/ontology/*",
         "docs/architecture.md",
@@ -906,7 +1218,6 @@
         "vcmi_mapgen/kit/objects_test.py",
         "vcmi_mapgen/kit/vmap/terrain.py",
         "vcmi_mapgen/ontology.py",
-        "vcmi_mapgen/ontology/*",
         "vcmi_mapgen/ontology_test.py",
         "vcmi_mapgen/pipeline.py",
         "vcmi_mapgen/readers/vmap_reader.py",
@@ -945,41 +1256,39 @@
         "vcmi_mapgen/steps/vegetation/stats.py",
         "vcmi_mapgen/steps/vegetation/step.py",
         "vcmi_mapgen/steps/zone_plan.py",
-        "vcmi_mapgen/validate.py"
+        "vcmi_mapgen/validate.py",
+        "vcmi_mapgen/vcmi/catalog/*"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
         "s04-grid"
       ],
       "done_when": [
         "make check",
         "make golden",
+        "test ! -e vcmi_mapgen/ontology.py",
         "test -s data/ontology/taxonomy.json",
-        "uv run python -m vcmi_mapgen.ontology --regen && git diff --exit-code data/ontology"
+        "uv run python -m vcmi_mapgen.cli regen-ontology && git diff --exit-code data/ontology"
       ],
       "rules": [
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
         "Move code verbatim first, then fix imports. No logic edits in the same slice.",
         "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
         "--regen writes the JSON; tables.py loads it once, lazily.",
-        "Every module-level accessor keeps its name and signature. The empty Ontology facade stays until the decision in target.md is taken."
+        "Every module-level accessor keeps its name and signature until s28 routes callers through the port."
       ]
     },
     {
       "id": "s06-terrain",
-      "goal": "One Terrain IntEnum in models/terrain.py replaces every copy of the terrain codes and names.",
+      "goal": "`Terrain` in `core/model/`; codes and prefixes in `vcmi/terrain.py`",
       "touches": [
         "docs/architecture.md",
+        "vcmi_mapgen/core/model/terrain.py",
         "vcmi_mapgen/corpus_match.py",
         "vcmi_mapgen/kit/reachability.py",
         "vcmi_mapgen/kit/terrain_lookup.py",
         "vcmi_mapgen/kit/terrain_segment.py",
         "vcmi_mapgen/kit/vmap/__init__.py",
         "vcmi_mapgen/kit/vmap/terrain.py",
-        "vcmi_mapgen/models/terrain.py",
         "vcmi_mapgen/ontology.py",
         "vcmi_mapgen/renderers/overlays/_tiles.py",
         "vcmi_mapgen/renderers/overlays/tile_type.py",
@@ -995,49 +1304,50 @@
         "vcmi_mapgen/steps/vegetation/sample.py",
         "vcmi_mapgen/steps/vegetation/stats.py",
         "vcmi_mapgen/steps/zone_plan.py",
-        "vcmi_mapgen/validate.py"
+        "vcmi_mapgen/validate.py",
+        "vcmi_mapgen/vcmi/terrain.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology"
+        "s05-catalog-tables"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "! grep -rnE '^(WATER|ROCK) *=' vcmi_mapgen --include=*.py",
-        "! grep -rnE 'WATER, ROCK = 8, 9' vcmi_mapgen --include=*.py",
-        "! grep -rnE '\\bTNAME\\b|\\bTCODE\\b' vcmi_mapgen --include=*.py"
+        "! grep -rnE '^(WATER|ROCK) *=|WATER, ROCK = 8, 9|\\bTNAME\\b|\\bTCODE\\b' vcmi_mapgen --include=*.py"
       ],
       "rules": [
-        "Replaces the nine `WATER, ROCK = 8, 9` copies, TNAME, TCODE, TERRAIN_NAMES and the palette keys.",
-        "The overlay decoder maps 'rc' to rock; today it maps 'ro', so rock decodes as dirt in overlays. That overlay change is expected; make golden must still match."
+        "Replaces the `WATER, ROCK = 8, 9` copies, TNAME, TCODE, TERRAIN_NAMES and the palette keys.",
+        "The overlay decoder maps 'rc' to rock; today it maps 'ro', so rock decodes as dirt in overlays. make golden must still match.",
+        "Code written or moved in this slice follows target.md 'A function or an object'."
       ]
     },
     {
       "id": "s07-purpose",
-      "goal": "A Purpose StrEnum and purpose groups replace the purpose string literals; purpose comes from the ontology, not objlib.json.",
+      "goal": "`Purpose` and `Resource` enums",
       "touches": [
+        "data/objlib.json",
         "docs/architecture.md",
+        "vcmi_mapgen/core/model/purpose.py",
+        "vcmi_mapgen/core/model/resource.py",
         "vcmi_mapgen/kit/objects.py",
         "vcmi_mapgen/kit/objects_test.py",
         "vcmi_mapgen/kit/reachability.py",
         "vcmi_mapgen/models/AGENTS.md",
         "vcmi_mapgen/models/map_state.py",
-        "vcmi_mapgen/models/purpose.py",
+        "vcmi_mapgen/models/map_state_test.py",
         "vcmi_mapgen/ontology.py",
-        "vcmi_mapgen/ontology/*",
         "vcmi_mapgen/readers/vmap_reader.py",
         "vcmi_mapgen/renderers/overlays/_tiles.py",
+        "vcmi_mapgen/renderers/overlays/blocking_test.py",
         "vcmi_mapgen/renderers/overlays/guard.py",
+        "vcmi_mapgen/renderers/overlays/guard_test.py",
         "vcmi_mapgen/renderers/vmap.py",
         "vcmi_mapgen/renderers/vmap_test.py",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/border/border_seal.py",
         "vcmi_mapgen/steps/border/entrances.py",
+        "vcmi_mapgen/steps/border/entrances_test.py",
+        "vcmi_mapgen/steps/gameplay/draw.py",
         "vcmi_mapgen/steps/gameplay/mines.py",
         "vcmi_mapgen/steps/gameplay/mines_test.py",
         "vcmi_mapgen/steps/gameplay/site.py",
@@ -1052,43 +1362,195 @@
         "vcmi_mapgen/steps/placement.py",
         "vcmi_mapgen/steps/portal/geometry.py",
         "vcmi_mapgen/steps/portal/geometry_test.py",
+        "vcmi_mapgen/steps/scatter/scatter.py",
         "vcmi_mapgen/steps/steps_write_map_test.py",
         "vcmi_mapgen/steps/treasure/fill.py",
         "vcmi_mapgen/steps/vegetation/stats.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s04-grid",
-        "s05-ontology",
         "s06-terrain"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "! grep -rnE '_OBJLIB|objlib\\.json' vcmi_mapgen --include=*.py"
+        "! grep -rnE '_OBJLIB|objlib\\.json' vcmi_mapgen --include=*.py",
+        "test ! -e data/objlib.json"
       ],
       "rules": [
-        "kit.objects.type_to_purpose stops reading objlib.json; ontology answers purpose_of_type.",
-        "Behaviour-preserving: make golden unchanged."
+        "kit.objects.type_to_purpose stops reading objlib.json; the catalog answers purpose_of_type. data/objlib.json is deleted.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
+      "id": "s28-catalog-port",
+      "goal": "`Catalog` port in core; `VcmiCatalog` in `vcmi/`; every lookup goes through the instance",
+      "touches": [
+        "README.md",
+        "docs/architecture.md",
+        "vcmi_mapgen/cli.py",
+        "vcmi_mapgen/core/catalog.py",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/objects_test.py",
+        "vcmi_mapgen/kit/vmap/mask.py",
+        "vcmi_mapgen/kit/vmap/reader.py",
+        "vcmi_mapgen/kit/vmap/terrain.py",
+        "vcmi_mapgen/kit/vmap/terrain_test.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/ontology_test.py",
+        "vcmi_mapgen/pipeline.py",
+        "vcmi_mapgen/readers/vmap_reader.py",
+        "vcmi_mapgen/renderers/ontology_render.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/border/step.py",
+        "vcmi_mapgen/steps/gameplay/draw.py",
+        "vcmi_mapgen/steps/gameplay/gate_pairs.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/steps/gameplay/shipyards.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
+        "vcmi_mapgen/steps/gameplay/step.py",
+        "vcmi_mapgen/steps/gameplay/step_test.py",
+        "vcmi_mapgen/steps/gameplay/water.py",
+        "vcmi_mapgen/steps/gameplay/water_test.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/gated/placer_test.py",
+        "vcmi_mapgen/steps/gated/step.py",
+        "vcmi_mapgen/steps/gated/step_test.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/step.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/portal/step.py",
+        "vcmi_mapgen/steps/scatter/scatter.py",
+        "vcmi_mapgen/steps/scatter/step.py",
+        "vcmi_mapgen/steps/seed_sweep_test.py",
+        "vcmi_mapgen/steps/segment/step.py",
+        "vcmi_mapgen/steps/steps_write_map_test.py",
+        "vcmi_mapgen/steps/terrain_gen/step.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/steps/treasure/step.py",
+        "vcmi_mapgen/steps/vegetation/border_plan.py",
+        "vcmi_mapgen/steps/vegetation/sample.py",
+        "vcmi_mapgen/steps/vegetation/sample_test.py",
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/steps/vegetation/step.py",
+        "vcmi_mapgen/steps/zone_plan.py",
+        "vcmi_mapgen/validate.py",
+        "vcmi_mapgen/vcmi/catalog/adapter.py",
+        "vcmi_mapgen/vcmi/catalog/restrictions.py"
+      ],
+      "depends_on": [
+        "s07-purpose"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE 'from vcmi_mapgen\\.(vcmi|ontology)|import ontology' vcmi_mapgen/core --include=*.py",
+        "! grep -rnE 'class Ontology\\b' vcmi_mapgen --include=*.py"
+      ],
+      "rules": [
+        "core/catalog.py holds the Catalog Protocol and ObjectSpec; vcmi/catalog/adapter.py holds VcmiCatalog.",
+        "Route the 59 module calls and the 3 instance calls through the instance a step is handed.",
+        "One step test runs on a fake catalog.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
+      "id": "s29-footprint",
+      "goal": "`Footprint` replaces mask strings in the core",
+      "touches": [
+        "docs/architecture.md",
+        "vcmi_mapgen/core/model/objects.py",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/extract_vmap.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/objects_test.py",
+        "vcmi_mapgen/kit/reachability.py",
+        "vcmi_mapgen/kit/vmap/__init__.py",
+        "vcmi_mapgen/kit/vmap/document.py",
+        "vcmi_mapgen/kit/vmap/reader.py",
+        "vcmi_mapgen/kit/vmap/terrain.py",
+        "vcmi_mapgen/kit/vmap/writer.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/models/__init__.py",
+        "vcmi_mapgen/models/map_state.py",
+        "vcmi_mapgen/models/objects.py",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/readers/vmap_reader.py",
+        "vcmi_mapgen/renderers/ontology_render.py",
+        "vcmi_mapgen/renderers/overlays/_tiles.py",
+        "vcmi_mapgen/renderers/overlays/blocking.py",
+        "vcmi_mapgen/renderers/overlays/blocking_test.py",
+        "vcmi_mapgen/renderers/overlays/guard.py",
+        "vcmi_mapgen/renderers/overlays/guard_test.py",
+        "vcmi_mapgen/renderers/sprites.py",
+        "vcmi_mapgen/renderers/vmap.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/border/border_seal.py",
+        "vcmi_mapgen/steps/border/entrances.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/steps/gameplay/shipyards.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
+        "vcmi_mapgen/steps/gameplay/step.py",
+        "vcmi_mapgen/steps/gameplay/water.py",
+        "vcmi_mapgen/steps/gameplay/water_test.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/gated/placer_test.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/placement.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/scatter/step.py",
+        "vcmi_mapgen/steps/steps_write_map_test.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/steps/vegetation/border_plan.py",
+        "vcmi_mapgen/steps/vegetation/sample.py",
+        "vcmi_mapgen/steps/vegetation/sample_test.py",
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/steps/vegetation/step.py",
+        "vcmi_mapgen/steps/zone_plan.py",
+        "vcmi_mapgen/validate.py"
+      ],
+      "depends_on": [
+        "s28-catalog-port"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE '\\bMask\\b' vcmi_mapgen/core --include=*.py"
+      ],
+      "rules": [
+        "Footprint of cells with a Role replaces Mask strings under core/; the mask charset lives in vcmi/.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
       "id": "s08-corpus",
-      "goal": "Split kit/objects.py: corpus map loading goes to corpus/, footprint expansion goes to placement/footprint.py.",
+      "goal": "One `.vmap` loader in `vcmi/load.py`; corpus loading to `corpus/`; footprints to `core/placement/`",
       "touches": [
-        "vcmi_mapgen/corpus/*",
+        "vcmi_mapgen/core/placement/footprint.py",
+        "vcmi_mapgen/corpus/maps.py",
         "vcmi_mapgen/corpus_match.py",
         "vcmi_mapgen/kit/objects.py",
         "vcmi_mapgen/kit/objects_test.py",
         "vcmi_mapgen/kit/reachability.py",
         "vcmi_mapgen/kit/tiling.py",
         "vcmi_mapgen/models/AGENTS.md",
-        "vcmi_mapgen/placement/footprint.py",
+        "vcmi_mapgen/readers/__init__.py",
         "vcmi_mapgen/readers/vmap_reader.py",
         "vcmi_mapgen/renderers/overlays/_tiles.py",
+        "vcmi_mapgen/renderers/overlays/blocking.py",
         "vcmi_mapgen/renderers/overlays/guard.py",
+        "vcmi_mapgen/renderers/overlays/zone.py",
         "vcmi_mapgen/renderers/sprites.py",
         "vcmi_mapgen/renderers/sprites_test.py",
         "vcmi_mapgen/steps/border/border_seal.py",
@@ -1115,39 +1577,37 @@
         "vcmi_mapgen/steps/vegetation/stats.py",
         "vcmi_mapgen/steps/vegetation/step.py",
         "vcmi_mapgen/steps/zone_plan.py",
-        "vcmi_mapgen/validate.py"
+        "vcmi_mapgen/validate.py",
+        "vcmi_mapgen/vcmi/load.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose"
+        "s29-footprint"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "test ! -e vcmi_mapgen/kit/objects.py"
+        "test ! -e vcmi_mapgen/kit/objects.py",
+        "test ! -e vcmi_mapgen/readers",
+        "! grep -rnE 'FaithfulMap|def _adapt\\b' vcmi_mapgen --include=*.py"
       ],
       "rules": [
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
         "Move code verbatim first, then fix imports. No logic edits in the same slice.",
         "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
+        "load_map(path) -> MapState is the one translation from a .vmap; VmapReader, load_faithful and sprites._adapt collapse into it.",
         "Module-level corpus loads become lazy loaders; importing a module reads no file."
       ]
     },
     {
       "id": "s09-placement",
-      "goal": "Create placement/: footprint, cells, guards, identity, place, rewards, rules, site, scatter.",
+      "goal": "`core/placement/` package",
       "touches": [
+        "vcmi_mapgen/core/grid/components.py",
+        "vcmi_mapgen/core/placement/*",
+        "vcmi_mapgen/core/priors/gates.py",
         "vcmi_mapgen/corpus/gates.py",
         "vcmi_mapgen/corpus/mine/*",
         "vcmi_mapgen/corpus_match.py",
-        "vcmi_mapgen/grid/components.py",
-        "vcmi_mapgen/placement/*",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/border/border_seal.py",
         "vcmi_mapgen/steps/border/border_seal_test.py",
@@ -1185,14 +1645,6 @@
         "vcmi_mapgen/validate.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
         "s08-corpus"
       ],
       "done_when": [
@@ -1207,24 +1659,24 @@
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
         "Move code verbatim first, then fix imports. No logic edits in the same slice.",
         "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
-        "The blocking-cells decode ends up in one function in placement/footprint.py; the other copies call it.",
-        "Gate statistics mining moves to corpus/mine/gates.py and is run by the cli only."
+        "The blocking-cells decode ends up in one function in core/placement/footprint.py; the other copies call it.",
+        "Gate statistics mining moves to corpus/mine/gates.py; only cli runs it."
       ]
     },
     {
       "id": "s10-planning",
-      "goal": "Create planning/: zone_plan, zone_index (merged with ZoneRecord), entrances; pockets go to grid/.",
+      "goal": "`core/planning/` package; one zone record",
       "touches": [
+        "vcmi_mapgen/core/grid/paths.py",
+        "vcmi_mapgen/core/grid/pockets.py",
+        "vcmi_mapgen/core/planning/*",
         "vcmi_mapgen/corpus_match.py",
-        "vcmi_mapgen/grid/paths.py",
-        "vcmi_mapgen/grid/pockets.py",
         "vcmi_mapgen/kit/topology.py",
         "vcmi_mapgen/kit/topology_test.py",
         "vcmi_mapgen/models/AGENTS.md",
         "vcmi_mapgen/models/__init__.py",
         "vcmi_mapgen/models/pockets.py",
         "vcmi_mapgen/models/zone_record.py",
-        "vcmi_mapgen/planning/*",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/border/border_seal_test.py",
         "vcmi_mapgen/steps/border/entrances_test.py",
@@ -1246,15 +1698,6 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
         "s09-placement"
       ],
       "done_when": [
@@ -1272,10 +1715,41 @@
       ]
     },
     {
-      "id": "s11-results",
-      "goal": "Each step's Result dataclass lives in steps/<name>/result.py so steps import results, never each other's code.",
+      "id": "s34-gates",
+      "goal": "One `Gate(rep, band)` value in `core/planning/`; `zone_gates` and `zone_gate_bands` share one front walk; `zone_fronts` takes the zone label grid",
       "touches": [
-        "vcmi_mapgen/steps/*/result.py",
+        "vcmi_mapgen/core/planning/entrances.py",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/kit/topology.py",
+        "vcmi_mapgen/kit/topology_test.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/scatter/scatter.py",
+        "vcmi_mapgen/steps/vegetation/sample.py",
+        "vcmi_mapgen/steps/vegetation/sample_test.py"
+      ],
+      "depends_on": [
+        "s10-planning"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE 'owner\\[t\\] = zz' vcmi_mapgen/core/planning --include=*.py"
+      ],
+      "rules": [
+        "One Gate(rep, band) frozen dataclass; zone_gates and zone_gate_bands share one front walk and one antipodal-pair fallback.",
+        "Keep both orders: zone_gates keeps the order zone_fronts found neighbours in, zone_gate_bands sorts by zone id.",
+        "zone_fronts takes the zone label grid (Segmentation.zone_label), not every zone record and an id.",
+        "open_frac and min_w keep their values; each default is labelled hardcoded where it stays.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
+      "id": "s11-results",
+      "goal": "Results in `result.py`",
+      "touches": [
+        "vcmi_mapgen/core/steps/*/result.py",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/border/step.py",
         "vcmi_mapgen/steps/gameplay/gate_pairs.py",
@@ -1286,14 +1760,7 @@
         "vcmi_mapgen/steps/vegetation/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning"
+        "s34-gates"
       ],
       "done_when": [
         "make check",
@@ -1301,25 +1768,23 @@
         "! grep -rnE '^class \\w+Result\\b' vcmi_mapgen --include=*.py | grep -v '/result.py:'"
       ],
       "rules": [
-        "Behaviour-preserving: make golden unchanged."
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
       "id": "s12-segment-fold",
-      "goal": "Fold SegmentStep into terrain_gen, which provides Segmentation; zones leave MapState.",
+      "goal": "terrain_gen provides `Segmentation`",
       "touches": [
         "README.md",
         "vcmi_mapgen/cli.py",
+        "vcmi_mapgen/core/steps/terrain_gen/*",
         "vcmi_mapgen/corpus_match.py",
-        "vcmi_mapgen/kit/reachability.py",
         "vcmi_mapgen/kit/segmentation.py",
         "vcmi_mapgen/models/AGENTS.md",
         "vcmi_mapgen/models/map_state.py",
-        "vcmi_mapgen/renderers/overlays/__init__.py",
         "vcmi_mapgen/renderers/overlays/_tiles.py",
         "vcmi_mapgen/renderers/overlays/passage.py",
         "vcmi_mapgen/renderers/overlays/zone.py",
-        "vcmi_mapgen/renderers/overlays/zone_test.py",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/__init__.py",
         "vcmi_mapgen/steps/border/step.py",
@@ -1334,7 +1799,6 @@
         "vcmi_mapgen/steps/segment/__init__.py",
         "vcmi_mapgen/steps/segment/step.py",
         "vcmi_mapgen/steps/steps_write_map_test.py",
-        "vcmi_mapgen/steps/terrain_gen/*",
         "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
         "vcmi_mapgen/steps/terrain_gen/step.py",
         "vcmi_mapgen/steps/vegetation/sample.py",
@@ -1344,40 +1808,72 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
         "s11-results"
       ],
       "done_when": [
         "make check",
         "make golden",
         "test ! -e vcmi_mapgen/steps/segment",
-        "! grep -rnE 'map_state\\.zones|\\.zones\\[' vcmi_mapgen --include=*.py"
+        "! grep -rnE 'map_state\\.zones' vcmi_mapgen --include=*.py"
       ],
       "rules": [
-        "MapState keeps size, surfs, cells, gate_blk, objs, player_towns (models/AGENTS.md).",
-        "TileView.zone goes; readers of zones require Segmentation from the registry.",
+        "MapState keeps size, terrain grids, gate_blk, objs, player_towns (models/AGENTS.md).",
+        "Readers of zones require Segmentation from the registry.",
         "Remove 'segment' from --stop-after; cutting after terrain now includes segmentation.",
         "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
-      "id": "s13-gameplay",
-      "goal": "Split mines.py and draw.py: economy stays in the step; mining, audit and player-zone choice leave.",
+      "id": "s33-claims",
+      "goal": "The cover index owns claims with `mark`, `claim` and `rollback`; `ZoneRecord.used` goes",
       "touches": [
+        "vcmi_mapgen/core/placement/*",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/models/__init__.py",
+        "vcmi_mapgen/models/map_state.py",
+        "vcmi_mapgen/models/map_state_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/border/border_seal.py",
+        "vcmi_mapgen/steps/border/entrances.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
+        "vcmi_mapgen/steps/gameplay/water.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/placement.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/scatter/scatter.py",
+        "vcmi_mapgen/steps/scatter/step.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/steps/vegetation/border_plan.py"
+      ],
+      "depends_on": [
+        "s12-segment-fold"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE '\\.used\\.(add|update|discard|clear)|\\.used \\|=|_Snapshot|def _restore' vcmi_mapgen --include=*.py"
+      ],
+      "rules": [
+        "The cover index owns claims: mark() returns a token, claim(cells) records, rollback(mark) undoes. It refuses overlaps as today.",
+        "ZoneRecord.used goes; every reader asks the cover index.",
+        "gated/placer.py drops _Snapshot and _restore for mark and rollback.",
+        "treasure/fill.py claims a tile once; today it adds to used right after cover.try_add.",
+        "Predicted same. If make golden moves, stop, record which tiles used held that the cover did not, and move this slice after s25 as behaviour.",
+        "Code written or moved in this slice follows target.md 'A function or an object'."
+      ]
+    },
+    {
+      "id": "s13-gameplay",
+      "goal": "Split `mines.py` and `draw.py`",
+      "touches": [
+        "vcmi_mapgen/cli/audit.py",
+        "vcmi_mapgen/core/placement/*",
+        "vcmi_mapgen/core/planning/player_zones.py",
+        "vcmi_mapgen/core/priors/gameplay.py",
         "vcmi_mapgen/corpus/*",
         "vcmi_mapgen/corpus_match.py",
-        "vcmi_mapgen/placement/*",
-        "vcmi_mapgen/planning/player_zones.py",
         "vcmi_mapgen/renderers/vmap_test.py",
         "vcmi_mapgen/steps/gameplay/draw.py",
         "vcmi_mapgen/steps/gameplay/mines.py",
@@ -1396,18 +1892,7 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s12-segment-fold"
+        "s33-claims"
       ],
       "done_when": [
         "make check",
@@ -1425,25 +1910,16 @@
     },
     {
       "id": "s14-loot",
-      "goal": "Split caches.py into pockets, quests and pickups; one reward builder replaces the seer-hut and pandora clones.",
+      "goal": "Split `caches.py`; one reward builder",
       "touches": [
+        "vcmi_mapgen/core/placement/rewards.py",
+        "vcmi_mapgen/core/steps/loot/*",
         "vcmi_mapgen/kit/topology_test.py",
-        "vcmi_mapgen/placement/rewards.py",
-        "vcmi_mapgen/steps/loot/*",
         "vcmi_mapgen/steps/loot/caches.py",
         "vcmi_mapgen/steps/loot/caches_test.py",
         "vcmi_mapgen/steps/loot/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s04-grid",
-        "s05-ontology",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
         "s13-gameplay"
       ],
       "done_when": [
@@ -1456,32 +1932,20 @@
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
         "Move code verbatim first, then fix imports. No logic edits in the same slice.",
         "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
-        "placement.rewards holds the one reward builder; _pandora_reward and _seerhut_reward both call it."
+        "core/placement/rewards.py holds the one reward builder; _pandora_reward and _seerhut_reward both call it."
       ]
     },
     {
       "id": "s15-portal",
-      "goal": "Split portal/geometry.py: rescue stays, reachability goes to grid/reach.py, reward-zone fill goes to loot.",
+      "goal": "Split portal geometry",
       "touches": [
-        "vcmi_mapgen/grid/reach.py",
-        "vcmi_mapgen/steps/loot/reward_zone.py",
+        "vcmi_mapgen/core/grid/reach.py",
+        "vcmi_mapgen/core/steps/loot/reward_zone.py",
         "vcmi_mapgen/steps/portal/geometry.py",
         "vcmi_mapgen/steps/portal/geometry_test.py",
         "vcmi_mapgen/steps/portal/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s13-gameplay",
         "s14-loot"
       ],
       "done_when": [
@@ -1497,11 +1961,13 @@
     },
     {
       "id": "s16-vegetation",
-      "goal": "Vegetation keeps sampling; statistics mining goes to corpus/mine, border ownership goes to planning.",
+      "goal": "Vegetation mining to corpus",
       "touches": [
         "vcmi_mapgen/cli/veg_experiment.py",
-        "vcmi_mapgen/corpus/*",
-        "vcmi_mapgen/planning/borders.py",
+        "vcmi_mapgen/core/planning/borders.py",
+        "vcmi_mapgen/core/priors/vegetation.py",
+        "vcmi_mapgen/corpus/mine/vegetation.py",
+        "vcmi_mapgen/corpus/vegetation.py",
         "vcmi_mapgen/steps/border/border_seal.py",
         "vcmi_mapgen/steps/border/border_seal_test.py",
         "vcmi_mapgen/steps/border/entrances.py",
@@ -1516,27 +1982,12 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s13-gameplay",
         "s14-loot"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "! grep -rnE 'steps\\.vegetation\\.(stats|border_plan)\\b.*import (blocking_cells|zone_owner|cross_pairs)' vcmi_mapgen --include=*.py",
-        "! grep -rnE 'from vcmi_mapgen\\.steps\\.vegetation.*import.*mine\\b' vcmi_mapgen --include=*.py"
+        "! grep -rnE 'from vcmi_mapgen\\.core\\.steps\\.vegetation' vcmi_mapgen/core/steps/border --include=*.py"
       ],
       "rules": [
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
@@ -1547,12 +1998,15 @@
     },
     {
       "id": "s17-terrain-gen",
-      "goal": "terrain_gen splits into macro, texture, gate_sites and tiling; macro and markov mining move to corpus/mine.",
+      "goal": "Split terrain_gen; miners to `corpus/mine`",
       "touches": [
-        "vcmi_mapgen/corpus/mine/*",
-        "vcmi_mapgen/kit/tiling.py",
-        "vcmi_mapgen/kit/tiling_test.py",
-        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/core/priors/macro.py",
+        "vcmi_mapgen/core/priors/markov.py",
+        "vcmi_mapgen/core/steps/terrain_gen/*",
+        "vcmi_mapgen/corpus/macro.py",
+        "vcmi_mapgen/corpus/markov.py",
+        "vcmi_mapgen/corpus/mine/macro.py",
+        "vcmi_mapgen/corpus/mine/markov.py",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/__init__.py",
         "vcmi_mapgen/steps/border/step.py",
@@ -1560,7 +2014,6 @@
         "vcmi_mapgen/steps/gameplay/water_test.py",
         "vcmi_mapgen/steps/portal/step.py",
         "vcmi_mapgen/steps/segment/step.py",
-        "vcmi_mapgen/steps/terrain_gen/*",
         "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
         "vcmi_mapgen/steps/terrain_gen/macro_topo_test.py",
         "vcmi_mapgen/steps/terrain_gen/markov.py",
@@ -1570,20 +2023,6 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s13-gameplay",
         "s15-portal",
         "s16-vegetation"
       ],
@@ -1591,8 +2030,7 @@
         "make check",
         "make golden",
         "test ! -e vcmi_mapgen/steps/terrain_gen/macro_topo.py",
-        "test ! -e vcmi_mapgen/steps/terrain_gen/markov.py",
-        "test ! -e vcmi_mapgen/kit/tiling.py"
+        "test ! -e vcmi_mapgen/steps/terrain_gen/markov.py"
       ],
       "rules": [
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
@@ -1602,22 +2040,13 @@
     },
     {
       "id": "s18-crossings",
-      "goal": "Rename border_seal to crossings, which is what it places.",
+      "goal": "Rename border_seal",
       "touches": [
         "vcmi_mapgen/steps/border/border_seal.py",
         "vcmi_mapgen/steps/border/border_seal_test.py",
         "vcmi_mapgen/steps/border/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s05-ontology",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s16-vegetation",
         "s17-terrain-gen"
       ],
       "done_when": [
@@ -1633,10 +2062,9 @@
     },
     {
       "id": "s19-renderers",
-      "goal": "sprites.py keeps compositing only; DEF parsing goes to formats/defs.py; vmap player setup splits out; palette moves in.",
+      "goal": "Split sprites and vmap; `vcmi/export.py` and `vcmi/players.py`",
       "touches": [
         "vcmi_mapgen/cli/render_sprites.py",
-        "vcmi_mapgen/formats/defs.py",
         "vcmi_mapgen/kit/render_palette.py",
         "vcmi_mapgen/renderers/*",
         "vcmi_mapgen/renderers/__init__.py",
@@ -1647,88 +2075,209 @@
         "vcmi_mapgen/renderers/sprites_test.py",
         "vcmi_mapgen/renderers/vmap.py",
         "vcmi_mapgen/renderers/vmap_test.py",
-        "vcmi_mapgen/steps/terrain_gen/macro_topo.py"
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/vcmi/export.py",
+        "vcmi_mapgen/vcmi/formats/defs.py",
+        "vcmi_mapgen/vcmi/players.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s17-terrain-gen"
+        "s18-crossings"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "test ! -e vcmi_mapgen/kit/render_palette.py",
-        "! grep -rnE 'def _adapt' vcmi_mapgen --include=*.py"
+        "test ! -e vcmi_mapgen/kit/render_palette.py"
       ],
       "rules": [
         "Behaviour-preserving: make golden must match data/golden.json unchanged.",
         "Move code verbatim first, then fix imports. No logic edits in the same slice.",
         "Update every hand-written doc this slice touches, and grep the agent-library skill sources for the old names; fix them there and run make agent-install.",
-        "sprites._adapt stops being a second vmap reader; it uses formats.vmap.",
+        "vcmi/export.py holds the MapState to VmapDocument translation; renderers/vmap.py calls it and the writer.",
         "vmap.py builds main_town once."
       ]
     },
     {
-      "id": "s20-ontology-queries",
-      "goal": "Ontology answers random_artifact(tier), random_monster(level), shrine_level, loot roles; hardcoded tables go.",
+      "id": "s31-tile-art",
+      "goal": "Tile art leaves the core. terrain_gen writes one `Terrain` grid; export and the PNG renderer tile it",
       "touches": [
+        "README.md",
         "docs/architecture.md",
-        "vcmi_mapgen/ontology.py",
-        "vcmi_mapgen/ontology/*",
-        "vcmi_mapgen/steps/gameplay/mines.py",
-        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/cli.py",
+        "vcmi_mapgen/corpus/mine/tiler.py",
+        "vcmi_mapgen/corpus/tiler.py",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/extract_vmap.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/segmentation.py",
+        "vcmi_mapgen/kit/terrain_segment.py",
+        "vcmi_mapgen/kit/tiling.py",
+        "vcmi_mapgen/kit/tiling_test.py",
+        "vcmi_mapgen/kit/vmap/terrain.py",
+        "vcmi_mapgen/kit/vmap/terrain_test.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/models/__init__.py",
+        "vcmi_mapgen/models/map_state.py",
+        "vcmi_mapgen/models/objects.py",
+        "vcmi_mapgen/readers/vmap_reader.py",
+        "vcmi_mapgen/renderers/overlays/_tiles.py",
+        "vcmi_mapgen/renderers/overlays/base.py",
+        "vcmi_mapgen/renderers/overlays/blocking.py",
+        "vcmi_mapgen/renderers/overlays/blocking_test.py",
+        "vcmi_mapgen/renderers/overlays/grid_test.py",
+        "vcmi_mapgen/renderers/overlays/guard_test.py",
+        "vcmi_mapgen/renderers/overlays/passage.py",
+        "vcmi_mapgen/renderers/overlays/passage_test.py",
+        "vcmi_mapgen/renderers/overlays/tile_type.py",
+        "vcmi_mapgen/renderers/overlays/zone.py",
+        "vcmi_mapgen/renderers/overlays/zone_test.py",
+        "vcmi_mapgen/renderers/png.py",
+        "vcmi_mapgen/renderers/vmap.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/border/step.py",
+        "vcmi_mapgen/steps/gameplay/shipyards.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
         "vcmi_mapgen/steps/gameplay/step.py",
-        "vcmi_mapgen/steps/gameplay/water.py",
-        "vcmi_mapgen/steps/gate/gates.py",
-        "vcmi_mapgen/steps/loot/caches.py",
-        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/gated/placer.py",
         "vcmi_mapgen/steps/portal/geometry_test.py",
-        "vcmi_mapgen/steps/treasure/fill.py"
+        "vcmi_mapgen/steps/portal/step.py",
+        "vcmi_mapgen/steps/segment/step.py",
+        "vcmi_mapgen/steps/steps_write_map_test.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/steps/terrain_gen/step.py",
+        "vcmi_mapgen/steps/vegetation/step.py",
+        "vcmi_mapgen/steps/zone_plan.py",
+        "vcmi_mapgen/validate.py",
+        "vcmi_mapgen/vcmi/tiles.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s14-loot",
-        "s15-portal",
-        "s16-vegetation",
-        "s17-terrain-gen"
+        "s30-payloads"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "! grep -rnE '\"avwmon\"|'avwmon'' vcmi_mapgen --include=*.py",
-        "! grep -rnE '^ART_BY_LVL *=' vcmi_mapgen --include=*.py"
+        "test ! -e vcmi_mapgen/kit/tiling.py",
+        "! grep -rnE '\\bCell\\b|\\bsurfs\\b' vcmi_mapgen/core --include=*.py"
       ],
       "rules": [
-        "Each query reproduces today's per-caller value, including the disagreeing top artifact tier (fill avarnd4, caches and mines avarand). s26 unifies it.",
-        "Behaviour-preserving: make golden unchanged."
+        "terrain_gen writes one Terrain grid; vcmi/export.py and renderers/png.py call vcmi.tiles.tile on it.",
+        "Tiling draws no random number, so both outputs get the same art.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
+      "id": "s20-object-roles",
+      "goal": "Steps ask the catalog for guards, random artifacts, portals, quest givers and graded draws",
+      "touches": [
+        "docs/architecture.md",
+        "vcmi_mapgen/core/catalog.py",
+        "vcmi_mapgen/kit/objects_test.py",
+        "vcmi_mapgen/kit/vmap/reader_test.py",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/portal/geometry_test.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/vcmi/catalog/*"
+      ],
+      "depends_on": [
+        "s19-renderers"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE '\"av[a-z0-9]+\"|RND_MON|ART_BY_LVL|PORTAL_ANIMS|\"seerHut\"' vcmi_mapgen/core --include=*.py"
+      ],
+      "rules": [
+        "The catalog answers guard(level), random_artifact(tier), random_monster(level), portals(), quest_givers and graded draws.",
+        "Each query reproduces today's per-caller value, including the disagreeing top artifact tier (fill avarnd4, caches and mines avarand). s27 unifies it.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
+      "id": "s30-payloads",
+      "goal": "`Guard`, `Reward`, `Quest` replace VCMI option dictionaries; `vcmi/export.py` translates",
+      "touches": [
+        "docs/architecture.md",
+        "vcmi_mapgen/core/model/payload.py",
+        "vcmi_mapgen/corpus_match.py",
+        "vcmi_mapgen/extract_vmap.py",
+        "vcmi_mapgen/h3m.py",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/vcmi_config.py",
+        "vcmi_mapgen/kit/vmap/document.py",
+        "vcmi_mapgen/kit/vmap/reader.py",
+        "vcmi_mapgen/kit/vmap/reader_test.py",
+        "vcmi_mapgen/kit/vmap/terrain.py",
+        "vcmi_mapgen/kit/vmap/writer.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/models/map_state.py",
+        "vcmi_mapgen/models/objects.py",
+        "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/readers/vmap_reader.py",
+        "vcmi_mapgen/renderers/sprites.py",
+        "vcmi_mapgen/renderers/sprites_test.py",
+        "vcmi_mapgen/renderers/vmap.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/border/border_seal.py",
+        "vcmi_mapgen/steps/border/border_seal_test.py",
+        "vcmi_mapgen/steps/border/entrances.py",
+        "vcmi_mapgen/steps/gameplay/draw.py",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/steps/gameplay/shipyards.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
+        "vcmi_mapgen/steps/gameplay/step.py",
+        "vcmi_mapgen/steps/gameplay/water.py",
+        "vcmi_mapgen/steps/gameplay/water_test.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/gated/placer_test.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/placement.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/portal/geometry_test.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/steps/terrain_gen/step.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/steps/vegetation/sample.py",
+        "vcmi_mapgen/steps/vegetation/sample_test.py",
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/steps/zone_plan.py",
+        "vcmi_mapgen/validate.py",
+        "vcmi_mapgen/vcmi/export.py"
+      ],
+      "depends_on": [
+        "s20-object-roles"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE '\"(creatures|character|limiter)\"' vcmi_mapgen/core --include=*.py",
+        "! grep -rnE '\\.options\\b|\\.animation\\b' vcmi_mapgen/core --include=*.py"
+      ],
+      "rules": [
+        "Guard, Reward, Quest and the Payload union are designed from the option keys in use.",
+        "vcmi/export.py translates payloads to options; PlacedObject carries a payload.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
       "id": "s21-one-bfs",
-      "goal": "One BFS family in grid/reach.py replaces the copies.",
+      "goal": "One BFS family",
       "touches": [
         "docs/architecture.md",
-        "vcmi_mapgen/grid/reach.py",
+        "vcmi_mapgen/core/grid/reach.py",
+        "vcmi_mapgen/docs/architecture/target.md",
         "vcmi_mapgen/kit/geometry.py",
         "vcmi_mapgen/kit/reachability.py",
         "vcmi_mapgen/kit/terrain_segment.py",
@@ -1748,56 +2297,27 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s14-loot",
-        "s15-portal",
-        "s16-vegetation",
-        "s17-terrain-gen",
-        "s19-renderers",
-        "s20-ontology-queries"
+        "s31-tile-art"
       ],
       "done_when": [
         "make check",
         "make golden"
       ],
       "rules": [
-        "Replace a copy only where make golden stays equal; a copy that changes the map stays and is recorded in target.md as debt."
+        "Replace a copy only where make golden stays equal; a copy that changes the map stays and is recorded in target.md as debt.",
+        "Code written or moved in this slice follows target.md 'A function or an object'."
       ]
     },
     {
       "id": "s22-level-param",
-      "goal": "Samplers take the level; the five `o.level = 1` retag loops go.",
+      "goal": "Samplers take the level",
       "touches": [
         "vcmi_mapgen/steps/border/step.py",
         "vcmi_mapgen/steps/portal/step.py",
         "vcmi_mapgen/steps/vegetation/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s15-portal",
-        "s16-vegetation",
-        "s17-terrain-gen",
-        "s18-crossings"
+        "s21-one-bfs"
       ],
       "done_when": [
         "make check",
@@ -1805,128 +2325,145 @@
         "! grep -rnE '\\.level = 1\\b' vcmi_mapgen --include=*.py"
       ],
       "rules": [
-        "Behaviour-preserving: make golden unchanged."
+        "Samplers take the level; no `.level = 1` retag loops.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
       "id": "s23-workspace",
-      "goal": "Typed step results replace PlacementWorkspace; pipeline.py keeps only the engine.",
+      "goal": "Typed results replace the workspace",
       "touches": [
+        "vcmi_mapgen/core/placement/cells.py",
+        "vcmi_mapgen/core/steps/*/result.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/models/__init__.py",
+        "vcmi_mapgen/models/zone_record.py",
         "vcmi_mapgen/pipeline.py",
         "vcmi_mapgen/steps/AGENTS.md",
         "vcmi_mapgen/steps/border/step.py",
         "vcmi_mapgen/steps/gameplay/site.py",
         "vcmi_mapgen/steps/gameplay/step.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/gated/placer_test.py",
         "vcmi_mapgen/steps/gated/step.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
         "vcmi_mapgen/steps/loot/step.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
         "vcmi_mapgen/steps/portal/step.py",
         "vcmi_mapgen/steps/scatter/step.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
         "vcmi_mapgen/steps/vegetation/step.py",
         "vcmi_mapgen/steps/zone_index.py",
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s14-loot",
-        "s15-portal",
-        "s16-vegetation",
-        "s17-terrain-gen",
-        "s18-crossings",
-        "s20-ontology-queries",
-        "s21-one-bfs",
         "s22-level-param"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "! grep -rnE 'PlacementWorkspace|ZoneWorkspace|LevelWorkspace' vcmi_mapgen --include=*.py",
-        "! grep -rnE 'get_or_create' vcmi_mapgen --include=*.py"
+        "! grep -rnE 'PlacementWorkspace|ZoneWorkspace|LevelWorkspace|get_or_create' vcmi_mapgen --include=*.py"
       ],
       "rules": [
         "A producer provides a value once; consumers require it. No get_or_create in a consumer; no 'set by X' empty defaults.",
-        "Behaviour-preserving: make golden unchanged."
+        "For blocked, open_set, passable and occupied, test the Derived form for equality at every step boundary on both golden maps before any caller changes; a field that fails takes the Deltas form.",
+        "ZoneRecord is frozen once the four fields have owners.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
-      "id": "s24-runtime-loaders",
-      "goal": "Runtime reads caches and never mines or writes them; mining runs only from cli.",
+      "id": "s35-thin-run",
+      "goal": "Each step's `run` reads, calls and writes; the choosing loops move to the step's package",
       "touches": [
-        "docs/architecture.md",
-        "vcmi_mapgen/cli/*",
-        "vcmi_mapgen/corpus/*",
-        "vcmi_mapgen/corpus_match.py",
-        "vcmi_mapgen/kit/objects.py",
-        "vcmi_mapgen/kit/tiling.py",
-        "vcmi_mapgen/kit/vmap/writer.py",
-        "vcmi_mapgen/models/AGENTS.md",
-        "vcmi_mapgen/ontology.py",
-        "vcmi_mapgen/renderers/vmap_test.py",
-        "vcmi_mapgen/steps/gameplay/mines.py",
-        "vcmi_mapgen/steps/gameplay/mines_test.py",
-        "vcmi_mapgen/steps/gameplay/water_test.py",
-        "vcmi_mapgen/steps/gate/gates.py",
-        "vcmi_mapgen/steps/loot/caches_test.py",
-        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
-        "vcmi_mapgen/steps/terrain_gen/markov.py",
-        "vcmi_mapgen/steps/terrain_gen/markov_test.py",
-        "vcmi_mapgen/steps/vegetation/stats.py"
+        "vcmi_mapgen/core/steps/*",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/border/step.py",
+        "vcmi_mapgen/steps/portal/step.py",
+        "vcmi_mapgen/steps/scatter/step.py",
+        "vcmi_mapgen/steps/terrain_gen/step.py",
+        "vcmi_mapgen/steps/vegetation/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s14-loot",
-        "s16-vegetation",
-        "s17-terrain-gen",
-        "s19-renderers",
-        "s20-ontology-queries",
-        "s21-one-bfs"
+        "s23-workspace"
       ],
       "done_when": [
         "make check",
         "make golden",
-        "uv run lint-imports",
-        "! grep -rnE 'all_map_names|load_faithful' vcmi_mapgen/steps vcmi_mapgen/placement vcmi_mapgen/planning vcmi_mapgen/pipeline.py --include=*.py",
-        "test $(uv run python -c \"import time,subprocess,sys;t=time.time();subprocess.run([sys.executable,'-m','vcmi_mapgen.cli','generate','--seed','1','--size','48','--renderers','vmap','--overlays','none'],check=True,capture_output=True);print(int(time.time()-t))\") -lt 20"
+        "uv run python -c \"import ast,pathlib,sys;bad=[f'{p}:{n.lineno}' for p in pathlib.Path('vcmi_mapgen/core/steps').glob('*/step.py') for n in ast.walk(ast.parse(p.read_text())) if isinstance(n,ast.FunctionDef) and n.name=='run' and n.end_lineno-n.lineno>=30];print(bad);sys.exit(bool(bad))\""
       ],
       "rules": [
-        "A missing cache is an error that names the cli command that builds it.",
-        "The Markov tables (learn and learn4, per level) and the autotiler tables (_learn_terrain_tiler) join data/pp as markov_<level>.json and tiler.json. Today every generate rebuilds them from 477 corpus map loads, about 45 s of a 52 s run.",
-        "Serialise each Counter in its iteration order so sampling draws the same values; make golden proves it.",
-        "Mining commands: cli mine-stats rebuilds every data/pp file; each file names its command in its _source key."
+        "Each step's run reads from map_state and injected results, calls functions in its package, and writes their results back.",
+        "A loop inside run that chooses tiles, zones or objects moves to the step's package with a test that calls it without a pipeline.",
+        "The 30-line bar is hardcoded, set against 74, 50, 45, 43 and 42 lines today.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
+      ]
+    },
+    {
+      "id": "s24b-priors",
+      "goal": "Priors are values `cli` loads once and passes to step constructors",
+      "touches": [
+        "vcmi_mapgen/cli/generate.py",
+        "vcmi_mapgen/core/priors/*",
+        "vcmi_mapgen/corpus/*",
+        "vcmi_mapgen/kit/objects.py",
+        "vcmi_mapgen/kit/objects_test.py",
+        "vcmi_mapgen/models/AGENTS.md",
+        "vcmi_mapgen/renderers/sprites.py",
+        "vcmi_mapgen/renderers/vmap_test.py",
+        "vcmi_mapgen/steps/AGENTS.md",
+        "vcmi_mapgen/steps/gameplay/mines.py",
+        "vcmi_mapgen/steps/gameplay/mines_test.py",
+        "vcmi_mapgen/steps/gameplay/site.py",
+        "vcmi_mapgen/steps/gameplay/water.py",
+        "vcmi_mapgen/steps/gameplay/water_test.py",
+        "vcmi_mapgen/steps/gate/gates.py",
+        "vcmi_mapgen/steps/gate/gates_test.py",
+        "vcmi_mapgen/steps/gated/placer.py",
+        "vcmi_mapgen/steps/loot/caches.py",
+        "vcmi_mapgen/steps/loot/caches_test.py",
+        "vcmi_mapgen/steps/portal/geometry.py",
+        "vcmi_mapgen/steps/scatter/scatter.py",
+        "vcmi_mapgen/steps/terrain_gen/macro_topo.py",
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/steps/vegetation/sample_test.py",
+        "vcmi_mapgen/steps/vegetation/stats.py",
+        "vcmi_mapgen/steps/zone_plan.py"
+      ],
+      "depends_on": [
+        "s35-thin-run"
+      ],
+      "done_when": [
+        "make check",
+        "make golden",
+        "! grep -rnE 'data/pp|STATS_PATH|_cached_stats' vcmi_mapgen/core --include=*.py",
+        "! grep -rnE 'patch\\([^)]*(mine_|_stats|faithful_path)' vcmi_mapgen --include=*.py"
+      ],
+      "rules": [
+        "cli loads each prior once and passes it to the step constructors; no step reads data/pp.",
+        "No test patches a corpus statistic; a test that needs other statistics passes them in.",
+        "Code written or moved in this slice follows target.md 'A function or an object'.",
+        "Behaviour-preserving: make golden must match data/golden.json unchanged."
       ]
     },
     {
       "id": "s25-contracts",
-      "goal": "Turn on the layer, independence and forbidden import contracts; kit/ disappears.",
+      "goal": "Import contracts and the three grep checks on; `kit/` gone",
       "touches": [
+        "Makefile",
+        "README.md",
+        "docs/architecture.md",
         "pyproject.toml",
+        "vcmi_mapgen/cli.py",
         "vcmi_mapgen/corpus_match.py",
         "vcmi_mapgen/extract_vmap.py",
         "vcmi_mapgen/kit/*",
         "vcmi_mapgen/kit/__init__.py",
         "vcmi_mapgen/kit/objects.py",
         "vcmi_mapgen/kit/objects_test.py",
+        "vcmi_mapgen/kit/paths.py",
         "vcmi_mapgen/kit/reachability.py",
         "vcmi_mapgen/kit/segmentation.py",
         "vcmi_mapgen/kit/tiling.py",
@@ -1936,10 +2473,13 @@
         "vcmi_mapgen/kit/vcmi_config_test.py",
         "vcmi_mapgen/kit/vmap/reader.py",
         "vcmi_mapgen/kit/vmap/writer_test.py",
+        "vcmi_mapgen/models/AGENTS.md",
         "vcmi_mapgen/ontology.py",
         "vcmi_mapgen/readers/vmap_reader.py",
+        "vcmi_mapgen/renderers/ontology_render.py",
         "vcmi_mapgen/renderers/overlays/_tiles.py",
         "vcmi_mapgen/renderers/overlays/guard.py",
+        "vcmi_mapgen/renderers/png.py",
         "vcmi_mapgen/renderers/sprites.py",
         "vcmi_mapgen/renderers/vmap.py",
         "vcmi_mapgen/renderers/vmap_test.py",
@@ -1969,61 +2509,30 @@
         "vcmi_mapgen/steps/zone_plan.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s03-cli",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s14-loot",
-        "s15-portal",
-        "s16-vegetation",
-        "s17-terrain-gen",
-        "s18-crossings",
-        "s19-renderers",
-        "s20-ontology-queries",
-        "s21-one-bfs",
-        "s22-level-param",
-        "s23-workspace",
-        "s24-runtime-loaders"
+        "s24b-priors"
       ],
       "done_when": [
         "make check",
         "make golden",
         "uv run lint-imports",
-        "test ! -e vcmi_mapgen/kit"
+        "test ! -e vcmi_mapgen/kit",
+        "test $(grep -rn 'project_root()' vcmi_mapgen --include=*.py | grep -v '_test.py' | grep -v 'def project_root' | wc -l) -eq 1"
       ],
       "rules": [
-        "Layers top first: cli; steps | renderers; pipeline; planning; placement; corpus; grid; ontology; formats; models.",
-        "steps.* are independent except step -> result imports; corpus.mine is forbidden to steps, placement, planning and pipeline."
+        "Layers top first: cli; renderers; corpus; vcmi; core.steps; core.pipeline; core.planning; core.placement; core.grid; core.catalog | core.priors; core.model.",
+        "core.steps.* are independent except step -> result imports; corpus.mine and corpus.maps are imported only by cli.",
+        "The three grep checks in target.md run in make check."
       ]
     },
     {
       "id": "s26-fill-one-pass",
-      "goal": "Rewrite treasure fill as one pass over ontology queries instead of ten tables and four passes.",
+      "goal": "Treasure fill as one pass",
       "touches": [
         "data/golden.json",
         "vcmi_mapgen/steps/treasure/fill.py",
         "vcmi_mapgen/steps/treasure/step.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s05-ontology",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s11-results",
-        "s13-gameplay",
-        "s20-ontology-queries",
         "s25-contracts"
       ],
       "done_when": [
@@ -2033,39 +2542,25 @@
       ],
       "rules": [
         "Behaviour change: re-record golden with GOLDEN_UPDATE=1 and review the rendered diff for seeds 1-5 before commit.",
-        "make sweep passes."
+        "make sweep passes.",
+        "Code written or moved in this slice follows target.md 'A function or an object'."
       ],
       "behaviour": true
     },
     {
       "id": "s27-artifact-tier",
-      "goal": "One top random-artifact tier across fill, caches and mines.",
+      "goal": "One top random-artifact tier",
       "touches": [
         "data/golden.json",
         "docs/architecture.md",
         "vcmi_mapgen/ontology.py",
+        "vcmi_mapgen/ontology_test.py",
         "vcmi_mapgen/steps/gameplay/mines.py",
         "vcmi_mapgen/steps/loot/caches.py",
-        "vcmi_mapgen/steps/treasure/fill.py"
+        "vcmi_mapgen/steps/treasure/fill.py",
+        "vcmi_mapgen/vcmi/catalog/graded.py"
       ],
       "depends_on": [
-        "s00-oracle",
-        "s01-dead",
-        "s02-formats",
-        "s04-grid",
-        "s05-ontology",
-        "s06-terrain",
-        "s07-purpose",
-        "s08-corpus",
-        "s09-placement",
-        "s10-planning",
-        "s12-segment-fold",
-        "s13-gameplay",
-        "s14-loot",
-        "s20-ontology-queries",
-        "s21-one-bfs",
-        "s24-runtime-loaders",
-        "s25-contracts",
         "s26-fill-one-pass"
       ],
       "done_when": [

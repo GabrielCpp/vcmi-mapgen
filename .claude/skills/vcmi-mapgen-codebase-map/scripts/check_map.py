@@ -93,31 +93,45 @@ def _git(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     )
 
 
-def settings() -> Settings:
+class ConfigError(ValueError):
+    """A value in the config table has the wrong type."""
+
+
+def config_strings(table: dict[str, object], key: str) -> tuple[str, ...]:
+    value = table.get(key, [])
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ConfigError(f"{CONFIG} [{TABLE}] {key} must be a list of strings")
+    return tuple(item for item in value if isinstance(item, str))
+
+
+def load_settings() -> Settings:
     try:
         with Path(ROOT, CONFIG).open("rb") as handle:
-            table = tomllib.load(handle).get(TABLE, {})
+            loaded = tomllib.load(handle).get(TABLE, {})
     except FileNotFoundError:
-        table = {}
-    extensions = table.get("extensions")
+        loaded = {}
+    if not isinstance(loaded, dict):
+        raise ConfigError(f"{CONFIG} [{TABLE}] must be a table")
+    table: dict[str, object] = {str(key): value for key, value in loaded.items()}
+    extensions = config_strings(table, "extensions")
     return Settings(
         extensions=frozenset(extensions) if extensions else SOURCE_EXTENSIONS,
-        exclude=tuple(table.get("exclude", ())),
+        exclude=config_strings(table, "exclude"),
     )
 
 
-def is_source(path: str, config: Settings) -> bool:
+def is_source(path: str, settings: Settings) -> bool:
     pure = PurePosixPath(path)
-    if pure.suffix not in config.extensions:
+    if pure.suffix not in settings.extensions:
         return False
     if any(part.startswith(".") or part in EXCLUDED_DIRS for part in pure.parts[:-1]):
         return False
     if any(fnmatch(pure.name, pattern) for pattern in EXCLUDED_NAMES):
         return False
-    return not any(fnmatch(path, pattern) for pattern in config.exclude)
+    return not any(fnmatch(path, pattern) for pattern in settings.exclude)
 
 
-def index_files() -> list[str]:
+def tracked_paths() -> list[str]:
     return [p for p in _git("ls-files", "-z").stdout.split("\0") if p]
 
 
@@ -135,21 +149,21 @@ def parent(path: str) -> str:
 
 def source_dirs(sources: list[str]) -> set[str]:
     """Every directory that holds a source file, directly or below."""
-    out: set[str] = set()
+    holding_dirs: set[str] = set()
     for path in sources:
         directory = parent(path)
         while True:
-            out.add(directory)
+            holding_dirs.add(directory)
             if directory == "":
                 break
             directory = parent(directory)
-    return out
+    return holding_dirs
 
 
-def children(directory: str, sources: list[str], dirs: set[str]) -> set[str]:
+def names_the_map_must_list(directory: str, sources: list[str], source_holding_dirs: set[str]) -> set[str]:
     """The names a map for *directory* must list: source files and source subdirs."""
     names = {PurePosixPath(p).name for p in sources if parent(p) == directory}
-    names |= {PurePosixPath(d).name + "/" for d in dirs if d and parent(d) == directory}
+    names |= {PurePosixPath(d).name + "/" for d in source_holding_dirs if d and parent(d) == directory}
     return names
 
 
@@ -171,7 +185,7 @@ def map_candidates(directory: str) -> list[str]:
     return [agents, join(directory, FALLBACK_MAP_FILE)]
 
 
-def find_map(directory: str) -> tuple[str, list[str] | None]:
+def map_path_and_section(directory: str) -> tuple[str, list[str] | None]:
     """The first candidate with a map section, or the preferred one when none has."""
     candidates = map_candidates(directory)
     for path in candidates:
@@ -198,33 +212,33 @@ def map_section(text: str) -> list[str] | None:
     return None
 
 
-def entries(section: list[str]) -> dict[str, str]:
-    out: dict[str, str] = {}
+def descriptions_by_listed_name(section: list[str]) -> dict[str, str]:
+    descriptions: dict[str, str] = {}
     for line in section:
         match = ENTRY.match(line)
         if match:
-            out[match.group(1).strip()] = match.group(2)
-    return out
+            descriptions[match.group(1).strip()] = match.group(2)
+    return descriptions
 
 
-def check_directory(
-    directory: str, sources: list[str], dirs: set[str], tracked: set[str]
+def map_problems(
+    directory: str, sources: list[str], source_holding_dirs: set[str], tracked: set[str]
 ) -> list[str]:
     where = directory or "the repo root"
-    path, section = find_map(directory)
-    expected = children(directory, sources, dirs)
+    path, section = map_path_and_section(directory)
+    expected = names_the_map_must_list(directory, sources, source_holding_dirs)
     if section is None:
         lines = "\n".join(
             f"      - `{name}`: <what it owns>" for name in sorted(expected)
         )
         return [f"{where}: no `## Map` section in {path}. Add one:\n{lines}"]
-    listed = entries(section)
+    descriptions = descriptions_by_listed_name(section)
     problems: list[str] = []
     problems += [
         f"{path}: `{name}` is missing from the map. Add a line saying what it owns."
-        for name in sorted(expected - listed.keys())
+        for name in sorted(expected - descriptions.keys())
     ]
-    for name in sorted(listed.keys() - expected):
+    for name in sorted(descriptions.keys() - expected):
         target = join(directory, name.rstrip("/"))
         exists = target in tracked or any(t.startswith(target + "/") for t in tracked)
         if not exists:
@@ -232,42 +246,53 @@ def check_directory(
                 f"{path}: `{name}` is on the map but no longer exists. "
                 "Remove or rename its line."
             )
-    for name, description in sorted(listed.items()):
+    for name, description in sorted(descriptions.items()):
         if name in expected and not description:
             problems.append(f"{path}: `{name}` has no description. Say what it owns.")
     return problems
 
 
-def staged_changes() -> tuple[list[str], list[str]]:
-    out = _git("diff", "--cached", "--name-status", "--no-renames", "-z").stdout
-    fields = [f for f in out.split("\0") if f]
-    touched: list[str] = []
-    maps: list[str] = []
+@dataclass(frozen=True)
+class StagedChanges:
+    """What the commit adds or deletes, and the directories whose map file it changes."""
+
+    added_or_deleted_paths: tuple[str, ...]
+    dirs_with_changed_map: tuple[str, ...]
+
+
+def staged_changes() -> StagedChanges:
+    name_status_output = _git("diff", "--cached", "--name-status", "--no-renames", "-z").stdout
+    fields = [f for f in name_status_output.split("\0") if f]
+    added_or_deleted: list[str] = []
+    changed_map_dirs: list[str] = []
     for status, path in zip(fields[0::2], fields[1::2], strict=True):
         name = PurePosixPath(path).name
         if name in (MAP_FILE, FALLBACK_MAP_FILE):
-            maps.append(parent(path))
+            changed_map_dirs.append(parent(path))
         if status[0] in "AD":
-            touched.append(path)
-    return touched, maps
+            added_or_deleted.append(path)
+    return StagedChanges(tuple(added_or_deleted), tuple(changed_map_dirs))
 
 
-def affected(config: Settings, dirs: set[str]) -> set[str]:
+def dirs_to_check(
+    settings: Settings,
+    staged: StagedChanges,
+    source_dirs_staged: set[str],
+    source_dirs_at_head: set[str],
+) -> set[str]:
     """Directories whose map this commit could have made wrong."""
-    touched, maps = staged_changes()
-    before = source_dirs([p for p in head_files() if is_source(p, config)])
-    out = {d for d in maps if d in dirs}
-    for path in touched:
-        if not is_source(path, config):
+    dirs_to_recheck = {d for d in staged.dirs_with_changed_map if d in source_dirs_staged}
+    for path in staged.added_or_deleted_paths:
+        if not is_source(path, settings):
             continue
         directory = parent(path)
         while True:
-            if directory in dirs or directory in before:
-                out.add(directory)
-            if directory == "" or (directory in dirs) == (directory in before):
+            if directory in source_dirs_staged or directory in source_dirs_at_head:
+                dirs_to_recheck.add(directory)
+            if directory == "" or (directory in source_dirs_staged) == (directory in source_dirs_at_head):
                 break
             directory = parent(directory)
-    return {d for d in out if d in dirs}
+    return {d for d in dirs_to_recheck if d in source_dirs_staged}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -278,14 +303,22 @@ def main(argv: list[str] | None = None) -> int:
         help="check every directory holding source, not only those the commit touches",
     )
     args = parser.parse_args(argv)
-    config = settings()
-    tracked = index_files()
-    sources = [p for p in tracked if is_source(p, config)]
-    dirs = source_dirs(sources)
-    targets = dirs if args.all else affected(config, dirs)
+    try:
+        settings = load_settings()
+    except ConfigError as error:
+        print(f"codebase-map: {error}", file=sys.stderr)
+        return 1
+    tracked = tracked_paths()
+    sources = [p for p in tracked if is_source(p, settings)]
+    source_holding_dirs = source_dirs(sources)
+    if args.all:
+        targets = source_holding_dirs
+    else:
+        head_sources = [p for p in head_files() if is_source(p, settings)]
+        targets = dirs_to_check(settings, staged_changes(), source_holding_dirs, source_dirs(head_sources))
     problems: list[str] = []
     for directory in sorted(targets):
-        problems += check_directory(directory, sources, dirs, set(tracked))
+        problems += map_problems(directory, sources, source_holding_dirs, set(tracked))
     if not problems:
         return 0
     print("codebase-map: the map no longer matches the code.", file=sys.stderr)

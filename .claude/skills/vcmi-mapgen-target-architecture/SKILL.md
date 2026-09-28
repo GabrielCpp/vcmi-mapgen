@@ -123,9 +123,12 @@ A slice is one reviewable change that leaves the repo green. Rules:
 
 ### 5. Validate and stop for approval
 
+The first command checks that every file has a fate and that the slices are sound. The
+second prints the parallel execution waves.
+
 ```bash
-python3 <skill>/scripts/check_plan.py            # every file has a fate, slices are sound
-python3 <skill>/scripts/check_plan.py --waves    # print the parallel execution waves
+python3 <skill>/scripts/check_plan.py
+python3 <skill>/scripts/check_plan.py --waves
 ```
 
 Write `plan.json` with `"status": "draft"`. Present `target.md` to the operator with the

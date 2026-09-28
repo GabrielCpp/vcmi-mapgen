@@ -4,7 +4,7 @@ import ast
 import subprocess
 import sys
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path, PurePosixPath
 
@@ -14,23 +14,27 @@ TEST_PATTERNS = ("*_test.py", "test_*.py", "conftest.py")
 TEST_DIRS = frozenset({"tests", "test"})
 
 
-def _root() -> Path:
-    out = subprocess.run(
+def _repo_root() -> Path:
+    toplevel = subprocess.run(
         ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
     )
-    return Path(out.stdout.strip())
+    return Path(toplevel.stdout.strip())
 
 
-ROOT = _root()
+REPO_ROOT = _repo_root()
 
 
-@dataclass
+class ConfigError(ValueError):
+    """A value in the config table has the wrong type."""
+
+
+@dataclass(frozen=True)
 class Module:
     name: str
     path: str
     is_test: bool
-    imports: set[str] = field(default_factory=set)
-    is_main: bool = False
+    imports: frozenset[str]
+    is_main: bool
 
 
 def is_test_path(path: str) -> bool:
@@ -40,21 +44,22 @@ def is_test_path(path: str) -> bool:
     return any(fnmatch(pure.name, pattern) for pattern in TEST_PATTERNS)
 
 
-def tracked_python() -> list[str]:
-    out = subprocess.run(
-        ["git", "-C", str(ROOT), "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.py"],
+def python_files() -> list[str]:
+    """Python files git tracks or would track: committed, staged, or untracked and not ignored."""
+    ls_files = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "*.py"],
         capture_output=True,
         text=True,
         check=True,
     )
     return [
         p
-        for p in out.stdout.split("\0")
-        if p and not _hidden(p) and (ROOT / p).is_file()
+        for p in ls_files.stdout.split("\0")
+        if p and not _has_hidden_part(p) and (REPO_ROOT / p).is_file()
     ]
 
 
-def _hidden(path: str) -> bool:
+def _has_hidden_part(path: str) -> bool:
     return any(part.startswith(".") for part in PurePosixPath(path).parts)
 
 
@@ -77,9 +82,9 @@ def _is_main_guard(node: ast.stmt) -> bool:
     return any(isinstance(n, ast.Name) and n.id == "__name__" for n in names)
 
 
-def _resolve_relative(module: Module, level: int, target: str | None) -> str:
-    base = module.name.split(".")
-    if not module.path.endswith("__init__.py"):
+def _resolve_relative(name: str, path: str, level: int, target: str | None) -> str:
+    base = name.split(".")
+    if not path.endswith("__init__.py"):
         base = base[:-1]
     base = base[: len(base) - (level - 1)] if level > 1 else base
     return ".".join([*base, target] if target else base)
@@ -100,69 +105,126 @@ def _dynamic_imports(tree: ast.Module) -> set[str]:
     return found
 
 
-def parse(module: Module) -> None:
+def read_module(name: str, path: str) -> Module:
+    is_test = is_test_path(path)
     try:
-        tree = ast.parse((ROOT / module.path).read_bytes(), filename=module.path)
+        tree = ast.parse((REPO_ROOT / path).read_bytes(), filename=path)
     except SyntaxError:
-        return
-    module.is_main = module.path.endswith("__main__.py") or any(
-        _is_main_guard(node) for node in tree.body
-    )
-    module.imports |= _dynamic_imports(tree)
+        return Module(name, path, is_test, frozenset(), False)
+    imports = _dynamic_imports(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            module.imports.update(alias.name for alias in node.names)
+            imports.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
             base = (
-                _resolve_relative(module, node.level, node.module)
+                _resolve_relative(name, path, node.level, node.module)
                 if node.level
                 else node.module or ""
             )
-            module.imports.add(base)
-            module.imports.update(f"{base}.{alias.name}" for alias in node.names)
+            imports.add(base)
+            imports.update(f"{base}.{alias.name}" for alias in node.names)
+    is_main = path.endswith("__main__.py") or any(_is_main_guard(node) for node in tree.body)
+    return Module(name, path, is_test, frozenset(imports), is_main)
 
 
-def project_scripts() -> set[str]:
+def _str_mapping(value: object, key: str) -> dict[str, str]:
+    if not isinstance(value, dict) or not all(
+        isinstance(name, str) and isinstance(target, str) for name, target in value.items()
+    ):
+        raise ConfigError(f"pyproject.toml [project] {key} must map names to strings")
+    return {str(name): str(target) for name, target in value.items()}
+
+
+def declared_entry_modules() -> set[str]:
     try:
-        with (ROOT / "pyproject.toml").open("rb") as handle:
+        with (REPO_ROOT / "pyproject.toml").open("rb") as handle:
             data = tomllib.load(handle)
     except FileNotFoundError:
         return set()
     project = data.get("project", {})
-    targets = [*project.get("scripts", {}).values(), *project.get("gui-scripts", {}).values()]
-    for group in project.get("entry-points", {}).values():
-        targets.extend(group.values())
+    if not isinstance(project, dict):
+        raise ConfigError("pyproject.toml [project] must be a table")
+    targets = [
+        *_str_mapping(project.get("scripts", {}), "scripts").values(),
+        *_str_mapping(project.get("gui-scripts", {}), "gui-scripts").values(),
+    ]
+    groups = project.get("entry-points", {})
+    if not isinstance(groups, dict):
+        raise ConfigError("pyproject.toml [project] entry-points must be a table")
+    for group, entries in groups.items():
+        targets.extend(_str_mapping(entries, f"entry-points.{group}").values())
     return {target.split(":")[0].strip() for target in targets}
 
 
 def configured_roots() -> list[str]:
     try:
-        with (ROOT / CONFIG).open("rb") as handle:
-            return list(tomllib.load(handle).get(TABLE, {}).get("roots", ()))
+        with (REPO_ROOT / CONFIG).open("rb") as handle:
+            table = tomllib.load(handle).get(TABLE, {})
     except FileNotFoundError:
         return []
+    roots = table.get("roots", []) if isinstance(table, dict) else None
+    if not isinstance(roots, list) or not all(isinstance(root, str) for root in roots):
+        raise ConfigError(f"{CONFIG} [{TABLE}] roots must be a list of strings")
+    return [root for root in roots if isinstance(root, str)]
 
 
-def expand(name: str, modules: dict[str, Module]) -> set[str]:
+def known_prefixes(name: str, modules: dict[str, Module]) -> set[str]:
+    """The dotted prefixes of *name* that are modules in *modules*, *name* included."""
     parts = name.split(".")
     return {".".join(parts[:i]) for i in range(1, len(parts) + 1)} & modules.keys()
 
 
-def reach(starts: set[str], modules: dict[str, Module]) -> set[str]:
+def modules_reached_from(starts: set[str], modules: dict[str, Module]) -> set[str]:
     seen: set[str] = set()
-    stack = [n for s in starts for n in expand(s, modules)]
+    stack = [n for s in starts for n in known_prefixes(s, modules)]
     while stack:
         name = stack.pop()
         if name in seen:
             continue
         seen.add(name)
         for imported in modules[name].imports:
-            stack.extend(expand(imported, modules) - seen)
+            stack.extend(known_prefixes(imported, modules) - seen)
     return seen
 
 
 def line_count(path: str) -> int:
-    return len((ROOT / path).read_bytes().splitlines())
+    return len((REPO_ROOT / path).read_bytes().splitlines())
+
+
+@dataclass(frozen=True)
+class Reachability:
+    """The roots the walk starts from, the production modules it never reaches, and the modules tests reach."""
+
+    declared_roots: frozenset[str]
+    main_roots: frozenset[str]
+    unreachable_modules: tuple[Module, ...]
+    reached_by_tests: frozenset[str]
+
+
+def read_modules() -> dict[str, Module]:
+    paths = python_files()
+    path_set = set(paths)
+    modules: dict[str, Module] = {}
+    for path in paths:
+        name = module_name(path, path_set)
+        if name:
+            modules[name] = read_module(name, path)
+    return modules
+
+
+def reachability(extra_roots: list[str]) -> Reachability:
+    """Walk imports from every root and name the production modules no root reaches."""
+    modules = read_modules()
+    production = {n: m for n, m in modules.items() if not m.is_test}
+    declared = declared_entry_modules() | set(configured_roots()) | set(extra_roots)
+    mains = {n for n, m in production.items() if m.is_main}
+    reached = modules_reached_from(declared | mains, production)
+    return Reachability(
+        declared_roots=frozenset(declared),
+        main_roots=frozenset(mains),
+        unreachable_modules=tuple(production[n] for n in sorted(production) if n not in reached),
+        reached_by_tests=frozenset(modules_reached_from({n for n, m in modules.items() if m.is_test}, modules)),
+    )
 
 
 def main() -> int:
@@ -172,37 +234,27 @@ def main() -> int:
     parser.add_argument("--root", action="append", default=[], help="extra root module")
     parser.add_argument("--check", action="store_true", help="exit 1 when anything is unreachable")
     args = parser.parse_args()
+    extra_roots: list[str] = args.root
+    fail_when_dead: bool = args.check
 
-    paths = tracked_python()
-    path_set = set(paths)
-    modules: dict[str, Module] = {}
-    for path in paths:
-        name = module_name(path, path_set)
-        if name:
-            modules[name] = Module(name, path, is_test_path(path))
-    for module in modules.values():
-        parse(module)
-
-    production = {n: m for n, m in modules.items() if not m.is_test}
-    explicit = project_scripts() | set(configured_roots()) | set(args.root)
-    mains = {n for n, m in production.items() if m.is_main}
-    reached = reach(explicit | mains, production)
-    via_tests = reach({n for n, m in modules.items() if m.is_test}, modules)
-
-    dead = sorted(n for n in production if n not in reached)
-    print(f"roots: {len(explicit)} declared, {len(mains)} with a __main__ guard")
-    for name in sorted(explicit | mains):
+    try:
+        reachability_report = reachability(extra_roots)
+    except ConfigError as error:
+        print(f"dead-code: {error}", file=sys.stderr)
+        return 1
+    roots = reachability_report.declared_roots | reachability_report.main_roots
+    print(f"roots: {len(reachability_report.declared_roots)} declared, {len(reachability_report.main_roots)} with a __main__ guard")
+    for name in sorted(roots):
         print(f"  root {name}")
-    if not dead:
+    if not reachability_report.unreachable_modules:
         print("every production module is reachable from a root")
         return 0
-    total = sum(line_count(production[n].path) for n in dead)
-    print(f"unreachable: {len(dead)} modules, {total} lines")
-    for name in dead:
-        module = production[name]
-        tag = "tests only" if name in via_tests else "nothing"
-        print(f"  {module.path}  ({line_count(module.path)} lines, imported by {tag})")
-    return 1 if args.check else 0
+    total = sum(line_count(module.path) for module in reachability_report.unreachable_modules)
+    print(f"unreachable: {len(reachability_report.unreachable_modules)} modules, {total} lines")
+    for module in reachability_report.unreachable_modules:
+        importers = "tests only" if module.name in reachability_report.reached_by_tests else "nothing"
+        print(f"  {module.path}  ({line_count(module.path)} lines, imported by {importers})")
+    return 1 if fail_when_dead else 0
 
 
 if __name__ == "__main__":
