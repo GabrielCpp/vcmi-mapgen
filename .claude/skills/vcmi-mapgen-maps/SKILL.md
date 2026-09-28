@@ -45,6 +45,16 @@ metadata:
   name. `name_of(code)` gives the name the catalog keys on. No other module holds a copy of
   those codes, prefixes or names.
 
+## Purposes and resources
+
+- `core.model.purpose.Purpose` names what an object is placed for. Steps compare against
+  its members and filter by its groups `VISIT_PURPOSES` and `COUNTED`, never against a bare
+  string such as `"GUARD"`.
+- `vcmi.catalog.objects.purpose_of_type(type)` answers the purpose of a VCMI object type
+  through its class id in `data/ontology/vcmi_types.json`. `regen-ontology` rewrites that
+  table from VCMI's config.
+- `core.model.resource.Resource` names the eight resources.
+
 ## Segmentation
 
 - `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`. It

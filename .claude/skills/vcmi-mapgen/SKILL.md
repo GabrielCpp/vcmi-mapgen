@@ -60,8 +60,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 - **`maps/`**: the `.h3m` corpus, 159 maps.
 - **`maps_vmap/`**: one `.vmap` per corpus map, regenerated from `maps/` by
   `extract_vmap`.
-- **`data/`**: corpus-derived priors (`objlib.json`, `pp/*.json`) and static
-  VCMI-derived tables (`objclass_names.json`, `vmap_header_template.json`). Any new
+- **`data/`**: corpus-derived priors (`pp/*.json`) and static VCMI-derived tables
+  (`objclass_names.json`, `vmap_header_template.json`, `ontology/vcmi_types.json`). Any new
   static reference table goes here, never beside the `.py` sources.
 - **`out/`**: transient renders and maps. It is gitignored.
 - **`vcmi-h3m-format-reference/`**: verbatim VCMI C++ sources for the `.h3m` format,
