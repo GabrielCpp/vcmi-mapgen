@@ -233,7 +233,7 @@ data the Map file writes.
 | Map | Exists | `models/map_state.py` | Appends and checks only the new objects. `set_objs` replaces the list and has no caller. |
 | Map file | Exists | `renderers/vmap.py`, `vcmi/formats/vmap/` | Sets visitable directions on every object. |
 | Preview | Exists | `renderers/png.py` | |
-| Likeness report | Reshape | `corpus_match.py` | Measures the four measures and the per-zone counts, and prints means and percentiles. No tolerance, no verdict, not in `make check`. It keeps its own copy of the step list. See M9. |
+| Likeness report | Reshape | `corpus/match.py`, `cli corpus-match` | Measures the four measures and the per-zone counts, and prints means and percentiles. No tolerance, no verdict, not in `make check`. It builds its maps from `cli/steps.py` `build_steps`. See M9. |
 
 ### Open lookups resolved
 

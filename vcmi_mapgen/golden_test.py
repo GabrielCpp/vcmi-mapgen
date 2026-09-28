@@ -13,23 +13,12 @@ from pathlib import Path
 
 import pytest
 
+from vcmi_mapgen.cli.steps import build_steps
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.models import MapState
 from vcmi_mapgen.ontology import Ontology
-from vcmi_mapgen.pipeline import Pipeline, PipelineStep
+from vcmi_mapgen.pipeline import Pipeline
 from vcmi_mapgen.renderers import VmapRenderer
-from vcmi_mapgen.steps import (
-    BorderStep,
-    GameplayStep,
-    GatedStep,
-    LootStep,
-    PortalStep,
-    ScatterStep,
-    SegmentStep,
-    TerrainStep,
-    TreasureStep,
-    VegetationStep,
-)
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 
@@ -37,24 +26,9 @@ GOLDEN = project_root() / "data" / "golden.json"
 MAPS = (("s1_48", 1, 48, False), ("s3_72_sub", 3, 72, True))
 
 
-def _steps(seed: int, size: int, subterrain: bool) -> list[PipelineStep]:
-    return [
-        TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain),
-        SegmentStep(),
-        VegetationStep(seed=seed, players=2),
-        GameplayStep(seed=seed, players=2, size=size, subterrain=subterrain),
-        GatedStep(seed=seed, size=size),
-        TreasureStep(seed=seed, size=size),
-        BorderStep(seed=seed, size=size),
-        PortalStep(seed=seed, size=size),
-        LootStep(seed=seed, size=size),
-        ScatterStep(seed=seed, size=size),
-    ]
-
-
 def _generate(seed: int, size: int, subterrain: bool) -> MapState:
     pipeline = Pipeline(Ontology(), size)
-    for step in _steps(seed, size, subterrain):
+    for _name, step in build_steps(seed, size, 2, "normal", subterrain):
         _ = pipeline.add_step(step)
     return pipeline.run()
 

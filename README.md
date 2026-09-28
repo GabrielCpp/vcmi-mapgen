@@ -8,7 +8,7 @@ treasure, vegetation — that you can open in the VCMI editor and play right awa
 ![Generated 72×72 island map](docs/img/pp-map-islands-s7.png)
 
 *A 72×72 two-player island map generated from a single seed
-(`cli.py generate --seed 7 --size 72 --water-mode islands --players 2`)
+(`cli generate --seed 7 --size 72 --water-mode islands --players 2`)
 and rendered with the real H3 sprites, exactly as the VCMI editor shows it.*
 
 The colored discs are the editor's genuine **random-object** sprites (random
@@ -75,6 +75,16 @@ uv run python -m vcmi_mapgen.cli mine-stats --only markov tiler
 ```
 
 A missing file stops `generate` with an error that names `mine-stats`.
+
+Two corpus tools run through the same CLI:
+
+```bash
+uv run python -m vcmi_mapgen.cli extract-vmap
+uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
+```
+
+`extract-vmap` rebuilds `maps_vmap/` from `maps/`. `corpus-match` compares where gameplay
+objects sit in corpus zones and in generated zones.
 
 ## Map
 

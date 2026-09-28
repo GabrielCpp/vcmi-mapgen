@@ -1,6 +1,6 @@
-"""Reliability tests for cli.py's overlay selection (parse_overlays)."""
+"""Reliability tests for cli.generate overlay selection (parse_overlays)."""
 
-from vcmi_mapgen.cli import DEFAULT_OVERLAYS, parse_overlays
+from vcmi_mapgen.cli.generate import DEFAULT_OVERLAYS, parse_overlays
 from vcmi_mapgen.renderers.overlays import ZoneOverlay
 
 

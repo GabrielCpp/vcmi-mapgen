@@ -4,7 +4,7 @@ Reads the committed .h3m corpus at <repo>/maps/ and writes each one, via the h3m
 parser + VCMI's own object-identity config, to <repo>/maps_vmap/<name>.vmap — the
 corpus's ONLY on-disk representation (replaces the old maps_json/ faithful-JSON
 dialect; see the vmap-unification plan). Run:
-`uv run python -m vcmi_mapgen.extract_vmap`.
+`uv run python -m vcmi_mapgen.cli extract-vmap`.
 """
 
 import glob
@@ -117,7 +117,7 @@ def convert(h3m_path: str) -> tuple[VmapDocument, int, int]:
     )
 
 
-def main() -> None:
+def extract_vmap() -> None:
     os.makedirs(OUT, exist_ok=True)
     maps = sorted(glob.glob(f"{ROOT}/maps/*.h3m"))
     ok = 0
@@ -137,7 +137,3 @@ def main() -> None:
         f"extracted {ok}/{len(maps)} maps, {total_obj} objects, "
         + f"{total_unresolved} unresolved ({100 * total_unresolved / max(1, total_obj):.2f}%)"
     )
-
-
-if __name__ == "__main__":
-    main()

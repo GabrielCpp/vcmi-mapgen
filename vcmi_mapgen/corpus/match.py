@@ -5,15 +5,12 @@ the zone edge, walking distance to the nearest zone gate, openness of the 5x5 wi
 the entrance with vegetation drawn, and back contact of the sprite top. It then compares
 the number of counted objects per zone, bucketed by zone size.
 
-    uv run python -m vcmi_mapgen.corpus_match --seeds 1 2 3 --size 48 --subterrain
+    uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48 --subterrain
 """
 
-import argparse
 import collections
-import contextlib
-import io
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import final
 
@@ -22,20 +19,6 @@ from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.terrain_segment import segment
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 from vcmi_mapgen.models import Cell, Identity, MapState, PlacedObject, Tile, Zone
-from vcmi_mapgen.ontology import Ontology
-from vcmi_mapgen.pipeline import Pipeline
-from vcmi_mapgen.steps import (
-    BorderStep,
-    GameplayStep,
-    GatedStep,
-    LootStep,
-    PortalStep,
-    ScatterStep,
-    SegmentStep,
-    TerrainStep,
-    TreasureStep,
-    VegetationStep,
-)
 from vcmi_mapgen.steps.gameplay.draw import COUNTED
 from vcmi_mapgen.steps.gameplay.mines import gate_dist
 from vcmi_mapgen.steps.gameplay.site import back_score, mask_tiles
@@ -148,30 +131,9 @@ def corpus_tally() -> Tally:
     return tally
 
 
-def generate(seed: int, size: int, subterrain: bool) -> MapState:
-    pipeline = Pipeline(Ontology(), size)
-    steps = (
-        TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain),
-        SegmentStep(),
-        VegetationStep(seed=seed, players=2),
-        GameplayStep(seed=seed, players=2, size=size, subterrain=subterrain),
-        GatedStep(seed=seed, size=size),
-        TreasureStep(seed=seed, size=size),
-        BorderStep(seed=seed, size=size),
-        PortalStep(seed=seed, size=size),
-        LootStep(seed=seed, size=size),
-        ScatterStep(seed=seed, size=size),
-    )
-    for step in steps:
-        _ = pipeline.add_step(step)
-    with contextlib.redirect_stdout(io.StringIO()):
-        return pipeline.run()
-
-
-def generated_tally(seeds: Sequence[int], size: int, subterrain: bool) -> Tally:
+def generated_tally(states: Iterable[MapState]) -> Tally:
     tally = Tally()
-    for seed in seeds:
-        state = generate(seed, size, subterrain)
+    for state in states:
         for level, grid in state.cells.items():
             measure_level(tally, grid, [o for o in state.objs if o.level == level])
     return tally
@@ -228,26 +190,3 @@ def bucket_report(corpus: Tally, gen: Tally) -> list[str]:
             + f"{100 * sum(gc) / gt if gt else 0:5.2f} {f'{inside}/{len(gc)}':>8}"
         )
     return lines
-
-
-@final
-class _Args(argparse.Namespace):
-    seeds: tuple[int, ...] = (1, 2, 3)
-    size: int = 48
-    subterrain: bool = False
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Compare generated gameplay placement to the corpus")
-    _ = ap.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
-    _ = ap.add_argument("--size", type=int, default=48)
-    _ = ap.add_argument("--subterrain", action="store_true")
-    args = ap.parse_args(namespace=_Args())
-    corpus = corpus_tally()
-    gen = generated_tally(args.seeds, args.size, args.subterrain)
-    for line in (*measure_report(corpus, gen), "", *bucket_report(corpus, gen)):
-        print(line)
-
-
-if __name__ == "__main__":
-    main()
