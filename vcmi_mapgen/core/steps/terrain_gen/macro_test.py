@@ -1,6 +1,6 @@
-"""Reliability tests for steps.terrain_gen.macro_topo (macro terrain generation)."""
+"""Reliability tests for core.steps.terrain_gen.macro (macro terrain generation)."""
 
-from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
+from vcmi_mapgen.core.steps.terrain_gen import macro as MT
 
 
 def test_macro_generate_deterministic_and_coarse() -> None:

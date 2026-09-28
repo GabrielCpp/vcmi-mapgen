@@ -212,7 +212,7 @@ def mine_gameplay(
     The underground table (`level=1`) is mined independently from two-level corpus maps'
     `fm["terrain"][1]`, exactly mirroring the surface mining below — never derived from or
     blended with the level-0 table (real underground object density is statistically
-    distinct: smaller, sparser zones), matching `macro_topo.mine_macro`'s precedent.
+    distinct: smaller, sparser zones), matching `corpus.mine.macro.mine_macro`'s precedent.
     """
     acc = {t: _TerrainAcc() for t in (*land_names(catalog), "water")}
     for fm in maps:

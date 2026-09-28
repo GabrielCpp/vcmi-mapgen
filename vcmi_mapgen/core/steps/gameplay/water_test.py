@@ -13,7 +13,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import water as WT
-from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
+from vcmi_mapgen.core.steps.terrain_gen import macro as MT
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.vcmi.footprint import footprint_of
 

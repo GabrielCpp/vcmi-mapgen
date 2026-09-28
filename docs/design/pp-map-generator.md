@@ -206,7 +206,7 @@ data the Map file writes.
 | Concept | Verdict | Where | Finding |
 |---|---|---|---|
 | Random stream | Reshape | About 20 call sites, from `core/steps/terrain_gen/` to `core/steps/scatter/` | Each site mixes the seed with a region id, a multiplier and a salt by hand. No shared function exists. See M10. |
-| Corpus survey | Reshape | Survey functions in `core/steps/terrain_gen/macro_topo.py`, `corpus/mine/vegetation.py`, `corpus/mine/gameplay.py` and `core/steps/gate/gates.py` | The survey code sits beside each consumer and runs on a cache miss in the middle of a generation run. No single command writes the priors. |
+| Corpus survey | Reshape | Survey functions in `corpus/mine/macro.py`, `corpus/mine/markov.py`, `corpus/mine/vegetation.py`, `corpus/mine/gameplay.py` and `corpus/mine/gates.py` | The survey code sits beside each consumer and runs on a cache miss in the middle of a generation run. No single command writes the priors. |
 | Priors | Reshape | `data/pp/*.json`, committed | Four of six statistics are cached. The Markov border model and the tile art table learn from all 159 maps on every run. Only the gameplay and gate files carry a version. See M11. |
 | Catalog | Reshape | `vcmi/catalog/` | The pipeline receives an `Ontology` instance, but 19 modules call the module-level accessors. A test cannot hand in a small catalog. See M12. |
 | Terrain layout | Exists | `core/steps/terrain_gen/` | Owns and never-knows match. It also computes tile art. See M13. |

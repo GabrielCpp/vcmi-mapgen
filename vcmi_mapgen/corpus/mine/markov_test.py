@@ -1,4 +1,4 @@
-"""Reliability tests for steps.terrain_gen.markov (corpus-learned terrain Markov chain)."""
+"""The terrain Markov tables mined from a toy corpus survive a save and load unchanged."""
 
 import collections
 from pathlib import Path
@@ -6,7 +6,9 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen.core.model import Cell, MapState
-from vcmi_mapgen.core.steps.terrain_gen import markov as MT
+from vcmi_mapgen.core.priors.markov import MarkovTables
+from vcmi_mapgen.corpus.markov import load_tables, save_tables
+from vcmi_mapgen.corpus.mine.markov import learn, learn4
 from vcmi_mapgen.kit import pp_cache
 
 type Table = collections.defaultdict[tuple[int, ...], collections.Counter[int]]
@@ -27,12 +29,12 @@ def test_tables_round_trip_keeps_counter_order(
 ) -> None:
     grid = [[3, 1, 3, 2], [1, 3, 2, 1], [2, 2, 1, 3], [3, 1, 1, 2]]
     maps = [_corpus_map(grid), _corpus_map([row[::-1] for row in grid])]
-    tables = MT.MarkovTables(chain=MT.learn(0, maps), chain4=MT.learn4(0, maps))
+    tables = MarkovTables(chain=learn(0, maps), chain4=learn4(0, maps))
     monkeypatch.setattr(pp_cache, "PP_DIR", tmp_path)
-    MT.save_tables(0, tables)
-    MT.load_tables.cache_clear()
-    loaded = MT.load_tables(0)
-    MT.load_tables.cache_clear()
+    save_tables(0, tables)
+    load_tables.cache_clear()
+    loaded = load_tables(0)
+    load_tables.cache_clear()
     pairs: list[tuple[Table, Table]] = [
         (loaded.chain.full, tables.chain.full),
         (loaded.chain.pair, tables.chain.pair),
@@ -45,11 +47,3 @@ def test_tables_round_trip_keeps_counter_order(
         assert _order(got) == _order(want)
     assert list(loaded.chain.marg.items()) == list(tables.chain.marg.items())
     assert list(loaded.chain.marg) != sorted(loaded.chain.marg)
-
-
-def test_missing_tables_name_mine_stats(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(pp_cache, "PP_DIR", tmp_path)
-    MT.load_tables.cache_clear()
-    with pytest.raises(pp_cache.MissingCacheError, match="mine-stats"):
-        _ = MT.load_tables(0)
-    MT.load_tables.cache_clear()

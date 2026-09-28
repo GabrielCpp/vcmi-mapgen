@@ -19,48 +19,25 @@ handful of LARGE designed regions. This module plans the macro structure first:
                   RESTRICTED to a 2-tile band around zone borders (interiors clamped), so
                   boundaries get corpus transition texture and interiors can never fragment.
 
-    uv run python -m vcmi_mapgen.core.steps.terrain_gen.macro_topo --seed 3 --size 72
+    uv run python -m vcmi_mapgen.cli.macro_preview --seed 3 --size 72
 """
 
-import argparse
 import collections
 import heapq
 import math
-import os
 import random
-from collections.abc import Collection, Iterable
 from dataclasses import dataclass
-from pathlib import Path
-
-from PIL import Image
 
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Cell, JsonValue, MapState, Tile
+from vcmi_mapgen.core.model import Cell, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.steps.terrain_gen import markov as MT
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
-from vcmi_mapgen.kit.render_palette import TERRAIN_TILE_PX as _TILE
-from vcmi_mapgen.vcmi.formats import json_value
+from vcmi_mapgen.core.priors.macro import MacroStats
+from vcmi_mapgen.core.steps.terrain_gen.texture import texture_boundaries
+from vcmi_mapgen.corpus.macro import load_macro
 
-ROOT = project_root()
-STATS_PATH = str(ROOT / "data" / "pp" / "macro_stats.json")
-STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "macro_stats_underground.json")
-SOURCE = "vcmi_mapgen.core.steps.terrain_gen.macro_topo.mine_macro"
 MIN_ZONE_AREA = 40  # floor for sampled target areas
 JITTER = 1.4  # growth-cost noise amplitude (0 = pure Voronoi-like fronts)
-BAND = 2  # boundary-texturing band half-width (tiles)
-
-
-@dataclass(slots=True)
-class MacroStats:
-    areas: list[int]
-    barrier_fracs: list[float]
-    terr_share: dict[int, int]
-    adj: dict[str, int]
-    nzones: list[int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,110 +45,6 @@ class MacroReport:
     zones: int
     big_zones: int
     big_share: float
-
-
-def _as_float(value: JsonValue) -> float:
-    return float(value) if isinstance(value, int | float) else 0.0
-
-
-def _stats_from_json(raw: JsonValue) -> MacroStats:
-    obj = json_value.as_object(raw)
-    return MacroStats(
-        areas=[json_value.as_int(v) for v in json_value.as_list(obj.get("areas"))],
-        barrier_fracs=[_as_float(v) for v in json_value.as_list(obj.get("barrier_fracs"))],
-        terr_share={
-            int(k): json_value.as_int(v)
-            for k, v in json_value.as_object(obj.get("terr_share")).items()
-        },
-        adj={k: json_value.as_int(v) for k, v in json_value.as_object(obj.get("adj")).items()},
-        nzones=[json_value.as_int(v) for v in json_value.as_list(obj.get("nzones"))],
-    )
-
-
-def _stats_to_json(st: MacroStats) -> dict[str, object]:
-    return {
-        "areas": st.areas,
-        "barrier_fracs": st.barrier_fracs,
-        "terr_share": {str(k): v for k, v in st.terr_share.items()},
-        "adj": st.adj,
-        "nzones": st.nzones,
-    }
-
-
-# ---------------------------------------------------------------------------
-# 1. corpus macro statistics
-# ---------------------------------------------------------------------------
-
-
-def _mine_zones(
-    lvl: list[list[Cell]], areas: list[int], terr_share: collections.Counter[int]
-) -> int:
-    zones, _, _ = segment_level(lvl)
-    big = 0
-    for z in zones.values():
-        t = z.terrain_type
-        if t.is_land:
-            areas.append(z.area)
-            terr_share[t] += z.area
-            if z.area >= 60:
-                big += 1
-    return big
-
-
-def _mine_adjacency(T: list[list[int]], W: int, H: int, adj: collections.Counter[str]) -> None:
-    for y in range(H):
-        for x in range(W):
-            a = T[y][x]
-            for dx, dy in ((1, 0), (0, 1)):
-                if x + dx < W and y + dy < H:
-                    b = T[y + dy][x + dx]
-                    if a != b and Terrain(a).is_land and Terrain(b).is_land:
-                        adj[f"{min(a, b)}|{max(a, b)}"] += 1
-
-
-def mine_macro(level: int, maps: Iterable[MapState]) -> MacroStats:
-    """Corpus macro stats for terrain level `level` (0 = surface, 1 = underground). The
-    underground table is mined independently from `fm["terrain"][1]` of two-level corpus
-    maps — real underground zone areas/adjacency/barrier fraction are statistically distinct
-    from the surface (rock, not subterr, is the dominant barrier terrain there; see corpus
-    histograms in the design notes), so it is never derived from or blended with level-0 stats."""
-    barrier = Terrain.WATER if level == 0 else Terrain.ROCK
-    areas: list[int] = []
-    barrier_fracs: list[float] = []
-    terr_share = collections.Counter[int]()
-    adj = collections.Counter[str]()  # "t1|t2" boundary-tile counts, t1 <= t2
-    nzones: list[int] = []
-    for fm in maps:
-        if level >= len(fm.cells):
-            continue
-        lvl = fm.cells[level]
-        H = len(lvl)
-        W = len(lvl[0]) if H else 0
-        T = [[c.t for c in row] for row in lvl]
-        nb = sum(1 for row in T for t in row if t == barrier)
-        barrier_fracs.append(nb / max(W * H, 1))
-        nzones.append(_mine_zones(lvl, areas, terr_share))
-        _mine_adjacency(T, W, H, adj)
-    st = MacroStats(
-        areas=sorted(areas),
-        barrier_fracs=sorted(barrier_fracs),
-        terr_share=dict(terr_share),
-        adj=dict(adj),
-        nzones=nzones,
-    )
-    return st
-
-
-def _stats_path(level: int) -> Path:
-    return Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
-
-
-def load_macro(level: int = 0) -> MacroStats:
-    return _stats_from_json(pp_cache.read(_stats_path(level)))
-
-
-def save_macro(level: int, st: MacroStats) -> None:
-    pp_cache.write(_stats_path(level), SOURCE, _stats_to_json(st))
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +75,7 @@ def carve_corridor(
     """Drunken walk from `a` toward `b`, marking a `half_w`-radius band as land — a tunnel,
     not a straight line, so it reads as a cave passage rather than a ruler-drawn corridor.
     Cells are also added to `protect` (if given): a thin corridor sits entirely inside the
-    boundary-texturing band on both sides, so without protection `_texture_boundaries`'s
+    boundary-texturing band on both sides, so without protection `texture_boundaries`'s
     Gibbs resampling — drawing from a rock-heavy corpus conditional — can erode the whole
     tunnel back to rock, disconnecting caverns `_tunnel_mask` had genuinely joined."""
     a, b = span
@@ -428,74 +301,6 @@ def _grow(
 
 
 # ---------------------------------------------------------------------------
-# 4. boundary texturing (the Markov chain, clamped to the border band)
-# ---------------------------------------------------------------------------
-
-
-def _border_band(grid: list[list[int]]) -> list[list[bool]]:
-    H = len(grid)
-    W = len(grid[0])
-    band = [[False] * W for _ in range(H)]
-    for y in range(H):
-        for x in range(W):
-            t = grid[y][x]
-            if any(
-                0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] != t
-                for dx in (-1, 0, 1)
-                for dy in (-1, 0, 1)
-            ):
-                for dy in range(-BAND, BAND + 1):
-                    for dx in range(-BAND, BAND + 1):
-                        if 0 <= x + dx < W and 0 <= y + dy < H:
-                            band[y + dy][x + dx] = True
-    return band
-
-
-def _texture_boundaries(
-    grid: list[list[int]],
-    rng: random.Random,
-    sweeps: int = 3,
-    level: int = 0,
-    protect: Collection[Tile] = (),
-) -> list[list[int]]:
-    """Isotropic Gibbs sweeps of the learned 4-neighbour terrain conditional, RESTRICTED to
-    tiles within BAND (Chebyshev) of a terrain change; everything else is clamped, so the
-    interiors keep their planned terrain and only the borders gain corpus transition texture.
-    `level` selects which terrain level's corpus transitions to learn from (0 or 1);
-    `markov.learn`/`learn4` already filter to maps that have that level. `protect`
-    cells (e.g. underground tunnel corridors, which are thin enough to sit entirely inside
-    the band on both sides) are excluded from resampling so a rock-heavy corpus conditional
-    can't erode a load-bearing connection back into barrier."""
-    H = len(grid)
-    W = len(grid[0])
-    tables = MT.load_tables(level)
-    M4 = tables.chain4
-    M = tables.chain
-    band = _border_band(grid)
-    tiles = [
-        (x, y)
-        for y in range(1, H - 1)
-        for x in range(1, W - 1)
-        if band[y][x] and (x, y) not in protect
-    ]
-    for _ in range(sweeps):
-        rng.shuffle(tiles)
-        for x, y in tiles:
-            lf, u = grid[y][x - 1], grid[y - 1][x]
-            r, d = grid[y][x + 1], grid[y + 1][x]
-            if sum(M4.full[(lf, u, r, d)].values()) >= 10:
-                dist = M4.full[(lf, u, r, d)]
-            else:
-                dist = collections.Counter[int]()
-                dist.update(M4.horiz[(lf, r)])
-                dist.update(M4.vert[(u, d)])
-                if not dist:
-                    dist = M.marg
-            grid[y][x] = MT.sample(dist, rng)
-    return grid
-
-
-# ---------------------------------------------------------------------------
 # generate
 # ---------------------------------------------------------------------------
 
@@ -583,7 +388,7 @@ def generate(
         for y in range(H)
     ]
     if opts.texture:
-        _ = _texture_boundaries(grid, rng, level=level, protect=protect)
+        _ = texture_boundaries(grid, rng, level=level, protect=protect)
     if protect_out is not None:
         protect_out |= protect
     return grid
@@ -597,46 +402,3 @@ def report(grid: list[list[int]]) -> MacroReport:
     big = [z for z in zones.values() if z.area >= 60 and 0 <= z.terrain_type < 8]
     share = sum(z.area for z in big) / max(land_area, 1)
     return MacroReport(zones=len(zones), big_zones=len(big), big_share=round(share, 3))
-
-
-class _Args(argparse.Namespace):
-    seed: int = 3
-    size: int = 72
-    water: float | None = None
-    level: int = 0
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    _ = ap.add_argument("--seed", type=int, default=3)
-    _ = ap.add_argument("--size", type=int, default=72)
-    _ = ap.add_argument("--water", type=float, default=None)
-    _ = ap.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
-    args = ap.parse_args(namespace=_Args())
-    st = load_macro(level=args.level)
-    barrier_name = "water" if args.level == 0 else "rock"
-    median_area = st.areas[len(st.areas) // 2]
-    median_frac = st.barrier_fracs[len(st.barrier_fracs) // 2]
-    head = f"macro stats (level {args.level}): {len(st.areas)} corpus zones"
-    tail = f"median area {median_area}, median {barrier_name} frac {median_frac:.2f}"
-    print(f"{head}, {tail}")
-    grid = generate(
-        args.size,
-        args.size,
-        seed=args.seed,
-        options=MacroOptions(water=args.water, level=args.level),
-    )
-    print("generated:", report(grid))
-    img = Image.new("RGB", (args.size * _TILE, args.size * _TILE))
-    for y, row in enumerate(grid):
-        for x, t in enumerate(row):
-            box = (x * _TILE, y * _TILE, (x + 1) * _TILE, (y + 1) * _TILE)
-            img.paste(TERRAIN_RGB[Terrain(t)], box)
-    out = str(ROOT / "out" / "render" / "pp" / f"macro_s{args.seed}.png")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    img.save(out)
-    print("->", out)
-
-
-if __name__ == "__main__":
-    main()
