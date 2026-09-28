@@ -27,18 +27,17 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
   - `pipeline.py`: `PipelineStep`, `Pipeline`, `ProviderRegistry` and the
     `PlacementWorkspace` the placement steps share.
   - `models/`: `MapState`, the map's tile grid and object list, plus the plain data
-    types `PlacedObject`, `Cell`, `Tile` and the pocket and zone records.
-  - `steps/`: one subpackage per pipeline step, each with a `step.py`. `steps/zone_index.py` holds
-    helpers several placement steps share.
-    `steps/zone_plan.py` builds the zone entrances, the walkable web and the sea plan that
-    `VegetationStep` starts from.
+    types `PlacedObject`, `Cell`, `Tile` and `Zone`.
+  - `steps/`: one subpackage per pipeline step, each with a `step.py`.
   - `core/grid/`: pure grid algorithms: segmentation (`segment.py`), components,
     geodesic paths, pockets, edge distance and noise.
   - `core/placement/`: where an object stands: footprint cells (`footprint.py`), the
     terrain rule `TerrainGate` (`rules.py`), guards, sites, `place_one` and scatter.
+  - `core/planning/`: the zone plan `VegetationStep` starts from (`zone_plan.py`), the
+    entrance geometry (`entrances.py`) and the one `ZoneRecord` per zone (`zone_index.py`).
   - `core/priors/`: the corpus priors as frozen values. `corpus/` loads and saves them,
     and `corpus/mine/` mines them.
-  - `kit/`: step-independent helpers. It covers topology and autotiling (`tiling.py`).
+  - `kit/`: step-independent helpers. It covers autotiling (`tiling.py`).
   - `corpus/`: the corpus loader (`maps.py`) and the corpus-versus-generated tally.
   - `vcmi/catalog/`: object identity, footprints, terrain coupling and decoration
     category, read from the tables in `data/ontology/`.
