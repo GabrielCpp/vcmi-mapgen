@@ -1,14 +1,15 @@
 from PIL import Image
 
-from vcmi_mapgen.core.model import Cell, MapState, PlacedObject
+from vcmi_mapgen.core.model import MapState, PlacedObject
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.renderers.overlays.blocking import BlockingOverlay
 from vcmi_mapgen.vcmi.footprint import Mask, footprint_of
 
 TILE = 32
 
 
-def _cell(t: int = 2) -> Cell:
-    return Cell(t=t)
+def _cell(t: int = 2) -> Terrain:
+    return Terrain(t)
 
 
 def _obj(x: int, y: int, purpose: str, mask: Mask, level: int = 0) -> PlacedObject:
@@ -31,7 +32,7 @@ def _color_at(img: Image.Image, x: int, y: int) -> tuple[int, int, int, int]:
 def test_tiers_false_tints_every_blocking_cell_uniformly() -> None:
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
     town = _obj(3, 3, "TOWN", ("BB", "BA"))
-    state = MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[town])
+    state = MapState(size=max(len(grid), len(grid[0])), terrain={0: grid}, objs=[town])
     img = BlockingOverlay(tiers=False).apply(state, 0)
     # 'B' cells anchored bottom-right at (3,3): (2,2),(3,2),(2,3) block; (3,3) is 'A'
     for x, y in ((2, 2), (3, 2), (2, 3)):
@@ -42,7 +43,7 @@ def test_tiers_false_tints_every_blocking_cell_uniformly() -> None:
 def test_tiers_true_separates_structure_body_from_visit_tile() -> None:
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
     town = _obj(3, 3, "TOWN", ("BB", "BA"))
-    state = MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[town])
+    state = MapState(size=max(len(grid), len(grid[0])), terrain={0: grid}, objs=[town])
     img = BlockingOverlay(tiers=True).apply(state, 0)
 
     body_color = _color_at(img, 2, 2)  # a 'B' body cell
@@ -55,7 +56,7 @@ def test_tiers_true_shares_the_visit_color_with_a_solo_visitable() -> None:
     grid = [[_cell() for _ in range(5)] for _ in range(5)]
     shrine = _obj(2, 2, "INFO", ("A",))
     town = _obj(4, 4, "TOWN", ("BB", "BA"))
-    state = MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[shrine, town])
+    state = MapState(size=max(len(grid), len(grid[0])), terrain={0: grid}, objs=[shrine, town])
     img = BlockingOverlay(tiers=True).apply(state, 0)
 
     solo_color = _color_at(img, 2, 2)

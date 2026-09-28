@@ -1,12 +1,13 @@
-from vcmi_mapgen.core.model import Cell, MapState
+from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.renderers.overlays.grid import GridOverlay
 
 TILE = 32
 
 
 def _state(w: int, h: int) -> MapState:
-    grid = [[Cell(t=2) for _ in range(w)] for _ in range(h)]
-    return MapState(size=max(w, h), cells={0: grid}, objs=[])
+    grid = [[Terrain.GRASS for _ in range(w)] for _ in range(h)]
+    return MapState(size=max(w, h), terrain={0: grid}, objs=[])
 
 
 def test_grid_matches_map_size_and_draws_every_tile_edge() -> None:

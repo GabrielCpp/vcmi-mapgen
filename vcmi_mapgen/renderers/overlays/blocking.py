@@ -48,7 +48,7 @@ class BlockingOverlay(MapOverlay):
 
     @override
     def apply(self, state: MapState, level: int) -> Image.Image:
-        surf = state.surfs.get(level) or state.cells.get(level)
+        surf = state.terrain.get(level)
         W = len(surf[0]) if surf and surf[0] else state.size
         H = len(surf) if surf else state.size
         img = Image.new("RGBA", (W * TILE, H * TILE), (0, 0, 0, 0))

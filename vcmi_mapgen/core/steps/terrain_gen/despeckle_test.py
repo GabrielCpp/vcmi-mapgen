@@ -1,8 +1,12 @@
-"""Reliability tests for kit.tiling (terrain despeckle / sliver absorption)."""
+"""Reliability tests for terrain despeckle and sliver absorption."""
 
-from vcmi_mapgen.kit import tiling as ZE
+from collections.abc import Sequence
+
+from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle, keep_patch
 
 GRASS, DIRT, WATER = 2, 0, 8
+THIN_DRAWABLE = frozenset({Terrain.DIRT, Terrain.SAND, Terrain.SUBTERRANEAN})
 W, H = 24, 14
 
 
@@ -29,7 +33,7 @@ def _speckled_ids() -> list[list[int]]:
     return ids
 
 
-def _land_patches(out: list[list[int]]) -> list[list[tuple[int, int]]]:
+def _land_patches(out: Sequence[Sequence[int]]) -> list[list[tuple[int, int]]]:
     patches: list[list[tuple[int, int]]] = []
     seen: set[tuple[int, int]] = set()
     for y in range(H):
@@ -55,8 +59,8 @@ def test_despeckle_absorbs_tiny_zones() -> None:
     it has >4 tiles or is a compact 2x2 square; narrow 4-tile shapes and anything smaller are
     absorbed into the dominant LAND neighbour (water/rock only when no land borders it)."""
     ids = _speckled_ids()
-    out = ZE.despeckle_ids(ids, W, H)
-    assert out == ZE.despeckle_ids(ids, W, H), "despeckle must be deterministic"
+    out = despeckle(ids, THIN_DRAWABLE)
+    assert out == despeckle(ids, THIN_DRAWABLE), "despeckle must be deterministic"
 
     assert all(out[3][x] == GRASS for x in range(3, 7)), "1x4 line absorbed into grass"
     assert all(out[y][x] == DIRT for x, y in ((10, 5), (11, 5), (10, 6), (11, 6))), (
@@ -72,4 +76,4 @@ def test_despeckle_absorbs_tiny_zones() -> None:
 
     # no surviving land patch violates the rule
     for tiles in _land_patches(out):
-        assert ZE.keep_patch(tiles), f"sliver patch survived: {sorted(tiles)}"
+        assert keep_patch(tiles), f"sliver patch survived: {sorted(tiles)}"

@@ -25,12 +25,12 @@ def learn(level_index: int, maps: Iterable[MapState]) -> MarkovModel:
     )  # (l,)->center
     marg: collections.Counter[int] = collections.Counter()
     for m in maps:
-        if level_index >= len(m.cells):
+        if level_index >= len(m.terrain):
             continue
-        g = m.cells[level_index]
+        g = m.terrain[level_index]
         H = len(g)
         W = len(g[0])
-        T = [[c.t for c in row] for row in g]
+        T = [[int(t) for t in row] for row in g]
         for y in range(H):
             for x in range(W):
                 c = T[y][x]
@@ -59,12 +59,12 @@ def learn4(level_index: int, maps: Iterable[MapState]) -> MarkovModel4:
         collections.defaultdict(collections.Counter)
     )  # (u,d)->c
     for m in maps:
-        if level_index >= len(m.cells):
+        if level_index >= len(m.terrain):
             continue
-        g = m.cells[level_index]
+        g = m.terrain[level_index]
         H = len(g)
         W = len(g[0])
-        T = [[c.t for c in row] for row in g]
+        T = [[int(t) for t in row] for row in g]
         for y in range(1, H - 1):
             for x in range(1, W - 1):
                 c = T[y][x]

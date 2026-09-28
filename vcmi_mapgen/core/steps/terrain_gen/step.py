@@ -1,14 +1,6 @@
-"""TerrainStep — macro terrain generation + corpus-learned autotiling for surface and
-underground levels, in one step.
-
-Merge of the former TerrainGenStep + TileStep: TileStep's autotiling was the sole
-consumer of TerrainGenStep's raw macro grid, run immediately next and superseding it —
-an artificial two-step handoff for what is really one step's job (see
-vcmi_mapgen/core/steps/AGENTS.md). The raw pre-tile grid is now a private intermediate that
-never leaves this step; only the post-despeckle terrain-code grids (needed downstream by
-VegetationStep/GameplayStep/BorderStep) and tunnel_protect are published, as one
-TerrainGrids value. The step then segments each level into same-terrain zones and
-publishes them as Segmentation."""
+"""TerrainStep: macro terrain for the surface and the underground, despeckled into one
+``Terrain`` grid per level, then segmented into same-terrain zones. Tile art is the
+export's job, so no frame or flip leaves this step."""
 
 from __future__ import annotations
 
@@ -17,13 +9,13 @@ from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
-from vcmi_mapgen.core.model import Cell, MapState, Tile, Zone
+from vcmi_mapgen.core.model import MapState, Tile, Zone
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
+from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
 from vcmi_mapgen.core.steps.terrain_gen.gate_sites import carve_gate_sites, gate_anchor_points
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
-from vcmi_mapgen.kit import tiling as TL
-from vcmi_mapgen.vcmi.formats import vmap as VM
 
 
 def _warn_sliver_zones(
@@ -40,10 +32,7 @@ def _warn_sliver_zones(
 
 
 class TerrainStep(PipelineStep):
-    """Generate macro terrain, then apply corpus-learned autotiling — both passes owned
-    by one step so the raw pre-tile grid never has to leave it as its own cross-step
-    value (see the module docstring for why the old two-step split was an artificial
-    handoff).
+    """Generate macro terrain and despeckle it into the level's ``Terrain`` grid.
 
     Config:
         size        Map side length in tiles (square).
@@ -52,10 +41,8 @@ class TerrainStep(PipelineStep):
         water_mode  'none' | 'normal' | 'islands'
         subterrain  Whether to generate a second underground level.
 
-    Produces: ``map_state.cells``/``surfs`` (the finished, VCMI-tile-string terrain);
-    ``TerrainGrids`` (post-despeckle terrain-code grids + tunnel_protect), for
-    VegetationStep/GameplayStep/BorderStep; ``Segmentation``, each level's same-terrain
-    zones and zone label grid.
+    Produces: ``map_state.terrain``; ``TerrainGrids``, the tunnel cells despeckle kept;
+    ``Segmentation``, each level's same-terrain zones and zone label grid.
     """
 
     def __init__(
@@ -71,9 +58,7 @@ class TerrainStep(PipelineStep):
         self.water: float | None = water
         self.water_mode: str = water_mode
         self.subterrain: bool = subterrain
-        self.cells: dict[int, list[list[Cell]]] = {}
-        self.surfs: dict[int, list[list[str]]] = {}
-        self.grids: dict[int, list[list[int]]] = {}
+        self.terrain: dict[int, list[list[Terrain]]] = {}
         self.tunnel_protect: frozenset[Tile] = frozenset()
         self._ctx: ProviderRegistry | None = None
 
@@ -110,24 +95,20 @@ class TerrainStep(PipelineStep):
         if grid1 is not None:
             raw_grids[1] = grid1
 
+        thin = catalog.thin_terrains()
         for level, grid in raw_grids.items():
             protect: frozenset[Tile] = tunnel_protect if level == 1 else frozenset()
-            cells = TL.tile_terrain(grid, W, H, protect)
-            self.cells[level] = cells
-            self.surfs[level] = [[VM.tile_string(c) for c in row] for row in cells]
-            # post-despeckle terrain codes, for steps that need the terrain grid itself
-            self.grids[level] = [[c.t for c in row] for row in cells]
+            self.terrain[level] = despeckle(grid, thin, protect)
 
         self.tunnel_protect = tunnel_protect
-        map_state.cells = self.cells
-        map_state.surfs = self.surfs
+        map_state.terrain = self.terrain
         if self._ctx is None:
             raise RuntimeError("TerrainStep.run() requires inject() to have been called")
-        self._ctx.provide(TerrainGrids(grids=self.grids, tunnel_protect=self.tunnel_protect))
+        self._ctx.provide(TerrainGrids(tunnel_protect=self.tunnel_protect))
         zones: dict[int, dict[int, Zone]] = {}
         labels: dict[int, ZoneLabel] = {}
-        for level, cells in self.cells.items():
-            zones[level], labels[level], _ = segment_level(cells)
+        for level, grid in self.terrain.items():
+            zones[level], labels[level], _ = segment_level(grid)
             protect = tunnel_protect if level == 1 else frozenset()
             _warn_sliver_zones(zones[level], level, protect=protect)
         self._ctx.provide(Segmentation(zones, labels))

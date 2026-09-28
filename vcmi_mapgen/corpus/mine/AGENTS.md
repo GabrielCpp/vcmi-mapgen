@@ -8,5 +8,6 @@ The miners: each reads the corpus maps and returns one prior value from `core/pr
 - `gates.py`: `mine_gate_stats`, the Subterranean Gate counts and spacing.
 - `macro.py`: `mine_macro`, the zone areas, terrain shares, terrain adjacency and barrier fraction per level.
 - `markov.py`: `learn` and `learn4`, the raster and four-neighbour terrain Markov chains per level.
+- `tiler.py`: `learn`, the frame and flip real maps draw per terrain and neighbour terrains, read from each `.vmap`'s tile strings.
 - `vegetation.py`: `mine`, the per-terrain decoration intensity, pair correlation and
   coverage. `--report TERRAIN` prints one terrain's tables.

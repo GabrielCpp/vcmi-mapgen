@@ -7,7 +7,8 @@ import pytest
 
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
-from vcmi_mapgen.kit import tiling as ZE
+from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.export import build_document
 from vcmi_mapgen.vcmi.formats import json_value as jv
@@ -50,7 +51,7 @@ def _players(h: dict[str, JsonValue]) -> dict[str, dict[str, JsonValue]]:
 
 
 def _write(state: MapState, path: Path) -> str:
-    return VM.write(build_document(state, "test", INSTALL), str(path))
+    return VM.write(build_document(state, "test", INSTALL, load_tiler()), str(path))
 
 
 @needs_vcmi
@@ -58,10 +59,10 @@ def test_vmap_export_roundtrip(tmp_path: Path) -> None:
     """build_document writes an editor-shaped .vmap: reads back, visitables carry
     visitableFrom, and a playable slot is wired to the town."""
     grid = [[2] * 16 for _ in range(16)]
-    cells = ZE.tile_terrain(grid, 16, 16)
+    terrain = [[Terrain(t) for t in row] for row in grid]
     town = ON.gameplay_pool("grass", "TOWN")[0]
     objs = [_town(town, 8, 8)]
-    state = MapState(size=max(len(cells), len(cells[0])), cells={0: cells}, objs=objs)
+    state = MapState(size=max(len(terrain), len(terrain[0])), terrain={0: terrain}, objs=objs)
     p = _write(state, tmp_path / "test_pp_export.vmap")
     z = zipfile.ZipFile(p)
     surf = jv.as_list(_load(z, "surface_terrain.json"))

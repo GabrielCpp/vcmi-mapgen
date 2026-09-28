@@ -202,7 +202,7 @@ def _accumulate_zone(catalog: Catalog, a: _Acc, fm: MapState, ts: set[Tile]) -> 
 def mine(catalog: Catalog, maps: Iterable[MapState]) -> dict[str, VegetationStats]:
     acc = {catalog.terrain_name(t): _Acc() for t in Terrain if t.is_land}
     for fm in maps:
-        zones, _zl, _ = segment_level(fm.cells[0])
+        zones, _zl, _ = segment_level(fm.terrain[0])
         for z in zones.values():
             terr = catalog.terrain_name(z.terrain_type)
             if terr not in acc or z.area < MIN_AREA:

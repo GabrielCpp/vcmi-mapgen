@@ -33,8 +33,7 @@ VEGETATION_TOUCH_FLOOR = 0.8
 @dataclass(frozen=True, slots=True)
 class Snapshot:
     objs: tuple[str, ...]
-    cells: int
-    surfs: int
+    terrain: int
     gate_blk: int
     player_towns: tuple[str, ...]
 
@@ -42,8 +41,7 @@ class Snapshot:
 def _snapshot(state: MapState) -> Snapshot:
     return Snapshot(
         objs=tuple(repr(o) for o in state.objs),
-        cells=len(state.cells),
-        surfs=len(state.surfs),
+        terrain=len(state.terrain),
         gate_blk=sum(len(b) for b in state.gate_blk.values()),
         player_towns=tuple(repr(o) for o in state.player_towns),
     )
@@ -97,18 +95,17 @@ def transitions(pipeline_run: PipelineRun) -> dict[str, tuple[Snapshot, Snapshot
     return pipeline_run.transitions
 
 
-def test_terrain_gen_writes_cells_and_surfs(
+def test_terrain_gen_writes_terrain(
     transitions: dict[str, tuple[Snapshot, Snapshot]],
 ) -> None:
     before, after = transitions["terrain_gen"]
-    assert (before.cells, before.surfs) == (0, 0)
-    assert after.cells > 0
-    assert after.surfs > 0
+    assert before.terrain == 0
+    assert after.terrain > 0
 
 
 def test_terrain_gen_provides_segmentation(pipeline_run: PipelineRun) -> None:
     zones = pipeline_run.ctx.require(Segmentation).zones
-    assert all(zones[level] for level in pipeline_run.state.cells)
+    assert all(zones[level] for level in pipeline_run.state.terrain)
 
 
 def test_gameplay_writes_gate_blk(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:
@@ -137,7 +134,7 @@ def test_no_object_stands_on_a_disallowed_terrain(pipeline_run: PipelineRun) -> 
     violations = [
         v
         for o in pipeline_run.state.objs
-        if (grid := pipeline_run.state.cells.get(o.level)) is not None
+        if (grid := pipeline_run.state.terrain.get(o.level)) is not None
         for v in footprint_violations(pipeline_run.catalog, grid, o)
     ]
     assert violations == []

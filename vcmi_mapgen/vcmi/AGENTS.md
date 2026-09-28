@@ -14,3 +14,4 @@ Code here knows the game and its files. It knows nothing about the generator.
 - `options.py`: `options_of`, which turns a core payload into VCMI object options, with the town spells, the town options and the rewardable shapes.
 - `players.py`: `parse_teams` and `apply_playability`, which set player slots, teams, town owners and victory on the header.
 - `terrain.py`: each core `Terrain` with its Heroes III code, VCMI tile prefix and name, and `name_of` for a terrain code.
+- `tiles.py`: the tile art: `Cell`, `TilerTables`, `tile` and `tile_strings`, which pick each tile's frame and flip from the tiler tables, the tile-string codec, and `THIN_DRAWABLE`, the terrains that draw a strip one tile wide.

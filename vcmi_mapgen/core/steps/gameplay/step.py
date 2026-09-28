@@ -142,7 +142,7 @@ class GameplayStep(PipelineStep):
         subterrain  Whether a second underground level is active.
 
     inject(ctx): ``PlacementWorkspace`` (each zone's post-vegetation field), ``TerrainGrids`` (the
-    grids and the tunnel protect set), ``Segmentation`` (the surface zones). The step publishes the
+    tunnel protect set), ``Segmentation`` (the surface zones). The step publishes the
     player zones the zone plan picked, then commits the sea objects the zone plan drew. Gates stay
     off each player town's kept room. Gates may stand on an underground tunnel. No other object's
     footprint may, and none may strand one. A player town that finds no spot in its zone moves to
@@ -164,7 +164,7 @@ class GameplayStep(PipelineStep):
         self.objs: list[PlacedObject] = []
         self._ctx = ProviderRegistry()
         self._workspace = PlacementWorkspace()
-        self._grids: dict[int, list[list[int]]] = {}
+        self._grids: dict[int, list[list[Terrain]]] = {}
         self._segmentation = Segmentation({}, {})
         self._player_zids: list[tuple[int, int]] = []
         self._tunnels: frozenset[Tile] = NO_TILES
@@ -174,13 +174,12 @@ class GameplayStep(PipelineStep):
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
         self._workspace = ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)
-        terrain = ctx.require(TerrainGrids)
-        self._grids = terrain.grids
-        self._tunnels = terrain.tunnel_protect
+        self._tunnels = ctx.require(TerrainGrids).tunnel_protect
         self._segmentation = ctx.require(Segmentation)
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
+        self._grids = map_state.terrain
         gate = TerrainGate(catalog)
         self._pick_player_zones()
         for _level, lw in sorted(self._workspace.levels.items()):
@@ -269,7 +268,7 @@ class GameplayStep(PipelineStep):
             level,
             self._grids[level],
             [o for o in map_state.objs if o.level == level],
-            lambda o: not gate.check(o, map_state.cells),
+            lambda o: not gate.check(o, map_state.terrain),
         )
         idx = SiteIndex(lf)
         for zid, zw in sorted(lw.zones.items()):

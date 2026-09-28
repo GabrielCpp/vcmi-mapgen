@@ -7,8 +7,9 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from vcmi_mapgen.core.model.objects import Cell, PlacedObject, Role, Tile
+from vcmi_mapgen.core.model.objects import PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.terrain import Terrain
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +34,7 @@ class TileView:
     level: int
     x: int
     y: int
-    terrain: int | None
+    terrain: Terrain | None
     gate_blocked: bool
     covers: tuple[Cover, ...]
     border: bool = False
@@ -195,14 +196,14 @@ class PlacementError(ValueError):
 
 
 class PlacementRules(Protocol):
-    def check(self, obj: PlacedObject, cells: dict[int, list[list[Cell]]], /) -> list[str]: ...
+    def check(self, obj: PlacedObject, terrain: dict[int, list[list[Terrain]]], /) -> list[str]: ...
 
 
 @dataclass
 class MapState:
     """The map as VCMI means it: a ``size`` by ``size`` grid on each level, with terrain
-    (``surfs``/``cells``), gate-blocked tiles (``gate_blk``), placed objects (``objs``) and
-    player towns (``player_towns``).
+    (``terrain``, one ``Terrain`` per tile after despeckle), gate-blocked tiles
+    (``gate_blk``), placed objects (``objs``) and player towns (``player_towns``).
 
     Ask about a tile with ``at``. A position outside the map answers ``BORDER``, a blocking
     sentinel. Ask about an object with ``free_for`` before placing it.
@@ -212,8 +213,7 @@ class MapState:
     """
 
     size: int
-    surfs: dict[int, list[list[str]]] = field(default_factory=dict)
-    cells: dict[int, list[list[Cell]]] = field(default_factory=dict)
+    terrain: dict[int, list[list[Terrain]]] = field(default_factory=dict)
     gate_blk: dict[int, frozenset[Tile]] = field(default_factory=dict)
     objs: list[PlacedObject] = field(default_factory=list)
     player_towns: list[PlacedObject] = field(default_factory=list)
@@ -238,8 +238,8 @@ class MapState:
     def at(self, level: int, x: int, y: int) -> TileView:
         if not self.in_bounds(x, y):
             return BORDER
-        grid = self.cells.get(level)
-        terrain = grid[y][x].t if grid is not None and y < len(grid) and x < len(grid[y]) else None
+        grid = self.terrain.get(level)
+        terrain = grid[y][x] if grid is not None and y < len(grid) and x < len(grid[y]) else None
         return TileView(
             level=level,
             x=x,
@@ -269,7 +269,7 @@ class MapState:
         index = index_of(objs)
         problems: list[str] = []
         for obj in new:
-            problems += rules.check(obj, self.cells) + covering_problems(obj, index)
+            problems += rules.check(obj, self.terrain) + covering_problems(obj, index)
             for tile, role in footprint(obj):
                 for cover in index.get((obj.level, tile), ()):
                     if cover.obj is obj:

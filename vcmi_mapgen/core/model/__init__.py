@@ -9,7 +9,6 @@ from vcmi_mapgen.core.model.map_state import (
     footprint,
 )
 from vcmi_mapgen.core.model.objects import (
-    Cell,
     Entrance,
     Footprint,
     Identity,
@@ -32,7 +31,6 @@ from vcmi_mapgen.core.model.payload import (
 
 __all__ = [
     "BORDER",
-    "Cell",
     "Cover",
     "CoverIndex",
     "Dwelling",

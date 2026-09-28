@@ -5,10 +5,12 @@ from typing import final
 from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec
 from vcmi_mapgen.core.model import Footprint, Identity, Role
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi import terrain as VT
 from vcmi_mapgen.vcmi.catalog import decor as DC
 from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.catalog import roles as RO
+from vcmi_mapgen.vcmi.tiles import THIN_DRAWABLE
 
 
 @final
@@ -105,3 +107,6 @@ class VcmiCatalog:
             kind=RO.SPELL_SCROLL,
             footprint=Footprint.one(Role.VISIT),
         )
+
+    def thin_terrains(self) -> frozenset[Terrain]:
+        return THIN_DRAWABLE

@@ -11,7 +11,7 @@ import glob
 import os
 import re
 
-from vcmi_mapgen.core.model import Cell, PlacedObject
+from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.config import VcmiConfig
 from vcmi_mapgen.vcmi.footprint import footprint_of
@@ -19,8 +19,9 @@ from vcmi_mapgen.vcmi.formats import h3m
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.mask import build_mask_from_h3m
-from vcmi_mapgen.vcmi.formats.vmap.terrain import export_mask, tile_string, visitable_from
+from vcmi_mapgen.vcmi.formats.vmap.terrain import export_mask, visitable_from
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
+from vcmi_mapgen.vcmi.tiles import Cell, tile_string
 
 ROOT = project_root()
 OUT = str(ROOT / "maps_vmap")

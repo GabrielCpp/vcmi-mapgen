@@ -13,7 +13,7 @@ from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
 from vcmi_mapgen.core.steps.portal import rescue as RS
 from vcmi_mapgen.core.steps.portal.result import PortalResult
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 
 
 def _find_start(
@@ -48,8 +48,7 @@ class PortalStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
 
-    inject(ctx): ``ZoneIndex`` (targets and claims, mutated in place), ``TerrainGrids``,
-    ``Segmentation``,
+    inject(ctx): ``ZoneIndex`` (targets and claims, mutated in place), ``Segmentation``,
     ``TownsIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
     defaults to empty when GameplayStep has not run.
 
@@ -66,7 +65,6 @@ class PortalStep(PipelineStep):
         self._targets: dict[int, list[Tile]] = {}
         self._zone_records: dict[int, list[ZoneRecord]] = {}
         self._claims: dict[int, frozenset[Tile]] = {}
-        self._grids: dict[int, list[list[int]]] = {}
         self._segmentation = Segmentation({}, {})
         self._workspace = PlacementWorkspace()
         self._player_zids: list[tuple[int, int]] = []
@@ -79,7 +77,6 @@ class PortalStep(PipelineStep):
         self._targets = zones.targets
         self._zone_records = zones.zone_records
         self._claims = zones.claims
-        self._grids = ctx.require(TerrainGrids).grids
         self._segmentation = ctx.require(Segmentation)
         self._workspace = ctx.require(PlacementWorkspace)
         self._player_zids = ctx.require(TownsIndex).player_zids
@@ -87,7 +84,7 @@ class PortalStep(PipelineStep):
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
-        grids = self._grids
+        grids = map_state.terrain
         objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in grids}
         for o in map_state.objs:
             if o.level in objs_by_level:

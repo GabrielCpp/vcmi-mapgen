@@ -28,7 +28,7 @@ from vcmi_mapgen.core.planning.player_zones import select_player_zones
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
 from vcmi_mapgen.core.steps.gameplay import water as WT
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 
@@ -320,22 +320,28 @@ def plan_player_zones(
     workspace.player_zids = picks
 
 
+@dataclass(frozen=True, slots=True)
+class PlanTerrain:
+    """What a zone plan reads of the terrain: the segmentation, each level's ``Terrain``
+    grid and the underground tunnel cells."""
+
+    segmentation: Segmentation
+    grids: Mapping[int, list[list[Terrain]]]
+    tunnel_protect: frozenset[Tile]
+
+
 def plan_zones(
-    catalog: Catalog,
-    workspace: PlacementWorkspace,
-    segmentation: Segmentation,
-    terrain: TerrainGrids,
-    seed: int,
+    catalog: Catalog, workspace: PlacementWorkspace, terrain: PlanTerrain, seed: int
 ) -> None:
     """Fill ``workspace`` with one ``LevelWorkspace`` per terrain level. The surface level
     also holds its planned sea objects and the shipyard landings kept open for them."""
     for level in sorted(terrain.grids):
-        zones = segmentation.zones[level]
+        zones = terrain.segmentation.zones[level]
         planner = _ZonePlanner(
             _LevelPlan(
                 catalog,
                 zones,
-                segmentation.zone_label[level],
+                terrain.segmentation.zone_label[level],
                 terrain.tunnel_protect if level == 1 else NO_TILES,
                 load_gameplay(level=level),
             )

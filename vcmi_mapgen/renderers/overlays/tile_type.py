@@ -7,7 +7,6 @@ from typing import override
 from PIL import Image
 
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.renderers.overlays._tiles import terrain_code
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 from vcmi_mapgen.renderers.palette import TERRAIN_RGB
 
@@ -31,7 +30,7 @@ class TileTypeOverlay(MapOverlay):
 
     @override
     def apply(self, state: MapState, level: int) -> Image.Image:
-        surf = state.surfs.get(level) or state.cells.get(level)
+        surf = state.terrain.get(level)
         if not surf:
             return Image.new("RGBA", (state.size * TILE, state.size * TILE), (0, 0, 0, 0))
         W, H = len(surf[0]), len(surf)
@@ -40,8 +39,7 @@ class TileTypeOverlay(MapOverlay):
         if px is None:
             raise RuntimeError("image has no pixel access")
         for y, row in enumerate(surf):
-            for x, cell in enumerate(row):
-                t = terrain_code(cell)
+            for x, t in enumerate(row):
                 r, g, b = TERRAIN_RGB[t]
                 color = (r, g, b, self._alpha)
                 x0, y0 = x * TILE, y * TILE

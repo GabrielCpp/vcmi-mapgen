@@ -73,7 +73,7 @@ class ZoneOverlay(MapOverlay):
     @override
     def apply(self, state: MapState, level: int) -> Image.Image:
         zones = self._zones.get(level)
-        surf = state.surfs.get(level) or state.cells.get(level)
+        surf = state.terrain.get(level)
         W = len(surf[0]) if surf and surf[0] else state.size
         H = len(surf) if surf else state.size
         if not zones:

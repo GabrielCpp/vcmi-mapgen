@@ -7,7 +7,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 
 ## Map
 
-- `terrain_gen/`: `TerrainStep`, the macro terrain layout and the corpus-learned autotiling for both levels.
+- `terrain_gen/`: `TerrainStep`, the macro terrain layout and its despeckle for both levels.
 - `vegetation/`: `VegetationStep`, the corpus-fitted Gibbs process that grows trees, rocks and lakes.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
@@ -35,16 +35,16 @@ of step, it is a sign one of two things happened:
    `TerrainGenStep` generated a raw macro-topology grid and published it into the shared
    registry; `TileStep`, run immediately after, was its only reader, and immediately
    superseded the value with its own post-despeckle version. Splitting macro-generation
-   from autotiling into two `PipelineStep`s bought nothing — it just added a
+   from despeckle into two `PipelineStep`s bought nothing — it just added a
    registry round-trip between two halves of one job. They are now one step
    (`TerrainStep`, in `steps/terrain_gen/step.py`), and the raw grid never leaves it.
    **Fix:** merge the two steps.
 2. **A genuinely shared, cross-step value with no map-level meaning of its own** — e.g.
-   `TerrainGrids` (post-despeckle terrain-code grids + tunnel-protect corridor cells,
-   needed by `VegetationStep`/`BorderStep`) or `PlacementWorkspace` (the
+   `TerrainGrids` (the tunnel-protect corridor cells, needed by
+   `VegetationStep`/`GameplayStep`) or `PlacementWorkspace` (the
    `Vegetation→Gameplay→Gated→Border` shared workspace). This data is real and does need
    to cross steps — but the step that *computes* it also has real map-level work to do
-   (`TerrainStep` writes `map_state.cells`/`surfs`; `VegetationStep` writes
+   (`TerrainStep` writes `map_state.terrain`; `VegetationStep` writes
    `map_state.objs`), so it is published as a side effect of an
    already-legitimate step's `run()`, never as the sole reason a step exists.
 

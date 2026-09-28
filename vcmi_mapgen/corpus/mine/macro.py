@@ -5,13 +5,13 @@ import collections
 from collections.abc import Iterable
 
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Cell, MapState
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.macro import MacroStats
 
 
 def _mine_zones(
-    lvl: list[list[Cell]], areas: list[int], terr_share: collections.Counter[int]
+    lvl: list[list[Terrain]], areas: list[int], terr_share: collections.Counter[int]
 ) -> int:
     zones, _, _ = segment_level(lvl)
     big = 0
@@ -49,12 +49,12 @@ def mine_macro(level: int, maps: Iterable[MapState]) -> MacroStats:
     adj = collections.Counter[str]()  # "t1|t2" boundary-tile counts, t1 <= t2
     nzones: list[int] = []
     for fm in maps:
-        if level >= len(fm.cells):
+        if level >= len(fm.terrain):
             continue
-        lvl = fm.cells[level]
+        lvl = fm.terrain[level]
         H = len(lvl)
         W = len(lvl[0]) if H else 0
-        T = [[c.t for c in row] for row in lvl]
+        T = [[int(t) for t in row] for row in lvl]
         nb = sum(1 for row in T for t in row if t == barrier)
         barrier_fracs.append(nb / max(W * H, 1))
         nzones.append(_mine_zones(lvl, areas, terr_share))

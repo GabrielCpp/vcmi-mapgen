@@ -167,7 +167,7 @@ def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
         os.makedirs(os.path.dirname(png), exist_ok=True)
         png_renderer.render(map_state, level=0).save(png)
         print(f"  {png}")
-        if opts.subterrain and 1 in map_state.cells:
+        if opts.subterrain and 1 in map_state.terrain:
             png1 = png_renderer.save(map_state, f"ppmap_s{opts.seed}_L1.png", level=1)
             print(f"  {png1}")
 

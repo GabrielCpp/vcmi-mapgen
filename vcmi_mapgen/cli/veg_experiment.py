@@ -12,7 +12,7 @@ def m1_experiment(map_name: str, zid: int, seed: int = 1) -> None:
     """The spec's decisive M1 test: sample vegetation for a REAL corpus zone with NO lattice
     field and compare the EMERGENT run-length histogram + coverage against the corpus."""
     fm = load_corpus_map(map_name)
-    zones, zone_label, _ = segment_level(fm.cells[0])
+    zones, zone_label, _ = segment_level(fm.terrain[0])
     z = zones[zid]
     terrain = name_of(z.terrain_type)
     ts = set(z.tiles_set)

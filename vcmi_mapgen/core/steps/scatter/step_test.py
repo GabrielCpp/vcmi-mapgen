@@ -112,6 +112,10 @@ class FakeCatalog:
     def spell_scroll(self, spell: str) -> Identity:
         return self._role("spell_scroll", spell)
 
+    def thin_terrains(self) -> frozenset[Terrain]:
+        self.asked.append(("thin_terrains",))
+        return frozenset()
+
 
 def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
     ts = frozenset((x, y) for x in range(30) for y in range(24))

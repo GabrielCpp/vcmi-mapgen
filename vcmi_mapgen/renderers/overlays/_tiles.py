@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 
-from vcmi_mapgen.core.model import Cell, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.vcmi.terrain import BY_PREFIX
 
 NB8: list[Tile] = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
 
@@ -33,19 +32,11 @@ STRUCTURE_PURPOSES = frozenset(
 )
 
 
-def terrain_code(cell: str | Cell) -> Terrain:
-    """The terrain of a tile string or a tile cell. An unknown prefix reads as dirt."""
-    if isinstance(cell, Cell):
-        return Terrain(cell.t)
-    return BY_PREFIX.get(cell[:2], Terrain.DIRT)
-
-
 def passable_tiles(
-    surf: Sequence[Sequence[str | Cell]], objs: Iterable[PlacedObject], level: int
+    terrain: Sequence[Sequence[Terrain]], objs: Iterable[PlacedObject], level: int
 ) -> set[Tile]:
     """Land tiles (not water/rock) minus any object's blocking footprint on `level`."""
-    H, W = len(surf), len(surf[0])
-    land = {(x, y) for y in range(H) for x in range(W) if terrain_code(surf[y][x]).is_land}
+    land = {(x, y) for y, row in enumerate(terrain) for x, t in enumerate(row) if t.is_land}
     blocked: set[Tile] = set()
     for o in objs:
         if o.level != level:

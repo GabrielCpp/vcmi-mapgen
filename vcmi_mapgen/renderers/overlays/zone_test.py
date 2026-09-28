@@ -1,14 +1,14 @@
 from PIL import Image
 
-from vcmi_mapgen.core.model import Cell, MapState, Zone
+from vcmi_mapgen.core.model import MapState, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.renderers.overlays.zone import ZoneOverlay
 
 TILE = 32
 
 
-def _cell(t: int = 2) -> Cell:
-    return Cell(t=t)
+def _cell(t: int = 2) -> Terrain:
+    return Terrain(t)
 
 
 def _state() -> tuple[MapState, dict[int, dict[int, Zone]]]:
@@ -23,7 +23,7 @@ def _state() -> tuple[MapState, dict[int, dict[int, Zone]]]:
             tiles_set=frozenset(ts),
         )
     }
-    return MapState(size=max(len(grid), len(grid[0])), cells={0: grid}, objs=[]), {0: zones}
+    return MapState(size=max(len(grid), len(grid[0])), terrain={0: grid}, objs=[]), {0: zones}
 
 
 def _rgba_at(img: Image.Image, x: int, y: int) -> tuple[int, int, int, int]:

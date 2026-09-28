@@ -20,7 +20,7 @@ cells placements have claimed: `claim(cells)` adds them, `mark()` records a poin
 ## Map
 
 - `map_state.py`: `MapState`, the tile grid and the objects on it, and the grid API.
-- `objects.py`: the object and zone records: `PlacedObject`, its `Identity` and `Entrance`, `Cell` and `Zone`, and the `Footprint` an object covers, a set of cells each with its `Role`. A placed object carries its `kind` and its payload, never an engine type or engine options.
+- `objects.py`: the object and zone records: `PlacedObject`, its `Identity` and `Entrance` and `Zone`, and the `Footprint` an object covers, a set of cells each with its `Role`. A placed object carries its `kind` and its payload, never an engine type or engine options.
 - `payload.py`: `Payload`, what a placed object holds for the game: a `Guard`, a `Reward`, a seer hut's `Quest`, a `Scroll`'s spell, a `Town` or a `Dwelling` tied to its town.
 - `terrain.py`: `Terrain`, the terrain vocabulary, and which terrains are water, barrier or land.
 - `purpose.py`: `Purpose`, the purposes objects are placed for, and the groups `VISIT_PURPOSES` and `COUNTED`.
@@ -30,7 +30,7 @@ cells placements have claimed: `claim(cells)` adds them, `mark()` records a poin
 
 `MapState` is the render-only view of a finished map: exactly what `PngRenderer`,
 `MapOverlay` and `VmapRenderer` read, and nothing else. A field belongs on `MapState`
-**only if it describes the map itself, as VCMI means it** — terrain (`surfs`/`cells`),
+**only if it describes the map itself, as VCMI means it** — terrain (`terrain`, one `Terrain` per tile),
 gate-blocked tiles (`gate_blk`), placed objects (`objs`), player towns (`player_towns`).
 
 Zone segmentation is not a map fact. The map is a grid, and a `.vmap` has no notion of

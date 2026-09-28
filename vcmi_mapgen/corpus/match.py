@@ -16,7 +16,7 @@ from typing import final
 
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
-from vcmi_mapgen.core.model import Cell, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import COUNTED
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
@@ -53,10 +53,8 @@ def _entrance(o: PlacedObject) -> Tile:
     return vis[0] if vis else (o.x, o.y)
 
 
-def _field(grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]) -> _Field:
-    unwalkable = {
-        (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if Terrain(c.t).is_barrier
-    }
+def _field(grid: Sequence[Sequence[Terrain]], objs: Sequence[PlacedObject]) -> _Field:
+    unwalkable = {(x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if c.is_barrier}
     veg: set[Tile] = set()
     for o in objs:
         blk = [t for t, role in o.footprint.at(o.x, o.y) if role.blocks]
@@ -104,7 +102,7 @@ def _measure_zone(
 
 
 def measure_level(
-    tally: Tally, grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]
+    tally: Tally, grid: Sequence[Sequence[Terrain]], objs: Sequence[PlacedObject]
 ) -> None:
     zones, label, _ = segment_level([list(row) for row in grid])
     fld = _field(grid, objs)
@@ -127,7 +125,7 @@ def corpus_tally() -> Tally:
     tally = Tally()
     for name in all_map_names():
         m = load_corpus_map(name)
-        for level, grid in m.cells.items():
+        for level, grid in m.terrain.items():
             measure_level(tally, grid, [o for o in m.objs if o.level == level])
     return tally
 
@@ -135,7 +133,7 @@ def corpus_tally() -> Tally:
 def generated_tally(states: Iterable[MapState]) -> Tally:
     tally = Tally()
     for state in states:
-        for level, grid in state.cells.items():
+        for level, grid in state.terrain.items():
             measure_level(tally, grid, [o for o in state.objs if o.level == level])
     return tally
 

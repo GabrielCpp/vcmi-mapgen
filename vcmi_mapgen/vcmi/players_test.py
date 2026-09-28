@@ -7,7 +7,8 @@ import pytest
 
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
-from vcmi_mapgen.kit import tiling as ZE
+from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.roles import RANDOM_TOWN
 from vcmi_mapgen.vcmi.export import build_document
@@ -52,7 +53,7 @@ def _players(h: dict[str, JsonValue]) -> dict[str, dict[str, JsonValue]]:
 
 
 def _write(state: MapState, path: Path, teams_spec: str) -> str:
-    doc = build_document(state, "test", INSTALL)
+    doc = build_document(state, "test", INSTALL, load_tiler())
     teams = parse_teams(teams_spec, len(state.player_towns))
     apply_playability(doc, state.player_towns, teams)
     return VM.write(doc, str(path))
@@ -72,11 +73,14 @@ def test_playability_overlay(tmp_path: Path) -> None:
     """The playability overlay: exactly N playable slots wired to their towns,
     team matrix set, victory = defeat all (standardWin)."""
     grid = [[2] * 24 for _ in range(24)]
-    cells = ZE.tile_terrain(grid, 24, 24)
+    terrain = [[Terrain(t) for t in row] for row in grid]
     town = ON.gameplay_pool("grass", "TOWN")[0]
     towns = [_town(town, 8, 8), _town(town, 18, 18)]
     state = MapState(
-        size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
+        size=max(len(terrain), len(terrain[0])),
+        terrain={0: terrain},
+        objs=towns,
+        player_towns=towns,
     )
     p = _write(state, tmp_path / "test_pp_play.vmap", "ffa")
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))
@@ -111,12 +115,15 @@ def test_playability_overlay_alliance_grouping(tmp_path: Path) -> None:
     show alliances; the per-player "team" int alone is not enough (bug reported
     2026-07-05: '2v2' teams weren't shown when the map was selected in VCMI)."""
     grid = [[2] * 24 for _ in range(24)]
-    cells = ZE.tile_terrain(grid, 24, 24)
+    terrain = [[Terrain(t) for t in row] for row in grid]
     town = ON.gameplay_pool("grass", "TOWN")[0]
 
     towns = [_town(town, 8, 8), _town(town, 18, 18), _town(town, 8, 18), _town(town, 18, 8)]
     state = MapState(
-        size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
+        size=max(len(terrain), len(terrain[0])),
+        terrain={0: terrain},
+        objs=towns,
+        player_towns=towns,
     )
     p = _write(state, tmp_path / "test_pp_play_2v2.vmap", "2v2")
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))
@@ -134,10 +141,13 @@ def test_playability_overlay_random_town_shows_random_in_lobby(tmp_path: Path) -
     2026-07-03: every player's town appeared fixed to Castle."""
     rnd = ON.identity_of(RANDOM_TOWN)
     grid = [[2] * 24 for _ in range(24)]
-    cells = ZE.tile_terrain(grid, 24, 24)
+    terrain = [[Terrain(t) for t in row] for row in grid]
     towns = [_town(rnd, 8, 8)]
     state = MapState(
-        size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
+        size=max(len(terrain), len(terrain[0])),
+        terrain={0: terrain},
+        objs=towns,
+        player_towns=towns,
     )
     p = _write(state, tmp_path / "test_pp_play_random.vmap", "ffa")
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))

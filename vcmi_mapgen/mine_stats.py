@@ -12,9 +12,11 @@ from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
 from vcmi_mapgen.corpus.mine.macro import mine_macro
 from vcmi_mapgen.corpus.mine.markov import learn, learn4
+from vcmi_mapgen.corpus.mine.tiler import corpus_tile_grids
+from vcmi_mapgen.corpus.mine.tiler import learn as learn_tiler
 from vcmi_mapgen.corpus.mine.vegetation import mine as mine_vegetation
+from vcmi_mapgen.corpus.tiler import save_tiler
 from vcmi_mapgen.corpus.vegetation import save_vegetation
-from vcmi_mapgen.kit import tiling
 
 LEVELS = (0, 1)
 
@@ -30,8 +32,8 @@ def _markov(maps: Sequence[MapState], _catalog: Catalog) -> None:
         save_tables(level, tables)
 
 
-def _tiler(maps: Sequence[MapState], _catalog: Catalog) -> None:
-    tiling.save_tiler(tiling.learn_terrain_tiler(maps))
+def _tiler(_maps: Sequence[MapState], _catalog: Catalog) -> None:
+    save_tiler(learn_tiler(corpus_tile_grids()))
 
 
 def _gates(maps: Sequence[MapState], _catalog: Catalog) -> None:

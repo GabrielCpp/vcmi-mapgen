@@ -29,7 +29,7 @@ class MapOverlay(ABC):
 
     @staticmethod
     def _grid_size(state: MapState, level: int) -> tuple[int, int]:
-        surf = state.surfs.get(level) or state.cells.get(level)
+        surf = state.terrain.get(level)
         if surf:
             return len(surf[0]), len(surf)
         return state.size, state.size

@@ -108,17 +108,6 @@ class PlacedObject:
         )
 
 
-@dataclass(frozen=True, slots=True)
-class Cell:
-    t: int
-    view: int = 0
-    m: int = 0
-    rt: int = 0
-    rd: int = 0
-    ot: int = 0
-    od: int = 0
-
-
 @dataclass(slots=True)
 class Zone:
     terrain_type: Terrain

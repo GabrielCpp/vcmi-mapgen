@@ -1,61 +1,11 @@
-"""VCMI tile-string and template-mask encoding/decoding -- the stateless format
-primitives `.vmap` terrain and object footprints are built from.
-"""
+"""VCMI template-mask encoding and decoding, the stateless format primitives `.vmap`
+object footprints are built from. Tile strings live in `vcmi.tiles`."""
 
-import re
 from collections.abc import Sequence
 
-from vcmi_mapgen.core.model import Cell, PlacedObject
-from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.footprint import mask_rows
-from vcmi_mapgen.vcmi.terrain import BY_PREFIX, prefix_of
-
-RIVER = {1: "clrv", 2: "icyrv", 3: "mudrv", 4: "lavrv"}
-_RIVER_REV = {v: k for k, v in RIVER.items()}
-ROAD = {1: "dirtrd", 2: "gravrd", 3: "cobbrd"}
-_ROAD_REV = {v: k for k, v in ROAD.items()}
-
-_TILE_RE = re.compile(
-    r"^(?P<t>[a-z]{2})(?P<view>\d+)(?P<mir>[+|_-])"
-    + r"(?:(?P<river>clrv|icyrv|mudrv|lavrv)(?P<rd>\d+)_)?"
-    + r"(?:(?P<road>dirtrd|gravrd|cobbrd)(?P<od>\d+)_)?$"
-)
-
-
-def _mir(m: int) -> str:
-    h, v = m & 1, m & 2
-    return "+" if (h and v) else "|" if v else "-" if h else "_"
-
-
-def _mir_code(ch: str) -> int:
-    return {"+": 3, "|": 2, "-": 1, "_": 0}[ch]
-
-
-def tile_string(c: Cell) -> str:
-    s = f"{prefix_of(c.t)}{c.view}{_mir(c.m)}"
-    if c.rt:
-        s += f"{RIVER.get(c.rt, 'clrv')}{c.rd}_"
-    if c.ot:
-        s += f"{ROAD.get(c.ot, 'dirtrd')}{c.od}_"
-    return s
-
-
-def decode_tile_string(s: str) -> Cell:
-    """Inverse of `tile_string`: a VCMI tile token -> `Cell(t, view, m, rt, rd, ot, od)`."""
-    m = _TILE_RE.match(s)
-    if not m:
-        raise ValueError(f"not a VCMI tile string: {s!r}")
-    river, rd, road, od = m["river"], m["rd"], m["road"], m["od"]
-    return Cell(
-        t=int(BY_PREFIX.get(m["t"], Terrain.GRASS)),
-        view=int(m["view"]),
-        m=_mir_code(m["mir"]),
-        rt=_RIVER_REV.get(river, 0),
-        rd=int(rd) if rd is not None else 0,
-        ot=_ROAD_REV.get(road, 0),
-        od=int(od) if od is not None else 0,
-    )
 
 
 def visitable_from(mask: Sequence[str]) -> list[str] | None:

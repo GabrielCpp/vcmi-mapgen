@@ -7,4 +7,3 @@ module here has its own `__main__`.
 
 - `paths.py`: `project_root()`, the repository root.
 - `pp_cache.py`: how a `data/pp/` statistics file is read and written, and the error when one is missing.
-- `tiling.py`: the corpus-learned autotiler that picks each tile's transition view.

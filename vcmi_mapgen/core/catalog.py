@@ -13,6 +13,7 @@ from typing import Literal, Protocol
 
 from vcmi_mapgen.core.model import Footprint, Identity
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.terrain import Terrain
 
 type ArtifactTier = Literal["treasure", "minor", "major", "relic"]
 
@@ -118,4 +119,9 @@ class Catalog(Protocol):
 
     def spell_scroll(self, spell: str) -> Identity:
         """The spell scroll that carries one spell."""
+        ...
+
+    def thin_terrains(self) -> frozenset[Terrain]:
+        """The terrains whose tile art can draw a strip one tile wide. Despeckle erodes
+        thin strips of every other terrain."""
         ...

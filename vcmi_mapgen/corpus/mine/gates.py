@@ -33,9 +33,9 @@ def mine_gate_stats(maps: Iterable[MapState]) -> GateStats:
     gaps: list[float] = []
     seen: set[tuple[int, tuple[Tile, ...]]] = set()
     for fm in maps:
-        if len(fm.cells) < 2:
+        if len(fm.terrain) < 2:
             continue
-        if sum(1 for row in fm.cells[1] for c in row if c.t != 9) < MIN_AREA_STATS:
+        if sum(1 for row in fm.terrain[1] for t in row if t != 9) < MIN_AREA_STATS:
             continue
         gates = _corpus_gates(fm)
         if not gates or (fm.size, gates) in seen:

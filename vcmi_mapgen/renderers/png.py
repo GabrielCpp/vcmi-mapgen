@@ -10,9 +10,11 @@ from PIL import Image
 
 import vcmi_mapgen.renderers.sprites as RED
 from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers.overlays.base import MapOverlay
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
+from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
 
 ROOT = project_root()
 
@@ -20,8 +22,9 @@ ROOT = project_root()
 class PngRenderer:
     """Render a MapState to editor-quality 32px H3 sprite PNGs.
 
-    Overlays are RGBA layers composited over the base sprite render; any number
-    of overlay instances can be stacked in order.
+    The tile art comes from ``tables``, the corpus tiler by default. Overlays are RGBA
+    layers composited over the base sprite render; any number of overlay instances can be
+    stacked in order.
 
     Usage::
 
@@ -36,19 +39,26 @@ class PngRenderer:
     index: LodIndex
     out_dir: str
     _overlays: list[MapOverlay]
+    tables: TilerTables
 
     def __init__(
-        self, index: LodIndex, out_dir: str | None = None, overlays: Iterable[MapOverlay] = ()
+        self,
+        index: LodIndex,
+        out_dir: str | None = None,
+        overlays: Iterable[MapOverlay] = (),
+        tables: TilerTables | None = None,
     ) -> None:
         self.index = index
         self.out_dir = out_dir or str(ROOT / "out" / "render" / "pp")
         self._overlays = list(overlays)
+        self.tables = tables or load_tiler()
 
     def render(self, state: MapState, level: int = 0, title: str = "") -> Image.Image:
         """Return a PIL Image for the given level, with overlays composited."""
-        surfs = state.surfs.get(level)
-        if surfs is None:
-            raise ValueError(f"state.surfs has no level {level}")
+        terrain = state.terrain.get(level)
+        if terrain is None:
+            raise ValueError(f"state.terrain has no level {level}")
+        surfs = tile_strings(terrain, self.tables)
         if level == 0:
             objs = [o for o in state.objs if o.level == 0]
         else:

@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Cell, Tile
+from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.macro import MacroStats
 from vcmi_mapgen.core.steps.terrain_gen.texture import texture_boundaries
@@ -346,7 +346,7 @@ def generate(
     archipelago: rock is a wall a hero cannot swim past, so undergrounds must stay walkable
     between caverns the way real H3 maps do (tunnels leading to larger patches).
     `protect_out`, if given a set, is updated in-place with the tunnel-corridor cells that
-    downstream steps (notably `kit.tiling.tile_terrain`'s despeckle merge) must never
+    downstream steps (notably the despeckle merge in `despeckle.py`) must never
     reassign to a barrier code, or a thin corridor can be eroded back into rock after
     `generate()` already built it connected.
     Deterministic in `seed`."""
@@ -396,7 +396,7 @@ def generate(
 
 def report(grid: list[list[int]]) -> MacroReport:
     """Acceptance metrics of §4.3: zone count + share of land area in zones >= 60 tiles."""
-    lvl = [[Cell(t=t) for t in row] for row in grid]
+    lvl = [[Terrain(t) for t in row] for row in grid]
     zones, _, _ = segment_level(lvl)
     land_area = sum(z.area for z in zones.values() if 0 <= z.terrain_type < 8)
     big = [z for z in zones.values() if z.area >= 60 and 0 <= z.terrain_type < 8]

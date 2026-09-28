@@ -9,8 +9,8 @@ import pytest
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
 from vcmi_mapgen.core.model import JsonValue, MapState, PlacedObject
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
-from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
@@ -92,8 +92,8 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
     assert all(_opts(o)["sameAsTown"] == [town.x, town.y, 0] for o in rdwell)
     # ... and they survive the .vmap round trip, with sprite-extent masks
     grid = [[2] * 30 for _ in range(24)]
-    cells = ZE.tile_terrain(grid, 30, 24)
-    state = MapState(size=max(len(cells), len(cells[0])), cells={0: cells}, objs=objs)
+    terrain = [[Terrain(t) for t in row] for row in grid]
+    state = MapState(size=max(len(terrain), len(terrain[0])), terrain={0: terrain}, objs=objs)
     p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
         state, "test_pp_contracts.vmap", name="test"
     )

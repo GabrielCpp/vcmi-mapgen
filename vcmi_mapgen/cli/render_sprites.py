@@ -2,9 +2,10 @@ import os
 
 from PIL import Image
 
-from vcmi_mapgen.corpus.maps import load_corpus_map
+from vcmi_mapgen.corpus.maps import corpus_path, load_corpus_map
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers.sprites import render_map
+from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 from vcmi_mapgen.vcmi.load import load_map
@@ -15,12 +16,12 @@ def render_sprites(
 ) -> None:
     index = lod(install.data_dir)
     gen = load_map(vmap)
-    surf, objs = gen.surfs[0], gen.objs
+    surf, objs = VM.read(vmap).terrain[0], gen.objs
     gen_img = render_map(index, surf, objs, title=os.path.basename(vmap))
 
     if compare:
         real = load_corpus_map(compare)
-        rsurf, robjs = real.surfs[0], real.objs
+        rsurf, robjs = VM.read(corpus_path(compare)).terrain[0], real.objs
         real_img = render_map(index, rsurf, robjs, title=f"REAL: {compare}")
         gap = 8
         canvas = Image.new(

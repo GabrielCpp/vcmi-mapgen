@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.core.model import Cell, MapState
+from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.markov import MarkovTables
 from vcmi_mapgen.corpus.markov import load_tables, save_tables
 from vcmi_mapgen.corpus.mine.markov import learn, learn4
@@ -16,7 +17,7 @@ type Table = collections.defaultdict[tuple[int, ...], collections.Counter[int]]
 
 def _corpus_map(grid: list[list[int]]) -> MapState:
     m = MapState(size=len(grid))
-    m.cells[0] = [[Cell(t=t) for t in row] for row in grid]
+    m.terrain[0] = [[Terrain(t) for t in row] for row in grid]
     return m
 
 

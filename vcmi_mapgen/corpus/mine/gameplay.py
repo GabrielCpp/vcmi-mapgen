@@ -77,9 +77,9 @@ class _CorpusLevel:
 def _accumulate_water(aw: _TerrainAcc, fm: MapState, level: int) -> None:
     wtiles = {
         (x, y)
-        for y, row in enumerate(fm.cells[level])
-        for x, c in enumerate(row)
-        if c.t == Terrain.WATER
+        for y, row in enumerate(fm.terrain[level])
+        for x, t in enumerate(row)
+        if t == Terrain.WATER
     }
     if not wtiles:
         return
@@ -158,7 +158,7 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
 def _accumulate_map(
     catalog: Catalog, acc: dict[str, _TerrainAcc], fm: MapState, level: int
 ) -> None:
-    zones, zone_label, _ = segment_level(fm.cells[level])
+    zones, zone_label, _ = segment_level(fm.terrain[level])
     guards = {(o.x, o.y) for o in fm.objs if o.level == level and o.purpose == Purpose.GUARD}
     _accumulate_water(acc["water"], fm, level)
     cl = _CorpusLevel(catalog, fm, level, zone_label, guards)
@@ -216,7 +216,7 @@ def mine_gameplay(
     """
     acc = {t: _TerrainAcc() for t in (*land_names(catalog), "water")}
     for fm in maps:
-        if level >= len(fm.cells):
+        if level >= len(fm.terrain):
             continue
         _accumulate_map(catalog, acc, fm, level)
     return {t: _finish_stats(a) for t, a in acc.items()}

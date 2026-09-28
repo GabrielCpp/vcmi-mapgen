@@ -56,7 +56,7 @@ class VegetationStep(PipelineStep):
         seed     RNG seed.
         players  Number of player zones whose town spot stays clear of trees.
 
-    inject(ctx): ``TerrainGrids``, ``Segmentation`` (TerrainStep's zones) and the
+    inject(ctx): ``TerrainGrids`` (the tunnel cells), ``Segmentation`` (TerrainStep's zones) and the
     ``PlacementWorkspace``, created here and filled by ``zone_plan.plan_zones`` and
     ``zone_plan.plan_player_zones`` before any tree grows; each zone's ``ZoneWorkspace`` supplies
     ``prot``/``occupied``/``gblocked``/``approaches``/
@@ -90,7 +90,10 @@ class VegetationStep(PipelineStep):
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         if self._workspace is None:
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
-        ZPL.plan_zones(catalog, self._workspace, self._segmentation, self._terrain, self.seed)
+        terrain = ZPL.PlanTerrain(
+            self._segmentation, map_state.terrain, self._terrain.tunnel_protect
+        )
+        ZPL.plan_zones(catalog, self._workspace, terrain, self.seed)
         ZPL.plan_player_zones(
             catalog,
             self._workspace,

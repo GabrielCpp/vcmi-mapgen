@@ -1,7 +1,7 @@
 """Terrain-type flood-fill segmentation, per-tile static features, and per-zone canonical
 coordinates.
 
-Segments a terrain level (2-D grid of `Cell`s) into contiguous
+Segments a terrain level (2-D grid of `Terrain`) into contiguous
 natural zones — one zone per connected region of the same terrain code,
 excluding water (8) and rock (9) which act as barriers.
 
@@ -20,7 +20,7 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 import numpy as np
 import numpy.typing as npt
 
-from vcmi_mapgen.core.model import Cell, Tile, Zone
+from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 
 DIM_STATIC = 32  # feature vector length (see compute_static_features docstring)
@@ -83,7 +83,7 @@ def _bfs_global(
 # ---------------------------------------------------------------------------
 
 
-def _flood_fill(terrain_level: list[list[Cell]]) -> list[list[int]]:
+def _flood_fill(terrain_level: Sequence[Sequence[Terrain]]) -> list[list[int]]:
     """4-connected flood-fill by terrain type. Returns zone_label (HxW, -1=barrier)."""
     H = len(terrain_level)
     W = len(terrain_level[0])
@@ -91,7 +91,7 @@ def _flood_fill(terrain_level: list[list[Cell]]) -> list[list[int]]:
     zone_id = 0
     for y0 in range(H):
         for x0 in range(W):
-            t0 = terrain_level[y0][x0].t
+            t0 = terrain_level[y0][x0]
             if Terrain(t0).is_barrier or zone_label[y0][x0] != -1:
                 continue
             zone_label[y0][x0] = zone_id
@@ -104,7 +104,7 @@ def _flood_fill(terrain_level: list[list[Cell]]) -> list[list[int]]:
                         0 <= nx < W
                         and 0 <= ny < H
                         and zone_label[ny][nx] == -1
-                        and terrain_level[ny][nx].t == t0
+                        and terrain_level[ny][nx] == t0
                     ):
                         zone_label[ny][nx] = zone_id
                         dq.append((nx, ny))
@@ -123,7 +123,10 @@ def _tiles_by_zone(zone_label: list[list[int]], W: int, H: int) -> dict[int, lis
 
 
 def _boundary_and_adjacent(
-    terrain_level: list[list[Cell]], zone_label: list[list[int]], tiles: list[Tile], zid: int
+    terrain_level: Sequence[Sequence[Terrain]],
+    zone_label: list[list[int]],
+    tiles: list[Tile],
+    zid: int,
 ) -> tuple[set[Tile], set[int]]:
     H = len(terrain_level)
     W = len(terrain_level[0])
@@ -136,7 +139,7 @@ def _boundary_and_adjacent(
             if not (0 <= nx < W and 0 <= ny < H):
                 is_bnd = True
             else:
-                nt = terrain_level[ny][nx].t
+                nt = terrain_level[ny][nx]
                 nz = zone_label[ny][nx]
                 if Terrain(nt).is_barrier:
                     is_bnd = True
@@ -148,7 +151,7 @@ def _boundary_and_adjacent(
     return boundary, adj_zones
 
 
-def _chokepoints(terrain_level: list[list[Cell]], boundary: set[Tile]) -> set[Tile]:
+def _chokepoints(terrain_level: Sequence[Sequence[Terrain]], boundary: set[Tile]) -> set[Tile]:
     H = len(terrain_level)
     W = len(terrain_level[0])
     chokepoints: set[Tile] = set()
@@ -157,14 +160,16 @@ def _chokepoints(terrain_level: list[list[Cell]], boundary: set[Tile]) -> set[Ti
         for dy in range(-2, 3):
             for dx in range(-2, 3):
                 nx, ny = x + dx, y + dy
-                if 0 <= nx < W and 0 <= ny < H and Terrain(terrain_level[ny][nx].t).is_land:
+                if 0 <= nx < W and 0 <= ny < H and Terrain(terrain_level[ny][nx]).is_land:
                     passable_count += 1
         if passable_count <= 10:
             chokepoints.add((x, y))
     return chokepoints
 
 
-def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]]) -> dict[int, Zone]:
+def _compute_attrs(
+    terrain_level: Sequence[Sequence[Terrain]], zone_label: list[list[int]]
+) -> dict[int, Zone]:
     """Compute per-zone attributes from a finished zone_label."""
     H = len(terrain_level)
     W = len(terrain_level[0])
@@ -173,7 +178,7 @@ def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]])
     zones: dict[int, Zone] = {}
     for zid, tiles in tiles_by_zone.items():
         area = len(tiles)
-        t0 = terrain_level[tiles[0][1]][tiles[0][0]].t
+        t0 = terrain_level[tiles[0][1]][tiles[0][0]]
         cx = sum(x for x, _ in tiles) / area
         cy = sum(y for _, y in tiles) / area
         tiles_set = frozenset(tiles)
@@ -197,13 +202,13 @@ def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]])
     return zones
 
 
-def _segment(terrain_level: list[list[Cell]]) -> tuple[dict[int, Zone], list[list[int]]]:
+def _segment(terrain_level: Sequence[Sequence[Terrain]]) -> tuple[dict[int, Zone], list[list[int]]]:
     """Flood-fill terrain_level by terrain type into natural zones.
 
     Parameters
     ----------
-    terrain_level : list[list[Cell]]
-        HxW grid of `Cell`s (level 0 from corpus JSON).
+    terrain_level : Sequence[Sequence[Terrain]]
+        HxW grid of `Terrain`.
 
     Returns
     -------
@@ -250,7 +255,9 @@ def _local_openness(passable: npt.NDArray[np.bool_], H: int, W: int) -> npt.NDAr
 
 
 def _compute_static_features(
-    terrain_level: list[list[Cell]], zones: Mapping[int, Zone], zone_label: list[list[int]]
+    terrain_level: Sequence[Sequence[Terrain]],
+    zones: Mapping[int, Zone],
+    zone_label: list[list[int]],
 ) -> npt.NDArray[np.float32]:
     """Compute the 32-dim static feature vector for every tile.
 
@@ -281,9 +288,7 @@ def _compute_static_features(
     diag = max(math.hypot(W, H), 1.0)
 
     # Terrain type integer array for vectorised ops
-    terr_arr = np.array(
-        [[terrain_level[y][x].t for x in range(W)] for y in range(H)], dtype=np.int32
-    )
+    terr_arr = np.array([[terrain_level[y][x] for x in range(W)] for y in range(H)], dtype=np.int32)
     passable: npt.NDArray[np.bool_] = np.not_equal(terr_arr, Terrain.WATER) & np.not_equal(
         terr_arr, Terrain.ROCK
     )
@@ -392,7 +397,7 @@ def _canonical_coords(
 
 
 def segment_level(
-    lvl: list[list[Cell]],
+    lvl: Sequence[Sequence[Terrain]],
 ) -> tuple[dict[int, Zone], list[list[int]], dict[int, dict[Tile, tuple[float, float]]]]:
     """segment + per-zone canonical coords for one terrain level."""
     zones, zone_label = _segment(lvl)
