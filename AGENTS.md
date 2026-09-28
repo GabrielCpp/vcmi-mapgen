@@ -35,14 +35,15 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     `VegetationStep` starts from.
   - `core/grid/`: pure grid algorithms: segmentation (`segment.py`), components,
     geodesic paths, pockets, edge distance and noise.
-  - `kit/`: step-independent helpers. It covers topology, autotiling (`tiling.py`) and
-    the corpus loader (`objects.py`).
+  - `core/placement/`: footprint cell expansion (`footprint.py`).
+  - `kit/`: step-independent helpers. It covers topology and autotiling (`tiling.py`).
+  - `corpus/`: the corpus loader (`maps.py`) and the corpus-versus-generated tally.
   - `vcmi/catalog/`: object identity, footprints, terrain coupling and decoration
     category, read from the tables in `data/ontology/`.
   - `renderers/`: `PngRenderer` with real H3 sprites (`png.py`, `sprites.py`),
     `VmapRenderer` for playable `.vmap` export (`vmap.py`), the debug overlays
     (`overlays/`), and the `render-ontology` catalog (`ontology_render.py`).
-  - `readers/`: `VmapReader`, which loads a `.vmap` back into a `MapState`.
+  - `vcmi/load.py`: `load_map`, which loads a `.vmap` back into a `MapState`.
   - `validate.py`: `TerrainGate`, the terrain placement rule `MapState.add_objs` checks.
   - `h3m.py` and `extract_vmap.py`: the `.h3m` to `.vmap` corpus extraction.
   - `corpus_match.py`: a report comparing object placement in corpus and generated zones.

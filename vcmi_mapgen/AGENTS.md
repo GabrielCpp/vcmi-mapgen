@@ -8,10 +8,11 @@
   `kit/vmap/writer.py` read and write it through a full `VmapDocument` model. The model
   covers header players, teams, victory, defeat, every object, and terrain as VCMI tile
   strings. Its `extra` catch-all lets an unmodelled key round-trip losslessly.
-- **The corpus** is `maps_vmap/<name>.vmap`, loaded by `kit.objects.load_faithful`.
+- **The corpus** is `maps_vmap/<name>.vmap`, loaded by `corpus.maps.load_corpus_map`
+  as a `MapState`, the same type a generated map is.
   `python -m vcmi_mapgen.extract_vmap` regenerates it from `maps/`.
 - The internal mask charset tells `'X'` (blocked entrance) apart from `'A'` (walk-on).
-  VCMI's own charset cannot, so `load_faithful` never reads that distinction back from a
+  VCMI's own charset cannot, so `vcmi.load.load_map` never reads that distinction back from a
   `.vmap`. It re-derives the mask from `vcmi.catalog.objects.mask_of(animation)` instead.
   `kit.vmap.terrain.vcmi_mask` has the details. The file's own mask is the fallback only
   when the ontology has no data for that animation, which is the case for heroes.
@@ -25,7 +26,7 @@
   cells as offsets from its bottom-right anchor, each with a `Role`: blocking, entrance,
   visit or overlay. `vcmi.footprint.footprint_of(rows)` decodes the `'B'`, `'X'`, `'A'`
   and `'V'` charset into one, and `mask_rows(fp)` encodes it back for export. Only
-  `vcmi/` holds that charset. `kit.objects.anchored_cells(fp, x, y)` expands a footprint
+  `vcmi/` holds that charset. `core.placement.footprint.anchored_cells(fp, x, y)` expands a footprint
   at a position, and `core.model.footprint(obj)` gives each covered tile with its `Role`.
 
 ## Terrain
