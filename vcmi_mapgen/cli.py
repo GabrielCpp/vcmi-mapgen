@@ -184,7 +184,7 @@ def _generate_steps(args: Args, water_mode: str) -> list[tuple[str, PipelineStep
         ),
         ("segment", SegmentStep()),
     ]
-    steps.append(("vegetation", VegetationStep(seed=args.seed)))
+    steps.append(("vegetation", VegetationStep(seed=args.seed, players=args.players)))
     steps.append(
         (
             "gameplay",

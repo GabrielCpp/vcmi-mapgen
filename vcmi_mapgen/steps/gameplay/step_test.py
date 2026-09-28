@@ -18,7 +18,7 @@ def _run_towns(seed: int, size: int = 48, players: int = 2, subterrain: bool = T
             TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain)
         )
         _ = pipeline.add_step(SegmentStep())
-        _ = pipeline.add_step(VegetationStep(seed=seed))
+        _ = pipeline.add_step(VegetationStep(seed=seed, players=players))
         _ = pipeline.add_step(
             GameplayStep(seed=seed, players=players, size=size, subterrain=subterrain)
         )

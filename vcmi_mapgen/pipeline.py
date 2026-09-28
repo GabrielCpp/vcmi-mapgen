@@ -78,6 +78,9 @@ class ZoneWorkspace:
     passable: frozenset[Tile] = frozenset()
     reach: frozenset[Tile] = frozenset()
     used: frozenset[Tile] = frozenset()
+    town_room: frozenset[Tile] = frozenset()
+    town_clear: frozenset[Tile] = frozenset()
+    town_blk: frozenset[Tile] = frozenset()
 
 
 @dataclass
@@ -106,6 +109,7 @@ class PlacementWorkspace:
 
     def __init__(self) -> None:
         self.levels: dict[int, LevelWorkspace] = {}  # level -> LevelWorkspace
+        self.player_zids: list[tuple[int, int]] = []
 
 
 class MissingProviderError(LookupError):

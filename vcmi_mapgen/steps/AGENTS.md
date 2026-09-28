@@ -18,7 +18,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 - `loot/`: `LootStep`, the seer-hut quests and guarded pocket caches.
 - `scatter/`: `ScatterStep`, the free resource piles placed last.
 - `gate/`: the Subterranean Gate statistics and the footprint helpers every placement step shares. It holds no step.
-- `zone_plan.py`: each zone's entrances, walkable web and sea plan. `VegetationStep` builds it first.
+- `zone_plan.py`: each zone's entrances, walkable web and sea plan, and the player zones with the room kept for their town. `VegetationStep` builds it first.
 - `zone_index.py`: the per-level zone records and walk targets the placement steps after vegetation share.
 - `placement.py`: the placement primitives shared over the open field: reachability, guard control and spacing, `place_one` and the pandoraBox rewards.
 
@@ -79,7 +79,7 @@ Never a raw string-keyed `ctx["key"] = value` entry. Instead:
      the wrong order, never something to work around).
    - `ctx.get(SomeResult, SomeResult())` when the producing step might not be in the
      pipeline at all (e.g. the CLI reads `TownsIndex`'s empty default when a
-     `--stop-after` run ends before `GameplayStep` picked the player zones).
+     `--stop-after` run ends before `GameplayStep` published them).
    - `ctx.get_or_create(SomeType, SomeType)` for the one shape where the *first* demander
      creates the value and every later demander mutates that SAME instance further
      (`PlacementWorkspace`: `VegetationStep` creates it, `GameplayStep`/`GatedStep`/

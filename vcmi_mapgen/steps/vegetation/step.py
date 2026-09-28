@@ -19,7 +19,7 @@ from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.steps.vegetation import sample as PP
 from vcmi_mapgen.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.steps.vegetation.islands import open_islands
-from vcmi_mapgen.steps.zone_plan import plan_zones
+from vcmi_mapgen.steps.zone_plan import plan_player_zones, plan_zones
 from vcmi_mapgen.validate import TerrainGate
 
 
@@ -60,13 +60,14 @@ class VegetationStep(PipelineStep):
     """Corpus-fitted Gibbs marked-point-process vegetation, per zone.
 
     Config:
-        seed  RNG seed.
+        seed     RNG seed.
+        players  Number of player zones whose town spot stays clear of trees.
 
     Reads ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx):
     ``TerrainGrids`` and the ``PlacementWorkspace``, created here and filled by
-    ``zone_plan.plan_zones`` before any tree grows; each zone's ``ZoneWorkspace``
-    supplies ``prot``/``occupied``/``gblocked``/``approaches``/``gobjs``/``rim8``/
-    ``ent_bands``, and this step writes
+    ``zone_plan.plan_zones`` and ``zone_plan.plan_player_zones`` before any tree grows; each
+    zone's ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/``approaches``/
+    ``gobjs``/``rim8``/``ent_bands``/``town_clear``/``town_blk``, and this step writes
     ``blocked``/``open_set``/``passable`` back into the same object for
     GatedStep.
 
@@ -74,8 +75,9 @@ class VegetationStep(PipelineStep):
     (``self.objs`` keeps just the new ones, for callers that want that distinction).
     """
 
-    def __init__(self, seed: int = 3) -> None:
+    def __init__(self, seed: int = 3, players: int = 0) -> None:
         self.seed: int = seed
+        self.players: int = players
         self.objs: list[PlacedObject] = []
         self.log: list[str] = []
         self._ctx: ProviderRegistry = ProviderRegistry()
@@ -95,6 +97,9 @@ class VegetationStep(PipelineStep):
         if self._workspace is None:
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
         plan_zones(self._workspace, map_state, self._terrain, self.seed, ontology)
+        plan_player_zones(
+            self._workspace, map_state.zones, self._terrain.tunnel_protect, self.players
+        )
         models: dict[str, PP.VegModel] = {}
         new_objs: list[PlacedObject] = []
         pre_taken = {lvl: _taken(map_state, lvl, lw) for lvl, lw in self._workspace.levels.items()}
@@ -114,7 +119,12 @@ class VegetationStep(PipelineStep):
 
                 # Seaport footprint in this zone must be excluded from vegetation
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & ts_full
-                forbid = _taken(map_state, level, lvl_ws) | zone_seaport_cells | zw.occupied
+                forbid = (
+                    _taken(map_state, level, lvl_ws)
+                    | zone_seaport_cells
+                    | zw.occupied
+                    | zw.town_clear
+                )
                 # zone-isolation border belt: the whole 8-connected rim minus the planned
                 # entrance bands (those sit in `prot` as hard zeros) gets the +BORDER_W
                 # vegetation bias — both zones densify their own side, so the border reads
@@ -128,7 +138,7 @@ class VegetationStep(PipelineStep):
                         prot=zw.prot,
                         forbid=forbid,
                         border=border,
-                        impassable=zw.gblocked,
+                        impassable=zw.gblocked | zw.town_blk,
                     ),
                 )
                 if level == 1:  # sample_zone always tags l=0; retag the underground level
@@ -177,7 +187,7 @@ class VegetationStep(PipelineStep):
             land |= zw.ts_full
             bands |= zw.ent_bands
             web |= zw.prot
-            avoid |= set(zw.approaches) | zw.occupied
+            avoid |= set(zw.approaches) | zw.occupied | zw.town_clear
         level_objs = [o for o in [*lvl_ws.sea, *map_state.objs] if o.level == level]
         sealers, sealed = seal_borders(
             BorderPlan(land, map_state.zones[level], bands, avoid, web),

@@ -16,7 +16,8 @@ Samples a zone's decoration configuration from the Gibbs marked point process fi
         theta = log(g(r)/g(4)) (`pp_stats.theta_local`), GEYER-SATURATED: each (category, ring)
         neighbour count is capped at SAT so lam* stays bounded (Geyer 1999).
   - NO vegetation hard core — footprints may overlap/stack (corpus-legal); stacking is priced
-    by the learned r=0 potential,
+    by the learned r=0 potential, and a birth whose blocking cells all sit under STACK_CAP
+    objects already is refused, so the coverage offset cannot pile hidden sprites,
   - hard zeros only where the game needs them: a blocking cell off-zone or on the PROTECTED
     walkable web (spanning backbone + gates, kept constructive per spec §5),
   - budget: the realized blocking-union coverage is steered to the corpus `veg_blocked_frac`
@@ -61,6 +62,7 @@ KW = 2 * RINT + 1  # interaction window (5x5)
 STEPS_PER_TILE = 40  # MH proposals per zone tile
 SAT = 2  # Geyer saturation: neighbour count cap per (category, ring)
 COX_CELL = 7  # value-noise cell of the Cox log-field (~ the corpus CELL scale)
+STACK_CAP = 2
 BASE_W = 0.3  # base weight so native-but-corpus-rare sprites stay possible
 
 
@@ -596,12 +598,16 @@ class _ZoneSampler:
         ws = self.model.iweights[c]
         ii = rng.choices(range(len(ws)), weights=ws, k=1)[0]
         cells = self.blocked_cells(c, ii, x, y)
-        if cells is None:
+        if cells is None or self._buried(cells):
             return
         lam_star = self._lam_star(c, x, y, False)
         acc = lam_star * self.Nt / ((len(self.objs) + 1) * _f(self.qc, c))
         if rng.random() < acc and self.keeps_connected(cells):
             self._add((x, y, c, ii), cells)
+
+    def _buried(self, cells: list[Tile]) -> bool:
+        x0, y0, blkcnt = self.x0, self.y0, self.blkcnt
+        return all(blkcnt[by - y0, bx - x0] >= STACK_CAP for bx, by in cells)
 
     def _add(self, obj: tuple[int, int, int, int], cells: list[Tile]) -> None:
         x0, y0, blkcnt = self.x0, self.y0, self.blkcnt

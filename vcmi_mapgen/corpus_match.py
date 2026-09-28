@@ -153,7 +153,7 @@ def generate(seed: int, size: int, subterrain: bool) -> MapState:
     steps = (
         TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain),
         SegmentStep(),
-        VegetationStep(seed=seed),
+        VegetationStep(seed=seed, players=2),
         GameplayStep(seed=seed, players=2, size=size, subterrain=subterrain),
         GatedStep(seed=seed, size=size),
         TreasureStep(seed=seed, size=size),

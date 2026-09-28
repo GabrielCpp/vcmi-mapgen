@@ -20,7 +20,6 @@ from vcmi_mapgen.pipeline import (
     ProviderRegistry,
     ZoneWorkspace,
 )
-from vcmi_mapgen.steps.gameplay import mines as MN
 from vcmi_mapgen.steps.gameplay.draw import TOWN_SLOTS, DrawSpec, ZoneDraw, ZoneDrawer
 from vcmi_mapgen.steps.gameplay.gate_pairs import GateResult, place_gate_pairs
 from vcmi_mapgen.steps.gameplay.mines import (
@@ -48,17 +47,6 @@ class TownsIndex:
     input. A run stopped before GameplayStep reads the empty default."""
 
     player_zids: list[tuple[int, int]] = field(default_factory=list)
-
-
-def town_fits(ts: AbstractSet[Tile], blocked: AbstractSet[Tile]) -> bool:
-    """Whether a town footprint and its approach fit inside ``ts`` clear of ``blocked``."""
-    ident = ON.identity_of(RND_TOWN)
-    free = ts - blocked
-    for anchor in sorted(free):
-        allc, _blk, approach = footprint_cells(ident, *anchor)
-        if approach in free and all(t in free for t in allc):
-            return True
-    return False
 
 
 def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> None:
@@ -187,10 +175,11 @@ class GameplayStep(PipelineStep):
         subterrain  Whether a second underground level is active.
 
     inject(ctx): ``PlacementWorkspace`` (each zone's post-vegetation field), ``TerrainGrids``
-    (the grids and the tunnel protect set). The step picks the player zones first, then
-    commits the sea objects the zone plan drew. Gates may stand on an underground
-    tunnel. No other object's footprint may, and none may strand one. A player town that
-    finds no spot in its zone moves to the largest zone with room for it.
+    (the grids and the tunnel protect set). The step publishes the player zones the zone plan
+    picked, then commits the sea objects the zone plan drew. Gates stay off each player town's
+    kept room. Gates may stand on an underground tunnel. No other object's footprint may,
+    and none may strand one. A player town that finds no spot in its zone moves to the
+    largest zone with room for it.
 
     Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
     ``map_state.player_towns``, folds the objects into each ``ZoneWorkspace`` and sets each
@@ -224,7 +213,7 @@ class GameplayStep(PipelineStep):
     @override
     def run(self, ontology: Ontology, map_state: MapState) -> None:
         gate = TerrainGate(ontology)
-        self._pick_player_zones(map_state)
+        self._pick_player_zones()
         for _level, lw in sorted(self._workspace.levels.items()):
             map_state.add_objs(list(lw.sea), gate)
         indexes = {
@@ -246,25 +235,20 @@ class GameplayStep(PipelineStep):
             print(f"  WARNING: mine coverage incomplete — missing {sorted(ledger.missing)}")
         self._ctx.provide(gates)
 
-    def _pick_player_zones(self, map_state: MapState) -> None:
-        self._player_zids = MN.select_player_zones(
-            map_state.zones,
-            self.players,
-            lambda level, z: level != 1 or town_fits(z.tiles_set, self._tunnels),
-        )
-        if self.players and len(self._player_zids) < self.players:
-            print(
-                f"  WARNING: only {len(self._player_zids)} zones can host a player town "
-                + f"(requested {self.players})"
-            )
+    def _pick_player_zones(self) -> None:
+        self._player_zids = list(self._workspace.player_zids)
         self._ctx.provide(TownsIndex(player_zids=self._player_zids))
 
     def _place_gates(self, indexes: dict[int, SiteIndex], map_state: MapState) -> GateResult:
-        if 0 in indexes:
-            indexes[0].lf.avoid = self._landings()
+        landings = self._landings() if 0 in indexes else set[Tile]()
+        for level, idx in indexes.items():
+            rooms = (zw.town_room for zw in self._workspace.levels[level].zones.values())
+            idx.lf.avoid = frozenset[Tile]().union(*rooms) | (landings if level == 0 else NO_TILES)
         gates = GateResult()
         if self.subterrain and 0 in indexes and 1 in indexes:
             gates = place_gate_pairs(indexes[0], indexes[1], map_state.size, self.seed)
+        for level, idx in indexes.items():
+            idx.lf.avoid = landings if level == 0 else NO_TILES
         map_state.gate_blk = gates.gate_blk
         if 1 in indexes:
             for site in indexes[1].sites.values():

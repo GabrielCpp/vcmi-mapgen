@@ -1,6 +1,7 @@
 """The zone plan every placement step shares: each zone's entrances and walkable web, the
-ridge, the planned sea objects and one open shipyard landing per shore. VegetationStep builds
-it before growing trees, and GameplayStep commits the sea objects."""
+ridge, the planned sea objects, one open shipyard landing per shore, and the player zones with
+room kept for their town. VegetationStep builds it before growing trees, and GameplayStep
+commits the sea objects."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import NB8, edge_dist
 from vcmi_mapgen.kit.terrain_lookup import TNAME
@@ -20,8 +22,8 @@ from vcmi_mapgen.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspa
 from vcmi_mapgen.steps.gameplay import mines as MN
 from vcmi_mapgen.steps.gameplay import shipyards as SH
 from vcmi_mapgen.steps.gameplay import water as WT
-from vcmi_mapgen.steps.gameplay.site import STEPS4
-from vcmi_mapgen.steps.gate.gates import footprint_cells
+from vcmi_mapgen.steps.gameplay.site import STEPS4, door_cells, path_to_web
+from vcmi_mapgen.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.steps.vegetation import sample as PP
 
@@ -233,6 +235,84 @@ class _ZonePlanner:
         return LevelWorkspace(
             zones=zws, entrance_plan=self.entrance_plan, ridge=frozenset(self.ridge)
         )
+
+
+@dataclass(frozen=True, slots=True)
+class TownRoom:
+    cells: frozenset[Tile]
+    clear: frozenset[Tile]
+    blk: frozenset[Tile]
+    path: tuple[Tile, ...]
+
+
+def town_room(zw: ZoneWorkspace, off: AbstractSet[Tile]) -> TownRoom | None:
+    """The town spot nearest the zone centre before any tree grows: the footprint and approach
+    inside the zone and clear of ``off``, the blocking cells off the web, and a walk from the
+    approach to the web."""
+    ident = ON.identity_of(MN.RND_TOWN)
+    area = len(zw.ts)
+    cx = sum(t[0] for t in zw.ts) / area + (max(len(r) for r in ident.mask) - 1) / 2.0
+    cy = sum(t[1] for t in zw.ts) / area + (len(ident.mask) - 1) / 2.0
+    for anchor in sorted(zw.ts, key=lambda t: ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)):
+        allc, blk, approach = footprint_cells(ident, *anchor)
+        if approach is None:
+            continue
+        cells = frozenset([*allc, approach])
+        if any(t not in zw.ts or t in off for t in cells):
+            continue
+        if any(t in zw.prot for t in blk):
+            continue
+        path = path_to_web(approach, zw.prot, zw.ts - zw.gblocked - set(blk))
+        if path:
+            clear = frozenset([*blk, *door_cells(ident, anchor), approach])
+            return TownRoom(cells, clear, frozenset(blk), tuple(path))
+    return None
+
+
+def _room_off(lw: LevelWorkspace, zw: ZoneWorkspace, tunnels: AbstractSet[Tile]) -> set[Tile]:
+    off = set(zw.ent_bands) | set(tunnels)
+    inflate_gap(off, lw.seaport_blk | lw.seaport_appr)
+    return off
+
+
+def plan_player_zones(
+    workspace: PlacementWorkspace,
+    zones_by_level: Mapping[int, Mapping[int, Zone]],
+    tunnels: AbstractSet[Tile],
+    players: int,
+) -> None:
+    """Pick the player zones among those with room for a town, and keep that room: the town's
+    blocking cells, door and approach stay free of vegetation, count as walls when vegetation
+    keeps its ground reachable, and its approach joins the web."""
+    rooms: dict[tuple[int, int], TownRoom | None] = {}
+
+    def room(level: int, zid: int) -> TownRoom | None:
+        if (level, zid) not in rooms:
+            lw = workspace.levels.get(level)
+            zw = lw.zones.get(zid) if lw is not None else None
+            off = (
+                NO_TILES
+                if zw is None or lw is None
+                else _room_off(lw, zw, tunnels if level == 1 else NO_TILES)
+            )
+            rooms[level, zid] = None if zw is None else town_room(zw, off)
+        return rooms[level, zid]
+
+    picks = MN.select_player_zones(
+        zones_by_level, players, lambda level, zid: room(level, zid) is not None
+    )
+    for level, zid in picks:
+        kept = room(level, zid)
+        if kept is None:
+            continue
+        zw = workspace.levels[level].zones[zid]
+        zw.town_room = kept.cells
+        zw.town_clear = kept.clear
+        zw.town_blk = kept.blk
+        zw.prot = zw.prot | frozenset(kept.path)
+    if players and len(picks) < players:
+        print(f"  WARNING: only {len(picks)} zones can host a player town (requested {players})")
+    workspace.player_zids = picks
 
 
 def plan_zones(

@@ -655,7 +655,7 @@ def audit_variety(level: int = 0) -> list[AuditGap]:
 def select_player_zones(
     zones_by_level: Mapping[int, Mapping[int, Zone]],
     players: int,
-    can_host: Callable[[int, Zone], bool] = lambda _level, _zone: True,
+    can_host: Callable[[int, int], bool] = lambda _level, _zid: True,
 ) -> list[tuple[int, int]]:
     """Deterministic player-zone pick across BOTH terrain levels (surface always present;
     underground pooled in only when `--subterrain` is on): big land zones that are MUTUALLY
@@ -670,7 +670,7 @@ def select_player_zones(
         (z.area, level, zid, z.centroid)
         for level, zones in zones_by_level.items()
         for zid, z in zones.items()
-        if TNAME.get(z.terrain_type) in LAND and z.area >= 60 and can_host(level, z)
+        if TNAME.get(z.terrain_type) in LAND and z.area >= 60 and can_host(level, zid)
     ]
     if not cand or players <= 0:
         return []

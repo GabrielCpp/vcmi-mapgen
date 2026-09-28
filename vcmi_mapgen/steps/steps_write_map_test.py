@@ -57,7 +57,7 @@ def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
             TerrainStep(size=SIZE, seed=seed, water_mode="normal", subterrain=True),
         ),
         ("segment", SegmentStep()),
-        ("vegetation", VegetationStep(seed=seed)),
+        ("vegetation", VegetationStep(seed=seed, players=PLAYERS)),
         ("gameplay", GameplayStep(seed=seed, players=PLAYERS, size=SIZE, subterrain=True)),
         ("gated", GatedStep(seed=seed, size=SIZE)),
         ("treasure", TreasureStep(seed=seed, size=SIZE)),
