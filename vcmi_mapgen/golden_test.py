@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen.cli.steps import build_steps
+from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import MapState
 from vcmi_mapgen.ontology import Ontology
-from vcmi_mapgen.pipeline import Pipeline
 from vcmi_mapgen.renderers import VmapRenderer
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM

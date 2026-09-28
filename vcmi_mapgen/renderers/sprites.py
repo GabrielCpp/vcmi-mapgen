@@ -17,9 +17,9 @@ from collections.abc import Sequence
 
 from PIL import Image, ImageDraw
 
+from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import PlacedObject
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.defs import parse_def
 from vcmi_mapgen.vcmi.formats.lod import lod

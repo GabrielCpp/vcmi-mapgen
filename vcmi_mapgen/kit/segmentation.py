@@ -8,8 +8,8 @@ from collections.abc import Mapping
 import numpy as np
 import numpy.typing as npt
 
+from vcmi_mapgen.core.model import Cell, Tile, Zone
 from vcmi_mapgen.kit import terrain_segment as TS
-from vcmi_mapgen.models import Cell, Tile, Zone
 
 
 def canonical_coords(

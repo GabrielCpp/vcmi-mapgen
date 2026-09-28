@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 
+from vcmi_mapgen.core.model import Cell, PlacedObject, Tile, Zone
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.models import Cell, PlacedObject, Tile, Zone
 
 _WATER, _ROCK = 8, 9
 NB8: list[Tile] = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]

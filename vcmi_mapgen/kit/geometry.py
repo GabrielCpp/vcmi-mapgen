@@ -4,7 +4,7 @@ steps: neighbourhoods, edge distance, and the open-run-length statistic."""
 import collections
 from collections.abc import Collection
 
-from vcmi_mapgen.models import Tile
+from vcmi_mapgen.core.model import Tile
 
 NB8 = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 

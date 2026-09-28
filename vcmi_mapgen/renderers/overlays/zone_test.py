@@ -1,6 +1,6 @@
 from PIL import Image
 
-from vcmi_mapgen.models import Cell, MapState, Zone
+from vcmi_mapgen.core.model import Cell, MapState, Zone
 from vcmi_mapgen.renderers.overlays.zone import ZoneOverlay
 
 TILE = 32

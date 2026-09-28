@@ -1,6 +1,6 @@
 from PIL import Image
 
-from vcmi_mapgen.models import MapState, Tile
+from vcmi_mapgen.core.model import MapState, Tile
 from vcmi_mapgen.renderers.overlays.pocket import PocketOverlay, magenta_color
 
 TILE = 32

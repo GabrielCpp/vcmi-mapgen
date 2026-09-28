@@ -1,11 +1,11 @@
 from collections.abc import Callable, Sequence
 
+from vcmi_mapgen.core.steps.gameplay import mines
+from vcmi_mapgen.core.steps.gate import gates
+from vcmi_mapgen.core.steps.terrain_gen import macro_topo, markov
+from vcmi_mapgen.core.steps.vegetation import stats as veg_stats
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import tiling
-from vcmi_mapgen.steps.gameplay import mines
-from vcmi_mapgen.steps.gate import gates
-from vcmi_mapgen.steps.terrain_gen import macro_topo, markov
-from vcmi_mapgen.steps.vegetation import stats as veg_stats
 
 LEVELS = (0, 1)
 

@@ -11,9 +11,9 @@ import glob
 import os
 import re
 
+from vcmi_mapgen.core.model import Cell, PlacedObject
 from vcmi_mapgen.kit import vcmi_config as vcmi_ids
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import Cell, PlacedObject
 from vcmi_mapgen.vcmi.formats import h3m
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject

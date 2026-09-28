@@ -1,6 +1,6 @@
 from PIL import Image
 
-from vcmi_mapgen.models import Cell, MapState, Tile, Zone
+from vcmi_mapgen.core.model import Cell, MapState, Tile, Zone
 from vcmi_mapgen.renderers.overlays.passage import PassageOverlay
 
 TILE = 32

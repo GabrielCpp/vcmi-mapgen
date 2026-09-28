@@ -6,7 +6,7 @@ import re
 from collections.abc import Sequence
 
 from vcmi_mapgen import ontology
-from vcmi_mapgen.models import Cell, PlacedObject
+from vcmi_mapgen.core.model import Cell, PlacedObject
 
 TCODE = {
     0: "dt",

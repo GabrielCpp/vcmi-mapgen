@@ -1,5 +1,5 @@
-from vcmi_mapgen.pipeline import PipelineStep
-from vcmi_mapgen.steps import (
+from vcmi_mapgen.core.pipeline import PipelineStep
+from vcmi_mapgen.core.steps import (
     BorderStep,
     GameplayStep,
     GatedStep,

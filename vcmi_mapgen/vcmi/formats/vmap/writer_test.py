@@ -3,7 +3,7 @@ import zipfile
 from dataclasses import replace
 from pathlib import Path
 
-from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.core.model import JsonValue
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument
 from vcmi_mapgen.vcmi.formats.vmap.writer import write

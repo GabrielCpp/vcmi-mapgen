@@ -14,14 +14,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import final
 
+from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.steps.gameplay.draw import COUNTED
+from vcmi_mapgen.core.steps.gameplay.mines import gate_dist
+from vcmi_mapgen.core.steps.gameplay.site import back_score, mask_tiles
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.terrain_segment import segment
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
-from vcmi_mapgen.models import Cell, Identity, MapState, PlacedObject, Tile, Zone
-from vcmi_mapgen.steps.gameplay.draw import COUNTED
-from vcmi_mapgen.steps.gameplay.mines import gate_dist
-from vcmi_mapgen.steps.gameplay.site import back_score, mask_tiles
 
 MEASURES = ("depth", "gate", "open", "back")
 EDGES = (20, 60, 100, 150, 250, 500, 1000)

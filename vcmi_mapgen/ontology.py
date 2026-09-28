@@ -23,9 +23,9 @@ from pathlib import Path
 from random import Random
 from typing import cast
 
+from vcmi_mapgen.core.model import Identity, Mask
 from vcmi_mapgen.kit import vcmi_config
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import Identity, Mask
 from vcmi_mapgen.vcmi.formats.lod import lod
 
 type Taxonomy = dict[str, dict[str, dict[str, dict[str, list[str] | dict[str, str]]]]]
@@ -4121,7 +4121,7 @@ def regenerate() -> Taxonomy:
 class Ontology:
     """Object-facts facade: the abstraction layer between raw game data and the
     pipeline. Every ``PipelineStep``'s ``run(ontology, map_state)`` receives ONE shared
-    instance of this class (see ``pipeline.py``) so a step never needs to hardcode an
+    instance of this class (see ``core/pipeline.py``) so a step never needs to hardcode an
     object's identity/mask/terrain coupling — it asks the ontology instead. Each method
     just delegates to this module's own top-level accessor of the same name; the class
     exists so the pipeline holds and passes a single object, not the bare module."""

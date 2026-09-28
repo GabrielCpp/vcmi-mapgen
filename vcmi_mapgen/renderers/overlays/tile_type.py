@@ -6,8 +6,8 @@ from typing import override
 
 from PIL import Image
 
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
-from vcmi_mapgen.models import MapState
 from vcmi_mapgen.renderers.overlays._tiles import terrain_code
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 

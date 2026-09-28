@@ -6,10 +6,15 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from vcmi_mapgen.cli.steps import build_steps
+from vcmi_mapgen.core.model import Pockets
+from vcmi_mapgen.core.pipeline import Pipeline
+from vcmi_mapgen.core.steps.border.step import BorderResult
+from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
+from vcmi_mapgen.core.steps.loot.step import LootResult
+from vcmi_mapgen.core.steps.portal.step import PortalResult
+from vcmi_mapgen.core.steps.vegetation.step import VegetationResult
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import Pockets
 from vcmi_mapgen.ontology import Ontology
-from vcmi_mapgen.pipeline import Pipeline
 from vcmi_mapgen.renderers import PngRenderer, VmapRenderer
 from vcmi_mapgen.renderers.overlays import (
     BlockingOverlay,
@@ -21,18 +26,13 @@ from vcmi_mapgen.renderers.overlays import (
     TileTypeOverlay,
     ZoneOverlay,
 )
-from vcmi_mapgen.steps.border.step import BorderResult
-from vcmi_mapgen.steps.gameplay.step import TownsIndex
-from vcmi_mapgen.steps.loot.step import LootResult
-from vcmi_mapgen.steps.portal.step import PortalResult
-from vcmi_mapgen.steps.vegetation.step import VegetationResult
 
 ROOT = project_root()
 ONTOLOGY = Ontology()
 
 # Every factory takes `pockets` (LootStep's LootResult.pockets) uniformly, even
 # though only PocketOverlay uses it -- it's disposable analysis, not a MapState fact
-# (see vcmi_mapgen/models/AGENTS.md), so it must reach the overlay through its own
+# (see vcmi_mapgen/core/model/AGENTS.md), so it must reach the overlay through its own
 # constructor rather than the overlay reading/recomputing it off MapState.
 #
 # "zone" is fill-only here -- PngRenderer composites overlays in list order, so a

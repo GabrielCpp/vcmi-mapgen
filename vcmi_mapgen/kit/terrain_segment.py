@@ -24,7 +24,7 @@ from collections.abc import Collection, Iterable, Mapping
 import numpy as np
 import numpy.typing as npt
 
-from vcmi_mapgen.models import Cell, Tile, Zone
+from vcmi_mapgen.core.model import Cell, Tile, Zone
 
 WATER, ROCK = 8, 9
 DIM_STATIC = 32  # feature vector length (see compute_static_features docstring)

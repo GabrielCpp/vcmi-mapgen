@@ -1,4 +1,4 @@
-from vcmi_mapgen.models import Cell, MapState
+from vcmi_mapgen.core.model import Cell, MapState
 from vcmi_mapgen.renderers.overlays.grid import GridOverlay
 
 TILE = 32

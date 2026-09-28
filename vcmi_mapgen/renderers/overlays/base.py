@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 
 from PIL import Image
 
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.core.model import MapState
 
 TILE = 32  # pixels per tile — matches renderers.sprites
 

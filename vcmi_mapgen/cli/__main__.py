@@ -9,7 +9,7 @@ Subcommands:
   extract-vmap    -> regenerate maps_vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
 
-`generate` builds and runs a ``Pipeline`` (see ``pipeline.py``) from
+`generate` builds and runs a ``Pipeline`` (see ``core/pipeline.py``) from
 ``cli.steps.build_steps``; `render-ontology` stays outside that model entirely — it
 renders the object taxonomy itself, never touches a generated map, and calls
 ``renderers.ontology_render`` directly.

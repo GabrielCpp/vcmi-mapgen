@@ -8,12 +8,12 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
+from vcmi_mapgen.core.steps.gameplay import mines as PG
+from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
 from vcmi_mapgen.kit import paths as vcmi_paths
 from vcmi_mapgen.kit import tiling as ZE
-from vcmi_mapgen.models import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
-from vcmi_mapgen.steps.gameplay import mines as PG
-from vcmi_mapgen.steps.gameplay.step import place_open_zone
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 RANDOMMAPS_GLOB = os.path.join(vcmi_paths.vcmi_home(), "Maps", "RandomMaps", "*.vmap")

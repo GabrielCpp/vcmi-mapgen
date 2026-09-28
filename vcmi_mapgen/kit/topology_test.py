@@ -1,8 +1,8 @@
 """Reliability tests for kit.topology (gate bands, entrance planning, pocket geometry)."""
 
+from vcmi_mapgen.core.model import Tile, Zone
+from vcmi_mapgen.core.steps.loot.caches import dedupe_pockets
 from vcmi_mapgen.kit import topology as ZF
-from vcmi_mapgen.models import Tile, Zone
-from vcmi_mapgen.steps.loot.caches import dedupe_pockets
 
 
 def _zone(ts: set[Tile], centroid: tuple[float, float], area: int, terrain_type: int) -> Zone:

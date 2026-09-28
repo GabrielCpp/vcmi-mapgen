@@ -7,7 +7,7 @@ from typing import override
 
 from PIL import Image, ImageDraw, ImageFont
 
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
 _FILL_ALPHA = 55  # zone fill opacity

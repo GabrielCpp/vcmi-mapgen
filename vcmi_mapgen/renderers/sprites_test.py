@@ -19,7 +19,7 @@ from PIL import Image
 
 import vcmi_mapgen.kit.objects as OR
 import vcmi_mapgen.renderers.sprites as RE
-from vcmi_mapgen.models import PlacedObject
+from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.vcmi.formats.lod import LOD_DIR, LOD_FILES, lod
 
 TEST_MAP = "All for One"

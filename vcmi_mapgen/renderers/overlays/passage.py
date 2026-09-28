@@ -6,7 +6,7 @@ from typing import override
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.renderers.overlays._tiles import passable_tiles, passage_tiles, zone_lookup
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 

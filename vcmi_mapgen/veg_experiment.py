@@ -1,10 +1,10 @@
 import argparse
 
+from vcmi_mapgen.core.steps.vegetation.sample import ZoneRef, build_model, sample_zone
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.geometry import run_lengths
 from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.steps.vegetation.sample import ZoneRef, build_model, sample_zone
 
 
 def m1_experiment(map_name: str, zid: int, seed: int = 1) -> None:

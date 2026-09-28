@@ -9,8 +9,8 @@ from collections.abc import Iterable
 from PIL import Image
 
 import vcmi_mapgen.renderers.sprites as RED
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import MapState
 from vcmi_mapgen.renderers.overlays.base import MapOverlay
 
 ROOT = project_root()

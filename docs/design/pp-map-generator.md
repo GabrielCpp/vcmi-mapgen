@@ -205,32 +205,32 @@ data the Map file writes.
 
 | Concept | Verdict | Where | Finding |
 |---|---|---|---|
-| Random stream | Reshape | About 20 call sites, from `steps/terrain_gen/` to `steps/scatter/` | Each site mixes the seed with a region id, a multiplier and a salt by hand. No shared function exists. See M10. |
-| Corpus survey | Reshape | Survey functions in `steps/terrain_gen/macro_topo.py`, `steps/vegetation/stats.py`, `steps/gameplay/mines.py` and `steps/gate/gates.py` | The survey code sits beside each consumer and runs on a cache miss in the middle of a generation run. No single command writes the priors. |
+| Random stream | Reshape | About 20 call sites, from `core/steps/terrain_gen/` to `core/steps/scatter/` | Each site mixes the seed with a region id, a multiplier and a salt by hand. No shared function exists. See M10. |
+| Corpus survey | Reshape | Survey functions in `core/steps/terrain_gen/macro_topo.py`, `core/steps/vegetation/stats.py`, `core/steps/gameplay/mines.py` and `core/steps/gate/gates.py` | The survey code sits beside each consumer and runs on a cache miss in the middle of a generation run. No single command writes the priors. |
 | Priors | Reshape | `data/pp/*.json`, committed | Four of six statistics are cached. The Markov border model and the tile art table learn from all 159 maps on every run. Only the gameplay and gate files carry a version. See M11. |
 | Catalog | Reshape | `ontology.py` | The pipeline receives an `Ontology` instance, but 19 modules call the module-level accessors. A test cannot hand in a small catalog. See M12. |
-| Terrain layout | Exists | `steps/terrain_gen/` | Owns and never-knows match. It also computes tile art. See M13. |
+| Terrain layout | Exists | `core/steps/terrain_gen/` | Owns and never-knows match. It also computes tile art. See M13. |
 | Tile art | Reshape | `kit/tiling.py`, called from the terrain step | Generation computes it, and it reads the corpus each process. See M13. |
-| Zone | Exists | `kit/terrain_segment.py`, `steps/segment/` | Water and rock are barriers. The zone plan drops zones under 25 tiles. |
-| Water body | Exists | `steps/zone_plan.py` | A flood fill over water tiles. |
-| Passage | Reshape | `kit/topology.py`, planned in `steps/zone_plan.py` | The code opens one or two fixed 3-tile entrances per zone pair and densifies the rest of the border. The spec opens a band sized by the corpus open fraction. See M1. |
-| Walkable web | Exists | `steps/vegetation/sample.py`, extended in `steps/gameplay/site.py` | Built from entrances, landings and town rooms before vegetation. Each committed approach links to it. A cut web reroutes. See M2. |
-| Player zones | Exists | `steps/gameplay/mines.py`, room kept in `steps/zone_plan.py` | Greedy max-min on centroid distance, largest zone first, only zones with room for a town. Chosen before vegetation. |
-| Vegetation | Exists | `steps/vegetation/` | Hard zeros on the web and the town room hold. The vegetation layer also builds the whole zone plan. See M14. |
-| Zone budget | Exists | `steps/gameplay/draw.py` | One total per zone at the corpus rate. Forced objects count inside it. A moved town or a shipyard spends slots after the draw. |
-| Economy ledger | Reshape | `steps/gameplay/mines.py`, consumed in `draw.py` and `step.py` | Map-wide and passed through zones in sorted order. A basic mine that finds no spot only prints a warning. See M7. |
-| Object choice | Exists | `steps/gameplay/draw.py`, `ontology.pick` | It shares one class with the Zone budget. See M15. |
-| Placement rule | Reshape | `validate.py`, `models/map_state.py`, `steps/gameplay/site.py`, `steps/placement.py`, `steps/gated/placer.py` | The terrain rule and the cover rule are shared and the map re-checks them on commit. The zone-local rules (gap, reach, doors, mine front) are copied per placer. |
-| Site preference | Exists | `steps/gameplay/site.py` | Centres come in intensity order or centroid order. Inside each 5x5 window, spots sort by back contact, then distance. It is a sort key, not a sum. See M4. |
-| Guard | Reshape | `steps/gameplay/site.py`, `gate_pairs.py`, `steps/loot/caches.py`, `steps/border/`, `steps/placement.py` | Level rules live in three places. Spacing is checked by the border and cache guards only. See M5. |
-| Pocket | Exists | `steps/loot/caches.py` | Not inspected beyond its guard spacing call. |
-| Cache | Exists | `steps/loot/caches.py` | Not inspected beyond its guard spacing call. |
-| Scatter | Exists | `steps/scatter/` | Runs last. Keeps off every guard's zone of control. |
-| Water population | Exists | `steps/zone_plan.py`, `steps/gameplay/water.py` | Drawn before vegetation, committed first by the gameplay layer. See M3. |
-| Landing | Exists | `steps/zone_plan.py` | One landing per shore, joined to the web, kept free of vegetation. |
+| Zone | Exists | `kit/terrain_segment.py`, `core/steps/segment/` | Water and rock are barriers. The zone plan drops zones under 25 tiles. |
+| Water body | Exists | `core/steps/zone_plan.py` | A flood fill over water tiles. |
+| Passage | Reshape | `kit/topology.py`, planned in `core/steps/zone_plan.py` | The code opens one or two fixed 3-tile entrances per zone pair and densifies the rest of the border. The spec opens a band sized by the corpus open fraction. See M1. |
+| Walkable web | Exists | `core/steps/vegetation/sample.py`, extended in `core/steps/gameplay/site.py` | Built from entrances, landings and town rooms before vegetation. Each committed approach links to it. A cut web reroutes. See M2. |
+| Player zones | Exists | `core/steps/gameplay/mines.py`, room kept in `core/steps/zone_plan.py` | Greedy max-min on centroid distance, largest zone first, only zones with room for a town. Chosen before vegetation. |
+| Vegetation | Exists | `core/steps/vegetation/` | Hard zeros on the web and the town room hold. The vegetation layer also builds the whole zone plan. See M14. |
+| Zone budget | Exists | `core/steps/gameplay/draw.py` | One total per zone at the corpus rate. Forced objects count inside it. A moved town or a shipyard spends slots after the draw. |
+| Economy ledger | Reshape | `core/steps/gameplay/mines.py`, consumed in `draw.py` and `step.py` | Map-wide and passed through zones in sorted order. A basic mine that finds no spot only prints a warning. See M7. |
+| Object choice | Exists | `core/steps/gameplay/draw.py`, `ontology.pick` | It shares one class with the Zone budget. See M15. |
+| Placement rule | Reshape | `validate.py`, `core/model/map_state.py`, `core/steps/gameplay/site.py`, `core/steps/placement.py`, `core/steps/gated/placer.py` | The terrain rule and the cover rule are shared and the map re-checks them on commit. The zone-local rules (gap, reach, doors, mine front) are copied per placer. |
+| Site preference | Exists | `core/steps/gameplay/site.py` | Centres come in intensity order or centroid order. Inside each 5x5 window, spots sort by back contact, then distance. It is a sort key, not a sum. See M4. |
+| Guard | Reshape | `core/steps/gameplay/site.py`, `gate_pairs.py`, `core/steps/loot/caches.py`, `core/steps/border/`, `core/steps/placement.py` | Level rules live in three places. Spacing is checked by the border and cache guards only. See M5. |
+| Pocket | Exists | `core/steps/loot/caches.py` | Not inspected beyond its guard spacing call. |
+| Cache | Exists | `core/steps/loot/caches.py` | Not inspected beyond its guard spacing call. |
+| Scatter | Exists | `core/steps/scatter/` | Runs last. Keeps off every guard's zone of control. |
+| Water population | Exists | `core/steps/zone_plan.py`, `core/steps/gameplay/water.py` | Drawn before vegetation, committed first by the gameplay layer. See M3. |
+| Landing | Exists | `core/steps/zone_plan.py` | One landing per shore, joined to the web, kept free of vegetation. |
 | Reachability audit | New | Reshape `kit/reachability.py` into a check the CLI runs before writing | That module is imported by one test only, and its docstring names deleted modules. Vegetation raises on a walled-off pocket, and a portal pair rescues an unreachable zone. No check runs on the finished map. See M8. |
 | Scenario | Reshape | `renderers/vmap.py` | The writer applies slots, teams, owners and victory after building the document. It sizes the slots from the towns placed, not from the players asked for. See M6. |
-| Map | Exists | `models/map_state.py` | Appends and checks only the new objects. `set_objs` replaces the list and has no caller. |
+| Map | Exists | `core/model/map_state.py` | Appends and checks only the new objects. `set_objs` replaces the list and has no caller. |
 | Map file | Exists | `renderers/vmap.py`, `vcmi/formats/vmap/` | Sets visitable directions on every object. |
 | Preview | Exists | `renderers/png.py` | |
 | Likeness report | Reshape | `corpus/match.py`, `cli corpus-match` | Measures the four measures and the per-zone counts, and prints means and percentiles. No tolerance, no verdict, not in `make check`. It builds its maps from `cli/steps.py` `build_steps`. See M9. |

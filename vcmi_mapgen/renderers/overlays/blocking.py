@@ -7,7 +7,7 @@ from typing import override
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.models import MapState, PlacedObject
+from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.renderers.overlays._tiles import classify_objects
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 

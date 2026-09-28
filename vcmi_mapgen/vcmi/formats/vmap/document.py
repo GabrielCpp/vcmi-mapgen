@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.core.model import JsonValue
 
 
 @dataclass

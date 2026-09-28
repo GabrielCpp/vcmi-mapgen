@@ -2,8 +2,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.model import Cell, PlacedObject, Tile
 from vcmi_mapgen.kit.objects import mask_cells
-from vcmi_mapgen.models import Cell, PlacedObject, Tile
 from vcmi_mapgen.ontology import TERRAIN_NAMES, Ontology
 
 

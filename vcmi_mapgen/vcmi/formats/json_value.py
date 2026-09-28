@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import cast
 
-from vcmi_mapgen.models import JsonValue
+from vcmi_mapgen.core.model import JsonValue
 
 
 def loads(text: str) -> JsonValue:

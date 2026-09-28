@@ -4,8 +4,8 @@ Shared by the gameplay, gated and vegetation steps' entrance/backbone/cache logi
 import collections
 from collections.abc import Collection, Container, Iterable, Mapping
 
+from vcmi_mapgen.core.model import Entrance, Tile, Zone
 from vcmi_mapgen.kit.geometry import NB8
-from vcmi_mapgen.models import Entrance, Tile, Zone
 
 NB4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 

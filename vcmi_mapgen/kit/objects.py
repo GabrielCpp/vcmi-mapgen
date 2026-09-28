@@ -25,8 +25,8 @@ from collections.abc import Container, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.model import Cell, Identity, PlacedObject, Tile
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import Cell, Identity, PlacedObject, Tile
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.vmap.terrain import decode_tile_string

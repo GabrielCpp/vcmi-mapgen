@@ -1,8 +1,8 @@
 """PocketOverlay — magenta gradient over guard-sealed pocket regions.
 
 Pure rendering: pocket geometry (which tiles form a sealed nook, at what depth) is
-disposable analysis computed once by steps.loot.caches.place_pocket_caches, not a
-MapState fact (see vcmi_mapgen/models/AGENTS.md) -- this overlay never re-derives it."""
+disposable analysis computed once by core.steps.loot.caches.place_pocket_caches, not a
+MapState fact (see vcmi_mapgen/core/model/AGENTS.md) -- this overlay never re-derives it."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, override
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.models import MapState
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
 if TYPE_CHECKING:
-    from vcmi_mapgen.models import Pockets
+    from vcmi_mapgen.core.model import Pockets
 
 
 class PocketOverlay(MapOverlay):

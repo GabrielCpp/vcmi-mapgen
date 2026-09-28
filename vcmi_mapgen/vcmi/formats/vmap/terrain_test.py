@@ -1,6 +1,6 @@
 import pytest
 
-from vcmi_mapgen.models import Cell
+from vcmi_mapgen.core.model import Cell
 from vcmi_mapgen.vcmi.formats.vmap.terrain import (
     decode_tile_string,
     tile_string,

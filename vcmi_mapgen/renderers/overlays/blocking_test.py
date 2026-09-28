@@ -1,6 +1,6 @@
 from PIL import Image
 
-from vcmi_mapgen.models import Cell, MapState, Mask, PlacedObject
+from vcmi_mapgen.core.model import Cell, MapState, Mask, PlacedObject
 from vcmi_mapgen.renderers.overlays.blocking import BlockingOverlay
 
 TILE = 32
