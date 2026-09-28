@@ -7,10 +7,10 @@ from collections.abc import Collection, Container, Iterable, Mapping
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
+from vcmi_mapgen.vcmi.catalog import decor as DC
 
 
 def blocking_cells(o: PlacedObject) -> list[Tile]:
@@ -179,7 +179,7 @@ def seal_borders(
         pick = sealer.best_pick(pairs)
         if pick is None:
             break
-        pool = ON.decor_pool(
+        pool = DC.decor_pool(
             tname[pick], blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
         )
         joined = sealer.bridges(pick) if pick in plan.web else sealer.keeps_connected(pick)

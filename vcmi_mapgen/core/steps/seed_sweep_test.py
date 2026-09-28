@@ -8,7 +8,7 @@ import pytest
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import ProviderRegistry
 from vcmi_mapgen.core.steps.steps_write_map_test import SIZE, pipeline_steps
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 SWEEP_SEEDS = range(1, 13)
 

@@ -9,12 +9,12 @@ from collections.abc import Collection, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one, web_dist
 from vcmi_mapgen.kit.topology import zone_gate_bands
+from vcmi_mapgen.vcmi.catalog import decor as DC
 
 CAPS = {"RESOURCE_PILE": 16, "REWARD_PICKUP": 8}  # base floors; caps scale (scatter only --
 # pocket guards/caches are deterministic, see place_pocket_caches)
@@ -92,7 +92,7 @@ def place_scatter(
     ed = edge_dist(ts)
     gd = _scatter_gate_dist(zone, st)
 
-    pool_res = ON.pool("RESOURCE_PILE", zone.terrain)
+    pool_res = DC.pool("RESOURCE_PILE", zone.terrain)
 
     objs: list[PlacedObject] = []
     used: set[Tile] = set() if config.used_in is None else config.used_in

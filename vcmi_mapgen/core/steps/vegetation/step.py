@@ -19,8 +19,8 @@ from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.zone_plan import plan_player_zones, plan_zones
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass

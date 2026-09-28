@@ -24,9 +24,9 @@ from collections import Counter
 from collections.abc import Container, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import Cell, Identity, PlacedObject, Tile
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.vmap.terrain import decode_tile_string
@@ -60,7 +60,7 @@ def load_faithful(name: str) -> FaithfulMap:
 
     Adapts the real .vmap this corpus map now lives as (via `vcmi.formats.vmap.reader`) into the
     `FaithfulMap` shape the rest of the engine expects. Each object's `mask` is re-derived
-    from the ontology by animation (`ontology.mask_of`), NOT read from the file's
+    from the ontology by animation (`vcmi.catalog.objects.mask_of`), NOT read from the file's
     `template.mask` -- see the module docstring and `vcmi.formats.vmap.terrain.vcmi_mask` for why
     that field is lossy for the 'X' vs 'A' distinction `is_blocking`/`mask_cells` depend on.
     Objects the ontology has no data for at all (heroes -- their per-portrait animations
@@ -148,7 +148,7 @@ def mask_cells(mask: Sequence[str], x: int, y: int) -> Iterator[tuple[int, int, 
 
     Convention: anchor (x, y) is the BOTTOM-RIGHT tile of the footprint. Mask rows are stored
     LEFT-TO-RIGHT, sprite-aligned (matching `vcmi.formats.vmap.mask.build_mask_from_h3m` and
-    `ontology._decode_mask`),
+    `vcmi.catalog.regen._decode_mask`),
     so column 0 is the LEFTMOST tile and the anchor is the LAST column of each row ->
     `tx = x - (ww - 1 - c)` where `ww = len(row)`. (Verified pixel-for-pixel against real sprite
     art: a sawmill's ramp/visit tile and a pine clump's trunks land on the correct side only with

@@ -9,7 +9,7 @@ from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import MapState, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 def _warn_sliver_zones(

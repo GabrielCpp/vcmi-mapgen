@@ -10,7 +10,6 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final, override
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import (
     LevelWorkspace,
@@ -33,8 +32,9 @@ from vcmi_mapgen.core.steps.gameplay.site import LevelField, SiteIndex, ZoneSite
 from vcmi_mapgen.core.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_plan import seaport_cells
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
+from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 NO_TILES: frozenset[Tile] = frozenset()
 WATER = 8

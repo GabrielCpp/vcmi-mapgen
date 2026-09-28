@@ -11,7 +11,7 @@ def build_mask_from_h3m(block_mask: Sequence[int], visit_mask: Sequence[int]) ->
     tile). The mask is anchored bottom-right: bit b of row byte r is the tile at column b
     counted from the RIGHT edge (VCMI: usedTiles[5-i][7-j]). Reading bit (7-c) into column c
     mirrors every asymmetric footprint horizontally (the v5.2 sawmill-entrance bug) — bit c is
-    the correct read for a left-to-right row. Kept in sync with ontology._decode_mask.
+    the correct read for a left-to-right row. Kept in sync with vcmi.catalog.regen._decode_mask.
     """
     grid = [["V"] * 8 for _ in range(6)]
     for r in range(6):

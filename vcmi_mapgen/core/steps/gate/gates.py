@@ -9,11 +9,11 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from itertools import combinations
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import Identity, Tile
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 ROOT = project_root()

@@ -5,8 +5,8 @@ primitives `.vmap` terrain and object footprints are built from.
 import re
 from collections.abc import Sequence
 
-from vcmi_mapgen import ontology
 from vcmi_mapgen.core.model import Cell, PlacedObject
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 TCODE = {
     0: "dt",
@@ -114,5 +114,5 @@ def export_mask(o: PlacedObject) -> list[str]:
     instance mask; otherwise the instance mask translated to VCMI's charset (the editor
     table and a map instance legitimately disagree for a handful of corpus dwellings)."""
     inst = vcmi_mask(o.mask)
-    vm = ontology.vmap_mask_of(o.animation)
+    vm = ON.vmap_mask_of(o.animation)
     return list(vm) if vm and _trim_v(vm) == _trim_v(inst) else inst

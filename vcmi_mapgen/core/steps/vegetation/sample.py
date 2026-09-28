@@ -40,7 +40,6 @@ from typing import cast, final
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
@@ -49,6 +48,7 @@ from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gate_bands
+from vcmi_mapgen.vcmi.catalog import decor as DC
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)
@@ -90,11 +90,11 @@ def build_model(terrain: str) -> VegModel:
     st = PS.load(terrain)
     th = PS.theta_local(st, rint=RINT)
 
-    pool = ON.decor_pool(terrain, exclude_types=EXCLUDE_DECOR_TYPES)
-    cats_all = ON.veg_categories()
+    pool = DC.decor_pool(terrain, exclude_types=EXCLUDE_DECOR_TYPES)
+    cats_all = DC.veg_categories()
     by_cat: collections.defaultdict[str, list[Identity]] = collections.defaultdict(list)
     for ident in pool:
-        ci = ON.category_of(ident.animation)
+        ci = DC.category_of(ident.animation)
         if ci is not None:
             by_cat[cats_all[ci]].append(ident)
 

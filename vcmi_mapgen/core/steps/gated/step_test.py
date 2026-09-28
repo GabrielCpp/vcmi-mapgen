@@ -13,7 +13,7 @@ from vcmi_mapgen.core.steps import (
     TreasureStep,
     VegetationStep,
 )
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 def _run_through_treasure(

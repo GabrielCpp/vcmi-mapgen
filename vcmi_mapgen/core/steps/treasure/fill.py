@@ -9,11 +9,12 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Self
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 _LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 LOOT_EXCL_DECOR = frozenset({"LAKE", "FROZEN_LAKE", "RIVER_DELTA", "KELP", "REEF", "LAKE_2"})
@@ -46,7 +47,7 @@ def solo_visit_pool(
     seen: set[str] = set()
     out: list[Identity] = []
     for purpose in _SOLO_VIS_PURPOSES:
-        for ident in ON.pool(purpose, terrain):
+        for ident in DC.pool(purpose, terrain):
             anim = ident.animation.lower()
             if anim in seen or anim in exclude_anims:
                 continue
@@ -72,12 +73,12 @@ class _LootPools:
     @classmethod
     def of(cls, terrain: str) -> Self:
         pool_vis = [
-            i for i in ON.pool("STAT_PERMANENT", terrain) if i.type in _LOOT_HERO_STRUCTURE_TYPES
+            i for i in DC.pool("STAT_PERMANENT", terrain) if i.type in _LOOT_HERO_STRUCTURE_TYPES
         ]
         pool_art = [
-            i for i in ON.pool("REWARD_PICKUP", terrain) if i.type not in _LOOT_ART_EXCL_TYPES
+            i for i in DC.pool("REWARD_PICKUP", terrain) if i.type not in _LOOT_ART_EXCL_TYPES
         ]
-        pool_res = ON.pool("RESOURCE_PILE", terrain)
+        pool_res = DC.pool("RESOURCE_PILE", terrain)
         kinds = LOOT_CHEST_TYPES + _LOOT_ZONE_CHEST_EXTRA_TYPES
         pool_chest = [i for i in pool_art if i.type in kinds]
         chest_kind_pools = {kind: [i for i in pool_chest if i.type == kind] for kind in kinds}
@@ -116,7 +117,7 @@ def _fill_background(zone: FillZone, objs_out: list[PlacedObject], cover: CoverI
     interior = {
         t for t in zone.reach if not any((t[0] + dx, t[1] + dy) in outside for dx, dy in _DIRS8)
     }
-    pool_bg = ON.decor_pool(
+    pool_bg = DC.decor_pool(
         zone.terrain, blocking=False, max_cells=1, exclude_types=LOOT_EXCL_DECOR
     )
     if not pool_bg:
@@ -191,7 +192,7 @@ def _fill_rolls(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
 
 
 def _fill_decor(zone: FillZone, t: Tile, objs_out: list[PlacedObject], cover: CoverIndex) -> bool:
-    pool = ON.decor_pool(zone.terrain, blocking=True, max_cells=1, exclude_types=LOOT_EXCL_DECOR)
+    pool = DC.decor_pool(zone.terrain, blocking=True, max_cells=1, exclude_types=LOOT_EXCL_DECOR)
     if not pool:
         return False
     o = PlacedObject.at(zone.rng.choice(pool), t, purpose="")

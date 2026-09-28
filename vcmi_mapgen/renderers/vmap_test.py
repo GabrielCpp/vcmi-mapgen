@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
+from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 

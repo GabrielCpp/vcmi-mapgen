@@ -1,0 +1,670 @@
+{
+    "DECORATION": {
+        "DECORATION": {
+            "CACTUS": {
+                "rough": ["avlca1r0", "avlca2r0"],
+                "sand": ["avlca010", "avlca020", "avlca030", "avlca040", "avlca050", "avlca060", "avlca070", "avlca080", "avlca090", "avlca100", "avlca110", "avlca120", "avlca130"]
+            },
+            "CANYON": {
+                "rough": ["avlglly0"]
+            },
+            "CRATER": {
+                "dirt": ["avlct1d0", "avlct2d0", "avlct3d0", "avlct4d0", "avlct5d0", "avlctrd0"],
+                "grass": ["avlct1g0", "avlct2g0", "avlct3g0", "avlct4g0", "avlct5g0", "avlct6g0", "avlctrg0"],
+                "lava": ["avlc10l0", "avlc11l0", "avlc12l0", "avlc13l0", "avlc14l0", "avlct1l0", "avlct2l0", "avlct3l0", "avlct4l0", "avlct5l0", "avlct6l0", "avlct7l0", "avlct8l0", "avlct9l0", "avlctrl0"],
+                "rough": ["avlct1r0", "avlct2r0", "avlct3r0", "avlct4r0", "avlct5r0", "avlct6r0", "avlct7r0", "avlct8r0", "avlct9r0", "avlctrr0"],
+                "sand": ["avlctds0"],
+                "snow": ["avlctsn0"],
+                "subterr": ["avlct1u0", "avlct2u0", "avlct3u0", "avlct4u0", "avlct5u0"],
+                "swamp": ["avlctrs0"]
+            },
+            "DEAD_VEGETATION": {
+                "lava": ["avldead0", "avldead1", "avldead2", "avldead3", "avldead4", "avldead5", "avldead6", "avldead7"],
+                "snow": ["avld1sn0", "avld2sn0", "avld3sn0", "avld4sn0", "avld5sn0", "avld6sn0", "avld7sn0", "avld8sn0", "avld9sn0", "avlddsn0", "avlddsn1", "avlddsn2", "avlddsn3", "avlddsn4", "avlddsn5", "avlddsn6", "avlddsn7"],
+                "subterr": ["avldead0", "avldead1", "avldead2", "avldead3", "avldead4", "avldead5", "avldead6", "avldead7"],
+                "swamp": ["avldead0", "avldead1", "avldead2", "avldead3", "avldead4", "avldead5", "avldead6", "avldead7", "avldt1s0", "avldt2s0", "avldt3s0", "avlswp60", "avlswp70"]
+            },
+            "DESERT_HILLS": {
+                "sand": ["avlxds01", "avlxds02", "avlxds03", "avlxds04", "avlxds05", "avlxds06", "avlxds07", "avlxds08", "avlxds09", "avlxds10", "avlxds11", "avlxds12"]
+            },
+            "DIRT_HILLS": {
+                "dirt": ["avlxdt00", "avlxdt01", "avlxdt02", "avlxdt03", "avlxdt04", "avlxdt05", "avlxdt06", "avlxdt07", "avlxdt08", "avlxdt09", "avlxdt10", "avlxdt11"]
+            },
+            "FLOWERS": {
+                "dirt": ["avlfl1d0", "avlfl2d0", "avlfl3d0", "avlfl4d0", "avlfl5d0", "avlfl6d0", "avlfl7d0", "avlfl8d0", "avlfl9d0"],
+                "grass": ["avlf01g0", "avlf02g0", "avlf03g0", "avlf04g0", "avlf05g0", "avlf06g0", "avlf07g0", "avlf08g0", "avlf09g0", "avlf10g0", "avlf11g0", "avlf12g0"]
+            },
+            "FROZEN_LAKE": {
+                "snow": ["avlflk10", "avlflk20", "avlflk30"]
+            },
+            "GRASS_HILLS": {
+                "grass": ["avlxgr01", "avlxgr02", "avlxgr03", "avlxgr04", "avlxgr05", "avlxgr06", "avlxgr07", "avlxgr08", "avlxgr09", "avlxgr10", "avlxgr11", "avlxgr12"]
+            },
+            "HOLE": {
+                "dirt": ["avlhold0"],
+                "grass": ["avlholg0"],
+                "lava": ["avlholl0"],
+                "rough": ["avlholr0"],
+                "sand": ["avlhlds0"],
+                "snow": ["avlhlsn0"],
+                "subterr": ["avlholx0"],
+                "swamp": ["avlhols0"]
+            },
+            "KELP": {
+                "water": ["avlklp10", "avlklp20"]
+            },
+            "LAKE": {
+                "dirt": ["avllk1d0", "avllk2d0", "avllk3d0"],
+                "grass": ["avllk1g0", "avllk2g0", "avllk3g0"],
+                "subterr": ["avllk1u0", "avllk2u0", "avllk3u0"],
+                "swamp": ["avllk1s0", "avllk2s0", "avllk3s0", "avlswp50"]
+            },
+            "LAKE_2": {
+                "rough": ["avllk1r"]
+            },
+            "LAVA_FLOW": {
+                "lava": ["avllav20", "avllav30", "avllav40", "avllav50", "avllav60", "avllav70", "avllav80", "avllav90", "avllv100", "avllv110", "avllv120", "avllv130", "avllv140", "avllv150", "avllv160", "avllv170", "avllv180", "avllv190", "avllv200", "avllv210", "avllv220", "avllv230", "avllv240", "avllv250", "avllv260"],
+                "subterr": ["avllv1u0", "avllv2u0", "avllv3u0"]
+            },
+            "LAVA_LAKE": {
+                "lava": ["avllav10"],
+                "subterr": ["avlllk10", "avlllk20"]
+            },
+            "LOG": {
+                "dirt": ["avldlog"],
+                "grass": ["avldlog"],
+                "rough": ["avldlog"]
+            },
+            "MANDRAKE": {
+                "swamp": ["avlman10", "avlman20", "avlman30", "avlman40", "avlman50"]
+            },
+            "MOSS": {
+                "swamp": ["avlmoss0"]
+            },
+            "MOUND": {
+                "dirt": ["avlmd1d0", "avlmd2d0"],
+                "grass": ["avlmd1g0", "avlmd2g0"],
+                "rough": ["avlmd1r0", "avlmd2r0", "avlmd3r0"]
+            },
+            "MOUNTAIN": {
+                "dirt": ["avlmtdr1", "avlmtdr2", "avlmtdr3", "avlmtdr4", "avlmtdr5", "avlmtdr6", "avlmtdr7", "avlmtdr8"],
+                "grass": ["avlmtgn0", "avlmtgn1", "avlmtgn2", "avlmtgn3", "avlmtgn4", "avlmtgn5", "avlmtgr1", "avlmtgr2", "avlmtgr3", "avlmtgr4", "avlmtgr5", "avlmtgr6"],
+                "lava": ["avlmtvo1", "avlmtvo2", "avlmtvo3", "avlmtvo4", "avlmtvo5", "avlmtvo6"],
+                "rough": ["avlmtrf1", "avlmtrf2", "avlmtrf3", "avlmtrf4", "avlmtrf5", "avlmtrf6"],
+                "sand": ["avlmtds1", "avlmtds2", "avlmtds3", "avlmtds4", "avlmtds5", "avlmtds6"],
+                "snow": ["avlmtsn1", "avlmtsn2", "avlmtsn3", "avlmtsn4", "avlmtsn5", "avlmtsn6"],
+                "subterr": ["avlmtsb0", "avlmtsb1", "avlmtsb2", "avlmtsb3", "avlmtsb4", "avlmtsb5"],
+                "swamp": ["avlmtsw1", "avlmtsw2", "avlmtsw3", "avlmtsw4", "avlmtsw5", "avlmtsw6"]
+            },
+            "MUSHROOMS": {
+                "subterr": ["avlms010", "avlms020", "avlms030", "avlms040", "avlms050", "avlms060", "avlms070", "avlms080", "avlms090", "avlms100", "avlms110", "avlms120"]
+            },
+            "OAK_TREES": {
+                "dirt": ["avlautr0", "avlautr1", "avlautr2", "avlautr3", "avlautr4", "avlautr5", "avlautr6", "avlautr7"],
+                "grass": ["avlautr0", "avlautr1", "avlautr2", "avlautr3", "avlautr4", "avlautr5", "avlautr6", "avlautr7", "avlsptr0", "avlsptr1", "avlsptr2", "avlsptr3", "avlsptr4", "avlsptr5", "avlsptr6", "avlsptr7", "avlsptr8"],
+                "swamp": ["avlsptr0", "avlsptr1", "avlsptr2", "avlsptr3", "avlsptr4", "avlsptr5", "avlsptr6", "avlsptr7", "avlsptr8"]
+            },
+            "OUTCROPPING": {
+                "dirt": ["avloc1d0", "avloc2d0", "avloc3d0"],
+                "grass": ["avloc1g0", "avloc2g0", "avloc3g0"],
+                "rough": ["avloc1r0", "avloc2r0", "avloc3r0", "avloc4r0"],
+                "snow": ["avlo1sn0", "avlo2sn0", "avlo3sn0"],
+                "subterr": ["avloc1u0", "avloc2u0", "avloc3u0", "avloc4u0"]
+            },
+            "PINE_TREES": {
+                "dirt": ["avlpntr0", "avlpntr1", "avlpntr2", "avlpntr3", "avlpntr4", "avlpntr5", "avlpntr6", "avlpntr7"],
+                "grass": ["avlpntr0", "avlpntr1", "avlpntr2", "avlpntr3", "avlpntr4", "avlpntr5", "avlpntr6", "avlpntr7"],
+                "snow": ["avlsntr0", "avlsntr1", "avlsntr2", "avlsntr3", "avlsntr4", "avlsntr5", "avlsntr6", "avlsntr7"]
+            },
+            "REEF": {
+                "water": ["avlref10", "avlref20", "avlref30", "avlref40", "avlref50", "avlref60"]
+            },
+            "RIVER_DELTA": {
+                "dirt": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "grass": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "lava": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "lavdelt1", "lavdelt2", "lavdelt3", "lavdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "rough": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "sand": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "snow": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "icedelt1", "icedelt2", "icedelt3", "icedelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "subterr": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"],
+                "swamp": ["clrdelt1", "clrdelt2", "clrdelt3", "clrdelt4", "muddelt1", "muddelt2", "muddelt3", "muddelt4"]
+            },
+            "ROCK": {
+                "dirt": ["avlrd01", "avlrd02", "avlrd04", "avlrk3d0", "avlrk5d0"],
+                "grass": ["avlrg01", "avlrg02", "avlrg03", "avlrg04", "avlrg05", "avlrg06", "avlrg07", "avlrg08", "avlrg09", "avlrg10", "avlrg11"],
+                "rough": ["avlbuzr0", "avlr02r0", "avlr03r0", "avlr04r0", "avlr06r0", "avlr07r0", "avlr08r0", "avlr09r0", "avlr10r0", "avlr11r0", "avlr12r0", "avlr13r0", "avlr14r0", "avlr15r0", "avlrr01", "avlrr05"],
+                "snow": ["avlr1sn0", "avlr2sn0", "avlr3sn0", "avlr4sn0", "avlr5sn0", "avlr6sn0", "avlr7sn0", "avlr8sn0"],
+                "subterr": ["avlr01u0", "avlr02u0", "avlr03u0", "avlr04u0", "avlr05u0", "avlr06u0", "avlr07u0", "avlr08u0", "avlr09u0", "avlr10u0", "avlr11u0", "avlr12u0", "avlr13u0", "avlr14u0", "avlr15u0", "avlr16u0", "avlstg10", "avlstg20", "avlstg30", "avlstg40", "avlstg50", "avlstg60"],
+                "swamp": ["avlrk1s0", "avlrk2s0", "avlrk3s0", "avlrk4s0"],
+                "water": ["avlrk1w0", "avlrk2w0", "avlrk3w0", "avlrk4w0"]
+            },
+            "ROUGH_HILLS": {
+                "rough": ["avlxro01", "avlxro02", "avlxro03", "avlxro04", "avlxro05", "avlxro06", "avlxro07", "avlxro08", "avlxro09", "avlxro10", "avlxro11", "avlxro12"]
+            },
+            "SAND_DUNE": {
+                "sand": ["avldun10", "avldun20", "avldun30"]
+            },
+            "SAND_PIT": {
+                "sand": ["avlspit0"]
+            },
+            "SHRUB": {
+                "dirt": ["avlsh1d0", "avlsh2d0", "avlsh3d0", "avlsh4d0", "avlsh5d0", "avlsh6d0", "avlsh7d0", "avlsh8d0"],
+                "grass": ["avlsh1g0", "avlsh2g0", "avlsh3g0", "avlsh4g0", "avlsh5g0", "avlsh6g0"],
+                "rough": ["avlsh1r0", "avlsh2r0", "avlsh3r0", "avlsh4r0", "avlsh5r0", "avlsh6r0", "avlsh7r0", "avlsh8r0", "avlsh9r0"],
+                "snow": ["avls1sn0", "avls2sn0", "avls3sn0"],
+                "swamp": ["avls01s0", "avls02s0", "avls03s0", "avls04s0", "avls05s0", "avls06s0", "avls07s0", "avls08s0", "avls09s0", "avls10s0", "avls11s0", "avlswp10", "avlswp20", "avlswp30", "avlswp40"]
+            },
+            "SKULL": {
+                "rough": ["avlskul0"],
+                "sand": ["avlskul0"]
+            },
+            "STUMP": {
+                "dirt": ["avlstm1", "avlstm2", "avlstm3"],
+                "grass": ["avlstm1", "avlstm2", "avlstm3"],
+                "rough": ["avlstm1", "avlstm2", "avlstm3"],
+                "snow": ["avlp1sn0", "avlp2sn0"]
+            },
+            "SUBTERRANEAN_ROCKS": {
+                "subterr": ["avlxsu01", "avlxsu02", "avlxsu03", "avlxsu04", "avlxsu05", "avlxsu06", "avlxsu07", "avlxsu08", "avlxsu09", "avlxsu10", "avlxsu11", "avlxsu12"]
+            },
+            "SWAMP_FOLIAGE": {
+                "swamp": ["avlxsw01", "avlxsw02", "avlxsw03", "avlxsw04", "avlxsw05", "avlxsw06", "avlxsw07", "avlxsw08", "avlxsw09", "avlxsw10", "avlxsw11"]
+            },
+            "TREES": {
+                "dirt": ["avltr1d0", "avltr2d0", "avltr3d0"],
+                "grass": ["avlswmp0", "avlswmp1", "avlswmp2", "avlswmp3", "avlswmp4", "avlswmp5", "avlswmp6", "avlswmp7", "avltr1d0", "avltr2d0", "avltr3d0", "avlwlw10", "avlwlw20", "avlwlw30"],
+                "rough": ["avlroug0", "avlroug1", "avlroug2", "avlyuc10", "avlyuc20", "avlyuc30"],
+                "sand": ["avlplm10", "avlplm20", "avlplm30", "avlplm40", "avlplm50", "avlyuc10", "avlyuc20", "avlyuc30"],
+                "swamp": ["avlswmp0", "avlswmp1", "avlswmp2", "avlswmp3", "avlswmp4", "avlswmp5", "avlswmp6", "avlswmp7", "avltr1d0", "avltr2d0", "avltr3d0", "avlwlw10", "avlwlw20", "avlwlw30"]
+            },
+            "TREES_2": {
+                "rough": ["avltro00", "avltro01", "avltro02", "avltro03", "avltro04", "avltro05", "avltro06", "avltro07", "avltro08", "avltro09", "avltro10", "avltro11", "avltro12", "avltrro0", "avltrro1", "avltrro2", "avltrro3", "avltrro4", "avltrro5", "avltrro6", "avltrro7"],
+                "swamp": ["avlswt00", "avlswt01", "avlswt02", "avlswt03", "avlswt04", "avlswt05", "avlswt06", "avlswt07", "avlswt08", "avlswt09", "avlswt10", "avlswt11", "avlswt12", "avlswt13", "avlswt14", "avlswt15", "avlswt16", "avlswt17", "avlswt18", "avlswt19", "avlswtr0", "avlswtr1", "avlswtr2", "avlswtr3", "avlswtr4", "avlswtr5", "avlswtr6", "avlswtr7", "avlswtr8", "avlswtr9"]
+            },
+            "VOLCANO": {
+                "lava": ["avlvol10", "avlvol20", "avlvol30", "avlvol40", "avlvol50"]
+            }
+        }
+    },
+    "GATE": {
+        "QUEST_GATE": {
+            "BORDERGUARD": {
+                "land": {"lblue": "avxbor00", "green": "avxbor10", "red": "avxbor20", "dblue": "avxbor30", "brown": "avxbor40", "purple": "avxbor50", "white": "avxbor60", "black": "avxbor70"}
+            },
+            "BORDER_GATE": {
+                "land": {"lblue": "avxbgt00", "green": "avxbgt10", "red": "avxbgt20", "dblue": "avxbgt30", "brown": "avxbgt40", "purple": "avxbgt50", "white": "avxbgt60", "black": "avxbgt70"}
+            },
+            "QUEST_GUARD": {
+                "land": ["avxbor80"]
+            }
+        }
+    },
+    "QUEST_PAIR": {
+        "QUEST_GATE": {
+            "KEYMASTER": {
+                "land": {"lblue": "avxkey00", "green": "avxkey10", "red": "avxkey20", "dblue": "avxkey30", "brown": "avxkey40", "purple": "avxkey50", "white": "avxkey60", "black": "avxkey70"}
+            },
+            "SEER_HUT": {
+                "land": ["avxseeb0", "avxseer0", "avxseey0"]
+            }
+        },
+        "TRANSPORT": {
+            "MONOLITH_ONE_WAY_ENTRANCE": {
+                "land": ["avxmn1b0", "avxmn1r0", "avxmn1y0", "avxmn4i0", "avxmn5i0", "avxmn6i0", "avxmn7i0", "avxmn8i0"]
+            },
+            "MONOLITH_ONE_WAY_EXIT": {
+                "land": ["avxmn4o0", "avxmn5o0", "avxmn6o0", "avxmn7o0", "avxmn8o0", "avxmx1b0", "avxmx1r0", "avxmx1y0"]
+            },
+            "MONOLITH_TWO_WAY": {
+                "land": ["avxmn2g0", "avxmn2o0", "avxmn2p0", "avxmn4b0", "avxmn5b0", "avxmn6b0", "avxmn7b0", "avxmn8b0"]
+            },
+            "SUBTERRANEAN_GATE": {
+                "land": ["avtcave"]
+            },
+            "WHIRLPOOL": {
+                "water": ["avxwhrl0"]
+            }
+        }
+    },
+    "VISIBLE": {
+        "BANK": {
+            "CREATURE_BANK": {
+                "land": ["avxbnk10", "avxbnk20", "avxbnk30", "avxbnk40", "avxbnk50", "avxbnk60", "avxbnk70"]
+            },
+            "CRYPT": {
+                "land": ["avxgyds0", "avxgyne0", "avxgysn0"]
+            },
+            "DERELICT_SHIP": {
+                "water": ["avadlic0"]
+            },
+            "DRAGON_UTOPIA": {
+                "land": ["avsutop0"]
+            },
+            "PYRAMID": {
+                "land": ["avxprmd0"]
+            },
+            "SHIPWRECK": {
+                "water": ["avawre20", "avawrek0"]
+            }
+        },
+        "BONUS_TEMP": {
+            "BUOY": {
+                "water": ["avsbuoy0"]
+            },
+            "FAERIE_RING": {
+                "land": ["avsring0"]
+            },
+            "FOUNTAIN_OF_FORTUNE": {
+                "land": ["avsfntn0"]
+            },
+            "FOUNTAIN_OF_YOUTH": {
+                "land": ["avxfyth0"]
+            },
+            "IDOL_OF_FORTUNE": {
+                "land": ["avsidol0"]
+            },
+            "MERMAID": {
+                "water": ["avxmerm0"]
+            },
+            "OASIS": {
+                "land": ["avxosis0"]
+            },
+            "RALLY_FLAG": {
+                "land": ["avxrlly0"]
+            },
+            "SIRENS": {
+                "water": ["avxsirn0"]
+            },
+            "STABLES": {
+                "land": ["avxstbl0"]
+            },
+            "SWAN_POND": {
+                "land": ["avsclvd0", "avsclvg0", "avsclvs0"]
+            },
+            "TEMPLE": {
+                "land": ["avstmpl0"]
+            },
+            "WATERING_HOLE": {
+                "land": ["avxwtrh0"]
+            }
+        },
+        "DWELLING": {
+            "CREATURE_GENERATOR1": {
+                "land": ["avg2ela", "avg2ele", "avg2elf", "avg2elw", "avg2uni", "avgair0", "avgangl0", "avgazur", "avgbasl0", "avgbhld0", "avgbhmt0", "avgbkni0", "avgboar", "avgbone0", "avgcavl0", "avgcdrg", "avgcent0", "avgcros0", "avgcycl0", "avgdemn0", "avgdevl0", "avgdfly0", "avgdwrf0", "avgefre0", "avgelf0", "avgelp", "avgench", "avgerth0", "avgfbrd", "avgfdrg", "avgfire0", "avggarg0", "avggdrg0", "avggeni0", "avggnll0", "avggobl0", "avggogs0", "avggorg0", "avggrem0", "avggrff0", "avghalf", "avgharp0", "avghell0", "avghydr0", "avgimp0", "avglich0", "avglzrd0", "avgmage0", "avgmant0", "avgmdsa0", "avgmino0", "avgmonk0", "avgmumy", "avgnaga0", "avgnomd", "avgogre0", "avgorcg0", "avgpeas", "avgpega0", "avgpike0", "avgpit0", "avgpixie", "avgrdrg0", "avgrocs0", "avgrog", "avgrust", "avgshrp", "avgskel0", "avgswor0", "avgtitn0", "avgtree0", "avgtrll", "avgtrog0", "avgunic0", "avgvamp0", "avgwatr0", "avgwght0", "avgwolf0", "avgwyvn0", "avgzomb0"]
+            },
+            "CREATURE_GENERATOR4": {
+                "land": ["avgelem0", "avggolm0"]
+            },
+            "RANDOM_DWELLING": {
+                "land": ["avrcgen0"]
+            },
+            "RANDOM_DWELLING_FACTION": {
+                "land": ["avrcgn00", "avrcgn01", "avrcgn02", "avrcgn03", "avrcgn04", "avrcgn05", "avrcgn06", "avrcgn07", "avrcgn08"]
+            },
+            "RANDOM_DWELLING_LVL": {
+                "land": ["avrcgen1", "avrcgen2", "avrcgen3", "avrcgen4", "avrcgen5", "avrcgen6", "avrcgen7"]
+            },
+            "REFUGEE_CAMP": {
+                "land": ["avgrefg0"]
+            },
+            "WAR_MACHINE_FACTORY": {
+                "land": ["avgsieg0"]
+            }
+        },
+        "GUARD": {
+            "MONSTER": {
+                "land": ["avwangl", "avwarch", "avwazure", "avwbasl", "avwbehl0", "avwbehx0", "avwbhmt0", "avwbhmx0", "avwbkni0", "avwbknx0", "avwboar", "avwbone0", "avwbonx0", "avwcdrg", "avwcent0", "avwcenx0", "avwcvlr0", "avwcvlx0", "avwcycl0", "avwcycx0", "avwddrx0", "avwdemn0", "avwdemx0", "avwdevl0", "avwdevx0", "avwdfir", "avwdfly", "avwdrag0", "avwdrax0", "avwdwrf0", "avwdwrx0", "avwefre0", "avwefrx0", "avwelfw0", "avwelfx0", "avwelma0", "avwelme0", "avwelmf0", "avwelmw0", "avwench", "avwfbird", "avwfdrg", "avwgarg0", "avwgarx0", "avwgbas", "avwgeni0", "avwgenx0", "avwglmd0", "avwglmg0", "avwgnll0", "avwgnlx0", "avwgobl0", "avwgobx0", "avwgog0", "avwgogx0", "avwgolm0", "avwgolx0", "avwgorg", "avwgorx0", "avwgrem0", "avwgrex0", "avwgrif", "avwgrix0", "avwhalf", "avwharp0", "avwharx0", "avwhcrs", "avwhoun0", "avwhoux0", "avwhydr", "avwhydx0", "avwicee", "avwimp0", "avwimpx0", "avwinfr", "avwlcrs", "avwlich0", "avwlicx0", "avwlizr", "avwlizx0", "avwmage0", "avwmagel", "avwmagx0", "avwmant0", "avwmanx0", "avwmeds", "avwmedx0", "avwmino", "avwminx0", "avwmonk", "avwmonx0", "avwmumy", "avwnaga0", "avwnagx0", "avwnomd", "avwnrg", "avwogre0", "avwogrx0", "avworc0", "avworcx0", "avwpeas", "avwpega0", "avwpegx0", "avwphx", "avwpike", "avwpikx0", "avwpitf0", "avwpitx0", "avwpixie", "avwpsye", "avwrdrg", "avwroc0", "avwrocx0", "avwrog", "avwrust", "avwsharp", "avwskel0", "avwskex0", "avwsprit", "avwstone", "avwstorm", "avwswrd0", "avwswrx0", "avwtitn0", "avwtitx0", "avwtree0", "avwtrex0", "avwtrll", "avwtrog0", "avwunic0", "avwunix0", "avwvamp0", "avwvamx0", "avwwigh", "avwwigx0", "avwwolf0", "avwwolx0", "avwwyvr", "avwwyvx0", "avwzomb0", "avwzomx0"]
+            },
+            "RANDOM_MONSTER": {
+                "land": ["avwmrnd0"]
+            },
+            "RANDOM_MONSTER_L1": {
+                "land": ["avwmon1"]
+            },
+            "RANDOM_MONSTER_L2": {
+                "land": ["avwmon2"]
+            },
+            "RANDOM_MONSTER_L3": {
+                "land": ["avwmon3"]
+            },
+            "RANDOM_MONSTER_L4": {
+                "land": ["avwmon4"]
+            },
+            "RANDOM_MONSTER_L5": {
+                "land": ["avwmon5"]
+            },
+            "RANDOM_MONSTER_L6": {
+                "land": ["avwmon6"]
+            },
+            "RANDOM_MONSTER_L7": {
+                "land": ["avwmon7"]
+            }
+        },
+        "HERO": {
+            "HERO_PLACEHOLDER": {
+                "land": ["ahplace"]
+            },
+            "PRISON": {
+                "land": ["avxprsn0"]
+            }
+        },
+        "INFO": {
+            "CARTOGRAPHER": {
+                "dirt": ["avxmaps0"],
+                "grass": ["avxmaps0"],
+                "lava": ["avxmaps0"],
+                "rough": ["avxmaps0"],
+                "sand": ["avxmaps0"],
+                "snow": ["avxmaps0"],
+                "subterr": ["avxmapu0"],
+                "swamp": ["avxmaps0"],
+                "water": ["avxmapw0"]
+            },
+            "COVER_OF_DARKNESS": {
+                "land": ["avxcovr0"]
+            },
+            "DEN_OF_THIEVES": {
+                "land": ["avxdend0", "avxdent"]
+            },
+            "EYE_OF_MAGI": {
+                "land": ["avxeyem0"]
+            },
+            "HUT_OF_MAGI": {
+                "land": ["avxhutm0"]
+            },
+            "OBELISK": {
+                "land": ["avxoblb", "avxoblg", "avxoblk", "avxoblo", "avxoblp", "avxoblw", "avxobly"]
+            },
+            "OCEAN_BOTTLE": {
+                "water": ["avxbttl0"]
+            },
+            "PILLAR_OF_FIRE": {
+                "subterr": ["avxpllr0"]
+            },
+            "REDWOOD_OBSERVATORY": {
+                "dirt": ["avxredw"],
+                "grass": ["avxredw"],
+                "lava": ["avxredw"],
+                "rough": ["avxredw"],
+                "sand": ["avxredw"],
+                "snow": ["avxreds0", "avxredw"],
+                "swamp": ["avxredw"]
+            },
+            "SIGN": {
+                "dirt": ["avxsndg0"],
+                "grass": ["avxsndg0"],
+                "lava": ["avxsnlv0"],
+                "rough": ["avxsnds0"],
+                "sand": ["avxsnds0"],
+                "snow": ["avxsnsn0"],
+                "subterr": ["avxsndg0"],
+                "swamp": ["avxsnsw0"]
+            }
+        },
+        "MANA": {
+            "MAGIC_WELL": {
+                "dirt": ["avxwelr0"],
+                "grass": ["avxwelg0"],
+                "lava": ["avxwelr0"],
+                "rough": ["avxwelr0"],
+                "sand": ["avxwelr0"],
+                "snow": ["avxwlsn0"],
+                "subterr": ["avxwelr0"],
+                "swamp": ["avxwelg0"]
+            }
+        },
+        "MINE": {
+            "ABANDONED_MINE": {
+                "grass": ["avxamgr"],
+                "lava": ["avxamlv"],
+                "rough": ["avxamro"],
+                "sand": ["avxamds"],
+                "snow": ["avxamsn"],
+                "subterr": ["avxamsu"],
+                "swamp": ["avxamsw"]
+            },
+            "MAGIC_SPRING": {
+                "rough": ["avxmags0"]
+            },
+            "MINE": {
+                "dirt": ["avmalch0", "avmcrdr0", "avmgedr0", "avmgodr0", "avmordr0", "avmsawd0", "avmsulf0", "avxabnd0"],
+                "grass": ["avmabmg", "avmalch0", "avmcrgr0", "avmcrys0", "avmgems0", "avmgogr0", "avmgold0", "avmore0", "avmsawg0", "avmsulf0"],
+                "lava": ["avmalch0", "avmcrvo0", "avmgelv0", "avmgovo0", "avmorlv0", "avmsawl0", "avmsulf0"],
+                "rough": ["avmalch0", "avmcrrf0", "avmgerf0", "avmgorf0", "avmorro0", "avmsawr0", "avmsulf0"],
+                "sand": ["avmalch0", "avmcrds0", "avmgerf0", "avmgods0", "avmords0", "avmsulf0", "avmswds0"],
+                "snow": ["avmalcs0", "avmcrsn0", "avmgesn0", "avmgosn0", "avmorsn0", "avmsulf0", "avmswsn0"],
+                "subterr": ["avmalch0", "avmcrsu0", "avmgerf0", "avmgosb0", "avmorsb0", "avmsawl0", "avmsulf0"],
+                "swamp": ["avmalch0", "avmcrsw0", "avmgems0", "avmgosw0", "avmorsw0", "avmsawg0", "avmsulf0"]
+            },
+            "MYSTICAL_GARDEN": {
+                "dirt": ["avtmyst0"],
+                "grass": ["avtmyst0"],
+                "swamp": ["avtmyst0"]
+            },
+            "WATER_WHEEL": {
+                "dirt": ["avmwwhl0"],
+                "grass": ["avmwwhl0"],
+                "snow": ["avmwwsn0"],
+                "swamp": ["avmwwhl0"]
+            },
+            "WINDMILL": {
+                "land": ["avmwndd0"],
+                "snow": ["avmwmsn0"]
+            }
+        },
+        "RESOURCE_PILE": {
+            "RANDOM_RESOURCE": {
+                "land": ["avtrndm0"]
+            },
+            "RESOURCE": {
+                "land": ["avtcrys0", "avtgems0", "avtgold0", "avtmerc0", "avtore0", "avtsulf0", "avtwood0"]
+            }
+        },
+        "REWARD_PICKUP": {
+            "ARTIFACT": {
+                "land": ["ava0007", "ava0008", "ava0009", "ava0010", "ava0011", "ava0012", "ava0013", "ava0014", "ava0015", "ava0016", "ava0017", "ava0018", "ava0019", "ava0020", "ava0021", "ava0022", "ava0023", "ava0024", "ava0025", "ava0026", "ava0027", "ava0028", "ava0029", "ava0030", "ava0031", "ava0032", "ava0033", "ava0034", "ava0035", "ava0036", "ava0037", "ava0038", "ava0039", "ava0040", "ava0041", "ava0042", "ava0043", "ava0044", "ava0045", "ava0046", "ava0047", "ava0048", "ava0049", "ava0050", "ava0051", "ava0052", "ava0053", "ava0054", "ava0055", "ava0056", "ava0057", "ava0058", "ava0059", "ava0060", "ava0061", "ava0062", "ava0063", "ava0064", "ava0065", "ava0066", "ava0067", "ava0068", "ava0069", "ava0070", "ava0071", "ava0072", "ava0073", "ava0074", "ava0075", "ava0076", "ava0077", "ava0078", "ava0079", "ava0080", "ava0081", "ava0082", "ava0083", "ava0084", "ava0085", "ava0086", "ava0087", "ava0088", "ava0089", "ava0090", "ava0091", "ava0092", "ava0093", "ava0094", "ava0095", "ava0096", "ava0097", "ava0098", "ava0099", "ava0100", "ava0101", "ava0102", "ava0103", "ava0104", "ava0105", "ava0106", "ava0107", "ava0108", "ava0109", "ava0110", "ava0111", "ava0112", "ava0113", "ava0114", "ava0115", "ava0116", "ava0117", "ava0118", "ava0119", "ava0120", "ava0121", "ava0122", "ava0123", "ava0124", "ava0125", "ava0126", "ava0127", "ava0129", "ava0130", "ava0131", "ava0132", "ava0133", "ava0134", "ava0135", "ava0136", "ava0137", "ava0138", "ava0139", "ava0140", "ava0141"]
+            },
+            "CAMPFIRE": {
+                "land": ["adcfra", "avxcfds0", "avxcflv0", "avxcfsn0"]
+            },
+            "CORPSE": {
+                "land": ["avxskds0"]
+            },
+            "FLOTSAM": {
+                "water": ["avaflot0"]
+            },
+            "LEAN_TO": {
+                "land": ["avmlean0"]
+            },
+            "PANDORAS_BOX": {
+                "land": ["ava0128"]
+            },
+            "RANDOM_ART": {
+                "land": ["avarand"]
+            },
+            "RANDOM_MAJOR_ART": {
+                "land": ["avarnd3"]
+            },
+            "RANDOM_MINOR_ART": {
+                "land": ["avarnd2"]
+            },
+            "RANDOM_RELIC_ART": {
+                "land": ["avarnd4"]
+            },
+            "RANDOM_TREASURE_ART": {
+                "land": ["avarnd1"]
+            },
+            "SCHOLAR": {
+                "land": ["avxschl0"]
+            },
+            "SEA_CHEST": {
+                "water": ["avxccht0"]
+            },
+            "SHIPWRECK_SURVIVOR": {
+                "water": ["avasurv0"]
+            },
+            "SPELL_SCROLL": {
+                "land": ["ava0001"]
+            },
+            "TREASURE_CHEST": {
+                "land": ["avtchst0"]
+            },
+            "WAGON": {
+                "land": ["avtwagn0"]
+            },
+            "WARRIORS_TOMB": {
+                "land": ["avxtomb0"]
+            }
+        },
+        "SPECIAL": {
+            "ALTAR_OF_SACRIFICE": {
+                "land": ["avxaltar"]
+            },
+            "BLACK_MARKET": {
+                "land": ["avxmktb0"]
+            },
+            "EVENT": {
+                "land": ["avzevnt0"]
+            },
+            "FREELANCERS_GUILD": {
+                "land": ["avxfgld"]
+            },
+            "GARRISON": {
+                "land": ["avcgar10", "avcgar20"]
+            },
+            "GARRISON2": {
+                "land": ["avcvgarm", "avcvgr"]
+            },
+            "GRAIL": {
+                "land": ["avzgrail"]
+            },
+            "SANCTUARY": {
+                "land": ["avxsanc0"]
+            },
+            "TAVERN": {
+                "land": ["avxtvrn0"]
+            },
+            "TRADING_POST": {
+                "land": ["avxpost0", "avxpstr0"]
+            },
+            "TRADING_POST_SNOW": {
+                "land": ["avxpssn"]
+            }
+        },
+        "SPELL_SKILL": {
+            "SHRINE_OF_MAGIC_GESTURE": {
+                "land": ["avxl2sh0"]
+            },
+            "SHRINE_OF_MAGIC_INCANTATION": {
+                "land": ["avxl1sh0"]
+            },
+            "SHRINE_OF_MAGIC_THOUGHT": {
+                "land": ["avxl3sh0"]
+            },
+            "UNIVERSITY": {
+                "land": ["avsuniv0"]
+            },
+            "WITCH_HUT": {
+                "land": ["avswtch0"]
+            }
+        },
+        "STAT_PERMANENT": {
+            "ARENA": {
+                "land": ["avsarna0"]
+            },
+            "GARDEN_OF_REVELATION": {
+                "land": ["avsgrdn0"]
+            },
+            "HILL_FORT": {
+                "land": ["avxhild0", "avxhilg0"]
+            },
+            "LEARNING_STONE": {
+                "land": ["avsgzbo0"]
+            },
+            "LIBRARY_OF_ENLIGHTENMENT": {
+                "land": ["avslibr0"]
+            },
+            "MARLETTO_TOWER": {
+                "land": ["avsmarl"]
+            },
+            "MERCENARY_CAMP": {
+                "land": ["avsmerc0"]
+            },
+            "SCHOOL_OF_MAGIC": {
+                "land": ["avsschm0"]
+            },
+            "SCHOOL_OF_WAR": {
+                "land": ["avswar20"]
+            },
+            "STAR_AXIS": {
+                "land": ["avsaxis0"]
+            },
+            "TREE_OF_KNOWLEDGE": {
+                "land": ["avxtrek0"]
+            }
+        },
+        "TERRAIN_MODIFIER": {
+            "CLOVER_FIELD": {
+                "land": ["avxcf0", "avxcf1", "avxcf2", "avxcf3", "avxcf4", "avxcf5", "avxcf6", "avxcf7"]
+            },
+            "CURSED_GROUND1": {
+                "land": ["avxcrsd0"]
+            },
+            "CURSED_GROUND2": {
+                "land": ["avxcg1", "avxcg2", "avxcg3", "avxcg4", "avxcg5", "avxcg6", "avxcg7"]
+            },
+            "EVIL_FOG": {
+                "land": ["avxef0", "avxef1", "avxef2", "avxef3", "avxef4", "avxef5", "avxef6", "avxef7"]
+            },
+            "FAVORABLE_WINDS": {
+                "water": ["avxfw0", "avxfw1", "avxfw2", "avxfw3", "avxfw4", "avxfw5", "avxfw6", "avxfw7"]
+            },
+            "FIERY_FIELDS": {
+                "land": ["avxff0", "avxff1", "avxff2", "avxff3", "avxff4", "avxff5", "avxff6", "avxff7"]
+            },
+            "HOLY_GROUNDS": {
+                "land": ["avxhg0", "avxhg1", "avxhg2", "avxhg3", "avxhg4", "avxhg5", "avxhg6", "avxhg7"]
+            },
+            "LUCID_POOLS": {
+                "land": ["avxlp0", "avxlp1", "avxlp2", "avxlp3", "avxlp4", "avxlp5", "avxlp6", "avxlp7"]
+            },
+            "MAGIC_CLOUDS": {
+                "land": ["avxmc0", "avxmc1", "avxmc2", "avxmc3", "avxmc4", "avxmc5", "avxmc6", "avxmc7"]
+            },
+            "MAGIC_PLAINS1": {
+                "land": ["avxplns0"]
+            },
+            "MAGIC_PLAINS2": {
+                "land": ["avxmp1", "avxmp2", "avxmp3", "avxmp4", "avxmp5", "avxmp6", "avxmp7"]
+            },
+            "ROCKLANDS": {
+                "land": ["avxrk0", "avxrk1", "avxrk2", "avxrk3", "avxrk4", "avxrk5", "avxrk6", "avxrk7"]
+            }
+        },
+        "TOWN": {
+            "RANDOM_TOWN": {
+                "land": ["avcranx0"]
+            },
+            "TOWN": {
+                "land": {"castle": "avccasx0", "rampart": "avcramx0", "tower": "avctowx0", "inferno": "avcinfx0", "necropolis": "avcnecx0", "dungeon": "avcdunx0", "stronghold": "avcstrx0", "fortress": "avcftrx0", "conflux": "avchforx"}
+            }
+        },
+        "WATER_TRANSPORT": {
+            "BOAT": {
+                "water": ["avxboat0", "avxboat1", "avxboat2"]
+            },
+            "LIGHTHOUSE": {
+                "dirt": ["avxlths0"],
+                "grass": ["avxlths0"],
+                "lava": ["avxlths0"],
+                "rough": ["avxlths0"],
+                "sand": ["avxlths0"],
+                "snow": ["avxlths0"],
+                "swamp": ["avxlths0"]
+            },
+            "SHIPYARD": {
+                "land": ["avxshyd0"]
+            }
+        }
+    }
+}

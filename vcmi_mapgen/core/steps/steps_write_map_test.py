@@ -20,8 +20,8 @@ from vcmi_mapgen.core.steps import (
 )
 from vcmi_mapgen.core.steps.placement import guard_spaced, guard_zoc
 from vcmi_mapgen.kit.objects import mask_cells, mask_interactive_cells
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import footprint_violations
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 SIZE = 48
 SEED = 7

@@ -14,7 +14,7 @@ from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.gameplay.site import SiteIndex, ZoneSite, back_score, door_cells
 from vcmi_mapgen.core.steps.gate.gates import Fit, footprint_cells
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 SHORE_NOOK = 4
 

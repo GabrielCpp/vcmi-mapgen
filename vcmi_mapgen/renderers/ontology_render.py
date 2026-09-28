@@ -1,9 +1,10 @@
 """Render every leaf of the ontology tree to its full path on disk:
 out/ontology/<CLUSTER>/<PURPOSE>/<type>/<terrain>/<leaf>.png
 
-Documentation/debug tooling: it renders the object taxonomy itself (`ontology.build_tree()`),
-never a generated or rebuilt map, so it stays outside the step/pipeline model entirely — `cli.py`
-calls :func:`render_ontology` directly.
+Documentation/debug tooling: it renders the object taxonomy itself
+(`vcmi.catalog.objects.build_tree()`), never a generated or rebuilt map, so it stays outside the
+step/pipeline model entirely. The `render-ontology` subcommand calls :func:`render_ontology`
+directly.
 """
 
 import collections
@@ -14,9 +15,11 @@ from collections.abc import Sequence
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import sprites as RE
+from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog import regen as RG
+from vcmi_mapgen.vcmi.catalog import tables as TB
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
 
 ROOT = project_root()
@@ -90,7 +93,7 @@ def render_ontology(index: LodIndex, out: str | None = None) -> None:
     and, next to each, `<leaf>.mask.png` -- the same sprite with its passability mask overlaid
     the way the editor draws it (translucent B/X/A/V cells, bottom-left/footprint justified).
 
-    The directory layout mirrors the hardcoded ontology.TAXONOMY exactly -- the absolute object list
+    The directory layout mirrors the catalog taxonomy exactly -- the absolute object list
     the VCMI/H3 map editor can place (from objects.txt), every CLUSTER -> PURPOSE -> type -> terrain
     -> leaf edge down to the sprite. A leaf's sprite is its `animation` DEF (frame 0); colour-keyed
     quest objects (border gate/guard, keymaster tent) sit under "land" with one leaf per colour.
@@ -127,7 +130,7 @@ def render_ontology(index: LodIndex, out: str | None = None) -> None:
         png = os.path.join(d, f"{leaf}.png")
         sprite.save(png)
         mpng = os.path.join(d, f"{leaf}.mask.png")  # same sprite with the passability mask overlaid
-        gridmask = ON.full_mask_of(index, anim) or ON.mask_of(anim)
+        gridmask = RG.full_mask_of(index, anim) or ON.mask_of(anim)
         _mask_overlay(full, gridmask, RE.TILE).save(mpng)
         per_cluster[cluster] += 1
         rows.append(
@@ -151,6 +154,6 @@ def render_ontology(index: LodIndex, out: str | None = None) -> None:
         w.writerows(sorted(rows))
 
     print(f"ontology catalog -> {out_root}/  ({len(rows)} PNGs, {skipped} skipped: no sprite)")
-    for c in ON.CLUSTERS:
+    for c in TB.CLUSTERS:
         print(f"  {c:11s} {per_cluster[c]:5d}")
     print(f"  index.csv ({len(rows)} rows)")

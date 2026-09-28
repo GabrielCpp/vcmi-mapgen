@@ -12,7 +12,7 @@ from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 Grid = list[list[int]]
 

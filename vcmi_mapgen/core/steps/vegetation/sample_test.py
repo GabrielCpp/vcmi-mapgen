@@ -4,13 +4,13 @@ import os
 
 import pytest
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import plan_entrances, zone_fronts, zone_gate_bands
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 
 def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:

@@ -15,7 +15,6 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile, Zone, footprint
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RND_ART,
@@ -26,7 +25,9 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
 )
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
@@ -158,7 +159,7 @@ def place_water(
         n = min(int(x) + (1 if rng.random() < x - int(x) else 0), 14)
         if not n:
             continue
-        pool = ON.pool(p, "water")
+        pool = DC.pool(p, "water")
         cands = sorted(ts)
         placed: list[Tile] = []
         for t in rng.choices(cands, k=50 * n):

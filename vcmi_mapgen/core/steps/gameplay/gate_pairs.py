@@ -9,7 +9,6 @@ import random
 from dataclasses import dataclass, field
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.steps.gameplay.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
 from vcmi_mapgen.core.steps.gate.gates import (
@@ -21,6 +20,7 @@ from vcmi_mapgen.core.steps.gate.gates import (
     gate_anchors,
     rnd_monster,
 )
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 GUARD_P = 0.65
 GUARD_SALT = 0x6A7F

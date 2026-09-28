@@ -9,6 +9,7 @@ Subcommands:
   extract-vmap    -> regenerate maps_vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
+  regen-ontology  -> rebuild data/ontology/*.json from the editor's objects.txt.
 
 `generate` builds and runs a ``Pipeline`` (see ``core/pipeline.py``) from
 ``cli.steps.build_steps``; `render-ontology` stays outside that model entirely — it
@@ -23,7 +24,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.cli.corpus_match import corpus_match
 from vcmi_mapgen.cli.extract_vmap import extract_vmap
 from vcmi_mapgen.cli.generate import (
@@ -39,6 +39,9 @@ from vcmi_mapgen.cli.settings import load_settings, open_install
 from vcmi_mapgen.cli.steps import GENERATE_STOP_POINTS
 from vcmi_mapgen.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.renderers.ontology_render import render_ontology
+from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.regen import regenerate
+from vcmi_mapgen.vcmi.catalog.tables import CLUSTERS
 from vcmi_mapgen.vcmi.config import load_config
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
@@ -113,6 +116,17 @@ def cmd_render_sprites(args: Args) -> None:
     render_sprites(install, args.vmap, args.compare, args.out)
 
 
+def cmd_regen_ontology(_args: Args) -> None:
+    tree = regenerate(lod(open_install(load_settings()).data_dir))
+    print("ontology taxonomy (regenerated)")
+    for cluster in CLUSTERS:
+        purposes = tree.get(cluster, {})
+        types = sum(len(t) for t in purposes.values())
+        leaves = sum(1 for x in ON.iter_leaves(tree) if x[0] == cluster)
+        print(f"  {cluster:11s} purposes={len(purposes):2d} types={types:3d} leaves={leaves}")
+    print(f"  total leaves: {sum(1 for _ in ON.iter_leaves(tree))}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Learned procedural map generator for VCMI")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -151,6 +165,11 @@ def main() -> None:
     _ = prs.add_argument("--compare", default=None, help="corpus map name to render alongside")
     _ = prs.add_argument("--out", default=None, help="output PNG path (default auto)")
     _ = prs.set_defaults(func=cmd_render_sprites)
+
+    pro_regen = sub.add_parser(
+        "regen-ontology", help="rebuild data/ontology/*.json from the editor's objects.txt"
+    )
+    _ = pro_regen.set_defaults(func=cmd_regen_ontology)
 
     pg = sub.add_parser(
         "generate", help="full map synthesized by the marked-point-process pipeline"

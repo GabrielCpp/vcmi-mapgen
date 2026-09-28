@@ -3,11 +3,11 @@ steps.treasure.fill loot-zone content restrictions."""
 
 import collections
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.steps.gated.placer import find_entry_corridor, place_gated_zones
 from vcmi_mapgen.core.steps.treasure.fill import LOOT_HERO_STRUCTURE_MIN_SEP, fill_loot_zones
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 _BOUNDS = (64, 64)
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]

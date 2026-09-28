@@ -6,7 +6,7 @@ import io
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.steps import GameplayStep, SegmentStep, TerrainStep, VegetationStep
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 def _run_towns(seed: int, size: int = 48, players: int = 2, subterrain: bool = True) -> MapState:

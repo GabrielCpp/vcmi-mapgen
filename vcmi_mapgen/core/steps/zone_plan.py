@@ -11,7 +11,6 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.components import STEPS4
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
@@ -27,7 +26,8 @@ from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import plan_entrances
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 NO_TILES: frozenset[Tile] = frozenset()
 

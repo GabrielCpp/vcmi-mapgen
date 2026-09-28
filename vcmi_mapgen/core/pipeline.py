@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from typing import cast, overload
 
 from vcmi_mapgen.core.model import Entrance, MapState, PlacedObject, Tile
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 __all__ = [
     "LevelWorkspace",
@@ -189,7 +189,7 @@ class PipelineStep(ABC):
 class Pipeline:
     """Runs an ordered list of PipelineStep instances against a shared ProviderRegistry.
 
-    ``ontology`` (the real vcmi_mapgen.ontology module — the abstraction layer between
+    ``ontology`` (the ``vcmi.catalog`` facade — the abstraction layer between
     game data and the pipeline) and ``map_state`` are known before any step runs, so
     every step's run() receives them directly. Everything else that flows from one step
     to a later one lives in ``ctx`` (a ``ProviderRegistry``), written directly by the

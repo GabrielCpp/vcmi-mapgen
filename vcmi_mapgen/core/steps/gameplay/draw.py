@@ -13,7 +13,6 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RANDOM_SHARE,
@@ -28,6 +27,8 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     mine_variants,
     rest_mines,
 )
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 DRAW_SALT = 0x5EED
 TOWN_SLOTS = 3
@@ -139,7 +140,7 @@ class ZoneDrawer:
     def _town(self) -> Identity | None:
         if self.spec.player or self.rng.random() < RANDOM_SHARE:
             return ON.identity_of(RND_TOWN)
-        return self._pick(ON.pool("TOWN", self.spec.terrain), "TOWN")
+        return self._pick(DC.pool("TOWN", self.spec.terrain), "TOWN")
 
     def _take(self, ids: list[Identity], res: str, used: set[str], out: list[Identity]) -> None:
         ident = self._pick(ids, "MINE")
@@ -188,7 +189,7 @@ class ZoneDrawer:
         out: list[tuple[str, Identity]] = []
         if n:
             _ = self._keep_pool("DWELLING", [ON.identity_of(a) for a in RND_DWELL_L])
-            _ = self._keep_pool("DWELLING", ON.pool("DWELLING", self.spec.terrain))
+            _ = self._keep_pool("DWELLING", DC.pool("DWELLING", self.spec.terrain))
         for _ in range(n):
             ident: Identity | None
             if rng.random() < 0.8:
@@ -207,7 +208,7 @@ class ZoneDrawer:
     def _banks(self, n: int) -> list[tuple[str, Identity]]:
         out: list[tuple[str, Identity]] = []
         for _ in range(n):
-            ident = self._pick(self._keep_pool("BANK", ON.pool("BANK", self.spec.terrain)), "BANK")
+            ident = self._pick(self._keep_pool("BANK", DC.pool("BANK", self.spec.terrain)), "BANK")
             if ident:
                 out.append(("BANK", ident))
         return out
@@ -221,7 +222,7 @@ class ZoneDrawer:
             pool = (
                 info_pool(spec.terrain, spec.has_water, spec.has_subterrain)
                 if p == "INFO"
-                else ON.pool(p, spec.terrain)
+                else DC.pool(p, spec.terrain)
             )
             ident = self._pick(self._keep_pool(p, pool), p)
             if ident:

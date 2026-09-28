@@ -14,7 +14,6 @@ from vcmi_mapgen.core.steps.loot.step import LootResult
 from vcmi_mapgen.core.steps.portal.step import PortalResult
 from vcmi_mapgen.core.steps.vegetation.step import VegetationResult
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.renderers import PngRenderer, VmapRenderer
 from vcmi_mapgen.renderers.overlays import (
     BlockingOverlay,
@@ -26,6 +25,7 @@ from vcmi_mapgen.renderers.overlays import (
     TileTypeOverlay,
     ZoneOverlay,
 )
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 

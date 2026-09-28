@@ -9,8 +9,8 @@ from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.steps.gated.placer import LootAccess, place_gated_zones
 from vcmi_mapgen.core.steps.zone_index import build_zone_index
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass

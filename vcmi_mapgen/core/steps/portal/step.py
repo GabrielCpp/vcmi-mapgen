@@ -14,8 +14,8 @@ from vcmi_mapgen.core.steps.portal import geometry as GEO
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass

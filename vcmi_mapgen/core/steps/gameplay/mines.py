@@ -20,7 +20,6 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Identity, JsonValue, PlacedObject, Tile, Zone
@@ -30,6 +29,8 @@ from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 ROOT = project_root()
@@ -522,10 +523,10 @@ def intensity_weights(
 
 
 def info_pool(terrain: str, has_water: bool, has_subterrain: bool = False) -> list[Identity]:
-    """`ON.pool("INFO", terrain)`, minus cartographer subtypes the map can't back up:
+    """`DC.pool("INFO", terrain)`, minus cartographer subtypes the map can't back up:
     cartographerSubterranean is dropped unless the map actually has a second level, and
     cartographerWater is dropped on maps with no water at all."""
-    pool = ON.pool("INFO", terrain)
+    pool = DC.pool("INFO", terrain)
     return [
         i
         for i in pool
@@ -633,7 +634,7 @@ def audit_variety(level: int = 0) -> list[AuditGap]:
                 seen[(p, anim)] = seen.get((p, anim), 0) + cnt
     pool_anims: dict[str, set[str]] = {}  # purpose -> anims reachable on ANY terrain incl water
     for p in {p for p, _a in seen}:
-        pool_anims[p] = {i.animation.lower() for t in (*LAND, "water") for i in ON.pool(p, t)}
+        pool_anims[p] = {i.animation.lower() for t in (*LAND, "water") for i in DC.pool(p, t)}
     gaps: list[AuditGap] = []
     for (p, raw_anim), cnt in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
         anim = TOWN_SPRITE_VARIANTS.get(raw_anim, raw_anim)

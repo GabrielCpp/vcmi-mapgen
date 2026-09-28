@@ -4,7 +4,8 @@ from typing import final
 
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile
 from vcmi_mapgen.kit.objects import mask_cells
-from vcmi_mapgen.ontology import TERRAIN_NAMES, Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
+from vcmi_mapgen.vcmi.catalog.tables import TERRAIN_NAMES
 
 
 @dataclass(frozen=True, slots=True)

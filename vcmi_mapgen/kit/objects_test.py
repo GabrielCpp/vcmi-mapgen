@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
 

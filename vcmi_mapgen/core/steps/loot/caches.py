@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
 from vcmi_mapgen.core.model import (
@@ -40,6 +39,8 @@ from vcmi_mapgen.core.steps.treasure.fill import (
     solo_visit_pool,
 )
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
 # treasure(1-2) → minor(3) → major(4-5) → any/relic(6).
@@ -648,8 +649,8 @@ class _PocketCachePass:
 
         terrain = self.terrain_of[pick.zid]
         st = load_gameplay()[terrain]
-        pool_res = ON.pool("RESOURCE_PILE", terrain)
-        pool_art = ON.pool("REWARD_PICKUP", terrain)
+        pool_res = DC.pool("RESOURCE_PILE", terrain)
+        pool_art = DC.pool("REWARD_PICKUP", terrain)
         rng = random.Random(self.seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)
         # Pocket tiles are passable (in global_true) and reachable (in global_reach8);
         # some may be approach cells of adjacent gameplay objects (excluded from
@@ -856,7 +857,7 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     hut_zr = eligible[idx_hut]
 
     pool_hut = sorted(
-        (h for h in ON.pool("QUEST_GATE", hut_zr.terrain) if h.type == "seerHut"),
+        (h for h in DC.pool("QUEST_GATE", hut_zr.terrain) if h.type == "seerHut"),
         key=lambda h: h.animation,
     )
     if not pool_hut:
@@ -899,7 +900,7 @@ def _pick_art_zone(
         cand_pool_art = sorted(
             (
                 a
-                for a in ON.pool("REWARD_PICKUP", cand_art_zr.terrain)
+                for a in DC.pool("REWARD_PICKUP", cand_art_zr.terrain)
                 if a.type == "artifact" and a.subtype not in env.used_artifacts
             ),
             key=lambda a: a.animation,

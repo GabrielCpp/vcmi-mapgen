@@ -1,0 +1,320 @@
+"""Catalog queries over the object tables: identity, footprint, terrain coupling, pools.
+
+The catalog is the SINGLE SOURCE OF TRUTH for object identity, footprint mask, terrain coupling
+and decoration category. The whole generation pipeline (tile placement -> .vmap -> rendering)
+draws from these instead of the corpus. `type`/`subtype` in a placement identity come from
+`vcmi.config` (same as the corpus path), so a catalog identity is a drop-in for the old objlib
+identity.
+"""
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+from functools import cache
+
+from vcmi_mapgen.core.model import Identity, Mask
+from vcmi_mapgen.vcmi.catalog.tables import (
+    ARTIFACT_TIERS,
+    CLASS_NAMES,
+    DECOR_NAMES,
+    FACTION,
+    GATE_NAMES,
+    GATE_TYPES,
+    MINE_RES,
+    MONSTER_LEVELS,
+    PURPOSE,
+    RELATIONAL,
+    RESOURCE,
+    SPELL_LEVELS,
+    TERRAIN_COUPLED,
+    TERRAIN_NAMES,
+    ClassInfo,
+    Taxonomy,
+    leaf_meta,
+    taxonomy,
+)
+from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, VcmiConfig
+
+
+@dataclass(frozen=True, slots=True)
+class _Indexes:
+    anim_terrains: dict[str, set[str]]
+    anim_category: dict[str, str]
+    veg_categories: list[str]
+    decor_by_terrain: dict[str, list[str]]
+    gameplay_by_tp: dict[tuple[str, str], list[str]]
+
+
+def cluster_of(purpose: str, name: str | None = None, type_: str | None = None) -> str:
+    """Macro-cluster for an object, from its purpose plus (when QUEST_GATE) its enum name
+    or objlib `type`. Usable from both the enum-name path (resolve) and the objlib-type
+    path (the catalog renderer)."""
+    if purpose == "DECORATION":
+        return "DECORATION"
+    if purpose == "TRANSPORT":
+        return "QUEST_PAIR"
+    if purpose == "QUEST_GATE":
+        if name in GATE_NAMES or type_ in GATE_TYPES:
+            return "GATE"
+        return "QUEST_PAIR"
+    return "VISIBLE"
+
+
+# class ids that are pure visual obstacles (incl. the once-unnamed AB decor classes
+# 177/199/206-211, now named LAKE_2 / TREES_2 / *_HILLS / SUBTERRANEAN_ROCKS / SWAMP_FOLIAGE)
+def _is_decoration(name: str) -> bool:
+    if name.startswith("CLASS_"):  # enum gap -> decorative obstacle
+        return True
+    return name in DECOR_NAMES
+
+
+def name_of(cid: int) -> str:
+    return CLASS_NAMES.get(cid, f"CLASS_{cid}")
+
+
+def resolve(cid: int, subclass: int) -> ClassInfo:
+    name = name_of(cid)
+    # subtype resolution
+    if name in ("RESOURCE", "RANDOM_RESOURCE"):
+        subtype = RESOURCE.get(subclass, str(subclass)) if name == "RESOURCE" else "random"
+    elif name in ("MINE", "ABANDONED_MINE"):
+        subtype = MINE_RES.get(subclass, str(subclass))
+    elif name == "TOWN":
+        subtype = FACTION.get(subclass, str(subclass))
+    elif name == "RANDOM_TOWN":
+        subtype = "random"
+    else:
+        subtype = str(subclass)
+    decor = _is_decoration(name)
+    purpose = "DECORATION" if decor else PURPOSE.get(name, "UNKNOWN")
+    return ClassInfo(
+        name=name,
+        subtype=subtype,
+        purpose=purpose,
+        cluster=cluster_of(purpose, name=name),
+        relational=name in RELATIONAL,
+        relational_key=RELATIONAL.get(name),
+        terrain_coupled=(
+            purpose in ("MINE", "TERRAIN_MODIFIER", "WATER_TRANSPORT")
+            or name in TERRAIN_COUPLED
+            or decor
+        ),
+    )
+
+
+def build_tree() -> Taxonomy:
+    """Return the full CLUSTER->PURPOSE->type->terrain->leaf taxonomy from
+    ``data/ontology/taxonomy.json``."""
+    return taxonomy()
+
+
+def iter_leaves(tree: Taxonomy | None = None) -> Iterator[tuple[str, str, str, str, str, str]]:
+    """Yield (cluster, purpose, type, terrain, leaf_name, animation) for every leaf.
+
+    A terrain node is a sorted list of animation DEFs (leaf name == animation) OR a
+    {leaf_name: animation} dict (colour-keyed quest objects)."""
+    tree = build_tree() if tree is None else tree
+    for cluster, purposes in tree.items():
+        for purpose, types in purposes.items():
+            for typ, terrains in types.items():
+                for terrain, leaves in terrains.items():
+                    if isinstance(leaves, dict):
+                        for name, anim in leaves.items():
+                            yield cluster, purpose, typ, terrain, name, anim
+                    else:
+                        for anim in leaves:
+                            yield cluster, purpose, typ, terrain, anim, anim
+
+
+@cache
+def indexes() -> _Indexes:
+    at: dict[str, set[str]] = {}
+    ac: dict[str, str] = {}
+    dbt: dict[str, set[str]] = {}
+    gbt: dict[tuple[str, str], set[str]] = {}
+    for cluster, purpose, typ, terrain, _name, anim in iter_leaves(taxonomy()):
+        at.setdefault(anim, set()).add(terrain)
+        if cluster == "DECORATION":
+            ac[anim] = typ
+            dbt.setdefault(terrain, set()).add(anim)
+        else:
+            gbt.setdefault((terrain, purpose), set()).add(anim)  # gameplay leaves by purpose
+    return _Indexes(
+        anim_terrains=at,
+        anim_category=ac,
+        veg_categories=sorted(set(ac.values())),
+        decor_by_terrain={t: sorted(a) for t, a in dbt.items()},
+        gameplay_by_tp={k: sorted(a) for k, a in gbt.items()},
+    )
+
+
+def terrain_name(terrain: str | int) -> str:
+    return terrain if isinstance(terrain, str) else TERRAIN_NAMES.get(terrain, "")
+
+
+def has_animation(animation: str) -> bool:
+    """True if the ontology carries placement metadata for this animation (case-insensitive)."""
+    return (animation or "").lower() in leaf_meta()
+
+
+def mask_of(animation: str) -> Mask:
+    """B/A/V footprint rows for an animation (`kit.objects.mask_cells` semantics: rows are
+    stored LEFT-TO-RIGHT, sprite-aligned, so column 0 is the LEFTMOST tile and the anchor is
+    the last column, `tx = ax - (ww - 1 - c)`; case-insensitive), V-padded to the sprite's full
+    tile extent (see :func:`_decode_mask_full`) — the same extent AND column order `.vmap`
+    export uses (see :func:`vmap_mask_of`), so gameplay placement never lands another object
+    (or a guard's own approach) on a tile the sprite visually covers."""
+    m = leaf_meta().get((animation or "").lower())
+    return m.mask if m else ("B",)
+
+
+def vmap_mask_of(animation: str) -> Mask | None:
+    """The VCMI-charset (` 0VBHAT`) template mask for .vmap export (case-insensitive):
+    `mask_of` with 'X' entrance cells translated to VCMI's 'A' (VISIBLE|BLOCKED|VISITABLE) —
+    same column order, no reversal (see :func:`mask_of`); this is the exact charset/order real
+    VCMI RMG `.vmap` templates use (verified byte-for-byte against 30 real sawmill instances).
+    None when the ontology does not know the animation."""
+    m = leaf_meta().get((animation or "").lower())
+    if not m:
+        return None
+    return tuple(r.replace("X", "A") for r in m.mask)
+
+
+def cls_sub_of(animation: str) -> tuple[int, int] | tuple[None, None]:
+    m = leaf_meta().get((animation or "").lower())
+    return (m.cls, m.sub) if m else (None, None)
+
+
+def is_blocking(animation: str) -> bool:
+    """True if the object's footprint blocks movement (its mask has a 'B' or 'X' cell)."""
+    return any(ch in "BX" for row in mask_of(animation) for ch in row)
+
+
+def footprint_size(animation: str) -> int:
+    """Bounding-box area of the footprint (sum of row lengths) — matches the corpus convention."""
+    return sum(len(row) for row in mask_of(animation))
+
+
+_CONFIG: list[VcmiConfig] = [EMPTY_CONFIG]
+
+
+def use_config(config: VcmiConfig) -> None:
+    _CONFIG[0] = config
+
+
+def identity_of(animation: str) -> Identity:
+    """Placement ``Identity`` (type, subtype, animation, mask) for an animation — a drop-in for
+    the corpus objlib identity, sourced entirely from the ontology + objects.txt metadata."""
+    cls, sub = cls_sub_of(animation)
+    r = _CONFIG[0].resolve(cls, sub) if cls is not None and sub is not None else None
+    return Identity(
+        type=r[0] if r else None,
+        subtype=r[1] if r else None,
+        animation=animation,
+        mask=mask_of(animation),
+    )
+
+
+def terrains_of(animation: str) -> set[str]:
+    """Set of terrain-node names an animation appears under in the taxonomy (case-insensitive)."""
+    return set(indexes().anim_terrains.get((animation or "").lower(), ()))
+
+
+def allowed_on(animation: str, terrain: str | int) -> bool:
+    """True if the animation may stand on a terrain. Terrain-specific tags beat the generic
+    'land' tag, which admits any non-water terrain. An animation the ontology does not know is
+    allowed nowhere."""
+    tags = terrains_of(animation)
+    if not tags:
+        return False
+    name = terrain_name(terrain)
+    specific = tags - {"land"}
+    if specific:
+        return name in specific
+    return name not in ("water", "")
+
+
+def terrain_keys(name: str) -> list[str]:
+    """Terrain-node keys to pull DECORATION from for a terrain: the terrain itself plus the
+    terrain-independent 'land'/'water' bucket (generic obstacles usable anywhere)."""
+    keys = [name]
+    if name == "water":
+        keys.append("water")
+    elif name != "rock":
+        keys.append("land")
+    return keys
+
+
+def gameplay_pool(terrain: str | int, purpose: str) -> list[Identity]:
+    """Placement identities for a gameplay PURPOSE (TOWN, MINE, DWELLING, REWARD_PICKUP, …) native
+    to
+    a terrain plus the terrain-independent 'land' bucket. The ontology enumerator used when the
+    corpus
+    grammar's idents for a purpose are thin/absent, so visitables and resources are always
+    placeable.
+    Returns ``Identity`` values (drop-in for corpus idents); zero corpus."""
+    idx = indexes()
+    name = terrain_name(terrain)
+    out: list[Identity] = []
+    seen: set[str] = set()
+    for k in terrain_keys(name):
+        for anim in idx.gameplay_by_tp.get((k, purpose), ()):
+            if anim in seen:
+                continue
+            seen.add(anim)
+            out.append(identity_of(anim))
+    return out
+
+
+def mines_by_resource(terrain: str | int) -> dict[str, list[Identity]]:
+    """``{resource: [identity]}`` for MINE objects placeable on a terrain — the resource bucket
+    (wood,
+    ore, gold, …) is the ontology-resolved subtype (``vcmi.config`` -> :data:`MINE_RES`). Lets
+    a town
+    economy guarantee a wood + ore mine without touching the corpus."""
+    out: dict[str, list[Identity]] = {}
+    for ident in gameplay_pool(terrain, "MINE"):
+        sub = ident.subtype
+        res = str(sub)
+        out.setdefault(res, []).append(ident)
+    return out
+
+
+def spell_level(name: str) -> int | None:
+    """A spell's mage-guild level (1-5), or ``None`` if `name` isn't a real hero-castable
+    spell (a creature-only special ability, or not a recognized VCMI spell identifier)."""
+    return SPELL_LEVELS.get(name)
+
+
+def spells_by_level(level: int) -> list[str]:
+    """Sorted list of spell identifiers at mage-guild `level` (1-5)."""
+    return sorted(n for n, lvl in SPELL_LEVELS.items() if lvl == level)
+
+
+def artifact_tier(name: str) -> str | None:
+    """An artifact's rarity tier ('treasure'/'minor'/'major'/'relic'), or ``None`` if
+    `name` isn't a randomly-obtainable artifact (a war machine, the Spell Book/Scroll,
+    the Grail, or not a recognized VCMI artifact identifier)."""
+    return ARTIFACT_TIERS.get(name)
+
+
+def artifacts_by_tier(tier: str) -> list[str]:
+    """Sorted list of artifact identifiers in rarity `tier`
+    ('treasure'/'minor'/'major'/'relic')."""
+    return sorted(n for n, t in ARTIFACT_TIERS.items() if t == tier)
+
+
+def monster_level(name: str) -> int | None:
+    """A creature's town tier (1-7; 0 for war machines/siege equipment), or ``None`` if
+    `name` isn't a recognized VCMI creature identifier."""
+    return MONSTER_LEVELS.get(name)
+
+
+def monsters_by_level(level: int) -> list[str]:
+    """Sorted list of creature identifiers at town tier `level`."""
+    return sorted(n for n, lvl in MONSTER_LEVELS.items() if lvl == level)
+
+
+def visitable_purposes() -> tuple[str, ...]:
+    """Gameplay purposes that are 'visitable' destinations — the guaranteed-minimum set so a zone is
+    never left with nothing to visit (a regression guard for the group-placement budget)."""
+    return ("MINE", "DWELLING", "STAT_PERMANENT", "SPELL_SKILL", "BONUS_TEMP", "MANA")

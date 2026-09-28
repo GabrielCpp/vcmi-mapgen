@@ -7,13 +7,14 @@ from dataclasses import dataclass
 from functools import partial
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay.mines import load_gameplay
 from vcmi_mapgen.core.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.terrain_lookup import TNAME
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 
@@ -113,7 +114,7 @@ def place_reward_zone(
         return []
 
     n_res = max(4, area // 10) + max(2, area // 25)
-    pool_res = ON.pool("RESOURCE_PILE", terrain)
+    pool_res = DC.pool("RESOURCE_PILE", terrain)
     objs: list[PlacedObject] = []
     val = 0
 

@@ -20,7 +20,6 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.grid.components import STEPS4, components
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
@@ -45,6 +44,7 @@ from vcmi_mapgen.core.steps.gate.gates import (
 )
 from vcmi_mapgen.core.steps.placement import web_dist
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES
+from vcmi_mapgen.vcmi.catalog import decor as DC
 
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3
@@ -441,7 +441,7 @@ class ZoneSite:
             lvl += 1
         _ = self.add_guard(rnd_monster(lvl), approach)
         ex, ey = approach[0], approach[1] - 1
-        seal_pool = ON.decor_pool(
+        seal_pool = DC.decor_pool(
             self.zw.terrain, blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
         )
         if not seal_pool:

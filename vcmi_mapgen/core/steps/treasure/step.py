@@ -9,8 +9,8 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.gated.step import GatedResult
 from vcmi_mapgen.core.steps.treasure.fill import fill_loot_zones
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @final

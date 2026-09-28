@@ -1,17 +1,18 @@
-"""Reliability tests for ontology.py's spell/artifact/monster level-classification
+"""Reliability tests for the catalog's spell/artifact/monster level-classification
 accessors (SPELL_LEVELS/ARTIFACT_TIERS/MONSTER_LEVELS, hand-extracted from H3's own
-SPTRAITS.TXT/ARTRAITS.TXT and VCMI's config/creatures/*.json -- see ontology.py's
-module-level comment for how)."""
+SPTRAITS.TXT/ARTRAITS.TXT and VCMI's config/creatures/*.json -- see vcmi/catalog/tables.py's
+comment above them for how)."""
 
-from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog import tables as TB
 
 
 def test_spell_levels_partition_1_through_5_only() -> None:
     """Every classified spell is level 1-5 -- creature-only abilities (Stone Gaze,
     Paralyze, ...) must never leak in (they'd fail this, being absent from
     SPELL_LEVELS entirely, but assert the invariant on whatever IS present)."""
-    assert ON.SPELL_LEVELS, "fixture assumption broke: no spells loaded"
-    assert all(1 <= lvl <= 5 for lvl in ON.SPELL_LEVELS.values())
+    assert TB.SPELL_LEVELS, "fixture assumption broke: no spells loaded"
+    assert all(1 <= lvl <= 5 for lvl in TB.SPELL_LEVELS.values())
     assert ON.spell_level("stoneGaze") is None, "a creature ability, not a hero spell"
     assert ON.spell_level("paralyze") is None, "a creature ability, not a hero spell"
 
@@ -35,8 +36,8 @@ def test_spells_by_level_returns_sorted_unique_list() -> None:
 
 
 def test_artifact_tiers_are_the_four_rarity_names_only() -> None:
-    assert ON.ARTIFACT_TIERS, "fixture assumption broke: no artifacts loaded"
-    assert set(ON.ARTIFACT_TIERS.values()) == {"treasure", "minor", "major", "relic"}
+    assert TB.ARTIFACT_TIERS, "fixture assumption broke: no artifacts loaded"
+    assert set(TB.ARTIFACT_TIERS.values()) == {"treasure", "minor", "major", "relic"}
 
 
 def test_artifact_tier_excludes_non_random_artifacts() -> None:
@@ -52,7 +53,7 @@ def test_artifact_tier_matches_known_h3_examples() -> None:
 
 
 def test_monster_levels_cover_the_classic_1_to_7_town_tiers() -> None:
-    assert ON.MONSTER_LEVELS, "fixture assumption broke: no creatures loaded"
+    assert TB.MONSTER_LEVELS, "fixture assumption broke: no creatures loaded"
     for level in range(1, 8):
         names = ON.monsters_by_level(level)
         assert names, f"expected at least one creature at level {level}"

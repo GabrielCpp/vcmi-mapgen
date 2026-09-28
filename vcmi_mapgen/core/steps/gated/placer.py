@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from operator import itemgetter
 from typing import Self, final
 
-from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells
@@ -20,6 +19,8 @@ from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.steps.treasure.fill import LOOT_EXCL_DECOR
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.catalog import decor as DC
+from vcmi_mapgen.vcmi.catalog import objects as ON
 
 LOOT_ZONE_MAX_TILES = 60
 _LOOT_COLORS = [(f"avxbgt{i}0", f"avxkey{i}0") for i in range(8)]
@@ -557,7 +558,7 @@ class GatedPlacer:
     def _decor_pool(self, terrain: str) -> list[Identity]:
         if terrain not in self._decor:
             self._decor[terrain] = list(
-                ON.decor_pool(terrain, blocking=True, max_cells=1, exclude_types=LOOT_EXCL_DECOR)
+                DC.decor_pool(terrain, blocking=True, max_cells=1, exclude_types=LOOT_EXCL_DECOR)
             )
         return self._decor[terrain]
 

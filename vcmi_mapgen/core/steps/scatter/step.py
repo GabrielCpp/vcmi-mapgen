@@ -11,8 +11,8 @@ from vcmi_mapgen.core.steps.placement import guard_zoc
 from vcmi_mapgen.core.steps.scatter import scatter as SC
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 class ScatterStep(PipelineStep):

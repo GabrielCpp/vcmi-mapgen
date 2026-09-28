@@ -6,7 +6,7 @@ from vcmi_mapgen.cli.steps import build_steps
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.corpus.match import bucket_report, corpus_tally, generated_tally, measure_report
-from vcmi_mapgen.ontology import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 def generate(seed: int, size: int, subterrain: bool) -> MapState:
