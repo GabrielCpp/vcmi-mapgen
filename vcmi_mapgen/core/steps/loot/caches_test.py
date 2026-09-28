@@ -7,6 +7,7 @@ import pytest
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import find_pockets
+from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -45,12 +46,12 @@ def test_pickup_layer_legal_and_deterministic(catalog: Catalog) -> None:
     if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
-    zones = {1: _zone(ts)}
+    label = label_zones({1: _zone(ts)})
     # synthetic open field with a sealed-off pocket-ish structure: a web cross + nooks
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     open_set = set(ts)
-    o1 = _pickups(catalog, ScatterZone(ts, zones, 1, "grass", open_set, prot), seed=6)
-    o2 = _pickups(catalog, ScatterZone(ts, zones, 1, "grass", open_set, prot), seed=6)
+    o1 = _pickups(catalog, ScatterZone(ts, label, 1, "grass", open_set, prot), seed=6)
+    o2 = _pickups(catalog, ScatterZone(ts, label, 1, "grass", open_set, prot), seed=6)
     assert o1 == o2, "pickup layer must be seed-deterministic"
     assert o1, "a 720-tile grass zone should hold pickups"
 
@@ -175,11 +176,11 @@ def test_scatter_places_resource_piles(catalog: Catalog) -> None:
     if not os.path.exists(STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
-    zones = {1: _zone(ts)}
+    label = label_zones({1: _zone(ts)})
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     piles: list[PlacedObject] = []
     for seed in range(1, 10):
-        objs = _pickups(catalog, ScatterZone(ts, zones, 1, "grass", set(ts), prot), seed=seed)
+        objs = _pickups(catalog, ScatterZone(ts, label, 1, "grass", set(ts), prot), seed=seed)
         piles += [o for o in objs if o.purpose == Purpose.RESOURCE_PILE]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"

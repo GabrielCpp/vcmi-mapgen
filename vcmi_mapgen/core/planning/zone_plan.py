@@ -15,7 +15,8 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import STEPS4
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
-from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.grid.segment import ZoneLabel
+from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspace
 from vcmi_mapgen.core.placement import footprint as FP
@@ -27,6 +28,7 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.gameplay import mines as MN
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
 from vcmi_mapgen.core.steps.gameplay import water as WT
+from vcmi_mapgen.core.steps.segment.step import Segmentation
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.corpus.gameplay import load_gameplay
@@ -188,6 +190,7 @@ def populate_water(
 class _LevelPlan:
     catalog: Catalog
     zones: Mapping[int, Zone]
+    zone_label: ZoneLabel
     tunnel_protect: AbstractSet[Tile]
     gstats: Mapping[str, TerrainStats]
 
@@ -196,7 +199,7 @@ class _LevelPlan:
 class _ZonePlanner:
     def __init__(self, lp: _LevelPlan) -> None:
         self.lp = lp
-        self.entrance_plan = plan_entrances(lp.zones)
+        self.entrance_plan = plan_entrances(lp.zone_label)
         self.rim_all = _rim8(lp.zones)
         self.ridge: set[Tile] = set()
 
@@ -210,7 +213,7 @@ class _ZonePlanner:
         rim8 = self.rim_all & ts
         self.ridge |= rim8 - ent_bands
         prot = PP.protected_web(
-            PP.ZoneRef(ts, lp.zones, zid),
+            PP.ZoneRef(ts, lp.zone_label, zid, z.centroid),
             edge_dist(ts),
             seedt,
             PP.WebOptions(
@@ -322,18 +325,19 @@ def plan_player_zones(
 def plan_zones(
     catalog: Catalog,
     workspace: PlacementWorkspace,
-    map_state: MapState,
+    segmentation: Segmentation,
     terrain: TerrainGrids,
     seed: int,
 ) -> None:
     """Fill ``workspace`` with one ``LevelWorkspace`` per terrain level. The surface level
     also holds its planned sea objects and the shipyard landings kept open for them."""
     for level in sorted(terrain.grids):
-        zones = map_state.zones[level]
+        zones = segmentation.zones[level]
         planner = _ZonePlanner(
             _LevelPlan(
                 catalog,
                 zones,
+                segmentation.zone_label[level],
                 terrain.tunnel_protect if level == 1 else NO_TILES,
                 load_gameplay(level=level),
             )

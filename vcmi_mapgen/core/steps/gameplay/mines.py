@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
-from vcmi_mapgen.core.grid.segment import segment_level
+from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import PICKUP_PURPOSES, VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -116,7 +116,7 @@ class _CorpusLevel:
     catalog: Catalog
     fm: MapState
     level: int
-    zones: Mapping[int, Zone]
+    zone_label: ZoneLabel
     guards: AbstractSet[Tile]
 
 
@@ -183,9 +183,9 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
     ts = set(z.tiles_set)
     a.tiles += len(ts)
     ed = edge_dist(ts)
-    fronts = zone_fronts(ts, cl.zones, zid)
+    fronts = zone_fronts(ts, cl.zone_label, zid)
     front_union = set[Tile]().union(*fronts.values()) if fronts else set[Tile]()
-    gd = gate_dist(ts, front_union or zone_gates(ts, cl.zones, zid))
+    gd = gate_dist(ts, front_union or zone_gates(ts, cl.zone_label, zid))
     zone_objs = [o for o in cl.fm.objs if o.level == cl.level and (o.x, o.y) in ts]
     veg_blocked, all_blocked = _zone_blocked(cl.catalog, zone_objs, ts)
     a.border_tiles += len(front_union)
@@ -204,10 +204,10 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
 def _accumulate_map(
     catalog: Catalog, acc: dict[str, _TerrainAcc], fm: MapState, level: int
 ) -> None:
-    zones, _zl, _ = segment_level(fm.cells[level])
+    zones, zone_label, _ = segment_level(fm.cells[level])
     guards = {(o.x, o.y) for o in fm.objs if o.level == level and o.purpose == Purpose.GUARD}
     _accumulate_water(acc["water"], fm, level)
-    cl = _CorpusLevel(catalog, fm, level, zones, guards)
+    cl = _CorpusLevel(catalog, fm, level, zone_label, guards)
     for zid, z in zones.items():
         terr = catalog.terrain_name(z.terrain_type)
         if terr not in acc or z.area < MIN_AREA_STATS:

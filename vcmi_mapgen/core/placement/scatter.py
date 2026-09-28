@@ -5,13 +5,14 @@ real chokepoint, never beside loot that sits in open terrain and can be walked a
 """
 
 import random
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
-from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.grid.segment import ZoneLabel
+from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import PICKUP_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.intensity import (
     Covariates,
@@ -39,7 +40,7 @@ _NO_AVOID: frozenset[Tile] = frozenset()
 @dataclass(frozen=True, slots=True)
 class ScatterZone:
     ts: AbstractSet[Tile]
-    zones: Mapping[int, Zone]
+    zone_label: ZoneLabel
     zid: int
     terrain: str
     open_set: AbstractSet[Tile]
@@ -67,10 +68,11 @@ def _stoch(rng: random.Random, x: float, cap: int) -> int:
 
 def _scatter_gate_dist(zone: ScatterZone, st: TerrainStats) -> dict[Tile, int]:
     if zone.entrances is not None:  # isolation plan: gd measures from the
-        bands = [(r, b) for r, b, _o in zone.entrances]  # planned narrow crossings
+        bands = [b for _r, b, _o in zone.entrances]  # planned narrow crossings
     else:
-        bands = zone_gate_bands(zone.ts, zone.zones, zone.zid, open_frac=st.border_open_frac)
-    return gate_dist(zone.ts, set[Tile]().union(*(b for _r, b in bands)) if bands else set())
+        gates = zone_gate_bands(zone.ts, zone.zone_label, zone.zid, open_frac=st.border_open_frac)
+        bands = [g.band for g in gates]
+    return gate_dist(zone.ts, set[Tile]().union(*bands) if bands else set())
 
 
 def place_scatter(

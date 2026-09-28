@@ -18,6 +18,7 @@ from vcmi_mapgen.core.pipeline import (
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning import zone_plan as ZPL
+from vcmi_mapgen.core.steps.segment.step import Segmentation
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
@@ -64,7 +65,7 @@ class VegetationStep(PipelineStep):
         players  Number of player zones whose town spot stays clear of trees.
 
     Reads ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx):
-    ``TerrainGrids`` and the ``PlacementWorkspace``, created here and filled by
+    ``TerrainGrids``, ``Segmentation`` and the ``PlacementWorkspace``, created here and filled by
     ``zone_plan.plan_zones`` and ``zone_plan.plan_player_zones`` before any tree grows; each
     zone's ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/``approaches``/
     ``gobjs``/``rim8``/``ent_bands``/``town_clear``/``town_blk``, and this step writes
@@ -83,6 +84,7 @@ class VegetationStep(PipelineStep):
         self._ctx: ProviderRegistry = ProviderRegistry()
         self._workspace: PlacementWorkspace | None = None
         self._terrain: TerrainGrids = TerrainGrids()
+        self._segmentation: Segmentation = Segmentation({}, {})
         self._tunnel_protect: frozenset[Tile] = frozenset()
 
     @override
@@ -90,13 +92,14 @@ class VegetationStep(PipelineStep):
         self._ctx = ctx
         self._workspace = ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)
         self._terrain = ctx.require(TerrainGrids)
+        self._segmentation = ctx.require(Segmentation)
         self._tunnel_protect = self._terrain.tunnel_protect
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         if self._workspace is None:
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
-        ZPL.plan_zones(catalog, self._workspace, map_state, self._terrain, self.seed)
+        ZPL.plan_zones(catalog, self._workspace, self._segmentation, self._terrain, self.seed)
         ZPL.plan_player_zones(
             catalog, self._workspace, map_state.zones, self._terrain.tunnel_protect, self.players
         )
@@ -131,7 +134,7 @@ class VegetationStep(PipelineStep):
                 # as a ~2-thick ridge.
                 border = frozenset(zw.rim8 - zw.ent_bands - forbid)
                 zobjs, blocked, _ = PP.sample_zone(
-                    PP.ZoneRef(ts, zones, zid),
+                    PP.ZoneRef(ts, self._segmentation.zone_label[level], zid, zones[zid].centroid),
                     model,
                     seed=self.seed,
                     opts=PP.SampleOptions(

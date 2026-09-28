@@ -1,6 +1,7 @@
 """Reliability tests for the entrance guards BorderStep places."""
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -25,7 +26,7 @@ def _field(skip: frozenset[int] | None = None) -> tuple[EntranceField, set[Tile]
     ts1 = {(x, y) for x in range(14) for y in range(12)}
     ts2 = {(x, y) for x in range(14, 28) for y in range(12)}
     zones = {1: _zone(ts1, 6.5, 5.5), 2: _zone(ts2, 20.5, 5.5)}
-    plan = plan_entrances(zones)
+    plan = plan_entrances(label_zones(zones))
     crossing = {t for zid in plan for r, b, _o in plan[zid] for t in b | {r}}
     field = EntranceField(
         plan=plan,

@@ -1,6 +1,7 @@
 """Reliability tests for the border plan (vegetation) and the border guards (border)."""
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.guards import guard_spaced
@@ -39,7 +40,7 @@ def test_border_plan_closes_or_guards(catalog: Catalog) -> None:
     control. An unguardable and unsealable free crossing must not survive."""
     zones, ts1, ts2 = _zones()
     grid = [[GRASS] * S for _ in range(S)]
-    plan = plan_entrances(zones)
+    plan = plan_entrances(label_zones(zones))
     bands: set[Tile] = set()
     for ents in plan.values():
         for _r, b, _o in ents:

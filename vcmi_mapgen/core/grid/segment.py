@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import collections
 import math
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping, Sequence
 
 import numpy as np
 import numpy.typing as npt
@@ -24,6 +24,8 @@ from vcmi_mapgen.core.model import Cell, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 
 DIM_STATIC = 32  # feature vector length (see compute_static_features docstring)
+
+type ZoneLabel = Sequence[Sequence[int]]
 
 
 # ---------------------------------------------------------------------------
@@ -397,3 +399,15 @@ def segment_level(
     feats = _compute_static_features(lvl, zones, zone_label)
     canon = _canonical_coords(zones, feats[:, :, 20])
     return zones, zone_label, canon
+
+
+def label_zones(zones: Mapping[int, Zone]) -> list[list[int]]:
+    """The zone label grid of hand-built zones, sized to their tiles, -1 off every zone."""
+    tiles = [t for z in zones.values() for t in z.tiles_set]
+    w = max((x for x, _ in tiles), default=-1) + 1
+    h = max((y for _, y in tiles), default=-1) + 1
+    grid = [[-1] * w for _ in range(h)]
+    for zid, z in zones.items():
+        for x, y in z.tiles_set:
+            grid[y][x] = zid
+    return grid

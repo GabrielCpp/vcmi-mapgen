@@ -6,6 +6,7 @@ steps.
 
 ## Map
 
-- `entrances.py`: each zone's fronts, gate bands and planned entrances.
+- `entrances.py`: each zone's fronts, its `Gate` values and the planned entrances. Every
+  function reads the zone label grid, never the zones dict.
 - `zone_plan.py`: each zone's entrances, walkable web and sea plan, and the player zones with the room kept for their town. `VegetationStep` builds it first.
 - `zone_index.py`: `ZoneRecord`, one zone's tiles, reach and used cells, and the per-level zone records and walk targets the placement steps after vegetation share. Every `ZoneRecord` is built here.

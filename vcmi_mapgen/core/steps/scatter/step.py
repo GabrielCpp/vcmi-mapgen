@@ -13,6 +13,7 @@ from vcmi_mapgen.core.placement import scatter as SC
 from vcmi_mapgen.core.placement.guards import guard_zoc
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
+from vcmi_mapgen.core.steps.segment.step import Segmentation
 
 
 class ScatterStep(PipelineStep):
@@ -24,7 +25,8 @@ class ScatterStep(PipelineStep):
         seed       RNG seed.
         size       Map side length in tiles (square).
 
-    inject(ctx): ``ZoneIndex`` (zone records), the shared ``PlacementWorkspace``.
+    inject(ctx): ``ZoneIndex`` (zone records), ``Segmentation`` (the zone label grid), the
+    shared ``PlacementWorkspace``.
 
     Produces: appends the piles to ``map_state.objs``.
     """
@@ -35,11 +37,13 @@ class ScatterStep(PipelineStep):
         self.objs: list[PlacedObject] = []
         self._zones: ZoneIndex = ZoneIndex()
         self._workspace: PlacementWorkspace = PlacementWorkspace()
+        self._segmentation: Segmentation = Segmentation({}, {})
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._zones = ctx.require(ZoneIndex)
         self._workspace = ctx.require(PlacementWorkspace)
+        self._segmentation = ctx.require(Segmentation)
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -67,7 +71,7 @@ class ScatterStep(PipelineStep):
                     catalog,
                     SC.ScatterZone(
                         zw.ts,
-                        map_state.zones[level],
+                        self._segmentation.zone_label[level],
                         zr.zid,
                         zw.terrain,
                         zw.open_set - (zw.rim8 - zw.ent_bands),

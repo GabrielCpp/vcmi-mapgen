@@ -15,8 +15,8 @@ from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen.core.grid.geometry import edge_dist
-from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
+from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import COUNTED
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
@@ -82,13 +82,15 @@ def _window(e: Tile, open_tiles: set[Tile]) -> int:
     )
 
 
+def _zone_gate_dist(ts: set[Tile], zone_label: ZoneLabel, zid: int) -> dict[Tile, int]:
+    fronts = [t for front in zone_fronts(ts, zone_label, zid).values() for t in front]
+    return gate_dist(ts, fronts or zone_gates(ts, zone_label, zid))
+
+
 def _measure_zone(
-    tally: Tally, fld: _Field, zones: Mapping[int, Zone], zid: int, objs: Sequence[PlacedObject]
+    tally: Tally, fld: _Field, ts: set[Tile], gd: Mapping[Tile, int], objs: Sequence[PlacedObject]
 ) -> None:
-    ts = set(zones[zid].tiles_set)
-    fronts = [t for front in zone_fronts(ts, zones, zid).values() for t in front]
     ed = edge_dist(ts)
-    gd = gate_dist(ts, fronts or zone_gates(ts, zones, zid))
     open_tiles = ts - fld.veg
     for o in objs:
         e = _entrance(o)
@@ -119,7 +121,8 @@ def measure_level(
             continue
         tally.zones[z.area].append(len(by_zone[zid]))
         if by_zone[zid]:
-            _measure_zone(tally, fld, zones, zid, by_zone[zid])
+            ts = set(z.tiles_set)
+            _measure_zone(tally, fld, ts, _zone_gate_dist(ts, label, zid), by_zone[zid])
 
 
 def corpus_tally() -> Tally:

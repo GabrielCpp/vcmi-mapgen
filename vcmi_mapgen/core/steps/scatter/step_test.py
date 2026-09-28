@@ -6,6 +6,7 @@ import io
 from typing import final
 
 from vcmi_mapgen.core.catalog import ObjectSpec
+from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -17,6 +18,7 @@ from vcmi_mapgen.core.pipeline import (
 )
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps import ScatterStep
+from vcmi_mapgen.core.steps.segment.step import Segmentation
 
 PILE = Identity("fakePile", "gold", "fake_pile", Footprint.one(Role.VISIT))
 
@@ -86,6 +88,7 @@ def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
     ctx.provide(
         ZoneIndex(zone_records={0: [ZoneRecord(1, "grass", ts, set(ts), set(ts), set(ts))]})
     )
+    ctx.provide(Segmentation({0: {1: zone}}, {0: label_zones({1: zone})}))
     map_state = MapState(size=30, zones={0: {1: zone}})
     catalog = FakeCatalog()
     step = ScatterStep(seed=3, size=30)

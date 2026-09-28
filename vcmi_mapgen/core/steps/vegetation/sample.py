@@ -44,9 +44,10 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
-from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.grid.segment import ZoneLabel
+from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.planning.entrances import zone_fronts, zone_gate_bands
+from vcmi_mapgen.core.planning.entrances import Gate, zone_fronts, zone_gate_bands
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
@@ -165,8 +166,9 @@ def _band_component(rep: Tile, band: AbstractSet[Tile]) -> set[Tile]:
 @dataclass(frozen=True, slots=True)
 class ZoneRef:
     ts: AbstractSet[Tile]
-    zones: Mapping[int, Zone]
+    zone_label: ZoneLabel
     zid: int
+    centroid: tuple[float, float]
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,27 +207,27 @@ def protected_web(
     rim: every tile with an 8-neighbour in another zone) further restricts backbone
     ROUTING in that mode — a web corridor pinned to the rim would both hold the ridge open
     and be unsealable by `pp_map.seal_zone_borders`."""
-    ts, zones, zid = zone.ts, zone.zones, zone.zid
+    ts, zone_label, zid = zone.ts, zone.zone_label, zone.zid
     avoid, keep_off, entrances = opts.avoid, opts.keep_off, opts.entrances
     ts_free = ts - set(avoid)
     if seedt not in ts_free:
         seedt = min(ts_free, key=lambda t: (t[0] - seedt[0]) ** 2 + (t[1] - seedt[1]) ** 2)
-    gate_bands: list[tuple[Tile, frozenset[Tile]]]
+    gate_bands: list[Gate]
     if entrances is not None:
-        gate_bands = [(rep, band) for rep, band, _other in entrances]
+        gate_bands = [Gate(rep, band) for rep, band, _other in entrances]
         # keep the backbone OFF the non-entrance front/rim: a path hugging the border would
         # hold a protected walkable lane exactly where the border bias is trying to grow
         # the isolation ridge. Entrance bands stay in the routing domain (a rep is reached
         # through its own band); fall back to the full zone if a node is only reachable
         # along the front.
-        fronts = zone_fronts(ts, zones, zid)
+        fronts = zone_fronts(ts, zone_label, zid)
         front = {t for tiles in fronts.values() for t in tiles}
-        band_all = {t for _r, b in gate_bands for t in b}
+        band_all = {t for g in gate_bands for t in g.band}
         path_ts = ts_free - ((front | set(keep_off)) - band_all)
     else:
-        gate_bands = zone_gate_bands(ts, zones, zid, open_frac=opts.open_frac)
+        gate_bands = zone_gate_bands(ts, zone_label, zid, open_frac=opts.open_frac)
         path_ts = ts_free
-    gates = [r for r, _b in gate_bands]
+    gates = [g.rep for g in gate_bands]
     interior = [t for t in ts_free if edist.get(t, 0) >= 2] or list(ts_free)
     nodes = farthest_points(ts_free, seedt, opts.spacing, cand=interior)
     for g in list(gates) + [n for n in opts.extra_nodes if n in ts_free]:
@@ -251,8 +253,8 @@ def protected_web(
         prot.update(path)
         connected.append(best_r)
         remaining.remove(best_r)
-    for rep, band in gate_bands:
-        prot.update(_band_component(rep, band & ts_free))
+    for g in gate_bands:
+        prot.update(_band_component(g.rep, g.band & ts_free))
     return prot - set(avoid)
 
 
@@ -334,7 +336,7 @@ class _ZoneSampler:
         edist = edge_dist(ts)
         self.eb = self._edge_bins(ts, edist)
 
-        cx, cy = zone.zones[zone.zid].centroid
+        cx, cy = zone.centroid
         seedt = min(ts, key=lambda t: (t[0] - round(cx)) ** 2 + (t[1] - round(cy)) ** 2)
         prot = opts.prot
         if prot is None:

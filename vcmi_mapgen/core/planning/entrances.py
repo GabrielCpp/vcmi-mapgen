@@ -2,91 +2,120 @@
 Shared by the gameplay, gated and vegetation steps' entrance and backbone logic."""
 
 import collections
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable
+from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.geometry import NB4
-from vcmi_mapgen.core.model import Entrance, Tile, Zone
+from vcmi_mapgen.core.grid.segment import ZoneLabel
+from vcmi_mapgen.core.model import Entrance, Tile
 
 ENTRANCE_W = 3  # entrance band width in front tiles per side (hero + guard fit through)
 LONG_FRONT = 20  # a zone-pair front at least this long earns a second entrance
 MAX_ENTRANCES = 2  # "a few" — hard cap on planned crossings per zone pair
 MIN_ENTRANCE_SEP = 12  # Chebyshev floor between two entrances of the same pair
+OPEN_FRAC = 0.5
+MIN_W = 3
 
 
-def zone_fronts(ts: Iterable[Tile], zones: Mapping[int, Zone], zid: int) -> dict[int, list[Tile]]:
+@dataclass(frozen=True, slots=True)
+class Gate:
+    """A passage through a zone's rim: `rep` is its one representative tile and `band` the
+    front tiles kept open around it."""
+
+    rep: Tile
+    band: frozenset[Tile]
+
+
+def _label_at(zone_label: ZoneLabel, x: int, y: int) -> int:
+    if 0 <= y < len(zone_label) and 0 <= x < len(zone_label[y]):
+        return zone_label[y][x]
+    return -1
+
+
+def zone_fronts(ts: Iterable[Tile], zone_label: ZoneLabel, zid: int) -> dict[int, list[Tile]]:
     """Full contact FRONTS: {neighbour zid: [zone tiles 4-touching that neighbour]}. The complete
     per-pair border segment — `zone_gates` collapses each front to one tile; `zone_gate_bands`
     keeps a corpus-wide band of it."""
-    owner: dict[Tile, int] = {}
-    for zz, z in zones.items():
-        for t in z.tiles_set:
-            owner[t] = zz
     contacts: collections.defaultdict[int, list[Tile]] = collections.defaultdict(list)
     for x, y in ts:
         for dx, dy in NB4:
-            o = owner.get((x + dx, y + dy))
-            if o is not None and o != zid:
+            o = _label_at(zone_label, x + dx, y + dy)
+            if o >= 0 and o != zid:
                 contacts[o].append((x, y))
     return contacts
 
 
-def zone_gate_bands(
-    ts: Collection[Tile],
-    zones: Mapping[int, Zone],
-    zid: int,
-    open_frac: float = 0.5,
-    min_w: int = 3,
-) -> list[tuple[Tile, frozenset[Tile]]]:
-    """Wide gates — corpus zone 'gates' are broad terrain borders, not 1-tile corridors.
+def _front_gate(tiles: list[Tile], open_frac: float, min_w: int) -> Gate:
+    mx = sum(t[0] for t in tiles) / len(tiles)
+    my = sum(t[1] for t in tiles) / len(tiles)
+    front = set(tiles)
+    rep = min(front, key=lambda t: (t[0] - mx) ** 2 + (t[1] - my) ** 2)
+    k = min(len(front), max(min_w, round(open_frac * len(front))))
+    band = sorted(front, key=lambda t: (max(abs(t[0] - rep[0]), abs(t[1] - rep[1])), t))[:k]
+    return Gate(rep, frozenset(band))
 
-    Returns [(rep, band)] per neighbouring zone: `rep` is the single representative tile
-    (identical to `zone_gates`) and `band` is a frozenset of contact-front tiles around it —
-    the corpus-like OPEN share of the front (`open_frac` = fraction of corpus zone-border
-    tiles left passable, mined per terrain), never fewer than `min_w` tiles. The protected
-    web keeps the whole band vegetation-free, so the border stays as open as real maps.
-    Isolated pockets get the synthesized antipodal pair with a small border band each."""
-    contacts = zone_fronts(ts, zones, zid)
-    out: list[tuple[Tile, frozenset[Tile]]] = []
-    for o in sorted(contacts):
-        tiles = contacts[o]
-        mx = sum(t[0] for t in tiles) / len(tiles)
-        my = sum(t[1] for t in tiles) / len(tiles)
-        rep = min(set(tiles), key=lambda t: (t[0] - mx) ** 2 + (t[1] - my) ** 2)
-        k = min(len(set(tiles)), max(min_w, round(open_frac * len(set(tiles)))))
-        band = sorted(set(tiles), key=lambda t: (max(abs(t[0] - rep[0]), abs(t[1] - rep[1])), t))[
-            :k
-        ]
-        out.append((rep, frozenset(band)))
-    if len(out) < 2:
-        border = [t for t in ts if any((t[0] + dx, t[1] + dy) not in ts for dx, dy in NB4)]
-        if border:
-            mx = sum(x for x, _ in ts) / len(ts)
-            my = sum(y for _, y in ts) / len(ts)
-            a = max(border, key=lambda t: (t[0] - mx) ** 2 + (t[1] - my) ** 2)
-            b = max(border, key=lambda t: (t[0] - a[0]) ** 2 + (t[1] - a[1]) ** 2)
-            reps = {r for r, _band in out}
-            for g in (a, b):
-                if g not in reps:
-                    band = frozenset(
-                        t for t in border if max(abs(t[0] - g[0]), abs(t[1] - g[1])) <= min_w // 2
-                    )
-                    out.append((g, band | {g}))
+
+def _antipodal_gates(ts: Collection[Tile], reps: Collection[Tile], min_w: int) -> list[Gate]:
+    border = [t for t in ts if any((t[0] + dx, t[1] + dy) not in ts for dx, dy in NB4)]
+    if not border:
+        return []
+    # farthest-apart border pair: farthest from centroid -> a, then farthest from a -> b
+    mx = sum(x for x, _ in ts) / len(ts)
+    my = sum(y for _, y in ts) / len(ts)
+    a = max(border, key=lambda t: (t[0] - mx) ** 2 + (t[1] - my) ** 2)
+    b = max(border, key=lambda t: (t[0] - a[0]) ** 2 + (t[1] - a[1]) ** 2)
+    out: list[Gate] = []
+    for g in (a, b):
+        if g not in reps and all(g != o.rep for o in out):
+            band = frozenset(
+                t for t in border if max(abs(t[0] - g[0]), abs(t[1] - g[1])) <= min_w // 2
+            )
+            out.append(Gate(g, band | {g}))
     return out
 
 
-def _pair_fronts(zones: Mapping[int, Zone]) -> collections.defaultdict[tuple[int, int], set[Tile]]:
-    owner: dict[Tile, int] = {}
-    for zz, z in zones.items():
-        for t in z.tiles_set:
-            owner[t] = zz
+def _zone_gates(
+    ts: Collection[Tile], zone_label: ZoneLabel, zid: int, open_frac: float, min_w: int
+) -> tuple[dict[int, Gate], list[Gate]]:
+    contacts = zone_fronts(ts, zone_label, zid)
+    fronts = {o: _front_gate(tiles, open_frac, min_w) for o, tiles in contacts.items()}
+    if len(fronts) >= 2:
+        return fronts, []
+    return fronts, _antipodal_gates(ts, {g.rep for g in fronts.values()}, min_w)
+
+
+def zone_gate_bands(
+    ts: Collection[Tile],
+    zone_label: ZoneLabel,
+    zid: int,
+    open_frac: float = OPEN_FRAC,
+    min_w: int = MIN_W,
+) -> list[Gate]:
+    """Wide gates — corpus zone 'gates' are broad terrain borders, not 1-tile corridors.
+
+    Returns one `Gate` per neighbouring zone, in zone-id order: `rep` is the single
+    representative tile (identical to `zone_gates`) and `band` is the contact-front tiles
+    around it — the corpus-like OPEN share of the front (`open_frac` = fraction of corpus
+    zone-border tiles left passable, mined per terrain), never fewer than `min_w` tiles. The
+    protected web keeps the whole band vegetation-free, so the border stays as open as real
+    maps. Isolated pockets get the synthesized antipodal pair with a small border band each.
+    The defaults `OPEN_FRAC` and `MIN_W` are hardcoded, not mined."""
+    fronts, extra = _zone_gates(ts, zone_label, zid, open_frac, min_w)
+    return [fronts[o] for o in sorted(fronts)] + extra
+
+
+def _pair_fronts(zone_label: ZoneLabel) -> collections.defaultdict[tuple[int, int], set[Tile]]:
     fronts: collections.defaultdict[tuple[int, int], set[Tile]] = collections.defaultdict(
         set
     )  # ordered pair (a, b) -> a-side tiles
-    for t, zz in owner.items():
-        for dx, dy in NB4:
-            o = owner.get((t[0] + dx, t[1] + dy))
-            if o is not None and o != zz:
-                fronts[(zz, o)].add(t)
+    for y, row in enumerate(zone_label):
+        for x, zz in enumerate(row):
+            if zz < 0:
+                continue
+            for dx, dy in NB4:
+                o = _label_at(zone_label, x + dx, y + dy)
+                if o >= 0 and o != zz:
+                    fronts[(zz, o)].add((x, y))
     return fronts
 
 
@@ -107,7 +136,7 @@ def _pair_reps(
 
 
 def plan_entrances(
-    zones: Mapping[int, Zone],
+    zone_label: ZoneLabel,
     entrance_w: int = ENTRANCE_W,
     long_front: int = LONG_FRONT,
     max_entrances: int = MAX_ENTRANCES,
@@ -127,12 +156,13 @@ def plan_entrances(
       - each side's band = the `entrance_w` front tiles nearest its rep (protected from
         vegetation, so the crossing is guaranteed at least that wide).
 
-    Returns {zid: [(rep, frozenset(band), other_zid), ...]} — the (rep, band) pairs are
-    drop-in for every `zone_gate_bands` consumer. Pure geometry, rng-free, deterministic
-    (all argmin/argmax tie-break on the tile tuple)."""
-    fronts = _pair_fronts(zones)
+    Returns {zid: [(rep, frozenset(band), other_zid), ...]} for every zone id in
+    `zone_label`. Pure geometry, rng-free, deterministic (all argmin/argmax tie-break on the
+    tile tuple)."""
+    fronts = _pair_fronts(zone_label)
 
-    out: dict[int, list[Entrance]] = {zid: [] for zid in zones}
+    zids = sorted({zz for row in zone_label for zz in row if zz >= 0})
+    out: dict[int, list[Entrance]] = {zid: [] for zid in zids}
     for a, b in sorted(fronts):
         if a >= b:
             continue  # each unordered pair planned once
@@ -157,31 +187,16 @@ def plan_entrances(
     return out
 
 
-def zone_gates(ts: Collection[Tile], zones: Mapping[int, Zone], zid: int) -> list[Tile]:
+def zone_gates(ts: Collection[Tile], zone_label: ZoneLabel, zid: int) -> list[Tile]:
     """Passages (gates) through the rim belt -- the user's 'input and exit must correspond' rule.
 
     A blocked forest belt rings the zone, but a zone is not a sealed pocket: where it borders a
     DIFFERENT land zone there is a pass, and crucially an entry on one edge implies an exit on the
     far edge so the zone is TRAVERSABLE end-to-end (you can come in one side and leave the other).
-    We return one representative tile per neighbouring zone (the centre of each contact segment).
-    If the zone has fewer than two such neighbours (an isolated pocket), we synthesise an antipodal
-    pair -- the two border tiles that are farthest apart -- so there is always a through-route. The
-    spanning backbone then routes a corridor to every gate, punching the belt open exactly there."""
-    contacts = zone_fronts(ts, zones, zid)
-    gates: list[Tile] = []
-    for tiles in contacts.values():
-        mx = sum(t[0] for t in tiles) / len(tiles)
-        my = sum(t[1] for t in tiles) / len(tiles)
-        gates.append(min(set(tiles), key=lambda t: (t[0] - mx) ** 2 + (t[1] - my) ** 2))
-    if len(gates) < 2:
-        border = [t for t in ts if any((t[0] + dx, t[1] + dy) not in ts for dx, dy in NB4)]
-        if border:
-            # farthest-apart border pair: farthest from centroid -> a, then farthest from a -> b
-            mx = sum(x for x, _ in ts) / len(ts)
-            my = sum(y for _, y in ts) / len(ts)
-            a = max(border, key=lambda t: (t[0] - mx) ** 2 + (t[1] - my) ** 2)
-            b = max(border, key=lambda t: (t[0] - a[0]) ** 2 + (t[1] - a[1]) ** 2)
-            for g in (a, b):
-                if g not in gates:
-                    gates.append(g)
-    return gates
+    We return one representative tile per neighbouring zone (the centre of each contact segment),
+    in the order `zone_fronts` found the neighbours. If the zone has fewer than two such
+    neighbours (an isolated pocket), we synthesise an antipodal pair -- the two border tiles that
+    are farthest apart -- so there is always a through-route. The spanning backbone then routes a
+    corridor to every gate, punching the belt open exactly there."""
+    fronts, extra = _zone_gates(ts, zone_label, zid, OPEN_FRAC, MIN_W)
+    return [g.rep for g in [*fronts.values(), *extra]]
