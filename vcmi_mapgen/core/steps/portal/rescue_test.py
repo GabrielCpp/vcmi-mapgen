@@ -57,17 +57,21 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
     size = 12
     grid = [[2] * size for _ in range(size)]
     veg_wall = [
-        _obj(Identity("pineTrees", "pineTrees", "avlpn0", Footprint.one(Role.BLOCKING)), (6, y), "")
+        _obj(
+            Identity("pineTrees", "pineTrees", "pine", Footprint.one(Role.BLOCKING)),
+            (6, y),
+            "",
+        )
         for y in range(size)
     ]
     picks = [
         _obj(
-            Identity("resource", "wood", "avtwood0", Footprint.one(Role.VISIT)),
+            Identity("resource", "wood", "wood_pile", Footprint.one(Role.VISIT)),
             (2, 5),
             Purpose.RESOURCE_PILE,
         ),
         _obj(
-            Identity("resource", "ore", "avtore0", Footprint.one(Role.VISIT)),
+            Identity("resource", "ore", "ore_pile", Footprint.one(Role.VISIT)),
             (10, 5),
             Purpose.RESOURCE_PILE,
         ),
@@ -137,7 +141,7 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
 def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
     """Artifacts (and pandora's box / chests) are pocket/loot-zone only now -- the
     portal-rescue reward hoard must be resource piles alone, never a REWARD_PICKUP
-    (which used to draw from RND_ART)."""
+    (which used to draw random artifacts)."""
     size, grid, zones, _inner, _ts1 = _enclave_fixture()
     no_gates: set[Tile] = set()
     objs = {

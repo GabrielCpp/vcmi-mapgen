@@ -15,9 +15,8 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.placement.guards import NO_TILES, Fit, rnd_monster
+from vcmi_mapgen.core.placement.guards import NO_TILES, Fit
 from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
-from vcmi_mapgen.core.priors.gates import GATE_ANIM
 from vcmi_mapgen.core.steps.gameplay.result import GateResult
 from vcmi_mapgen.corpus.gates import load_gate_stats
 
@@ -36,7 +35,7 @@ class _GatePlacer:
     def __init__(self, catalog: Catalog, idx0: SiteIndex, idx1: SiteIndex, seed: int) -> None:
         self.catalog = catalog
         self.idx = (idx0, idx1)
-        self.ident = catalog.identity_of(GATE_ANIM)
+        self.ident = catalog.subterranean_gate()
         self.rng = random.Random(seed ^ GUARD_SALT)
         self.cache: dict[tuple[int, Tile], Side | None] = {}
         self.objs: list[PlacedObject] = []
@@ -86,7 +85,7 @@ class _GatePlacer:
             self.objs.append(obj)
         self.cache.clear()
         if self.rng.random() < GUARD_P and b[0].guard_ok(b[1][2]):
-            self.objs.append(b[0].add_guard(rnd_monster(self.catalog, 3), b[1][2]))
+            self.objs.append(b[0].add_guard(self.catalog.guard(3), b[1][2]))
         return True
 
 

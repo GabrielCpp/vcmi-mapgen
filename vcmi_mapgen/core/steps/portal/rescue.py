@@ -13,7 +13,7 @@ from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zon
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits, rnd_monster
+from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord, bare_record
 from vcmi_mapgen.core.steps.portal.reward_zone import RewardSite, place_reward_zone
 
@@ -61,12 +61,6 @@ def unreachable_targets(
 PORTAL_MIN_AREA = 12  # smallest unreachable zone worth a portal rescue (mapeval's zone
 #                        floor); smaller slivers keep the decoration-fill fate.
 MAX_PORTALS = 8  # cap on rescued zones per map
-PORTAL_ANIMS = ("avxmn2g0", "avxmn2o0", "avxmn2p0", "avxmn4b0")
-#                walk-on two-way monoliths (masks VV/VA, V/A — no blocking cells), subtypes
-#                monolith1..4. Both ends of a pair share the animation, hence the subtype;
-#                H3 networks ALL same-subtype ends, so a 5th+ portal reuses a subtype and
-#                simply joins that network — still fully reachable, still relationally
-#                complete (mapeval needs >=2 ends per subtype).
 
 
 @dataclass(slots=True)
@@ -400,7 +394,8 @@ class _PortalRescue:
         z = self.world.zones_by_level[lvl][zid]
         ts = set(z.tiles_set)
         st = self.state[lvl]
-        ident = self.catalog.identity_of(PORTAL_ANIMS[n_placed % len(PORTAL_ANIMS)])
+        portals = self.catalog.portals()
+        ident = portals[n_placed % len(portals)]
         cx, cy = z.centroid
         zone = _Enclave(lvl=lvl, zid=zid, terrain=terrain, ts=ts, cx=cx, cy=cy)
 
@@ -411,7 +406,7 @@ class _PortalRescue:
 
         hosts = self._hosts(zone)
 
-        gident = rnd_monster(self.catalog, min(7, 4 + len(ts) // 60))
+        gident = self.catalog.guard(min(7, 4 + len(ts) // 60))
         near = self._near_end(zone, ident, gident, hosts)
         if near is None:
             return None

@@ -4,8 +4,6 @@ import random
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-GATE_ANIM = "avtcave"  # SUBTERRANEAN_GATE — single un-suffixed sprite variant
-
 
 @dataclass(frozen=True, slots=True)
 class GateStats:

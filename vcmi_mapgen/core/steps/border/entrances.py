@@ -9,7 +9,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
+from vcmi_mapgen.core.placement.guards import guard_spaced
 
 ENTRANCE_GUARD_PROB = 0.85
 ENTRANCE_SALT = 0xE47
@@ -76,9 +76,7 @@ class _EntranceGuards:
                     continue
                 if rng.random() > ENTRANCE_GUARD_PROB:
                     continue
-                gident = rnd_monster(
-                    self.catalog, _guard_level(rng, len(ts), zid in field.home_zids)
-                )
+                gident = self.catalog.guard(_guard_level(rng, len(ts), zid in field.home_zids))
                 self._guard(gident, [rep, *sorted(band)], ts)
         return self.out
 

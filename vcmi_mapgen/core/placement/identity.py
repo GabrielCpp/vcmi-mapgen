@@ -4,27 +4,17 @@ candidate pool by a weight such as the corpus mix."""
 import random
 from collections.abc import Callable, Iterable
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
 from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
-RND_RES = "avtrndm0"  # randomResource
-
-
-RND_ART = (
-    ("avarnd1", 50, 3),
-    ("avarnd2", 30, 5),  # (anim, pick weight, reward value):
-    ("avarnd3", 15, 8),
-    ("avarand", 5, 5),
-)  # treasure/minor/major/any artifact
-
-# The H3 mapmaking convention (user-mandated): most placed objects are the editor's RANDOM
-# classes — random town/dwelling/monster/resource/artifact — with a few fixed ones. All of
-# these have real sprites (checked via catalog.spec).
-RND_TOWN = "avcranx0"  # randomTown
-RND_DWELL = "avrcgen0"  # randomDwelling (any level)
-RND_DWELL_L = tuple(f"avrcgen{i}" for i in range(1, 8))  # randomDwellingLvl 1..7
+_ART_TIER_W: tuple[tuple[ArtifactTier | None, int], ...] = (
+    ("treasure", 50),
+    ("minor", 30),
+    ("major", 15),
+    (None, 5),
+)
 
 
 def pick_random_identity(
@@ -37,12 +27,11 @@ def pick_random_identity(
     weighted by the corpus mix, where the chest dominates). None means the caller draws a
     fixed identity instead."""
     if purpose == Purpose.RESOURCE_PILE and rng.random() < 0.6:
-        return catalog.identity_of(RND_RES)
+        return catalog.random_resource()
     if purpose == Purpose.REWARD_PICKUP and rng.random() < art_share:
-        anim = rng.choices([a for a, _w, _v in RND_ART], weights=[w for _a, w, _v in RND_ART], k=1)[
-            0
-        ]
-        return catalog.identity_of(anim)
+        tiers: list[ArtifactTier | None] = [t for t, _w in _ART_TIER_W]
+        tier = rng.choices(tiers, weights=[w for _t, w in _ART_TIER_W], k=1)[0]
+        return catalog.random_artifact(tier)
     return None
 
 

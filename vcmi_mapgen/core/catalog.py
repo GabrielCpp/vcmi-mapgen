@@ -9,10 +9,12 @@ depends on it. `vcmi.catalog.adapter.VcmiCatalog` is the production implementati
 """
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from vcmi_mapgen.core.model import Footprint, Identity
 from vcmi_mapgen.core.model.purpose import Purpose
+
+type ArtifactTier = Literal["treasure", "minor", "major", "relic"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,4 +70,52 @@ class Catalog(Protocol):
 
     def spells(self, level: int) -> list[str]:
         """The spells of one mage-guild level, sorted."""
+        ...
+
+    def artifacts(self, tier: ArtifactTier) -> list[str]:
+        """The artifacts of one rarity tier, sorted."""
+        ...
+
+    def monsters(self, level: int) -> list[str]:
+        """The creatures of one town tier, sorted."""
+        ...
+
+    def guard(self, level: int) -> Identity:
+        """The random monster of a strength level, clamped to 1..7."""
+        ...
+
+    def random_artifact(self, tier: ArtifactTier | None) -> Identity:
+        """The random artifact of a rarity tier, or of any tier for None."""
+        ...
+
+    def random_resource(self) -> Identity:
+        """The random resource pile."""
+        ...
+
+    def random_town(self) -> Identity:
+        """The random town."""
+        ...
+
+    def random_dwelling(self, level: int | None) -> Identity:
+        """The random dwelling of a creature level 1..7, or of any level for None."""
+        ...
+
+    def portals(self) -> list[Identity]:
+        """The two-way portal kinds, in pairing order."""
+        ...
+
+    def border_gates(self) -> list[tuple[Identity, Identity]]:
+        """The border gate and its keymaster tent, one pair per key colour, in colour order."""
+        ...
+
+    def subterranean_gate(self) -> Identity:
+        """The gate that joins the surface to the underground."""
+        ...
+
+    def quest_givers(self, terrain: str | int) -> list[Identity]:
+        """The kinds that can hold a quest on a terrain, in animation order."""
+        ...
+
+    def spell_scroll(self, spell: str) -> Identity:
+        """The spell scroll that carries one spell."""
         ...

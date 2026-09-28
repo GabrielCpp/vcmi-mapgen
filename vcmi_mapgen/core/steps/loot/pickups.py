@@ -1,5 +1,7 @@
 """Guarded pocket caches: a guard at each pocket mouth, an artifact at the deepest tile
-and pickups in between, placed once per level over the finished walkable field."""
+and pickups in between, placed once per level over the finished walkable field. The
+artifact's tier follows the guard's level through `ART_TIER_BY_GUARD_LEVEL`, so the guard's
+strength matches the prize behind it."""
 
 import random
 from collections.abc import Collection, Container, Mapping, Sequence
@@ -7,12 +9,12 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
 from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, pocket_depths
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
+from vcmi_mapgen.core.placement.guards import guard_spaced
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
@@ -25,18 +27,20 @@ from vcmi_mapgen.core.steps.loot.pockets import (
     reachable,
 )
 from vcmi_mapgen.core.steps.treasure.fill import (
-    FILL_EXCL_ANIMS,
+    FILL_EXCL_TYPES,
     LOOT_CHEST_TYPES,
     solo_visit_pool,
 )
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 
-# Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
-# treasure(1-2) → minor(3) → major(4-5) → any/relic(6).
-# The monster level is derived from resources + visitable structures placed in the pocket;
-# the artifact at the deepest tile then matches that level so the guard's strength is
-# always proportional to the prize behind it.
-ART_BY_LVL = ["avarnd1", "avarnd1", "avarnd2", "avarnd3", "avarnd3", "avarand"]
+ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier | None, ...] = (
+    "treasure",
+    "treasure",
+    "minor",
+    "major",
+    "major",
+    None,
+)
 
 # Types that must maintain a minimum map-fraction separation between any two instances in pockets.
 _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
@@ -197,11 +201,9 @@ class _PocketCachePass:
         precomputed = context.precomputed_pockets
         raw = precomputed if precomputed is not None else find_pockets(self.global_true)
         self.blobs = dedupe_pockets(raw, self.global_true)
-        self.guard_ident = rnd_monster(
-            catalog, 1
-        )  # mask uniform across levels 1-7; used to pre-check fit
+        self.guard_ident = catalog.guard(1)  # mask uniform across levels 1-7; used to pre-check fit
         self.guard_mask = self.guard_ident.footprint
-        self.pickup_ident = catalog.identity_of(ART_BY_LVL[0])
+        self.pickup_ident = catalog.random_artifact(ART_TIER_BY_GUARD_LEVEL[0])
         self.objs: list[PlacedObject] = []
         self.guards: list[Tile] = [
             (o.x, o.y) for o in context.existing_objs if o.purpose == Purpose.GUARD
@@ -410,7 +412,7 @@ class _PocketCachePass:
         # "everything but an artifact" (which would let scholar/corpse/spell-scroll/
         # leanTo/wagon/warriorTomb/denOfThieves leak in too).
         pool_chest = [i for i in pool_art if i.type in LOOT_CHEST_TYPES]
-        pool_vis = solo_visit_pool(self.catalog, terrain, exclude_anims=FILL_EXCL_ANIMS)
+        pool_vis = solo_visit_pool(self.catalog, terrain, exclude_types=FILL_EXCL_TYPES)
         draw = _PocketDraw(rng, st, pool_res, pool_art, pool_chest, pool_vis)
         self._commit(pick, ref, cache_spots, draw)
 
@@ -425,7 +427,7 @@ class _PocketCachePass:
         n_fill = len(cache_spots) - 1  # one slot reserved for the artifact
         est_val = int(n_fill * 2.25) + 5
         lvl = min(6, 1 + (est_val >= 4) + (est_val >= 7) + (est_val >= 10) + (est_val >= 13))
-        anim = ART_BY_LVL[lvl - 1]
+        tier = ART_TIER_BY_GUARD_LEVEL[lvl - 1]
 
         if guard_tile is not None and not self._place_guard(guard_tile, lvl, draw):
             return
@@ -449,10 +451,10 @@ class _PocketCachePass:
         # `cache_spots`/`global_place`, so it CAN take something -- it must not stay
         # empty under the tile it was recorded as pocket depth for.
         if art_spot:
-            self._place_artifact(art_spot[0], anim, draw)
+            self._place_artifact(art_spot[0], self.catalog.random_artifact(tier), draw)
 
     def _place_guard(self, guard_tile: Tile, lvl: int, draw: _PocketDraw) -> bool:
-        gident = rnd_monster(self.catalog, lvl)
+        gident = self.catalog.guard(lvl)
         if not place_one(
             self._target(self.global_place, draw),
             PlaceSpec(Purpose.GUARD, None, ident=gident, interactive_only=True),
@@ -466,9 +468,9 @@ class _PocketCachePass:
             self.protect_blocked |= guard_stand(self.guard_mask, guard_tile[0], guard_tile[1])
         return True
 
-    def _place_artifact(self, t: Tile, anim: str, draw: _PocketDraw) -> None:
+    def _place_artifact(self, t: Tile, ident: Identity, draw: _PocketDraw) -> None:
         target = self._target(self.global_place, draw)
-        art = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, self.catalog.identity_of(anim))
+        art = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, ident)
         if not place_one(target, art, t[0], t[1]):
             _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
 

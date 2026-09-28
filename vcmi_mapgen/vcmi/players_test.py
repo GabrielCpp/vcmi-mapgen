@@ -7,9 +7,9 @@ import pytest
 
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
-from vcmi_mapgen.core.placement.identity import RND_TOWN
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.roles import RANDOM_TOWN
 from vcmi_mapgen.vcmi.export import build_document
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
@@ -132,7 +132,7 @@ def test_playability_overlay_random_town_shows_random_in_lobby(tmp_path: Path) -
     (isFactionRandom false + allowedFactions defaulting to ALL on an absent key) picks the
     first faction by id (Castle) instead of showing 'random' in the lobby — the bug reported
     2026-07-03: every player's town appeared fixed to Castle."""
-    rnd = ON.identity_of(RND_TOWN)
+    rnd = ON.identity_of(RANDOM_TOWN)
     grid = [[2] * 24 for _ in range(24)]
     cells = ZE.tile_terrain(grid, 24, 24)
     towns = [_town(rnd, 8, 8)]

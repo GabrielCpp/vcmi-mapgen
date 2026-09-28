@@ -9,7 +9,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.placement.guards import guard_spaced, rnd_monster
+from vcmi_mapgen.core.placement.guards import guard_spaced
 from vcmi_mapgen.core.planning.borders import cross_pairs, zone_owner
 
 
@@ -56,7 +56,7 @@ class _GuardPlacer:
 
     def _pick_guard(self, cands: Sequence[Tile]) -> Tile:
         """First candidate whose sprite overlay is clear of decor; else the first."""
-        rnd = rnd_monster(self._catalog, 3)
+        rnd = self._catalog.guard(3)
         for c in cands:
             if FP.overlay_clear(rnd.footprint, c[0], c[1], self._decor_blk):
                 return c
@@ -67,7 +67,7 @@ class _GuardPlacer:
         for g in [first, *(c for c in cands if c != first)]:
             if not guard_spaced(g, self._guards):
                 continue
-            gident = rnd_monster(self._catalog, 3 + (1 if self._rng.random() < 0.3 else 0))
+            gident = self._catalog.guard(3 + (1 if self._rng.random() < 0.3 else 0))
             guard = PlacedObject.at(
                 gident, g, level=0, purpose=Purpose.GUARD, options={"character": "hostile"}
             )

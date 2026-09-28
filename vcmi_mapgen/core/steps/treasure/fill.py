@@ -9,8 +9,8 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Self
 
-from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, PlacedObject, Role, Tile
+from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
@@ -19,8 +19,8 @@ from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 
-_LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
-FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})
+_LOOT_ART_W: dict[ArtifactTier, int] = {"treasure": 5, "minor": 15, "major": 35, "relic": 45}
+FILL_EXCL_TYPES = frozenset({"fountainOfFortune", "idolOfFortune"})
 _LOOT_ART_EXCL_TYPES = frozenset({"leanTo", "wagon", "warriorTomb", "denOfThieves"})
 LOOT_CHEST_TYPES = ("treasureChest", "campfire", "pandoraBox")
 _LOOT_ZONE_CHEST_EXTRA_TYPES = ("scholar",)
@@ -44,7 +44,7 @@ def shrine_spell_level(anim: str) -> int:
 def solo_visit_pool(
     catalog: Catalog,
     terrain: str,
-    exclude_anims: Collection[str] = (),
+    exclude_types: Collection[str] = (),
     min_shrine_level: int | None = None,
 ) -> list[Identity]:
     """Objects with exactly one visit tile and no blocking body cells, so they are safe to
@@ -54,7 +54,7 @@ def solo_visit_pool(
     for purpose in _SOLO_VIS_PURPOSES:
         for ident in catalog.candidates(purpose, terrain):
             anim = ident.animation.lower()
-            if anim in seen or anim in exclude_anims:
+            if anim in seen or ident.type in exclude_types:
                 continue
             if min_shrine_level is not None and 0 < shrine_spell_level(anim) < min_shrine_level:
                 continue
@@ -72,7 +72,7 @@ class _LootPools:
     pool_art: list[Identity]
     pool_res: list[Identity]
     chest_kind_pools: dict[str, list[Identity]]
-    arts_high: list[tuple[str, int]]
+    arts_high: list[tuple[Identity, int]]
     pool_rare: list[Identity]
 
     @classmethod
@@ -92,21 +92,14 @@ class _LootPools:
         pool_chest = [i for i in pool_art if i.type in kinds]
         chest_kind_pools = {kind: [i for i in pool_chest if i.type == kind] for kind in kinds}
         chest_kind_pools["spellScroll"] = [
-            Identity(
-                type="spellScroll",
-                subtype=n,
-                animation="ava0001",
-                footprint=Footprint.one(Role.VISIT),
-            )
-            for lvl in _LOOT_SCROLL_LEVELS
-            for n in catalog.spells(lvl)
+            catalog.spell_scroll(n) for lvl in _LOOT_SCROLL_LEVELS for n in catalog.spells(lvl)
         ]
         return cls(
             pool_vis=pool_vis,
             pool_art=pool_art,
             pool_res=pool_res,
             chest_kind_pools=chest_kind_pools,
-            arts_high=[(a, _LOOT_ART_W[a]) for a in ("avarnd3", "avarnd4")],
+            arts_high=[(catalog.random_artifact(t), _LOOT_ART_W[t]) for t in ("major", "relic")],
             pool_rare=[i for i in pool_res if i.subtype in _LOOT_RARE_RESOURCE_SUBTYPES],
         )
 
@@ -173,14 +166,13 @@ def _too_close(t: Tile, placed: Sequence[Tile]) -> bool:
 
 
 def _roll_spec(
-    catalog: Catalog, rng: random.Random, pools: _LootPools, chest_kinds: Sequence[str]
+    rng: random.Random, pools: _LootPools, chest_kinds: Sequence[str]
 ) -> PlaceSpec | None:
     roll = rng.random()
     if roll < 0.2 and pools.arts_high:
-        anim = rng.choices(
+        ident = rng.choices(
             [a for a, _ in pools.arts_high], weights=[w for _, w in pools.arts_high], k=1
         )[0]
-        ident = catalog.identity_of(anim)
         return PlaceSpec(
             Purpose.REWARD_PICKUP, pools.pool_art, ident=ident, cache=True, interactive_only=True
         )
@@ -203,7 +195,7 @@ def _roll_spec(
 def _fill_rolls(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
     chest_kinds = [k for k, p in pools.chest_kind_pools.items() if p]
     for t in sorted(zone.reach - target.cover.claims):
-        spec = _roll_spec(target.catalog, zone.rng, pools, chest_kinds)
+        spec = _roll_spec(zone.rng, pools, chest_kinds)
         if spec is not None:
             _ = place_one(target, spec, *t)
 

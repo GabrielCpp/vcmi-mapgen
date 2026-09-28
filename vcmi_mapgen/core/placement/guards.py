@@ -1,10 +1,9 @@
 """Guard spacing and the gameplay-footprint fit every placement step shares: the GAP rule, a
-guard's zone of control and the random-monster identity."""
+guard's zone of control."""
 
 from collections.abc import Container, Iterable, Sequence
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
@@ -13,19 +12,11 @@ from vcmi_mapgen.core.placement.footprint import footprint_cells
 NO_TILES: frozenset[Tile] = frozenset()
 
 
-RND_MON = tuple(f"avwmon{i}" for i in range(1, 8))  # randomMonsterLevel 1..7
-
-
 GAP = 2  # free tiles kept between any two gameplay footprints — gameplay
 # neighbours VEGETATION (which fills the gap), not other gameplay
 
 
 type Fit = tuple[list[Tile], list[Tile], Tile]
-
-
-def rnd_monster(catalog: Catalog, lvl: int) -> Identity:
-    """Random-monster identity of a level, clamped to 1..7."""
-    return catalog.identity_of(RND_MON[max(1, min(7, int(lvl))) - 1])
 
 
 @dataclass(frozen=True, slots=True)

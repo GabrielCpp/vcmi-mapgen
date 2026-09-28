@@ -152,9 +152,10 @@ def test_pocket_guard_level_matches_artifact_tier_exactly(catalog: Catalog) -> N
     match = re.match(r"randomMonsterLevel(\d)", guard.type or "")
     assert match is not None
     glvl = int(match.group(1))
-    assert art.animation.lower() == CA.ART_BY_LVL[glvl - 1], (
+    want = catalog.random_artifact(CA.ART_TIER_BY_GUARD_LEVEL[glvl - 1]).animation
+    assert art.animation == want, (
         f"guard is level {glvl} but artifact animation {art.animation!r} doesn't "
-        f"match that tier ({CA.ART_BY_LVL[glvl - 1]!r})"
+        f"match that tier ({want!r})"
     )
 
 

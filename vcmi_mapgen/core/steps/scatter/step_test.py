@@ -5,7 +5,7 @@ import contextlib
 import io
 from typing import final
 
-from vcmi_mapgen.core.catalog import ObjectSpec
+from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec
 from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -69,6 +69,49 @@ class FakeCatalog:
         self.asked.append(("spells", str(level)))
         return []
 
+    def artifacts(self, tier: ArtifactTier) -> list[str]:
+        self.asked.append(("artifacts", tier))
+        return []
+
+    def monsters(self, level: int) -> list[str]:
+        self.asked.append(("monsters", str(level)))
+        return []
+
+    def _role(self, *asked: str) -> Identity:
+        self.asked.append(asked)
+        return Identity("fakeRandom", None, "_".join(("fake", *asked)), Footprint.one(Role.VISIT))
+
+    def guard(self, level: int) -> Identity:
+        return self._role("guard", str(level))
+
+    def random_artifact(self, tier: ArtifactTier | None) -> Identity:
+        return self._role("random_artifact", str(tier))
+
+    def random_resource(self) -> Identity:
+        return self._role("random_resource")
+
+    def random_town(self) -> Identity:
+        return self._role("random_town")
+
+    def random_dwelling(self, level: int | None) -> Identity:
+        return self._role("random_dwelling", str(level))
+
+    def portals(self) -> list[Identity]:
+        return [self._role("portal")]
+
+    def border_gates(self) -> list[tuple[Identity, Identity]]:
+        return [(self._role("border_gate"), self._role("keymaster"))]
+
+    def subterranean_gate(self) -> Identity:
+        return self._role("subterranean_gate")
+
+    def quest_givers(self, terrain: str | int) -> list[Identity]:
+        self.asked.append(("quest_givers", str(terrain)))
+        return []
+
+    def spell_scroll(self, spell: str) -> Identity:
+        return self._role("spell_scroll", spell)
+
 
 def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
     ts = frozenset((x, y) for x in range(30) for y in range(24))
@@ -97,5 +140,5 @@ def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
         step.run(catalog, map_state)
 
     assert map_state.objs
-    assert {o.animation for o in map_state.objs} <= {PILE.animation, "fake_avtrndm0"}
+    assert {o.animation for o in map_state.objs} <= {PILE.animation, "fake_random_resource"}
     assert ("candidates", Purpose.RESOURCE_PILE, "grass") in catalog.asked

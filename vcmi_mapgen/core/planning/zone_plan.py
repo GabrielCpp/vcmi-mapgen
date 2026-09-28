@@ -22,7 +22,6 @@ from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWo
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
-from vcmi_mapgen.core.placement.identity import RND_TOWN
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
 from vcmi_mapgen.core.planning.entrances import plan_entrances
 from vcmi_mapgen.core.planning.player_zones import select_player_zones
@@ -255,7 +254,7 @@ def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> To
     """The town spot nearest the zone centre before any tree grows: the footprint and approach
     inside the zone and clear of ``off``, the blocking cells off the web, and a walk from the
     approach to the web."""
-    ident = catalog.identity_of(RND_TOWN)
+    ident = catalog.random_town()
     area = len(zw.ts)
     cx = sum(t[0] for t in zw.ts) / area + (ident.footprint.width - 1) / 2.0
     cy = sum(t[1] for t in zw.ts) / area + (ident.footprint.height - 1) / 2.0

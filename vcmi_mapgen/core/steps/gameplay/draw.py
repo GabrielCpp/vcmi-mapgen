@@ -16,7 +16,7 @@ from typing import cast, final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import COUNTED, VISIT_PURPOSES, Purpose
-from vcmi_mapgen.core.placement.identity import RND_DWELL, RND_DWELL_L, RND_TOWN, pick_kind
+from vcmi_mapgen.core.placement.identity import pick_kind
 from vcmi_mapgen.core.placement.intensity import density, stoch_round
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.gameplay.economy import ECONOMY, Ledger, mine_variants, rest_mines
@@ -139,7 +139,7 @@ class ZoneDrawer:
 
     def _town(self) -> Identity | None:
         if self.spec.player or self.rng.random() < RANDOM_SHARE:
-            return self.catalog.identity_of(RND_TOWN)
+            return self.catalog.random_town()
         return self._pick(self.catalog.candidates(Purpose.TOWN, self.spec.terrain), Purpose.TOWN)
 
     def _take(self, ids: list[Identity], res: str, used: set[str], out: list[Identity]) -> None:
@@ -189,7 +189,7 @@ class ZoneDrawer:
         out: list[tuple[str, Identity]] = []
         if n:
             _ = self._keep_pool(
-                Purpose.DWELLING, [self.catalog.identity_of(a) for a in RND_DWELL_L]
+                Purpose.DWELLING, [self.catalog.random_dwelling(lvl) for lvl in range(1, 8)]
             )
             _ = self._keep_pool(
                 Purpose.DWELLING, self.catalog.candidates(Purpose.DWELLING, self.spec.terrain)
@@ -197,12 +197,8 @@ class ZoneDrawer:
         for _ in range(n):
             ident: Identity | None
             if rng.random() < 0.8:
-                anim = (
-                    RND_DWELL
-                    if rng.random() < 0.3
-                    else rng.choices(RND_DWELL_L, weights=DWELL_LEVEL_W, k=1)[0]
-                )
-                ident = self.catalog.identity_of(anim)
+                lvl = None if rng.random() < 0.3 else rng.choices(range(1, 8), DWELL_LEVEL_W)[0]
+                ident = self.catalog.random_dwelling(lvl)
             else:
                 ident = self._pick(self.pools[Purpose.DWELLING], Purpose.DWELLING)
             if ident:

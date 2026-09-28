@@ -20,7 +20,6 @@ from vcmi_mapgen.core.pipeline import (
 )
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
-from vcmi_mapgen.core.placement.identity import RND_TOWN
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.placement.site import LevelField, SiteIndex, ZoneSite
 from vcmi_mapgen.core.planning import zone_plan as ZPL
@@ -241,7 +240,7 @@ class GameplayStep(PipelineStep):
     def _move_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:
         sites = [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
         need = self.players - sum(1 for s in sites if s.town_center is not None)
-        ident = catalog.identity_of(RND_TOWN)
+        ident = catalog.random_town()
         for site in _town_hosts(sites):
             if need <= 0:
                 return

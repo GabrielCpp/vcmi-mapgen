@@ -5,7 +5,8 @@ from collections.abc import Iterable
 from itertools import combinations
 
 from vcmi_mapgen.core.model import MapState, Tile
-from vcmi_mapgen.core.priors.gates import GATE_ANIM, GateStats
+from vcmi_mapgen.core.priors.gates import GateStats
+from vcmi_mapgen.vcmi.catalog.roles import SUBTERRANEAN_GATE
 
 MIN_GAP_QUANTILE = 0.25
 
@@ -18,7 +19,8 @@ def _corpus_gates(fm: MapState) -> tuple[Tile, ...]:
         sorted(
             (o.x, o.y)
             for o in fm.objs
-            if o.level == 0 and (o.animation or "").lower().removesuffix(".def") == GATE_ANIM
+            if o.level == 0
+            and (o.animation or "").lower().removesuffix(".def") == SUBTERRANEAN_GATE
         )
     )
 

@@ -17,15 +17,12 @@ from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
-from vcmi_mapgen.core.placement.guards import rnd_monster
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 LOOT_ZONE_MAX_TILES = 60
-_LOOT_COLORS = [(f"avxbgt{i}0", f"avxkey{i}0") for i in range(8)]
-_LOOT_MONOLITHS = ["avxmn2g0", "avxmn2o0", "avxmn2p0", "avxmn4b0"]
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
 type _Cells = Sequence[tuple[int, int, bool]]
@@ -435,9 +432,8 @@ class GatedPlacer:
         )
 
     def _place_gate(self, zone: _LootZone, aim: _GateAim) -> bool:
-        gate_anim, key_anim = _LOOT_COLORS[self.gate_count % len(_LOOT_COLORS)]
-        gate_ident = self.catalog.identity_of(gate_anim)
-        key_ident = self.catalog.identity_of(key_anim)
+        gates = self.catalog.border_gates()
+        gate_ident, key_ident = gates[self.gate_count % len(gates)]
         km_spot = self._find_ext_spot(key_ident, zone.ext_pools)
         if km_spot is None:
             return False
@@ -493,9 +489,8 @@ class GatedPlacer:
         )
 
     def _place_monolith(self, zone: _LootZone) -> bool:
-        mono_ident = self.catalog.identity_of(
-            _LOOT_MONOLITHS[self.mono_count % len(_LOOT_MONOLITHS)]
-        )
+        portals = self.catalog.portals()
+        mono_ident = portals[self.mono_count % len(portals)]
         spot = self._find_ext_spot(mono_ident, zone.ext_pools)
         if spot is None:
             return False
@@ -596,7 +591,7 @@ class GatedPlacer:
             return False
         self.n_placed += 1
         self.placed_ext_tiles.append(ext_t)
-        gident = rnd_monster(self.catalog, 7)
+        gident = self.catalog.guard(7)
         for clear_of in (FP.decor_blocking_cells(self.objs), None):
             if _try_guard_ring(
                 ext_zr,

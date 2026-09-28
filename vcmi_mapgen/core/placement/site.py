@@ -41,7 +41,6 @@ from vcmi_mapgen.core.placement.guards import (
     Fit,
     fits,
     inflate_gap,
-    rnd_monster,
 )
 from vcmi_mapgen.core.placement.intensity import Covariates, gate_dist, intensity_weights, openness
 from vcmi_mapgen.core.placement.place import web_dist
@@ -333,7 +332,7 @@ class ZoneSite:
         self, catalog: Catalog, zid: int, zw: ZoneWorkspace, lf: LevelField, seed: int
     ) -> None:
         self.catalog = catalog
-        self.guard_probe = rnd_monster(catalog, 3)
+        self.guard_probe = catalog.guard(3)
         self.zid = zid
         self.zw = zw
         self.lf = lf
@@ -539,7 +538,7 @@ class ZoneSite:
         lvl = MINE_GUARD_LVL.get(subtype, 3)
         if subtype not in ("sawmill", "orePit") and self.rng.random() < 0.25:
             lvl += 1
-        _ = self.add_guard(rnd_monster(self.catalog, lvl), approach)
+        _ = self.add_guard(self.catalog.guard(lvl), approach)
         ex, ey = approach[0], approach[1] - 1
         seal_pool = self.catalog.decor(self.zw.terrain, blocking=True, max_cells=1)
         if not seal_pool:

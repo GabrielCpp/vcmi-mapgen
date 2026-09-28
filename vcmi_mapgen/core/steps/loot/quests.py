@@ -110,14 +110,7 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     eligible = env.eligible
     hut_zr = eligible[idx_hut]
 
-    pool_hut = sorted(
-        (
-            h
-            for h in env.catalog.candidates(Purpose.QUEST_GATE, hut_zr.terrain)
-            if h.type == "seerHut"
-        ),
-        key=lambda h: h.animation,
-    )
+    pool_hut = env.catalog.quest_givers(hut_zr.terrain)
     if not pool_hut:
         return False
     hut_ident = rng.choice(pool_hut)

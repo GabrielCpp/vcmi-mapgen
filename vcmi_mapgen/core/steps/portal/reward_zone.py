@@ -10,7 +10,6 @@ from vcmi_mapgen.core.grid.geometry import centre_key
 from vcmi_mapgen.core.grid.reach import entry_reach
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.placement.guards import rnd_monster
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.corpus.gameplay import load_gameplay
@@ -75,7 +74,7 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
         cx = sum(x for x, _ in ts) / area
         cy = sum(y for _, y in ts) / area
         lvl = 1 + (val >= 4) + (val >= 7) + (val >= 10) + (val >= 13) + 1
-        gident = rnd_monster(catalog, lvl)
+        gident = catalog.guard(lvl)
         for t in sorted(reach - cover.claims, key=partial(centre_key, cx=cx, cy=cy)):
             if place_one(
                 PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
