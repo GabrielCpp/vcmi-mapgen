@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
@@ -22,7 +23,6 @@ from vcmi_mapgen.core.steps import (
 from vcmi_mapgen.core.steps.placement import guard_spaced, guard_zoc
 from vcmi_mapgen.kit.objects import mask_cells, mask_interactive_cells
 from vcmi_mapgen.validate import footprint_violations
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 SIZE = 48
 SEED = 7
@@ -71,7 +71,7 @@ def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
 
 @dataclass(frozen=True, slots=True)
 class PipelineRun:
-    ontology: Ontology
+    catalog: Catalog
     state: MapState
     transitions: dict[str, tuple[Snapshot, Snapshot]]
 
@@ -81,8 +81,7 @@ class PipelineRun:
 
 
 @pytest.fixture(scope="module")
-def pipeline_run() -> PipelineRun:
-    ontology = Ontology()
+def pipeline_run(catalog: Catalog) -> PipelineRun:
     state = MapState(size=SIZE)
     ctx = ProviderRegistry()
     result: dict[str, tuple[Snapshot, Snapshot]] = {}
@@ -90,9 +89,9 @@ def pipeline_run() -> PipelineRun:
         for name, step in pipeline_steps():
             before = _snapshot(state)
             step.inject(ctx)
-            step.run(ontology, state)
+            step.run(catalog, state)
             result[name] = (before, _snapshot(state))
-    return PipelineRun(ontology, state, result)
+    return PipelineRun(catalog, state, result)
 
 
 @pytest.fixture(scope="module")
@@ -142,7 +141,7 @@ def test_no_object_stands_on_a_disallowed_terrain(pipeline_run: PipelineRun) -> 
         v
         for o in pipeline_run.state.objs
         if (grid := pipeline_run.state.cells.get(o.level)) is not None
-        for v in footprint_violations(pipeline_run.ontology, grid, o)
+        for v in footprint_violations(pipeline_run.catalog, grid, o)
     ]
     assert violations == []
 

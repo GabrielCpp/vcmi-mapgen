@@ -25,12 +25,12 @@ from vcmi_mapgen.renderers.overlays import (
     TileTypeOverlay,
     ZoneOverlay,
 )
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 
 ROOT = project_root()
-ONTOLOGY = Ontology()
+CATALOG = VcmiCatalog()
 
 # Every factory takes `pockets` (LootStep's LootResult.pockets) uniformly, even
 # though only PocketOverlay uses it -- it's disposable analysis, not a MapState fact
@@ -126,7 +126,7 @@ class GenerateOptions:
 
 
 def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
-    pipeline = Pipeline(ONTOLOGY, opts.size)
+    pipeline = Pipeline(CATALOG, opts.size)
     for point_name, step in build_steps(
         opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain
     ):

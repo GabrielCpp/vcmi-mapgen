@@ -5,6 +5,7 @@ from collections.abc import Collection, Container, Mapping, Sequence
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
@@ -19,6 +20,7 @@ class LevelGrid:
     height: int
     grid: Sequence[Sequence[int]]
     zones: Mapping[int, Zone]
+    level: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,11 +34,13 @@ class CrossingRules:
 class _GuardPlacer:
     def __init__(
         self,
+        catalog: Catalog,
         rng: random.Random,
         objs: list[PlacedObject],
         hard_avoid: Container[Tile],
         decor_blk: Container[Tile],
     ) -> None:
+        self._catalog = catalog
         self._rng = rng
         self._hard_avoid = hard_avoid
         self._cover = CoverIndex(objs)
@@ -53,7 +57,7 @@ class _GuardPlacer:
 
     def _pick_guard(self, cands: Sequence[Tile]) -> Tile:
         """First candidate whose sprite overlay is clear of decor; else the first."""
-        rnd = rnd_monster(3)
+        rnd = rnd_monster(self._catalog, 3)
         for c in cands:
             if OR.overlay_clear(rnd.mask, c[0], c[1], self._decor_blk):
                 return c
@@ -64,7 +68,7 @@ class _GuardPlacer:
         for g in [first, *(c for c in cands if c != first)]:
             if not guard_spaced(g, self._guards):
                 continue
-            gident = rnd_monster(3 + (1 if self._rng.random() < 0.3 else 0))
+            gident = rnd_monster(self._catalog, 3 + (1 if self._rng.random() < 0.3 else 0))
             guard = PlacedObject.at(
                 gident, g, level=0, purpose=Purpose.GUARD, options={"character": "hostile"}
             )
@@ -99,11 +103,11 @@ class _GuardPlacer:
 
 
 def guard_crossings(
+    catalog: Catalog,
     terrain: LevelGrid,
     rules: CrossingRules,
     objs: list[PlacedObject],
     seed: int,
-    level: int,
 ) -> tuple[list[PlacedObject], set[Tile], int]:
     """Guard every cross-zone crossing that stays open after the vegetation border plan.
 
@@ -113,8 +117,8 @@ def guard_crossings(
     Guards never stand on `hard_avoid` tiles (gameplay cells, approaches, pickups), nor
     within Chebyshev 2 of another guard.
     Returns (new_objs, guard_tiles, n_unguarded_pairs)."""
-    rng = random.Random(seed ^ 0x6A4D ^ (level * 7919))
-    owner, _tname = zone_owner(terrain.zones)
+    rng = random.Random(seed ^ 0x6A4D ^ (terrain.level * 7919))
+    owner, _tname = zone_owner(catalog, terrain.zones)
     blocked: set[Tile] = set()
     for o in objs:
         blocked.update(blocking_cells(o))
@@ -128,7 +132,7 @@ def guard_crossings(
     existing_guards = {(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD}
 
     decor_blk = OR.decor_blocking_cells(objs + new_objs)
-    placer = _GuardPlacer(rng, objs, rules.hard_avoid, decor_blk)
+    placer = _GuardPlacer(catalog, rng, objs, rules.hard_avoid, decor_blk)
 
     guard_tiles, unguarded = placer.guard_pairs(pairs, existing_guards, new_objs)
 

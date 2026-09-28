@@ -9,6 +9,7 @@ import random
 from dataclasses import dataclass, field
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
@@ -21,7 +22,6 @@ from vcmi_mapgen.core.steps.gate.gates import (
     gate_anchors,
     rnd_monster,
 )
-from vcmi_mapgen.vcmi.catalog import objects as ON
 
 GUARD_P = 0.65
 GUARD_SALT = 0x6A7F
@@ -44,9 +44,10 @@ def _side(idx: SiteIndex) -> GateSide:
 
 @final
 class _GatePlacer:
-    def __init__(self, idx0: SiteIndex, idx1: SiteIndex, seed: int) -> None:
+    def __init__(self, catalog: Catalog, idx0: SiteIndex, idx1: SiteIndex, seed: int) -> None:
+        self.catalog = catalog
         self.idx = (idx0, idx1)
-        self.ident = ON.identity_of(GATE_ANIM)
+        self.ident = catalog.identity_of(GATE_ANIM)
         self.rng = random.Random(seed ^ GUARD_SALT)
         self.cache: dict[tuple[int, Tile], Side | None] = {}
         self.objs: list[PlacedObject] = []
@@ -96,12 +97,14 @@ class _GatePlacer:
             self.objs.append(obj)
         self.cache.clear()
         if self.rng.random() < GUARD_P and b[0].guard_ok(b[1][2]):
-            self.objs.append(b[0].add_guard(rnd_monster(3), b[1][2]))
+            self.objs.append(b[0].add_guard(rnd_monster(self.catalog, 3), b[1][2]))
         return True
 
 
-def place_gate_pairs(idx0: SiteIndex, idx1: SiteIndex, size: int, seed: int) -> GateResult:
-    placer = _GatePlacer(idx0, idx1, seed)
+def place_gate_pairs(
+    catalog: Catalog, idx0: SiteIndex, idx1: SiteIndex, size: int, seed: int
+) -> GateResult:
+    placer = _GatePlacer(catalog, idx0, idx1, seed)
     anchors = gate_anchors(_side(idx0), _side(idx1), size, seed, placer.place)
     print(f"  gates: {len(anchors)} Subterranean Gate pair(s) placed")
     return GateResult(

@@ -4,11 +4,12 @@ import os
 
 import pytest
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
+from vcmi_mapgen.core.steps.gameplay.step import OpenZone, place_open_zone
 from vcmi_mapgen.core.steps.gate.gates import GAP, footprint_cells
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 
@@ -22,13 +23,13 @@ def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
 
 
 @needs_stats
-def test_gameplay_layer_legal_and_deterministic() -> None:
+def test_gameplay_layer_legal_and_deterministic(catalog: Catalog) -> None:
 
     if not os.path.exists(PG.STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
-    o1 = place_open_zone(ts, "grass", 4)
-    o2 = place_open_zone(ts, "grass", 4)
+    o1 = place_open_zone(catalog, OpenZone(ts, "grass"), 4)
+    o2 = place_open_zone(catalog, OpenZone(ts, "grass"), 4)
     assert o1 == o2, "gameplay placement must be seed-deterministic"
     objs, occupied, blocked, approaches = o1.gobjs, o1.occupied, o1.gblocked, o1.approaches
     assert objs, "a 720-tile grass zone should hold gameplay"
@@ -103,13 +104,13 @@ def test_select_player_zones_far_apart() -> None:
 
 
 @needs_stats
-def test_forced_town_sits_on_zone_centroid() -> None:
+def test_forced_town_sits_on_zone_centroid(catalog: Catalog) -> None:
     """A designated player zone gets its town ON the centroid (footprint-centered)."""
 
     if not os.path.exists(PG.STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
-    objs = place_open_zone(ts, "grass", 4, player=True).gobjs
+    objs = place_open_zone(catalog, OpenZone(ts, "grass", player=True), 4).gobjs
     towns = [o for o in objs if o.purpose == Purpose.TOWN]
     assert towns, "force_town guarantees a town in a 720-tile zone"
     t = towns[0]
@@ -126,14 +127,14 @@ def test_forced_town_sits_on_zone_centroid() -> None:
 
 
 @needs_stats
-def test_town_zone_gets_wood_and_ore_next_to_town() -> None:
+def test_town_zone_gets_wood_and_ore_next_to_town(catalog: Catalog) -> None:
     """A zone with a town ALWAYS holds a sawmill + ore pit, anchored near the town."""
 
     if not os.path.exists(PG.STATS_PATH):
         pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     for seed in (1, 4, 9):
-        objs = place_open_zone(ts, "grass", seed, player=True).gobjs
+        objs = place_open_zone(catalog, OpenZone(ts, "grass", player=True), seed).gobjs
         towns = [o for o in objs if o.purpose == Purpose.TOWN]
         assert towns, f"seed {seed}: forced town missing"
         subs = {o.subtype for o in objs if o.purpose == Purpose.MINE}
@@ -147,7 +148,7 @@ def test_town_zone_gets_wood_and_ore_next_to_town() -> None:
 
 
 @needs_stats
-def test_mine_ledger_covers_basics_and_rations_gold() -> None:
+def test_mine_ledger_covers_basics_and_rations_gold(catalog: Catalog) -> None:
     """The map-level ledger drives zones to cover all six basic resources and blocks gold
     mines until the map holds several towns."""
 
@@ -158,14 +159,14 @@ def test_mine_ledger_covers_basics_and_rations_gold() -> None:
     # legitimately raises the quota — the INVARIANT is what must hold)
     for seed in range(1, 8):
         ledger = PG.Ledger(missing=set(PG.BASIC_MINE_RES), towns=1, gold=0)
-        objs = place_open_zone(ts, "grass", seed, ledger=ledger).gobjs
+        objs = place_open_zone(catalog, OpenZone(ts, "grass"), seed, ledger=ledger).gobjs
         n_gold = sum(1 for o in objs if o.purpose == Purpose.MINE and o.subtype == "goldMine")
         assert n_gold <= ledger.gold <= max(0, ledger.towns - 1), (
             f"seed {seed}: gold {n_gold} exceeds quota (towns={ledger.towns})"
         )
     # missing basics are drawn FIRST: a fresh ledger shrinks by every mine the zone placed
     ledger = PG.Ledger(missing=set(PG.BASIC_MINE_RES), towns=1, gold=0)
-    objs = place_open_zone(ts, "grass", 3, ledger=ledger).gobjs
+    objs = place_open_zone(catalog, OpenZone(ts, "grass"), 3, ledger=ledger).gobjs
     n_mines = sum(1 for o in objs if o.purpose == Purpose.MINE)
     assert len(ledger.missing) <= max(0, len(PG.BASIC_MINE_RES) - n_mines), (
         "every placed mine must come from the missing set while it is non-empty"
@@ -173,7 +174,7 @@ def test_mine_ledger_covers_basics_and_rations_gold() -> None:
 
 
 @needs_stats
-def test_banks_placed_on_land_and_legal() -> None:
+def test_banks_placed_on_land_and_legal(catalog: Catalog) -> None:
     """Creature banks (utopias, conservatories, crypts...) place on land like visitables:
     full footprint in-zone, approach standable, no extra approach guard."""
 
@@ -182,7 +183,11 @@ def test_banks_placed_on_land_and_legal() -> None:
     ts = {(x, y) for x in range(45) for y in range(40)}
     banks: list[PlacedObject] = []
     for seed in range(1, 12):
-        banks += [o for o in place_open_zone(ts, "grass", seed).gobjs if o.purpose == Purpose.BANK]
+        banks += [
+            o
+            for o in place_open_zone(catalog, OpenZone(ts, "grass"), seed).gobjs
+            if o.purpose == Purpose.BANK
+        ]
     assert banks, "a 1800-tile grass zone must produce banks across a dozen seeds"
     for b in banks:
         allc, _blk, approach = _footprint(b)
@@ -190,7 +195,7 @@ def test_banks_placed_on_land_and_legal() -> None:
 
 
 @needs_stats
-def test_mine_sprites_match_terrain() -> None:
+def test_mine_sprites_match_terrain(catalog: Catalog) -> None:
     """Mine DEFs carry a baked-in terrain apron; placed mines must use variants the corpus
     actually uses on that terrain (no dirt-apron gold mine on grass)."""
 
@@ -201,7 +206,7 @@ def test_mine_sprites_match_terrain() -> None:
     for terrain in ("grass", "snow"):
         mw = st[terrain].anim_w[Purpose.MINE]
         for seed in range(1, 8):
-            objs = place_open_zone(ts, terrain, seed).gobjs
+            objs = place_open_zone(catalog, OpenZone(ts, terrain), seed).gobjs
             for m in (o for o in objs if o.purpose == Purpose.MINE):
                 w = mw.get(m.animation.lower(), 0)
                 assert w > 0, (
@@ -211,12 +216,12 @@ def test_mine_sprites_match_terrain() -> None:
 
 
 @needs_stats
-def test_audit_variety_green() -> None:
+def test_audit_variety_green(catalog: Catalog) -> None:
     """Every corpus (purpose, animation) on land must be reachable through the generator
-    (identity via the ontology, placement via a pool) — the acceptance check for corpus
+    (identity via the catalog, placement via a pool) — the acceptance check for corpus
     visitable variety."""
 
     if not os.path.exists(PG.STATS_PATH):
         pytest.skip("gameplay stats not mined")
-    gaps = PG.audit_variety()
+    gaps = PG.audit_variety(catalog)
     assert gaps == [], f"variety gaps: {gaps}"

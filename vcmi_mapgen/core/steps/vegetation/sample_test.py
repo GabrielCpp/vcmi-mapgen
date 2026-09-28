@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -11,7 +12,6 @@ from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import plan_entrances, zone_fronts, zone_gate_bands
-from vcmi_mapgen.vcmi.catalog import objects as ON
 
 
 def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
@@ -29,8 +29,8 @@ needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined
 
 
 @needs_stats
-def test_model_and_sampler_deterministic() -> None:
-    model = PP.build_model("grass")
+def test_model_and_sampler_deterministic(catalog: Catalog) -> None:
+    model = PP.build_model(catalog, "grass")
     assert model.cats, "grass model has categories"
     assert 0 < model.target < 1
     ts = {(x, y) for x in range(18) for y in range(14)}
@@ -39,16 +39,16 @@ def test_model_and_sampler_deterministic() -> None:
     a2, b2, _ = PP.sample_zone(PP.ZoneRef(ts, zones, 1), model, seed=5)
     assert a1 == a2 and b1 == b2, "same seed must reproduce bit-exactly"
     assert a1, "some vegetation sampled"
-    # every mask comes from the ontology and coverage is sane
+    # every mask comes from the catalog and coverage is sane
     for o in a1:
-        assert ON.has_animation(o.animation)
+        assert catalog.spec(o.animation) is not None
     assert 0.1 < len(b1) / len(ts) < 0.95
 
 
 @needs_stats
-def test_protected_web_stays_open() -> None:
+def test_protected_web_stays_open(catalog: Catalog) -> None:
     """No blocking cell may land on the protected walkable web (the hard zero)."""
-    model = PP.build_model("grass")
+    model = PP.build_model(catalog, "grass")
     ts = {(x, y) for x in range(20) for y in range(16)}
     zones = {1: _zone(ts, 9.5, 7.5)}
     objs, blocked, prot = PP.sample_zone(PP.ZoneRef(ts, zones, 1), model, seed=9)
@@ -72,7 +72,7 @@ def test_protected_web_covers_gate_bands() -> None:
 
 
 @needs_stats
-def test_border_bias_densifies_front() -> None:
+def test_border_bias_densifies_front(catalog: Catalog) -> None:
     """Zone isolation: with BOTH zones sampling under the `border=` bias, the aligned
     open crossings outside the planned entrance band shrink. Each single side is only a
     partial ridge (Geyer saturation caps clumping), so the border plan closes the rest."""
@@ -80,7 +80,7 @@ def test_border_bias_densifies_front() -> None:
     ts2 = {(x, y) for x in range(14, 28) for y in range(12)}
     zones = {1: _zone(ts1, 6.5, 5.5), 2: _zone(ts2, 20.5, 5.5, 2)}
     plan = plan_entrances(zones)
-    model = PP.build_model("grass")
+    model = PP.build_model(catalog, "grass")
 
     def zone_pass(
         zid: int, ts: set[Tile], seed: int, border_bias: bool = True

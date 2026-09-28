@@ -11,6 +11,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import STEPS4
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
@@ -26,9 +27,6 @@ from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import plan_entrances
-from vcmi_mapgen.vcmi.catalog import objects as ON
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
-from vcmi_mapgen.vcmi.terrain import name_of
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -134,7 +132,7 @@ def plan_landings(
         ),
         list(sea.objs),
         sea.seed,
-        sea.ontology,
+        sea.catalog,
     )
     _, appr = seaport_cells(landings)
     lw.seaport_blk = frozenset(
@@ -148,7 +146,7 @@ def plan_landings(
 class SeaPlan:
     objs: Sequence[PlacedObject]
     seed: int
-    ontology: Ontology
+    catalog: Catalog
 
 
 def _water_bodies(grid: Sequence[Sequence[int]]) -> list[set[Tile]]:
@@ -172,12 +170,12 @@ def _water_bodies(grid: Sequence[Sequence[int]]) -> list[set[Tile]]:
 
 
 def populate_water(
-    grid: Sequence[Sequence[int]], zones: Mapping[int, Zone], seed: int
+    catalog: Catalog, grid: Sequence[Sequence[int]], zones: Mapping[int, Zone], seed: int
 ) -> list[PlacedObject]:
     objs: list[PlacedObject] = []
     for wi, comp in enumerate(_water_bodies(grid)):
         if len(comp) >= MIN_AREA:
-            wobjs = WT.place_water(comp, zones, 1000 + wi, seed=seed)
+            wobjs = WT.place_water(catalog, comp, zones, 1000 + wi, seed=seed)
             objs.extend(wobjs)
             print(f"  sea  {wi:>3} water    {len(comp):>5} tiles: {len(wobjs):>3} sea objects")
     return objs
@@ -185,6 +183,7 @@ def populate_water(
 
 @dataclass(frozen=True, slots=True)
 class _LevelPlan:
+    catalog: Catalog
     zones: Mapping[int, Zone]
     tunnel_protect: AbstractSet[Tile]
     gstats: Mapping[str, MN.TerrainStats]
@@ -232,7 +231,7 @@ class _ZonePlanner:
         for zid, z in sorted(self.lp.zones.items()):
             if z.terrain_type.is_barrier or z.area < MIN_AREA:
                 continue
-            zws[zid] = self.workspace(zid, z, name_of(z.terrain_type))
+            zws[zid] = self.workspace(zid, z, self.lp.catalog.terrain_name(z.terrain_type))
         return LevelWorkspace(
             zones=zws, entrance_plan=self.entrance_plan, ridge=frozenset(self.ridge)
         )
@@ -246,11 +245,11 @@ class TownRoom:
     path: tuple[Tile, ...]
 
 
-def town_room(zw: ZoneWorkspace, off: AbstractSet[Tile]) -> TownRoom | None:
+def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> TownRoom | None:
     """The town spot nearest the zone centre before any tree grows: the footprint and approach
     inside the zone and clear of ``off``, the blocking cells off the web, and a walk from the
     approach to the web."""
-    ident = ON.identity_of(MN.RND_TOWN)
+    ident = catalog.identity_of(MN.RND_TOWN)
     area = len(zw.ts)
     cx = sum(t[0] for t in zw.ts) / area + (max(len(r) for r in ident.mask) - 1) / 2.0
     cy = sum(t[1] for t in zw.ts) / area + (len(ident.mask) - 1) / 2.0
@@ -277,6 +276,7 @@ def _room_off(lw: LevelWorkspace, zw: ZoneWorkspace, tunnels: AbstractSet[Tile])
 
 
 def plan_player_zones(
+    catalog: Catalog,
     workspace: PlacementWorkspace,
     zones_by_level: Mapping[int, Mapping[int, Zone]],
     tunnels: AbstractSet[Tile],
@@ -296,7 +296,7 @@ def plan_player_zones(
                 if zw is None or lw is None
                 else _room_off(lw, zw, tunnels if level == 1 else NO_TILES)
             )
-            rooms[level, zid] = None if zw is None else town_room(zw, off)
+            rooms[level, zid] = None if zw is None else town_room(catalog, zw, off)
         return rooms[level, zid]
 
     picks = MN.select_player_zones(
@@ -317,11 +317,11 @@ def plan_player_zones(
 
 
 def plan_zones(
+    catalog: Catalog,
     workspace: PlacementWorkspace,
     map_state: MapState,
     terrain: TerrainGrids,
     seed: int,
-    ontology: Ontology,
 ) -> None:
     """Fill ``workspace`` with one ``LevelWorkspace`` per terrain level. The surface level
     also holds its planned sea objects and the shipyard landings kept open for them."""
@@ -329,6 +329,7 @@ def plan_zones(
         zones = map_state.zones[level]
         planner = _ZonePlanner(
             _LevelPlan(
+                catalog,
                 zones,
                 terrain.tunnel_protect if level == 1 else NO_TILES,
                 MN.load_gameplay(level=level),
@@ -337,5 +338,5 @@ def plan_zones(
         lw = planner.level()
         workspace.levels[level] = lw
         if level == 0:
-            lw.sea = tuple(populate_water(terrain.grids[level], zones, seed))
-            plan_landings(lw, terrain.grids[level], zones, SeaPlan(lw.sea, seed, ontology))
+            lw.sea = tuple(populate_water(catalog, terrain.grids[level], zones, seed))
+            plan_landings(lw, terrain.grids[level], zones, SeaPlan(lw.sea, seed, catalog))

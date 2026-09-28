@@ -13,6 +13,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import COUNTED, VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.steps.gameplay.mines import (
@@ -27,8 +28,6 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     mine_variants,
     rest_mines,
 )
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog import objects as ON
 
 DRAW_SALT = 0x5EED
 TOWN_SLOTS = 3
@@ -70,7 +69,10 @@ def density(st: TerrainStats) -> dict[str, float]:
 
 @final
 class ZoneDrawer:
-    def __init__(self, spec: DrawSpec, st: TerrainStats, ledger: Ledger, seed: int) -> None:
+    def __init__(
+        self, catalog: Catalog, spec: DrawSpec, st: TerrainStats, ledger: Ledger, seed: int
+    ) -> None:
+        self.catalog = catalog
         self.spec = spec
         self.st = st
         self.ledger = ledger
@@ -138,8 +140,8 @@ class ZoneDrawer:
 
     def _town(self) -> Identity | None:
         if self.spec.player or self.rng.random() < RANDOM_SHARE:
-            return ON.identity_of(RND_TOWN)
-        return self._pick(DC.pool(Purpose.TOWN, self.spec.terrain), Purpose.TOWN)
+            return self.catalog.identity_of(RND_TOWN)
+        return self._pick(self.catalog.candidates(Purpose.TOWN, self.spec.terrain), Purpose.TOWN)
 
     def _take(self, ids: list[Identity], res: str, used: set[str], out: list[Identity]) -> None:
         ident = self._pick(ids, Purpose.MINE)
@@ -160,7 +162,7 @@ class ZoneDrawer:
         mine_w = self.st.anim_w.get(Purpose.MINE, {})
         mines = {
             res: mine_variants(ids, mine_w)
-            for res, ids in ON.mines_by_resource(self.spec.terrain).items()
+            for res, ids in self.catalog.mines_by_resource(self.spec.terrain).items()
         }
         out: list[Identity] = []
         used: set[str] = set()
@@ -187,8 +189,12 @@ class ZoneDrawer:
         rng = self.rng
         out: list[tuple[str, Identity]] = []
         if n:
-            _ = self._keep_pool(Purpose.DWELLING, [ON.identity_of(a) for a in RND_DWELL_L])
-            _ = self._keep_pool(Purpose.DWELLING, DC.pool(Purpose.DWELLING, self.spec.terrain))
+            _ = self._keep_pool(
+                Purpose.DWELLING, [self.catalog.identity_of(a) for a in RND_DWELL_L]
+            )
+            _ = self._keep_pool(
+                Purpose.DWELLING, self.catalog.candidates(Purpose.DWELLING, self.spec.terrain)
+            )
         for _ in range(n):
             ident: Identity | None
             if rng.random() < 0.8:
@@ -197,7 +203,7 @@ class ZoneDrawer:
                     if rng.random() < 0.3
                     else rng.choices(RND_DWELL_L, weights=DWELL_LEVEL_W, k=1)[0]
                 )
-                ident = ON.identity_of(anim)
+                ident = self.catalog.identity_of(anim)
             else:
                 ident = self._pick(self.pools[Purpose.DWELLING], Purpose.DWELLING)
             if ident:
@@ -208,7 +214,9 @@ class ZoneDrawer:
         out: list[tuple[str, Identity]] = []
         for _ in range(n):
             ident = self._pick(
-                self._keep_pool(Purpose.BANK, DC.pool(Purpose.BANK, self.spec.terrain)),
+                self._keep_pool(
+                    Purpose.BANK, self.catalog.candidates(Purpose.BANK, self.spec.terrain)
+                ),
                 Purpose.BANK,
             )
             if ident:
@@ -222,9 +230,9 @@ class ZoneDrawer:
         for _ in range(n):
             p = self.rng.choices(VISIT_PURPOSES, weights=vw, k=1)[0]
             pool = (
-                info_pool(spec.terrain, spec.has_water, spec.has_subterrain)
+                info_pool(self.catalog, spec.terrain, spec.has_water, spec.has_subterrain)
                 if p == Purpose.INFO
-                else DC.pool(p, spec.terrain)
+                else self.catalog.candidates(p, spec.terrain)
             )
             ident = self._pick(self._keep_pool(p, pool), p)
             if ident:

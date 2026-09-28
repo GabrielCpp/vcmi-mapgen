@@ -7,13 +7,13 @@ extracts, per terrain, the DECORATION anchor pattern —
   - multitype pair correlation  g[a][b][r]      (Chebyshev rings r = 0..RMAX; r=0 measures how
     often footprints STACK — overlap is corpus-legal for vegetation, so it is learned, not banned),
   - the mark mix              anim_w[cat][anim] (corpus frequency of each sprite within a category
-    — identity itself always resolves through the ontology, the corpus contributes counts only),
+    — identity itself always resolves through the catalog, the corpus contributes counts only),
   - the budget target         veg_blocked_frac  (fraction of zone tiles under a decoration's
     blocking cell — the Boolean-model coverage the sampler must reproduce),
   - corpus run-length histogram of the veg-only open field (the M1 validation yardstick).
 
-Categories are the ontology's decoration types (`veg_categories`); water features
-(`vcmi.catalog.decor.EXCLUDE_DECOR_TYPES`) are dropped everywhere. Cached per terrain in
+Categories are the catalog's decoration types (`Catalog.decor_category`); water features
+are dropped everywhere. Cached per terrain in
 ``data/pp/veg_<terrain>.json``.
 
     uv run python -m vcmi_mapgen.core.steps.vegetation.stats --report grass
@@ -29,18 +29,16 @@ from pathlib import Path
 
 import numpy as np
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import JsonValue, Tile
+from vcmi_mapgen.core.model import JsonValue, Mask, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog import objects as ON
-from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
 from vcmi_mapgen.vcmi.formats import json_value
-from vcmi_mapgen.vcmi.terrain import LAND_NAMES, name_of
 
 ROOT = project_root()
 PP_DIR = str(ROOT / "data" / "pp")
@@ -175,14 +173,16 @@ def _stats_to_json(st: VegStats) -> dict[str, object]:
     }
 
 
-def _cat_names() -> list[str]:
-    return DC.veg_categories()
+def _mask(catalog: Catalog, anim: str) -> Mask:
+    spec = catalog.spec(anim)
+    return spec.mask if spec is not None else ("B",)
 
 
-def _anchors_of_zone(fm: OR.FaithfulMap, ts: AbstractSet[Tile]) -> list[tuple[int, int, str, str]]:
+def _anchors_of_zone(
+    catalog: Catalog, fm: OR.FaithfulMap, ts: AbstractSet[Tile]
+) -> list[tuple[int, int, str, str]]:
     """[(x, y, cat_name, anim)] for DECORATION objects anchored inside the zone, excluded
-    water-feature categories dropped. Category via the ontology (single source of truth)."""
-    cats = _cat_names()
+    water-feature categories dropped. Category via the catalog (single source of truth)."""
     out: list[tuple[int, int, str, str]] = []
     for o in fm.objects:
         if o.level != 0 or (o.x, o.y) not in ts:
@@ -190,11 +190,8 @@ def _anchors_of_zone(fm: OR.FaithfulMap, ts: AbstractSet[Tile]) -> list[tuple[in
         if OR.purpose_of(o) != Purpose.DECORATION:
             continue
         anim = o.animation.lower().removesuffix(".def")
-        ci = DC.category_of(anim)
-        if ci is None:
-            continue
-        cat = cats[ci]
-        if cat in EXCLUDE_DECOR_TYPES:
+        cat = catalog.decor_category(anim)
+        if cat is None:
             continue
         out.append((o.x, o.y, cat, anim))
     return out
@@ -268,18 +265,20 @@ def _count_cells(a: _Acc, ts: set[Tile], pos: _Pos) -> None:
                 a.cells_sum2 += n * n
 
 
-def _count_blocked(a: _Acc, anchors: list[tuple[int, int, str, str]], ts: set[Tile]) -> None:
+def _count_blocked(
+    catalog: Catalog, a: _Acc, anchors: list[tuple[int, int, str, str]], ts: set[Tile]
+) -> None:
     blocked: set[Tile] = set()
     for x, y, _c, anim in anchors:
-        for cx, cy, blk in OR.mask_cells(ON.mask_of(anim), x, y):
+        for cx, cy, blk in OR.mask_cells(_mask(catalog, anim), x, y):
             if blk and (cx, cy) in ts:
                 blocked.add((cx, cy))
     a.blocked += len(blocked)
     a.runs.update(run_lengths(ts, ts - blocked))
 
 
-def _accumulate_zone(a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
-    anchors = _anchors_of_zone(fm, ts)
+def _accumulate_zone(catalog: Catalog, a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
+    anchors = _anchors_of_zone(catalog, fm, ts)
     edist = edge_dist(ts)
 
     a.nzones += 1
@@ -306,19 +305,19 @@ def _accumulate_zone(a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
     _count_cells(a, ts, pos)
 
     # budget target + corpus veg-only run lengths
-    _count_blocked(a, anchors, ts)
+    _count_blocked(catalog, a, anchors, ts)
 
 
-def mine(maps: Iterable[OR.FaithfulMap]) -> dict[str, VegStats]:
-    acc = {t: _Acc() for t in LAND_NAMES}
+def mine(catalog: Catalog, maps: Iterable[OR.FaithfulMap]) -> dict[str, VegStats]:
+    acc = {catalog.terrain_name(t): _Acc() for t in Terrain if t.is_land}
     for fm in maps:
         zones, _zl, _ = segment_level(fm.terrain[0])
         for z in zones.values():
-            terr = name_of(z.terrain_type)
+            terr = catalog.terrain_name(z.terrain_type)
             if terr not in acc or z.area < MIN_AREA:
                 continue
-            _accumulate_zone(acc[terr], fm, set(z.tiles_set))
-    return {terr: _finalize(terr, a) for terr, a in acc.items()}
+            _accumulate_zone(catalog, acc[terr], fm, set(z.tiles_set))
+    return {terr: _finalize(catalog, terr, a) for terr, a in acc.items()}
 
 
 def _stats_path(terrain: str) -> Path:
@@ -330,7 +329,7 @@ def save(stats: Mapping[str, VegStats]) -> None:
         pp_cache.write(_stats_path(terr), SOURCE, _stats_to_json(st))
 
 
-def _finalize(terr: str, a: _Acc) -> VegStats:
+def _finalize(catalog: Catalog, terr: str, a: _Acc) -> VegStats:
     tot_tiles = max(a.tiles, 1)
     lam: dict[str, list[float]] = {}
     for cat, per_e in a.anch.items():
@@ -348,7 +347,7 @@ def _finalize(terr: str, a: _Acc) -> VegStats:
     mean_blk = {
         cat: (
             sum(
-                sum(1 for row in ON.mask_of(an) for ch in row if ch in "BX") * c
+                sum(1 for row in _mask(catalog, an) for ch in row if ch in "BX") * c
                 for an, c in cnt.items()
             )
             / max(sum(cnt.values()), 1)

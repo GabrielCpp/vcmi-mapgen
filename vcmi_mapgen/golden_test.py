@@ -19,7 +19,7 @@ from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import VmapRenderer
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
+from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
@@ -45,7 +45,7 @@ def _needs_install() -> None:
 
 
 def _generate(seed: int, size: int, subterrain: bool) -> MapState:
-    pipeline = Pipeline(Ontology(), size)
+    pipeline = Pipeline(VcmiCatalog(), size)
     for _name, step in build_steps(seed, size, 2, "normal", subterrain):
         _ = pipeline.add_step(step)
     return pipeline.run()

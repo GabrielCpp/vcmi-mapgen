@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -14,9 +15,6 @@ from vcmi_mapgen.core.steps.gameplay.mines import load_gameplay
 from vcmi_mapgen.core.steps.gate.gates import GAP, Clearance, Fit, fits, rnd_monster
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog import objects as ON
-from vcmi_mapgen.vcmi.terrain import name_of
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 
@@ -86,13 +84,18 @@ def _entry_reach(passable: Container[Tile], entry: Tile) -> set[Tile]:
     return reach
 
 
-def place_reward_zone(
-    zr: ZoneRecord,
-    entry: Tile,
-    seed: int = 1,
-    bounds: tuple[int, int] | None = None,
-    cover: CoverIndex | None = None,
-) -> list[PlacedObject]:
+@dataclass(frozen=True, slots=True)
+class RewardSite:
+    """Where a reward hoard goes: the rescued zone's record, the portal's entry tile,
+    the map bounds and the level's cover index."""
+
+    zr: ZoneRecord
+    entry: Tile
+    bounds: tuple[int, int] | None = None
+    cover: CoverIndex | None = None
+
+
+def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list[PlacedObject]:
     """SPECIAL REWARD upgrade for a zone rescued by a guarded two-way monolith (pp_map's
     unreachable-zone pass): the pocket-cache grammar scaled to the whole zone — dense
     resource piles (all `cache`-tagged) reachable from the portal's `entry` tile, plus one
@@ -103,6 +106,7 @@ def place_reward_zone(
     both for fully-populated zones (extra richness) and for bare sub-MIN_AREA slivers the
     level pass skipped (their only content). Claims its cells in `zr.used` so the later
     pocket-cache pass never double-stacks. Returns objs."""
+    zr, entry, bounds, cover = site.zr, site.entry, site.bounds, site.cover
     terrain = zr.terrain
     st = load_gameplay()[terrain]
     rng = random.Random(seed ^ (entry[0] * 92821) ^ (entry[1] * 131071) ^ 0x907A1)
@@ -116,7 +120,7 @@ def place_reward_zone(
         return []
 
     n_res = max(4, area // 10) + max(2, area // 25)
-    pool_res = DC.pool(Purpose.RESOURCE_PILE, terrain)
+    pool_res = catalog.candidates(Purpose.RESOURCE_PILE, terrain)
     objs: list[PlacedObject] = []
     val = 0
 
@@ -126,7 +130,7 @@ def place_reward_zone(
         if n_res <= 0:
             break
         if place_one(
-            PlaceTarget(objs, used, reach, rng, st, bounds=bounds, cover=cover),
+            PlaceTarget(catalog, objs, used, reach, rng, st, bounds=bounds, cover=cover),
             PlaceSpec(Purpose.RESOURCE_PILE, pool_res, cache=True),
             t[0],
             t[1],
@@ -140,10 +144,10 @@ def place_reward_zone(
         cx = sum(x for x, _ in ts) / area
         cy = sum(y for _, y in ts) / area
         lvl = 1 + (val >= 4) + (val >= 7) + (val >= 10) + (val >= 13) + 1
-        gident = rnd_monster(lvl)
+        gident = rnd_monster(catalog, lvl)
         for t in sorted(reach - used, key=partial(_centre_key, cx=cx, cy=cy)):
             if place_one(
-                PlaceTarget(objs, used, reach, rng, st, bounds=bounds, cover=cover),
+                PlaceTarget(catalog, objs, used, reach, rng, st, bounds=bounds, cover=cover),
                 PlaceSpec(Purpose.GUARD, None, ident=gident),
                 t[0],
                 t[1],
@@ -260,6 +264,7 @@ def _terrain_reach(
 
 
 def rescue_unreachable_zones(
+    catalog: Catalog,
     world: PortalWorld,
     start: tuple[int, Tile],
     gate_xy: Container[Tile],
@@ -281,10 +286,10 @@ def rescue_unreachable_zones(
     `objs_by_level`/`targets_by_level`/zone records in place; returns the pair count."""
 
     reached = _terrain_reach(world.grids, gate_xy, start)
-    cands = _candidates(world, reached)
+    cands = _candidates(catalog, world, reached)
     if not cands:
         return 0
-    return _PortalRescue(world, reached, seed).run(cands)
+    return _PortalRescue(catalog, world, reached, seed).run(cands)
 
 
 def _is_coastal(grid: Sequence[Sequence[int]], ts: set[Tile], size: int) -> bool:
@@ -297,7 +302,7 @@ def _is_coastal(grid: Sequence[Sequence[int]], ts: set[Tile], size: int) -> bool
 
 
 def _candidates(
-    world: PortalWorld, reached: Container[tuple[int, int, int]]
+    catalog: Catalog, world: PortalWorld, reached: Container[tuple[int, int, int]]
 ) -> list[tuple[int, int, int, str]]:
     cands: list[tuple[int, int, int, str]] = []
     for lvl in sorted(world.zones_by_level):
@@ -305,7 +310,7 @@ def _candidates(
         for zid, z in sorted(world.zones_by_level[lvl].items()):
             if z.terrain_type.is_barrier or z.area < PORTAL_MIN_AREA:
                 continue
-            terrain = name_of(z.terrain_type)
+            terrain = catalog.terrain_name(z.terrain_type)
             ts = set(z.tiles_set)
             if any((x, y, lvl) in reached for (x, y) in ts):
                 continue
@@ -319,8 +324,13 @@ def _candidates(
 @final
 class _PortalRescue:
     def __init__(
-        self, world: PortalWorld, reached: Container[tuple[int, int, int]], seed: int
+        self,
+        catalog: Catalog,
+        world: PortalWorld,
+        reached: Container[tuple[int, int, int]],
+        seed: int,
     ) -> None:
+        self.catalog = catalog
         self.world = world
         self.reached = reached
         self.seed = seed
@@ -486,7 +496,7 @@ class _PortalRescue:
             )
         zr.used.update(far_fit[0])  # the monolith's own cells
         robjs = place_reward_zone(
-            zr, far_appr, seed=self.seed, bounds=(W, H), cover=self.cover_by[lvl]
+            self.catalog, RewardSite(zr, far_appr, (W, H), self.cover_by[lvl]), seed=self.seed
         )
         for o in robjs:
             o.level = lvl
@@ -501,7 +511,7 @@ class _PortalRescue:
         z = self.world.zones_by_level[lvl][zid]
         ts = set(z.tiles_set)
         st = self.state[lvl]
-        ident = ON.identity_of(PORTAL_ANIMS[n_placed % len(PORTAL_ANIMS)])
+        ident = self.catalog.identity_of(PORTAL_ANIMS[n_placed % len(PORTAL_ANIMS)])
         cx, cy = z.centroid
         zone = _Enclave(lvl=lvl, zid=zid, terrain=terrain, ts=ts, cx=cx, cy=cy)
 
@@ -512,7 +522,7 @@ class _PortalRescue:
 
         hosts = self._hosts(zone)
 
-        gident = rnd_monster(min(7, 4 + len(ts) // 60))
+        gident = rnd_monster(self.catalog, min(7, 4 + len(ts) // 60))
         near = self._near_end(zone, ident, gident, hosts)
         if near is None:
             return None

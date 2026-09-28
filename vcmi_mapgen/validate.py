@@ -2,10 +2,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile
 from vcmi_mapgen.kit.objects import mask_cells
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
-from vcmi_mapgen.vcmi.terrain import name_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,7 +15,7 @@ class TerrainViolation:
 
 
 def footprint_violations(
-    ontology: Ontology, grid: list[list[Cell]], obj: PlacedObject
+    catalog: Catalog, grid: list[list[Cell]], obj: PlacedObject
 ) -> Iterator[TerrainViolation]:
     if not obj.animation:
         return
@@ -25,14 +24,14 @@ def footprint_violations(
         if not (0 <= ty < len(grid) and 0 <= tx < len(grid[ty])):
             continue
         code = grid[ty][tx].t
-        if not ontology.allowed_on(obj.animation, code):
-            yield TerrainViolation(obj, (tx, ty), name_of(code) or str(code))
+        if not catalog.allowed_on(obj.animation, code):
+            yield TerrainViolation(obj, (tx, ty), catalog.terrain_name(code) or str(code))
 
 
 @final
 class TerrainGate:
-    def __init__(self, ontology: Ontology) -> None:
-        self._ontology = ontology
+    def __init__(self, catalog: Catalog) -> None:
+        self._catalog = catalog
 
     def check(self, obj: PlacedObject, cells: dict[int, list[list[Cell]]]) -> list[str]:
         grid = cells.get(obj.level)
@@ -40,5 +39,5 @@ class TerrainGate:
             return []
         return [
             f"{obj.animation} at {v.tile} on {v.terrain}"
-            for v in footprint_violations(self._ontology, grid, obj)
+            for v in footprint_violations(self._catalog, grid, obj)
         ]

@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 
 import pytest
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -14,7 +15,6 @@ from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 Grid = list[list[int]]
 
@@ -96,21 +96,21 @@ def _synthetic_sea_and_land(sea_tiles: int) -> tuple[int, int, Grid, dict[int, Z
     return W, H, grid, zones
 
 
-def test_sea_zone_below_50_tiles_gets_no_seaport() -> None:
+def test_sea_zone_below_50_tiles_gets_no_seaport(catalog: Catalog) -> None:
 
     W, H, grid, zones = _synthetic_sea_and_land(sea_tiles=40)
-    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     assert not objs, "a water body under 50 tiles must not get a seaport"
 
 
-def test_sea_zone_50_or_more_gets_a_seaport() -> None:
+def test_sea_zone_50_or_more_gets_a_seaport(catalog: Catalog) -> None:
 
     W, H, grid, zones = _synthetic_sea_and_land(sea_tiles=55)
-    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     assert objs, "a water body of 55 tiles must get a seaport"
 
 
-def test_island_below_50_tiles_gets_no_seaport() -> None:
+def test_island_below_50_tiles_gets_no_seaport(catalog: Catalog) -> None:
     """A tight 1-tile water margin around the island (not a wide open sea) -- otherwise
     the surrounding water body is itself >= _SEA_ZONE_MIN_AREA and the water-body
     guarantee (rule 1) places a seaport regardless of the island's own size, which would
@@ -123,11 +123,11 @@ def test_island_below_50_tiles_gets_no_seaport() -> None:
     for x, y in zone_tiles:
         grid[y][x] = 2
     zones = {0: _zone(zone_tiles, 5, 3)}
-    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     assert not objs, "a 40-tile island must not get a seaport (threshold is 50)"
 
 
-def test_island_50_or_more_tiles_gets_a_seaport() -> None:
+def test_island_50_or_more_tiles_gets_a_seaport(catalog: Catalog) -> None:
 
     WATER = 8
     W = H = 14
@@ -136,7 +136,7 @@ def test_island_50_or_more_tiles_gets_a_seaport() -> None:
     for x, y in zone_tiles:
         grid[y][x] = 2
     zones = {0: _zone(zone_tiles, 4, 3)}
-    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     assert objs, "a 54-tile island must get a seaport"
 
 
@@ -219,7 +219,9 @@ def _two_islands_one_split_thin(
     return W, H, grid, zones, lm_b
 
 
-def test_seaport_placement_analyzes_the_whole_shore_not_one_zone_at_a_time() -> None:
+def test_seaport_placement_analyzes_the_whole_shore_not_one_zone_at_a_time(
+    catalog: Catalog,
+) -> None:
     """s10 diagnosis (2026-09): a shore split across several land zones (none wide
     enough alone to fit a shipyard's 3-tile-wide footprint) used to get ZERO seaports,
     even though the shore as a whole plainly has room -- the old code tried each
@@ -228,15 +230,15 @@ def test_seaport_placement_analyzes_the_whole_shore_not_one_zone_at_a_time() -> 
     touches."""
 
     W, H, grid, zones, lm_b = _two_islands_one_split_thin()
-    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     placed_in_lm_b = [o for o in objs if (o.x, o.y) in lm_b]
     assert placed_in_lm_b, "the second shore (split across many thin zones) got no seaport at all"
 
 
-def test_seaport_never_fully_blocks_an_existing_structures_front_row() -> None:
+def test_seaport_never_fully_blocks_an_existing_structures_front_row(catalog: Catalog) -> None:
     """s8-z1 diagnosis (2026-09): a seaport landed squarely in an arena's own front
     row (the row directly below its footprint -- the only geometrically-unobstructed
-    approach every multi-row structure mask in this ontology has), fully sealing off
+    approach every multi-row structure mask in this catalog has), fully sealing off
     the arena. Seaports are placed AFTER the towns and mines (see GameplayStep.run), so
     nothing stopped a later seaport from claiming an earlier structure's approach.
     Fixture: an 8x4 island with one extra land tile so a seaport CAN anchor with its
@@ -265,9 +267,7 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row() -> None:
     front = OR.front_tiles(arena.mask, arena.x, arena.y)
     assert front == {(1, 3), (2, 3), (3, 3)}, "fixture assumption broke: unexpected front tiles"
 
-    objs = WT.ensure_water_seaports(
-        WT.SeaMap(W, H, grid, zones), [arena], seed=3, ontology=Ontology()
-    )
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [arena], seed=3, catalog=catalog)
     for o in objs:
         blk = {(cx, cy) for cx, cy, b in OR.mask_cells(o.mask, o.x, o.y) if b}
         assert not front <= blk, (
@@ -282,14 +282,16 @@ def test_seaport_spacing_is_30_tiles() -> None:
     )
 
 
-def test_ensure_water_seaports_places_at_least_one() -> None:
+def test_ensure_water_seaports_places_at_least_one(catalog: Catalog) -> None:
 
     W, H, grid, zones = _water_and_land_zone()
-    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, ontology=Ontology())
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     assert objs, "a land zone bordering a >= _WATER_BODY_MIN water body must get a seaport"
 
 
-def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_seaport_rng_seed_is_not_derived_from_builtin_hash(
+    catalog: Catalog, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """_try_place used to seed its RNG with `seed ^ hash(label) ^ 0x53A9`. Python salts
     str hash() per-process (PYTHONHASHSEED), so the SAME map seed could place seaports in
     different spots on different process launches — a determinism break the project's
@@ -323,9 +325,7 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch: pytest.M
     monkeypatch.setattr(random, "Random", RecordingRandom)
 
     map_seed = 2
-    _ = WT.ensure_water_seaports(
-        WT.SeaMap(W, H, grid, zones), [], seed=map_seed, ontology=Ontology()
-    )
+    _ = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=map_seed, catalog=catalog)
 
     assert crc_calls, (
         "_ensure_water_seaports never called zlib.crc32 — did the seaport RNG regress "
@@ -338,7 +338,7 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(monkeypatch: pytest.M
     )
 
 
-def test_place_water_never_places_a_guard() -> None:
+def test_place_water_never_places_a_guard(catalog: Catalog) -> None:
     """Sea/water bodies get no monster of their own -- a GUARD only ever gates a mine, a
     loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
     order: outside those three, no monster). Sampled across many seeds since GUARD is a
@@ -350,7 +350,7 @@ def test_place_water_never_places_a_guard() -> None:
     zones = {1: _zone(ts, 14.5, 11.5, 8)}
     objs: list[PlacedObject] = []
     for seed in range(1, 30):
-        objs += WT.place_water(ts, zones, 1, seed=seed)
+        objs += WT.place_water(catalog, ts, zones, 1, seed=seed)
     assert objs, "fixture assumption broke: expected some water objects across 30 seeds"
     assert not any(o.purpose == Purpose.GUARD for o in objs), (
         "place_water must never place a GUARD-purpose object"

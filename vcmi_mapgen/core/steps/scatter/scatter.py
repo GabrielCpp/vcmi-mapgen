@@ -9,13 +9,13 @@ from collections.abc import Collection, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one, web_dist
 from vcmi_mapgen.kit.topology import zone_gate_bands
-from vcmi_mapgen.vcmi.catalog import decor as DC
 
 CAPS = {
     Purpose.RESOURCE_PILE: 16,
@@ -66,7 +66,7 @@ def _scatter_gate_dist(zone: ScatterZone, st: PG.TerrainStats) -> dict[Tile, int
 
 
 def place_scatter(
-    zone: ScatterZone, config: ScatterConfig = _DEFAULT_SCATTER_CONFIG
+    catalog: Catalog, zone: ScatterZone, config: ScatterConfig = _DEFAULT_SCATTER_CONFIG
 ) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
@@ -96,11 +96,13 @@ def place_scatter(
     ed = edge_dist(ts)
     gd = _scatter_gate_dist(zone, st)
 
-    pool_res = DC.pool(Purpose.RESOURCE_PILE, zone.terrain)
+    pool_res = catalog.candidates(Purpose.RESOURCE_PILE, zone.terrain)
 
     objs: list[PlacedObject] = []
     used: set[Tile] = set() if config.used_in is None else config.used_in
-    target = PlaceTarget(objs, used, reach, rng, st, bounds=config.bounds, cover=config.cover)
+    target = PlaceTarget(
+        catalog, objs, used, reach, rng, st, bounds=config.bounds, cover=config.cover
+    )
 
     # Open-field scatter is resource piles only — artifacts are reserved for pockets
     # and loot zones where a guard or gate makes them genuinely earned.

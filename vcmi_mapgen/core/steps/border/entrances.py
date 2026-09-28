@@ -5,6 +5,7 @@ from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
@@ -36,7 +37,10 @@ def _guard_level(rng: random.Random, area: int, home: bool) -> int:
 
 @final
 class _EntranceGuards:
-    def __init__(self, field: EntranceField, objs: Sequence[PlacedObject], level: int) -> None:
+    def __init__(
+        self, catalog: Catalog, field: EntranceField, objs: Sequence[PlacedObject], level: int
+    ) -> None:
+        self.catalog = catalog
         self.field = field
         self.level = level
         self.cover = CoverIndex(objs)
@@ -74,13 +78,15 @@ class _EntranceGuards:
                     continue
                 if rng.random() > ENTRANCE_GUARD_PROB:
                     continue
-                gident = rnd_monster(_guard_level(rng, len(ts), zid in field.home_zids))
+                gident = rnd_monster(
+                    self.catalog, _guard_level(rng, len(ts), zid in field.home_zids)
+                )
                 self._guard(gident, [rep, *sorted(band)], ts)
         return self.out
 
 
 def guard_entrances(
-    field: EntranceField, objs: Sequence[PlacedObject], seed: int, level: int
+    catalog: Catalog, field: EntranceField, objs: Sequence[PlacedObject], seed: int, level: int
 ) -> list[PlacedObject]:
     """Guard each planned entrance with probability ``ENTRANCE_GUARD_PROB``.
 
@@ -90,4 +96,4 @@ def guard_entrances(
     from every other guard by ``guard_spaced``, and accepted by the cover index. A player
     zone's entrance guard is level 1. Any other zone's grows with its area. Entrances of a
     ``skip_zids`` zone stay unguarded here, because the gated step already controls them."""
-    return _EntranceGuards(field, objs, level).run(seed)
+    return _EntranceGuards(catalog, field, objs, level).run(seed)

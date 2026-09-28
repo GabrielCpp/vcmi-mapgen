@@ -79,11 +79,12 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 |---|---|
 | Faithful data pipeline | `vcmi/formats/h3m.py`, `vcmi_ids.py`, `h3m2vmap.py`, `extract_faithful.py` → `maps_json/` |
 | Segment | `core/grid/segment.py` |
+| Object catalog | `core/catalog.py` (the `Catalog` port), `vcmi/catalog/adapter.py` (`VcmiCatalog`) |
 | Record / replay / stretch | `zone_engine.py` (the CLI), `obj_resolve.py`, `ontology.py` |
 | Emit | `faithful.py`, `vmapwrite.py` |
 | Render & inspect | `render_editor.py`, `render.py`, `render_editor_test.py` |
 | Terrain generation | `markov_terrain.py` (Markov chain learned from the corpus) |
-| Corpus statistics | `mine_stats.py`, run as `cli mine-stats`, writes `data/pp/*.json` |
+| Corpus statistics | `mine_stats.py`, run as `cli mine-stats`, writes `data/pp/*.json`; `cli audit` checks them |
 
 The `.h3m` corpus is in `maps/`; the format reference is in `vcmi-h3m-format-reference/`
 (notes: [vcmi-h3m-format-reference.md](vcmi-h3m-format-reference.md)); transient outputs go to

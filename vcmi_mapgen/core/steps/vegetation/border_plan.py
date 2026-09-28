@@ -7,25 +7,25 @@ from collections.abc import Collection, Container, Iterable, Mapping
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
-from vcmi_mapgen.vcmi.terrain import name_of
 
 
 def blocking_cells(o: PlacedObject) -> list[Tile]:
     return [(cx, cy) for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y) if blk]
 
 
-def zone_owner(zones: Mapping[int, Zone]) -> tuple[dict[Tile, int], dict[Tile, str]]:
+def zone_owner(
+    catalog: Catalog, zones: Mapping[int, Zone]
+) -> tuple[dict[Tile, int], dict[Tile, str]]:
     """Land tile to zone id and terrain name, water and rock zones left out."""
     owner: dict[Tile, int] = {}
     tname: dict[Tile, str] = {}
     for zid, z in sorted(zones.items()):
         if z.terrain_type.is_barrier:
             continue
-        terr = name_of(z.terrain_type)
+        terr = catalog.terrain_name(z.terrain_type)
         for t in z.tiles_set:
             owner[t] = zid
             tname[t] = terr
@@ -151,6 +151,7 @@ class _Sealer:
 
 
 def seal_borders(
+    catalog: Catalog,
     plan: BorderPlan,
     objs: list[PlacedObject],
     seed: int,
@@ -165,7 +166,7 @@ def seal_borders(
     to the guard pass. A cell is only sealed when every open 4-neighbour still reaches an
     `avoid` tile. Returns (new_objs, sealed_cells)."""
     rng = random.Random(seed ^ 0x5EA1 ^ (level * 7919))
-    owner, tname = zone_owner(plan.zones)
+    owner, tname = zone_owner(catalog, plan.zones)
     blocked: set[Tile] = set()
     for o in objs:
         blocked.update(blocking_cells(o))
@@ -180,9 +181,7 @@ def seal_borders(
         pick = sealer.best_pick(pairs)
         if pick is None:
             break
-        pool = DC.decor_pool(
-            tname[pick], blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
-        )
+        pool = catalog.decor(tname[pick], blocking=True, max_cells=1)
         joined = sealer.bridges(pick) if pick in plan.web else sealer.keeps_connected(pick)
         if not pool or not joined:
             sealer.dead.add(pick)

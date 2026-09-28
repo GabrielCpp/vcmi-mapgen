@@ -8,11 +8,17 @@ from collections.abc import Collection, Container, Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells, pick_identity
+from vcmi_mapgen.core.steps.gameplay.water import (
+    CellRules,
+    legal_cells,
+    pick_fixed_identity,
+    pick_random_identity,
+)
 from vcmi_mapgen.kit import objects as OR
 
 GUARD_SPACING = 2
@@ -151,6 +157,7 @@ def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Ti
 
 @dataclass(frozen=True, slots=True)
 class PlaceTarget:
+    catalog: Catalog
     objs: list[PlacedObject]
     used: set[Tile]
     reach: AbstractSet[Tile]
@@ -225,8 +232,10 @@ def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
     interactive_only: passed to legal_cells — only the A-cell is checked/claimed so adjacent
     pickups' V-cells never block each other (use for dense fill passes)."""
     rng = target.rng
-    ident = spec.ident or pick_identity(
-        spec.pool or (), spec.purpose, target.st, rng, art_share=spec.art_share
+    ident = (
+        spec.ident
+        or pick_random_identity(target.catalog, spec.purpose, rng, spec.art_share)
+        or pick_fixed_identity(spec.pool or (), spec.purpose, target.st, rng)
     )
     if ident is None:
         return False

@@ -10,6 +10,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final, override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -35,8 +36,6 @@ from vcmi_mapgen.core.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_plan import seaport_cells
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog import objects as ON
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -132,15 +131,22 @@ def place_attractions(site: ZoneSite, draw: ZoneDraw) -> None:
             print(f"  zone {site.zid}: no spot for {purpose} {ident.animation}")
 
 
+@dataclass(frozen=True, slots=True)
+class OpenZone:
+    """One zone of open land to draw outside any pipeline: its tiles, its terrain, and
+    whether a player starts in it."""
+
+    ts: AbstractSet[Tile]
+    terrain: str
+    player: bool = False
+
+
 def place_open_zone(
-    ts: AbstractSet[Tile],
-    terrain: str,
-    seed: int,
-    player: bool = False,
-    ledger: Ledger | None = None,
+    catalog: Catalog, zone: OpenZone, seed: int, ledger: Ledger | None = None
 ) -> ZoneWorkspace:
     """Draw and place one zone of open land with no vegetation and a one-tile web at its
     top-left corner, outside any pipeline. Returns its workspace after write-back."""
+    ts, terrain, player = zone.ts, zone.terrain, zone.player
     w = max(x for x, _y in ts) + 1
     h = max(y for _x, y in ts) + 1
     zw = ZoneWorkspace(
@@ -152,10 +158,10 @@ def place_open_zone(
         passable=frozenset(ts),
     )
     lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [], lambda _o: True)
-    site = ZoneSite(1, zw, lf, seed)
+    site = ZoneSite(catalog, 1, zw, lf, seed)
     ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
     spec = DrawSpec(1, terrain, len(ts), player=player)
-    draw = ZoneDrawer(spec, site.st, ledger, seed).draw()
+    draw = ZoneDrawer(catalog, spec, site.st, ledger, seed).draw()
     place_town(site, draw, player)
     place_mines(site, draw, ledger, set())
     place_attractions(site, draw)
@@ -211,23 +217,23 @@ class GameplayStep(PipelineStep):
         self._tunnels = terrain.tunnel_protect
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
-        gate = TerrainGate(ontology)
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
+        gate = TerrainGate(catalog)
         self._pick_player_zones()
         for _level, lw in sorted(self._workspace.levels.items()):
             map_state.add_objs(list(lw.sea), gate)
         indexes = {
-            level: self._index(level, lw, map_state, gate)
+            level: self._index(catalog, level, lw, map_state, gate)
             for level, lw in sorted(self._workspace.levels.items())
         }
-        gates = self._place_gates(indexes, map_state)
+        gates = self._place_gates(catalog, indexes, map_state)
         ledger = Ledger(set(BASIC_MINE_RES), len(self._player_zids), 0)
-        draws = self._place_towns(indexes, ledger)
+        draws = self._place_towns(catalog, indexes, ledger)
         for (level, zid), draw in sorted(draws.items()):
             place_mines(indexes[level].sites[zid], draw, ledger, self._placed_res)
         if 0 in indexes:
             indexes[0].lf.avoid = NO_TILES
-            self._place_shipyards(indexes[0], map_state, ontology)
+            self._place_shipyards(indexes[0], map_state, catalog)
         for (level, zid), draw in sorted(draws.items()):
             place_attractions(indexes[level].sites[zid], draw)
         self._finish(indexes, map_state, gate)
@@ -239,14 +245,16 @@ class GameplayStep(PipelineStep):
         self._player_zids = list(self._workspace.player_zids)
         self._ctx.provide(TownsIndex(player_zids=self._player_zids))
 
-    def _place_gates(self, indexes: dict[int, SiteIndex], map_state: MapState) -> GateResult:
+    def _place_gates(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
+    ) -> GateResult:
         landings = self._landings() if 0 in indexes else set[Tile]()
         for level, idx in indexes.items():
             rooms = (zw.town_room for zw in self._workspace.levels[level].zones.values())
             idx.lf.avoid = frozenset[Tile]().union(*rooms) | (landings if level == 0 else NO_TILES)
         gates = GateResult()
         if self.subterrain and 0 in indexes and 1 in indexes:
-            gates = place_gate_pairs(indexes[0], indexes[1], map_state.size, self.seed)
+            gates = place_gate_pairs(catalog, indexes[0], indexes[1], map_state.size, self.seed)
         for level, idx in indexes.items():
             idx.lf.avoid = landings if level == 0 else NO_TILES
         map_state.gate_blk = gates.gate_blk
@@ -256,20 +264,20 @@ class GameplayStep(PipelineStep):
         return gates
 
     def _place_towns(
-        self, indexes: dict[int, SiteIndex], ledger: Ledger
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], ledger: Ledger
     ) -> dict[tuple[int, int], ZoneDraw]:
         draws: dict[tuple[int, int], ZoneDraw] = {}
         for level, idx in sorted(indexes.items()):
             for zid, site in sorted(idx.sites.items()):
                 draws[level, zid] = self._draw(site, ledger)
                 place_town(site, draws[level, zid], (level, zid) in self._player_zids)
-        self._move_player_towns(indexes)
+        self._move_player_towns(catalog, indexes)
         return draws
 
-    def _move_player_towns(self, indexes: dict[int, SiteIndex]) -> None:
+    def _move_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:
         sites = [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
         need = self.players - sum(1 for s in sites if s.town_center is not None)
-        ident = ON.identity_of(RND_TOWN)
+        ident = catalog.identity_of(RND_TOWN)
         for site in _town_hosts(sites):
             if need <= 0:
                 return
@@ -287,7 +295,12 @@ class GameplayStep(PipelineStep):
         return landing
 
     def _index(
-        self, level: int, lw: LevelWorkspace, map_state: MapState, gate: TerrainGate
+        self,
+        catalog: Catalog,
+        level: int,
+        lw: LevelWorkspace,
+        map_state: MapState,
+        gate: TerrainGate,
     ) -> SiteIndex:
         lf = LevelField.build(
             level,
@@ -297,7 +310,7 @@ class GameplayStep(PipelineStep):
         )
         idx = SiteIndex(lf)
         for zid, zw in sorted(lw.zones.items()):
-            idx.sites[zid] = ZoneSite(zid, zw, lf, self.seed)
+            idx.sites[zid] = ZoneSite(catalog, zid, zw, lf, self.seed)
             idx.zone_of.update(dict.fromkeys(zw.ts, zid))
         return idx
 
@@ -312,13 +325,13 @@ class GameplayStep(PipelineStep):
             has_water=any(Terrain.WATER in row for row in self._grids[level]),
             has_subterrain=self.subterrain,
         )
-        return ZoneDrawer(spec, site.st, ledger, self.seed + level).draw()
+        return ZoneDrawer(site.catalog, spec, site.st, ledger, self.seed + level).draw()
 
-    def _place_shipyards(self, idx: SiteIndex, map_state: MapState, ontology: Ontology) -> None:
+    def _place_shipyards(self, idx: SiteIndex, map_state: MapState, catalog: Catalog) -> None:
         objs = [o for o in map_state.objs if o.level == 0 and o.purpose]
         objs += [o for site in idx.sites.values() for o in site.objs]
         shore = Shore(self._grids[0], map_state.zones[0], objs)
-        n = place_shipyards(idx, shore, self.seed, ontology)
+        n = place_shipyards(idx, shore, self.seed, catalog)
         print(f"  L0 seaport guarantee: {n} shipyard(s) added")
 
     def _finish(

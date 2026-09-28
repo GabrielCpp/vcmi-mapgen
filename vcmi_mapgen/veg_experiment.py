@@ -4,6 +4,7 @@ from vcmi_mapgen.core.grid.geometry import run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.steps.vegetation.sample import ZoneRef, build_model, sample_zone
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.terrain import name_of
 
 
@@ -15,7 +16,7 @@ def m1_experiment(map_name: str, zid: int, seed: int = 1) -> None:
     z = zones[zid]
     terrain = name_of(z.terrain_type)
     ts = set(z.tiles_set)
-    model = build_model(terrain)
+    model = build_model(VcmiCatalog(), terrain)
     head = f"model[{terrain}]: {len(model.cats)} categories, "
     print(f"{head}target veg_blocked_frac={model.target:.3f}")
 

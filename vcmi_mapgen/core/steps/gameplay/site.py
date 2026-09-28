@@ -20,6 +20,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import STEPS4, components
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
@@ -45,8 +46,6 @@ from vcmi_mapgen.core.steps.gate.gates import (
     rnd_monster,
 )
 from vcmi_mapgen.core.steps.placement import web_dist
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog.decor import EXCLUDE_DECOR_TYPES
 
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3
@@ -56,7 +55,6 @@ TOWN_OPTIONS: dict[str, JsonValue] = {
     "possibleSpells": CORE_SPELLS,
 }
 GUARD_OPTIONS: dict[str, JsonValue] = {"character": "hostile"}
-GUARD_PROBE = rnd_monster(3)
 
 
 def mask_tiles(mask: Sequence[str], anchor: Tile) -> Iterator[tuple[Tile, str]]:
@@ -239,7 +237,11 @@ class ZoneSite:
     approaches) is off-limits to any footprint; ``reach`` is every tile the web reaches
     through ``passable`` and ``comp`` labels its connected pieces."""
 
-    def __init__(self, zid: int, zw: ZoneWorkspace, lf: LevelField, seed: int) -> None:
+    def __init__(
+        self, catalog: Catalog, zid: int, zw: ZoneWorkspace, lf: LevelField, seed: int
+    ) -> None:
+        self.catalog = catalog
+        self.guard_probe = rnd_monster(catalog, 3)
         self.zid = zid
         self.zw = zw
         self.lf = lf
@@ -288,7 +290,7 @@ class ZoneSite:
         return (approach[0], approach[1] + 1) if walk_on_only(ident.mask) else approach
 
     def guard_ok(self, tile: Tile) -> bool:
-        probe = PlacedObject.at(GUARD_PROBE, tile, level=self.lf.level, purpose=Purpose.GUARD)
+        probe = PlacedObject.at(self.guard_probe, tile, level=self.lf.level, purpose=Purpose.GUARD)
         return self.lf.accepts(probe)
 
     def _front_open(self, ident: Identity, fit: Fit) -> bool:
@@ -443,11 +445,9 @@ class ZoneSite:
         lvl = MINE_GUARD_LVL.get(subtype, 3)
         if subtype not in ("sawmill", "orePit") and self.rng.random() < 0.25:
             lvl += 1
-        _ = self.add_guard(rnd_monster(lvl), approach)
+        _ = self.add_guard(rnd_monster(self.catalog, lvl), approach)
         ex, ey = approach[0], approach[1] - 1
-        seal_pool = DC.decor_pool(
-            self.zw.terrain, blocking=True, max_cells=1, exclude_types=EXCLUDE_DECOR_TYPES
-        )
+        seal_pool = self.catalog.decor(self.zw.terrain, blocking=True, max_cells=1)
         if not seal_pool:
             return
         for s in ((ex - 1, ey), (ex + 1, ey), (ex - 1, ey + 1), (ex + 1, ey + 1)):

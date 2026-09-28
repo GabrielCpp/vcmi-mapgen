@@ -1449,7 +1449,7 @@
       "done_when": [
         "make check",
         "make golden",
-        "! grep -rnE 'from vcmi_mapgen\\.(vcmi|ontology)|import ontology' vcmi_mapgen/core --include=*.py",
+        "! grep -rnE 'from vcmi_mapgen\\.(vcmi|ontology)|import ontology' vcmi_mapgen/core --include=*.py | grep -v 'vcmi\\.formats'",
         "! grep -rnE 'class Ontology\\b' vcmi_mapgen --include=*.py"
       ],
       "rules": [
@@ -2157,7 +2157,8 @@
         "make check",
         "make golden",
         "test ! -e vcmi_mapgen/kit/tiling.py",
-        "! grep -rnE '\\bCell\\b|\\bsurfs\\b' vcmi_mapgen/core --include=*.py"
+        "! grep -rnE '\\bCell\\b|\\bsurfs\\b' vcmi_mapgen/core --include=*.py",
+        "! grep -rn 'formats import vmap' vcmi_mapgen/core --include=*.py"
       ],
       "rules": [
         "terrain_gen writes one Terrain grid; vcmi/export.py and renderers/png.py call vcmi.tiles.tile on it.",
@@ -2439,7 +2440,8 @@
         "make check",
         "make golden",
         "! grep -rnE 'data/pp|STATS_PATH|_cached_stats' vcmi_mapgen/core --include=*.py",
-        "! grep -rnE 'patch\\([^)]*(mine_|_stats|faithful_path)' vcmi_mapgen --include=*.py"
+        "! grep -rnE 'patch\\([^)]*(mine_|_stats|faithful_path)' vcmi_mapgen --include=*.py",
+        "! grep -rnE 'from vcmi_mapgen\\.vcmi' vcmi_mapgen/core --include=*.py"
       ],
       "rules": [
         "cli loads each prior once and passes it to the step constructors; no step reads data/pp.",

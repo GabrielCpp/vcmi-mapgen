@@ -1,11 +1,12 @@
 """Reliability tests for steps.scatter.scatter (unguarded resource piles)."""
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.scatter import scatter as SC
 
 
-def test_place_scatter_handles_a_zone_with_no_reachable_open_tile() -> None:
+def test_place_scatter_handles_a_zone_with_no_reachable_open_tile(catalog: Catalog) -> None:
     """A zone whose whole tile set is already occupied by gameplay (open_set empty) still
     has a nonzero resource-pile quota drawn from its raw area — scatter()'s candidate list
     (built from `reach`, derived from `open_set`) then ends up empty, and
@@ -24,6 +25,7 @@ def test_place_scatter_handles_a_zone_with_no_reachable_open_tile() -> None:
         )
     }
     objs, used, reach = SC.place_scatter(
+        catalog,
         SC.ScatterZone(ts, zones, 1, "grass", open_set=set(), prot=set()),
         SC.ScatterConfig(seed=3, bounds=(30, 24)),
     )

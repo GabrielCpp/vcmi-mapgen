@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import final, override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateResult
@@ -14,7 +15,6 @@ from vcmi_mapgen.core.steps.portal import geometry as GEO
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass
@@ -89,7 +89,7 @@ class PortalStep(PipelineStep):
         self._gate_objs = ctx.get(GateResult, GateResult()).gate_objs
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         grids = self._grids
         objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in grids}
         for o in map_state.objs:
@@ -100,6 +100,7 @@ class PortalStep(PipelineStep):
         start = _find_start(self._player_zids, map_state.zones, self._workspace)
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
+                catalog,
                 GEO.PortalWorld(
                     self.size,
                     grids,
@@ -130,5 +131,5 @@ class PortalStep(PipelineStep):
         self.objs = [
             o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl] if id(o) not in before
         ]
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))
         self._ctx.provide(PortalResult(log=self.log))

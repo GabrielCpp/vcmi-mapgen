@@ -5,12 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import final, override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.steps.gated.placer import LootAccess, place_gated_zones
 from vcmi_mapgen.core.steps.zone_index import build_zone_index
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass
@@ -60,7 +60,7 @@ class GatedStep(PipelineStep):
         self._workspace = ctx.require(PlacementWorkspace)
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         index = build_zone_index(self._workspace)
         by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in index.zone_records}
         for o in map_state.objs:
@@ -69,7 +69,11 @@ class GatedStep(PipelineStep):
         result = GatedResult()
         for level, zone_records in index.zone_records.items():
             new, n, access = place_gated_zones(
-                zone_records, by_level[level], seed=self.seed, bounds=(self.size, self.size)
+                catalog,
+                zone_records,
+                by_level[level],
+                seed=self.seed,
+                bounds=(self.size, self.size),
             )
             for o in new:
                 o.level = level
@@ -84,6 +88,6 @@ class GatedStep(PipelineStep):
             result.access[level] = access
             self.objs.extend(new)
             _report_loot(level, n, set(access))
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))
         self._ctx.provide(index)
         self._ctx.provide(result)

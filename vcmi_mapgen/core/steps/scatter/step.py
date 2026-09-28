@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 from typing import override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.steps.placement import guard_zoc
@@ -12,7 +13,6 @@ from vcmi_mapgen.core.steps.scatter import scatter as SC
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 class ScatterStep(PipelineStep):
@@ -42,7 +42,7 @@ class ScatterStep(PipelineStep):
         self._workspace = ctx.require(PlacementWorkspace)
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._zones.zone_records}
         for o in map_state.objs:
             if o.level in by_level:
@@ -62,6 +62,7 @@ class ScatterStep(PipelineStep):
                 zw = lvl_ws.zones[zr.zid]
                 used = set(zr.used) | taken
                 piles, _u, _r = SC.place_scatter(
+                    catalog,
                     SC.ScatterZone(
                         zw.ts,
                         map_state.zones[level],
@@ -91,4 +92,4 @@ class ScatterStep(PipelineStep):
                     + f"scatter res={pk.get('RESOURCE_PILE', 0)}"
                 )
 
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))

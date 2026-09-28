@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -61,7 +62,7 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
     assert GEO.unreachable_targets(size, grid, hard_wall + picks, targets) == []
 
 
-def test_portal_reward_zone() -> None:
+def test_portal_reward_zone(catalog: Catalog) -> None:
     """A rock-enclosed zone becomes a SPECIAL REWARD zone: a same-subtype two-way monolith
     pair bridges it (far end inside, near end in the reachable host zone with a hostile
     guard adjacent), cache-tagged loot fills it, and traverse counts it reachable."""
@@ -78,6 +79,7 @@ def test_portal_reward_zone() -> None:
         }
         targets = {0: [(5, 6)]}
         n = GEO.rescue_unreachable_zones(
+            catalog,
             GEO.PortalWorld(size, {0: grid}, {0: zones}, objs, targets, {0: []}),
             start=(0, (5, 5)),
             gate_xy=no_gates,
@@ -113,7 +115,7 @@ def test_portal_reward_zone() -> None:
     )
 
 
-def test_portal_reward_zone_never_places_an_artifact() -> None:
+def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
     """Artifacts (and pandora's box / chests) are pocket/loot-zone only now -- the
     portal-rescue reward hoard must be resource piles alone, never a REWARD_PICKUP
     (which used to draw from RND_ART)."""
@@ -127,6 +129,7 @@ def test_portal_reward_zone_never_places_an_artifact() -> None:
     }
     targets = {0: [(5, 6)]}
     _ = GEO.rescue_unreachable_zones(
+        catalog,
         GEO.PortalWorld(size, {0: grid}, {0: zones}, objs, targets, {0: []}),
         start=(0, (5, 5)),
         gate_xy=no_gates,

@@ -78,14 +78,17 @@ uv run python -m vcmi_mapgen.cli mine-stats --only markov tiler
 
 A missing file stops `generate` with an error that names `mine-stats`.
 
-Two corpus tools run through the same CLI:
+Three corpus tools run through the same CLI:
 
 ```bash
+uv run python -m vcmi_mapgen.cli audit
 uv run python -m vcmi_mapgen.cli extract-vmap
 uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
 ```
 
-`extract-vmap` rebuilds `maps_vmap/` from `maps/`. `corpus-match` compares where gameplay
+`audit` lists the corpus objects the generator cannot reproduce, and exits non-zero when there
+is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
+`maps_vmap/` from `maps/`. `corpus-match` compares where gameplay
 objects sit in corpus zones and in generated zones.
 
 ## Map

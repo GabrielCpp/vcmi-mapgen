@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import final, override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.pipeline import (
     LevelWorkspace,
@@ -18,7 +19,6 @@ from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass
@@ -93,7 +93,7 @@ class BorderStep(PipelineStep):
         self._player_zids = ctx.require(TownsIndex).player_zids
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         W = H = self.size
         objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._grids}
         for o in map_state.objs:
@@ -107,6 +107,7 @@ class BorderStep(PipelineStep):
             bands = _entrance_bands(lvl_ws)
             home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
             ent_objs = guard_entrances(
+                catalog,
                 _entrance_field(lvl_ws, zone_records, home_zids),
                 objs_by_level[level],
                 self.seed,
@@ -115,11 +116,11 @@ class BorderStep(PipelineStep):
             objs_by_level[level].extend(ent_objs)
             self.objs.extend(ent_objs)
             new_objs, guard_tiles, n_open = BS.guard_crossings(
-                BS.LevelGrid(W, H, self._grids[level], map_state.zones[level]),
+                catalog,
+                BS.LevelGrid(W, H, self._grids[level], map_state.zones[level], level),
                 BS.CrossingRules(bands, lvl_ws.hard_avoid, skip_tiles=loot_ts),
                 objs_by_level[level],
                 self.seed,
-                level,
             )
             if level == 1:
                 for o in new_objs:
@@ -136,5 +137,5 @@ class BorderStep(PipelineStep):
                 zr.open_set -= guard_tiles
             lvl_ws.guard_tiles = frozenset(guard_tiles)
 
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))
         self._ctx.provide(BorderResult(log=self.log))

@@ -6,6 +6,7 @@ import collections
 from dataclasses import dataclass, field
 from typing import final, override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import MapState, PlacedObject, Pockets, Tile, ZoneRecord
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
@@ -13,7 +14,6 @@ from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.core.steps.loot import caches as CA
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass
@@ -74,6 +74,7 @@ class LootStep(PipelineStep):
 
     def _place_level_loot(
         self,
+        catalog: Catalog,
         level: int,
         objs: list[PlacedObject],
         seerhut_artifacts: set[str],
@@ -87,17 +88,22 @@ class LootStep(PipelineStep):
         border_guards = self._workspace.levels[level].guard_tiles
         _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(zone_records)
         qobjs, n_quests = CA.place_seer_hut_quests(
+            catalog,
             zone_records,
             seed=seed,
             bounds=(size, size),
-            used_artifacts=seerhut_artifacts,
-            context=CA.SeerHutContext(pocket_tiles=_pocket_tiles_pkt, existing_objs=objs),
+            context=CA.SeerHutContext(
+                pocket_tiles=_pocket_tiles_pkt,
+                existing_objs=objs,
+                used_artifacts=seerhut_artifacts,
+            ),
         )
         targets.extend((o.x, o.y) for o in qobjs)
         if n_quests:
             print(f"  L{level} seer hut quests: {n_quests}")
 
         cobjs, n_pockets, pocket_depth_by_tile = CA.place_pocket_caches(
+            catalog,
             zone_records,
             seed=seed,
             bounds=(size, size),
@@ -117,7 +123,7 @@ class LootStep(PipelineStep):
         return [*qobjs, *cobjs], pocket_depth_by_tile
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._zone_records}
         for o in map_state.objs:
             if o.level in objs_by_level:
@@ -128,12 +134,12 @@ class LootStep(PipelineStep):
         for level in sorted(objs_by_level):
             home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
             new_objs, depth = self._place_level_loot(
-                level, objs_by_level[level], seerhut_artifacts, home_zids
+                catalog, level, objs_by_level[level], seerhut_artifacts, home_zids
             )
             for o in new_objs:
                 o.level = level
             self.objs.extend(new_objs)
             pockets_by_level[level] = depth
 
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))
         self._ctx.provide(LootResult(pockets=pockets_by_level))

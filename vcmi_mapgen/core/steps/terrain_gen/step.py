@@ -17,12 +17,12 @@ import random
 from dataclasses import dataclass, field
 from typing import override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Cell, MapState, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MTOPO
 from vcmi_mapgen.kit import tiling as TL
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 from vcmi_mapgen.vcmi.formats import vmap as VM
 
 
@@ -170,7 +170,7 @@ class TerrainStep(PipelineStep):
         self._ctx = ctx
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         W = H = self.size
 
         grid0 = MTOPO.generate(

@@ -7,9 +7,10 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen.cli.settings import load_settings
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.core.steps.gameplay import mines as PG
-from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
+from vcmi_mapgen.core.steps.gameplay.step import OpenZone, place_open_zone
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
 from vcmi_mapgen.vcmi.catalog import objects as ON
@@ -101,7 +102,7 @@ def test_vmap_export_roundtrip(tmp_path: Path) -> None:
 
 
 @needs_vcmi
-def test_vmap_export_game_contracts(tmp_path: Path) -> None:
+def test_vmap_export_game_contracts(catalog: Catalog, tmp_path: Path) -> None:
     """Round-2 playtest contracts (v5.2): mask orientation matches the art (the sawmill
     entrance is ONE tile left of the anchor, not mirrored), export masks are V-padded to
     the sprite tile extent (VCMI truncates sprites outside the mask), guards fight
@@ -124,7 +125,7 @@ def test_vmap_export_game_contracts(tmp_path: Path) -> None:
         pytest.skip("gameplay stats not mined")
     # a placed zone carries the game-time options on the right purposes
     ts = {(x, y) for x in range(30) for y in range(24)}
-    objs: list[PlacedObject] = place_open_zone(ts, "grass", 3, player=True).gobjs
+    objs: list[PlacedObject] = place_open_zone(catalog, OpenZone(ts, "grass", player=True), 3).gobjs
     town = next(o for o in objs if o.purpose == "TOWN")
     START_BUILDINGS: JsonValue = {
         "allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]

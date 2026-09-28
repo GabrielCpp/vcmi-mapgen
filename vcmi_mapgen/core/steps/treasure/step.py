@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import final, override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.gated.step import GatedResult
-from vcmi_mapgen.core.steps.treasure.fill import fill_loot_zones
+from vcmi_mapgen.core.steps.treasure.fill import LootLevel, fill_loot_zones
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @final
@@ -40,21 +40,18 @@ class TreasureStep(PipelineStep):
         self._gated = ctx.require(GatedResult)
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         for level in self._gated.access:
             level_objs = [o for o in map_state.objs if o.level == level]
-            new = self._fill_level(level, level_objs)
+            new = self._fill_level(catalog, level, level_objs)
             for o in new:
                 o.level = level
             self.objs.extend(new)
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))
 
-    def _fill_level(self, level: int, level_objs: list[PlacedObject]) -> list[PlacedObject]:
+    def _fill_level(
+        self, catalog: Catalog, level: int, level_objs: list[PlacedObject]
+    ) -> list[PlacedObject]:
         footprints = {zid: acc.footprint for zid, acc in self._gated.access[level].items()}
-        return fill_loot_zones(
-            self._zones.zone_records[level],
-            footprints,
-            level_objs,
-            self.seed,
-            (self.size, self.size),
-        )
+        loot = LootLevel(self._zones.zone_records[level], footprints, level_objs)
+        return fill_loot_zones(catalog, loot, self.seed, (self.size, self.size))

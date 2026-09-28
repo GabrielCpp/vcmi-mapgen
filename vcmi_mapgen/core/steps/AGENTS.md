@@ -53,6 +53,14 @@ of step, it is a sign one of two things happened:
    `map_state.objs`), so it is published as a side effect of an
    already-legitimate step's `run()`, never as the sole reason a step exists.
 
+## A step learns about objects through its catalog
+
+`run(self, catalog: Catalog, map_state: MapState)` receives the one `Catalog`
+(`core/catalog.py`). The step passes it as the first argument to every function that
+asks about an object: identity, footprint, terrain coupling, candidates, decoration,
+mines or spells. No module under `core/` imports `vcmi.catalog`. A test can hand a step a
+small fake catalog, as `scatter/step_test.py` does.
+
 ## Every placement step is additive
 
 A step appends its own objects with `map_state.add_objs(new, rules)`. It never removes,

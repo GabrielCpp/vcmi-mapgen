@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import open_islands
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.map_state import index_of
@@ -20,7 +21,6 @@ from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borde
 from vcmi_mapgen.core.steps.zone_plan import plan_player_zones, plan_zones
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.validate import TerrainGate
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 @dataclass
@@ -93,12 +93,12 @@ class VegetationStep(PipelineStep):
         self._tunnel_protect = self._terrain.tunnel_protect
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         if self._workspace is None:
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
-        plan_zones(self._workspace, map_state, self._terrain, self.seed, ontology)
+        plan_zones(catalog, self._workspace, map_state, self._terrain, self.seed)
         plan_player_zones(
-            self._workspace, map_state.zones, self._terrain.tunnel_protect, self.players
+            catalog, self._workspace, map_state.zones, self._terrain.tunnel_protect, self.players
         )
         models: dict[str, PP.VegModel] = {}
         new_objs: list[PlacedObject] = []
@@ -112,7 +112,7 @@ class VegetationStep(PipelineStep):
                 ts_full = zw.ts_full
 
                 if terrain not in models:
-                    models[terrain] = PP.build_model(terrain)
+                    models[terrain] = PP.build_model(catalog, terrain)
                 model = models[terrain]
                 if not model.cats:
                     continue
@@ -161,16 +161,16 @@ class VegetationStep(PipelineStep):
                 zw.passable = frozenset(passable)
 
         self.objs = new_objs
-        map_state.add_objs(new_objs, TerrainGate(ontology))
+        map_state.add_objs(new_objs, TerrainGate(catalog))
         for level, lvl_ws in self._workspace.levels.items():
-            self._seal_level(ontology, map_state, level, lvl_ws, pre_taken[level])
+            self._seal_level(catalog, map_state, level, lvl_ws, pre_taken[level])
         for level, lvl_ws in self._workspace.levels.items():
             _check_islands(map_state, level, lvl_ws)
         self._ctx.provide(VegetationResult(log=self.log))
 
     def _seal_level(
         self,
-        ontology: Ontology,
+        catalog: Catalog,
         map_state: MapState,
         level: int,
         lvl_ws: LevelWorkspace,
@@ -190,6 +190,7 @@ class VegetationStep(PipelineStep):
             avoid |= set(zw.approaches) | zw.occupied | zw.town_clear
         level_objs = [o for o in [*lvl_ws.sea, *map_state.objs] if o.level == level]
         sealers, sealed = seal_borders(
+            catalog,
             BorderPlan(land, map_state.zones[level], bands, avoid, web),
             level_objs,
             self.seed,
@@ -201,7 +202,7 @@ class VegetationStep(PipelineStep):
             for o in sealers:
                 o.level = 1
         self.objs.extend(sealers)
-        map_state.add_objs(sealers, TerrainGate(ontology))
+        map_state.add_objs(sealers, TerrainGate(catalog))
         for zw in lvl_ws.zones.values():
             mine = sealed & zw.ts_full
             zw.blocked |= mine

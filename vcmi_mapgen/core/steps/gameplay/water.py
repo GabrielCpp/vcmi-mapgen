@@ -15,6 +15,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile, Zone, footprint
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -26,10 +27,6 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     load_gameplay,
 )
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog import objects as ON
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
-from vcmi_mapgen.vcmi.terrain import name_of
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
@@ -45,29 +42,26 @@ SEAPORT_SEARCH_HOPS = 2  # near-coastal search depth (s10 diagnosis, 2026-09: th
 _NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 
 
-def pick_identity(
-    pool: Iterable[Identity],
-    purpose: str,
-    st_t: TerrainStats,
-    rng: random.Random,
-    art_share: float = 0.45,
+def pick_random_identity(
+    catalog: Catalog, purpose: str, rng: random.Random, art_share: float = 0.45
 ) -> Identity | None:
     """Identity for a pickup. The H3 convention (user-mandated): favour the editor's RANDOM
     classes — random resource, tiered random artifacts — over fixed ones. `art_share` is
     the random-artifact probability for REWARD_PICKUP: high for guarded caches, low for
     unguarded scatter (which draws the fixed LOOT pool — treasure chests, campfires —
-    weighted by the corpus mix, where the chest dominates)."""
+    weighted by the corpus mix, where the chest dominates). None means the caller draws a
+    fixed identity instead."""
     if purpose == Purpose.RESOURCE_PILE and rng.random() < 0.6:
-        return ON.identity_of(RND_RES)
+        return catalog.identity_of(RND_RES)
     if purpose == Purpose.REWARD_PICKUP and rng.random() < art_share:
         anim = rng.choices([a for a, _w, _v in RND_ART], weights=[w for _a, w, _v in RND_ART], k=1)[
             0
         ]
-        return ON.identity_of(anim)
-    return _pick_fixed_identity(pool, purpose, st_t, rng)
+        return catalog.identity_of(anim)
+    return None
 
 
-def _pick_fixed_identity(
+def pick_fixed_identity(
     pool: Iterable[Identity], purpose: str, st_t: TerrainStats, rng: random.Random
 ) -> Identity | None:
     pool = sorted(
@@ -139,14 +133,18 @@ def _water_obj(
 
 
 def place_water(
-    ts: AbstractSet[Tile], _zones: Mapping[int, Zone], zid: int, seed: int = 1
+    catalog: Catalog,
+    ts: AbstractSet[Tile],
+    _zones: Mapping[int, Zone],
+    zid: int,
+    seed: int = 1,
 ) -> list[PlacedObject]:
     """Populate a WATER zone (spec point: water must not be empty): flotsam/sea chests
     (pickups), buoys/mermaids/sirens (bonus), boats + whirlpools (navigability), shipwrecks/
     derelicts (banks), ocean bottles. No monster: a GUARD only ever gates a mine, a
     loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
     order) -- water bodies get none. Densities and animation mix come from the corpus
-    water pass; identities from the ontology's water pools."""
+    water pass; identities from the catalog's water pools."""
     st = load_gameplay().get("water")
     if not st or not st.tiles:
         return []
@@ -160,7 +158,7 @@ def place_water(
         n = min(int(x) + (1 if rng.random() < x - int(x) else 0), 14)
         if not n:
             continue
-        pool = DC.pool(p, "water")
+        pool = catalog.candidates(p, Terrain.WATER)
         cands = sorted(ts)
         placed: list[Tile] = []
         for t in rng.choices(cands, k=50 * n):
@@ -168,7 +166,7 @@ def place_water(
                 break
             if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < 4 for q in placed):
                 continue
-            ident = _pick_fixed_identity(pool, p, st, rng)
+            ident = pick_fixed_identity(pool, p, st, rng)
             if ident is None:
                 break
             placed_obj = _water_obj(ident, t, p, (ts, used), cover)
@@ -198,7 +196,7 @@ def ensure_water_seaports(
     sea: SeaMap,
     objs: list[PlacedObject],
     seed: int,
-    ontology: Ontology,
+    catalog: Catalog,
 ) -> list[PlacedObject]:
     """Guarantee ≥1 shipyard per SHORE bordering a water body ≥ SEA_ZONE_MIN_AREA tiles,
     and ≥1 shipyard per island land zone ≥ ISLAND_MIN_AREA tiles.
@@ -218,9 +216,9 @@ def ensure_water_seaports(
 
     Placement uses any anchor in the zone where the shipyard's footprint fits with all its
     cells and the approach tile in the zone, and no blocking-cell conflict with existing
-    objects. The shipyard identity (type/subtype/animation/mask) comes from `ontology` --
+    objects. The shipyard identity (type/subtype/animation/mask) comes from `catalog` --
     resolved per target zone's terrain, like every other placed object in this file --
-    not a hardcoded animation/mask (the ontology's shipyard entry happens to be identical
+    not a hardcoded animation/mask (the catalog's shipyard entry happens to be identical
     across all land terrains, but sourcing it this way is what keeps it that way on
     purpose rather than by accident).
 
@@ -230,7 +228,7 @@ def ensure_water_seaports(
     }
     if not water_tiles:
         return []
-    return _SeaportPlanner(sea, water_tiles, objs, seed, ontology).run()
+    return _SeaportPlanner(sea, water_tiles, objs, seed, catalog).run()
 
 
 def _land_zone_of(zones: Mapping[int, Zone]) -> dict[Tile, int]:
@@ -327,13 +325,13 @@ class _SeaportPlanner:
         water_tiles: set[Tile],
         objs: list[PlacedObject],
         seed: int,
-        ontology: Ontology,
+        catalog: Catalog,
     ) -> None:
         self.sea = sea
         self.water_tiles = water_tiles
         self.objs = objs
         self.seed = seed
-        self.ontology = ontology
+        self.catalog = catalog
 
         # land tile → zone id
         self.land_zone_of = _land_zone_of(sea.zones)
@@ -434,7 +432,7 @@ class _SeaportPlanner:
         ident: Identity,
         force: bool = True,
     ) -> PlacedObject | None:
-        """Try to place a shipyard with the given ontology identity. cand_tiles =
+        """Try to place a shipyard with the given catalog identity. cand_tiles =
         anchor candidates (coastal tiles first). Prefers positions ≥20 tiles from
         existing seaports; when force=True (required placement) falls back to any
         valid position if no spaced candidate exists."""
@@ -506,7 +504,7 @@ class _SeaportPlanner:
         return next(
             (
                 i
-                for i in self.ontology.pool(Purpose.WATER_TRANSPORT, terrain)
+                for i in self.catalog.candidates(Purpose.WATER_TRANSPORT, terrain)
                 if i.type == "shipyard"
             ),
             None,
@@ -515,7 +513,9 @@ class _SeaportPlanner:
     def _shore_shipyard(self, zids_here: Iterable[int]) -> Identity | None:
         ident: Identity | None = None
         for zid in zids_here:
-            ident = self._shipyard_ident(name_of(self.sea.zones[zid].terrain_type))
+            ident = self._shipyard_ident(
+                self.catalog.terrain_name(self.sea.zones[zid].terrain_type)
+            )
             if ident is not None:
                 break
         return ident
@@ -568,7 +568,7 @@ class _SeaportPlanner:
         ts_set = set(z.tiles_set)
         if self._zone_has_seaport(zid, ts_set):
             return True
-        terrain = name_of(z.terrain_type)
+        terrain = self.catalog.terrain_name(z.terrain_type)
         ident = self._shipyard_ident(terrain)
         if ident is None:
             self._warn(

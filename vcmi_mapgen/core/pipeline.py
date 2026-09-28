@@ -7,8 +7,8 @@ pipeline primitive.
 A step owns its data as instance properties. Dependencies known when a pipeline is
 assembled (seed, size, ...) go through the constructor. ``inject(ctx)`` is self-service:
 a step pulls exactly the values it needs out of the shared ``ProviderRegistry``, typed by
-their own dataclass, and stores them on itself. ``run(ontology, map_state)`` is passed the
-shared ontology and the ``MapState`` being assembled on EVERY call, whether or not a given
+their own dataclass, and stores them on itself. ``run(catalog, map_state)`` is passed the
+shared ``Catalog`` and the ``MapState`` being assembled on EVERY call, whether or not a given
 step uses them.
 
 **Every step must write onto `map_state`.** That is the step contract: a step exists to
@@ -41,8 +41,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast, overload
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Entrance, MapState, PlacedObject, Tile
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 __all__ = [
     "LevelWorkspace",
@@ -172,9 +172,9 @@ class PipelineStep(ABC):
     another step produced). ``inject(ctx)`` is self-service: pull exactly the values this
     step needs out of the shared ``ProviderRegistry`` via ``ctx.require(SomeType)``/
     ``ctx.get(SomeType, default)``, storing them on self; the base implementation needs
-    nothing and is a no-op. ``run(ontology, map_state)`` does the step's work — write onto
+    nothing and is a no-op. ``run(catalog, map_state)`` does the step's work — write onto
     ``map_state`` (every step must), and ``ctx.provide(...)`` anything a later step needs.
-    ``ontology`` and ``map_state`` are ALWAYS passed, whether or not this particular step
+    ``catalog`` and ``map_state`` are ALWAYS passed, whether or not this particular step
     uses them.
     """
 
@@ -182,15 +182,15 @@ class PipelineStep(ABC):
         _ = ctx
 
     @abstractmethod
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         raise NotImplementedError(f"{type(self).__name__}.run() not implemented")
 
 
 class Pipeline:
     """Runs an ordered list of PipelineStep instances against a shared ProviderRegistry.
 
-    ``ontology`` (the ``vcmi.catalog`` facade — the abstraction layer between
-    game data and the pipeline) and ``map_state`` are known before any step runs, so
+    ``catalog`` (the ``Catalog`` port, the only way a step learns about objects) and
+    ``map_state`` are known before any step runs, so
     every step's run() receives them directly. Everything else that flows from one step
     to a later one lives in ``ctx`` (a ``ProviderRegistry``), written directly by the
     producing step — Pipeline itself never inspects or merges a step's output; it only
@@ -200,8 +200,8 @@ class Pipeline:
     afterward from ``pipeline.ctx`` by its dataclass type.
     """
 
-    def __init__(self, ontology: Ontology, size: int) -> None:
-        self.ontology: Ontology = ontology
+    def __init__(self, catalog: Catalog, size: int) -> None:
+        self.catalog: Catalog = catalog
         self.map_state: MapState = MapState(size=size)
         self.ctx: ProviderRegistry = ProviderRegistry()
         self._steps: list[PipelineStep] = []
@@ -213,5 +213,5 @@ class Pipeline:
     def run(self) -> MapState:
         for step in self._steps:
             step.inject(self.ctx)
-            step.run(self.ontology, self.map_state)
+            step.run(self.catalog, self.map_state)
         return self.map_state

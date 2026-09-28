@@ -6,6 +6,7 @@ arguments in `__main__.py` and calls one module per subcommand.
 ## Map
 
 - `__main__.py`: argument parsing and the subcommand table.
+- `audit.py`: the `audit` subcommand. It reports the corpus objects the generator cannot reproduce, or prints the gameplay densities.
 - `corpus_match.py`: the `corpus-match` subcommand. It generates maps from `build_steps` and prints the corpus comparison.
 - `extract_vmap.py`: the `extract-vmap` subcommand. It regenerates `maps_vmap/` from the `.h3m` corpus.
 - `generate.py`: the `generate` subcommand: pipeline run, overlays and renderers.

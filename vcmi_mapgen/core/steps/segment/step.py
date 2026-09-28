@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import override
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import MapState, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 
 def _warn_sliver_zones(
@@ -43,7 +43,7 @@ class SegmentStep(PipelineStep):
         self._tunnel_protect = ctx.require(TerrainGrids).tunnel_protect
 
     @override
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         protect = self._tunnel_protect
         for level, cells in map_state.cells.items():
             zones, _zl, _ = segment_level(cells)

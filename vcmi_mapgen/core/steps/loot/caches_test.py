@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -20,30 +21,25 @@ HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 
-def _pickups(
-    ts: set[Tile], zones: dict[int, Zone], open_set: set[Tile], prot: set[Tile], seed: int
-) -> list[PlacedObject]:
-    sobjs, sused, reach = place_scatter(
-        ScatterZone(ts, zones, 1, "grass", open_set, prot),
-        ScatterConfig(seed=seed, cover=CoverIndex()),
-    )
+def _pickups(catalog: Catalog, zone: ScatterZone, seed: int) -> list[PlacedObject]:
+    sobjs, sused, reach = place_scatter(catalog, zone, ScatterConfig(seed=seed, cover=CoverIndex()))
     record = ZoneRecord(
         zid=1,
         terrain="grass",
-        ts=frozenset(ts),
-        open_set=open_set,
-        passable=set(open_set),
+        ts=frozenset(zone.ts),
+        open_set=set(zone.open_set),
+        passable=set(zone.open_set),
         reach=reach,
         used=sused,
     )
     cobjs, _n, _depths = CA.place_pocket_caches(
-        [record], seed=seed, context=CA.PocketContext(existing_objs=sobjs)
+        catalog, [record], seed=seed, context=CA.PocketContext(existing_objs=sobjs)
     )
     return sobjs + cobjs
 
 
 @needs_stats
-def test_pickup_layer_legal_and_deterministic() -> None:
+def test_pickup_layer_legal_and_deterministic(catalog: Catalog) -> None:
 
     if not os.path.exists(PG.STATS_PATH):
         pytest.skip("gameplay stats not mined")
@@ -52,8 +48,8 @@ def test_pickup_layer_legal_and_deterministic() -> None:
     # synthetic open field with a sealed-off pocket-ish structure: a web cross + nooks
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     open_set = set(ts)
-    o1 = _pickups(ts, zones, open_set, prot, seed=6)
-    o2 = _pickups(ts, zones, open_set, prot, seed=6)
+    o1 = _pickups(catalog, ScatterZone(ts, zones, 1, "grass", open_set, prot), seed=6)
+    o2 = _pickups(catalog, ScatterZone(ts, zones, 1, "grass", open_set, prot), seed=6)
     assert o1 == o2, "pickup layer must be seed-deterministic"
     assert o1, "a 720-tile grass zone should hold pickups"
 
@@ -171,7 +167,7 @@ def test_find_pockets_drawn_shapes() -> None:
 
 
 @needs_stats
-def test_scatter_places_resource_piles() -> None:
+def test_scatter_places_resource_piles(catalog: Catalog) -> None:
     """Unguarded scatter places resource piles, a mix of fixed and random resources, and
     a real zone always yields some."""
 
@@ -182,7 +178,7 @@ def test_scatter_places_resource_piles() -> None:
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     piles: list[PlacedObject] = []
     for seed in range(1, 10):
-        objs = _pickups(ts, zones, set(ts), prot, seed=seed)
+        objs = _pickups(catalog, ScatterZone(ts, zones, 1, "grass", set(ts), prot), seed=seed)
         piles += [o for o in objs if o.purpose == Purpose.RESOURCE_PILE]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"
@@ -205,7 +201,7 @@ def _field_with_room(
 
 
 @needs_stats
-def test_pocket_guard_level_matches_artifact_tier_exactly() -> None:
+def test_pocket_guard_level_matches_artifact_tier_exactly(catalog: Catalog) -> None:
     """Level of the guard monster == level of the artifact at the deep end (user-mandated
     2026-09) -- no random +1 bump on the guard, unlike the pre-redefinition behavior."""
 
@@ -214,7 +210,7 @@ def test_pocket_guard_level_matches_artifact_tier_exactly() -> None:
 
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
     zr = _field_with_room(room, {(5, 4), (6, 4)})
-    objs, n_pockets, _depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
+    objs, n_pockets, _depth = CA.place_pocket_caches(catalog, [zr], seed=3, bounds=(20, 20))
     assert n_pockets == 1, "fixture assumption broke: expected exactly one pocket"
     guard = next(o for o in objs if o.purpose == Purpose.GUARD)
     art = next(
@@ -230,7 +226,9 @@ def test_pocket_guard_level_matches_artifact_tier_exactly() -> None:
 
 
 @needs_stats
-def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_filled() -> None:
+def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_filled(
+    catalog: Catalog,
+) -> None:
     """Bug (2026-09, 'not all magenta pocket tiles are filled'): `pocket_depth_by_tile`
     -- the map PocketOverlay renders straight from -- used to be written before the
     late gates that can still `continue` out of a candidate (every pocket tile already
@@ -244,13 +242,15 @@ def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_fil
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
     zr = _field_with_room(room, {(5, 4), (6, 4)})
     zr.used |= room
-    objs, _n_pockets, depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
+    objs, _n_pockets, depth = CA.place_pocket_caches(catalog, [zr], seed=3, bounds=(20, 20))
     assert not any(o.purpose == Purpose.GUARD for o in objs)
     assert not depth, f"pocket tiles marked magenta with nothing placed: {sorted(depth)}"
 
 
 @needs_stats
-def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_a_cache() -> None:
+def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_a_cache(
+    catalog: Catalog,
+) -> None:
     """Same class of bug as above, at single-tile granularity (real seed-7 repro,
     2026-09: a pocket's deepest tile sat right against an existing STAT_PERMANENT
     structure's approach cell). `cache_spots`/`avail` were selected against
@@ -263,7 +263,7 @@ def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_
     zr = _field_with_room(room, {(5, 4), (6, 4)})
     zr.open_set.discard((6, 7))  # walkable (still in ts/passable/reach) but
     # reserved -- e.g. another object's approach cell
-    objs, _n_pockets, depth = CA.place_pocket_caches([zr], seed=3, bounds=(20, 20))
+    objs, _n_pockets, depth = CA.place_pocket_caches(catalog, [zr], seed=3, bounds=(20, 20))
     claimed: set[Tile] = set()
     for o in objs:
         for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y):
@@ -272,7 +272,7 @@ def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_
     assert not unfilled, f"pocket tiles marked magenta with nothing placed: {unfilled}"
 
 
-def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None:
+def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine(catalog: Catalog) -> None:
     """s2-z1 diagnosis (2026-09): a pocket declared right by the castle got guarded,
     and that guard happened to seal the ONLY isthmus connecting the town to its own
     force_town sawmill, even though the sawmill already carries its own dedicated
@@ -300,6 +300,7 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None
     )
 
     objs, _n_pockets, _depth = CA.place_pocket_caches(
+        catalog,
         [zr],
         seed=3,
         bounds=(20, 20),
@@ -329,7 +330,7 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine() -> None
 
 
 @needs_stats
-def test_pocket_chest_fill_uses_only_the_allowed_types() -> None:
+def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog) -> None:
     """The cavity's non-artifact/non-resource fill is entirely chests/pandora's box
     (treasureChest, campfire, pandoraBox) -- never scholar/corpse/spellScroll/leanTo/
     wagon/warriorTomb/denOfThieves, which "everything but an artifact" used to allow."""
@@ -342,7 +343,7 @@ def test_pocket_chest_fill_uses_only_the_allowed_types() -> None:
     for seed in range(1, 15):
         room = {(x, y) for x in range(5, 7) for y in range(5, 10)}  # 10-tile cavity
         zr = _field_with_room(room, {(5, 4), (6, 4)})
-        objs, _n_pockets, _depth = CA.place_pocket_caches([zr], seed=seed, bounds=(20, 20))
+        objs, _n_pockets, _depth = CA.place_pocket_caches(catalog, [zr], seed=seed, bounds=(20, 20))
         for o in objs:
             if (
                 o.purpose == Purpose.REWARD_PICKUP

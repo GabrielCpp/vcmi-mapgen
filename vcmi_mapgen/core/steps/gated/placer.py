@@ -12,16 +12,14 @@ from dataclasses import dataclass
 from operator import itemgetter
 from typing import Self, final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
-from vcmi_mapgen.core.steps.treasure.fill import LOOT_EXCL_DECOR
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog import objects as ON
 
 LOOT_ZONE_MAX_TILES = 60
 _LOOT_COLORS = [(f"avxbgt{i}0", f"avxkey{i}0") for i in range(8)]
@@ -263,11 +261,13 @@ class GatedPlacer:
 
     def __init__(
         self,
+        catalog: Catalog,
         zone_records: Sequence[ZoneRecord],
         objs_existing: Sequence[PlacedObject],
         seed: int,
         bounds: tuple[int, int] | None,
     ) -> None:
+        self.catalog = catalog
         self.zone_records = list(zone_records)
         self.objs_existing = list(objs_existing)
         self.seed = seed
@@ -473,8 +473,8 @@ class GatedPlacer:
 
     def _place_gate(self, zone: _LootZone, aim: _GateAim) -> bool:
         gate_anim, key_anim = _LOOT_COLORS[self.gate_count % len(_LOOT_COLORS)]
-        gate_ident = ON.identity_of(gate_anim)
-        key_ident = ON.identity_of(key_anim)
+        gate_ident = self.catalog.identity_of(gate_anim)
+        key_ident = self.catalog.identity_of(key_anim)
         km_spot = self._find_ext_spot(key_ident, zone.ext_pools)
         if km_spot is None:
             return False
@@ -520,6 +520,7 @@ class GatedPlacer:
 
     def _target(self, zone: _LootZone) -> PlaceTarget:
         return PlaceTarget(
+            self.catalog,
             self.objs,
             zone.used,
             zone.reach,
@@ -530,7 +531,9 @@ class GatedPlacer:
         )
 
     def _place_monolith(self, zone: _LootZone) -> bool:
-        mono_ident = ON.identity_of(_LOOT_MONOLITHS[self.mono_count % len(_LOOT_MONOLITHS)])
+        mono_ident = self.catalog.identity_of(
+            _LOOT_MONOLITHS[self.mono_count % len(_LOOT_MONOLITHS)]
+        )
         spot = self._find_ext_spot(mono_ident, zone.ext_pools)
         if spot is None:
             return False
@@ -558,9 +561,7 @@ class GatedPlacer:
 
     def _decor_pool(self, terrain: str) -> list[Identity]:
         if terrain not in self._decor:
-            self._decor[terrain] = list(
-                DC.decor_pool(terrain, blocking=True, max_cells=1, exclude_types=LOOT_EXCL_DECOR)
-            )
+            self._decor[terrain] = self.catalog.decor(terrain, blocking=True, max_cells=1)
         return self._decor[terrain]
 
     def _seal_tile(self, used: set[Tile], t: Tile, terrain: str, rng: random.Random) -> bool:
@@ -618,6 +619,7 @@ class GatedPlacer:
         ext_zr, ext_t = spot
         ext_rng = random.Random(self.seed ^ (zid * 131071) ^ 0xCEBF)
         target = PlaceTarget(
+            self.catalog,
             self.objs,
             ext_zr.used,
             ext_zr.reach,
@@ -634,7 +636,7 @@ class GatedPlacer:
             return False
         self.n_placed += 1
         self.placed_ext_tiles.append(ext_t)
-        gident = rnd_monster(7)
+        gident = rnd_monster(self.catalog, 7)
         for clear_of in (OR.decor_blocking_cells(self.objs), None):
             if _try_guard_ring(
                 ext_zr,
@@ -648,6 +650,7 @@ class GatedPlacer:
 
 
 def place_gated_zones(
+    catalog: Catalog,
     zone_records: Sequence[ZoneRecord],
     objs_existing: Sequence[PlacedObject],
     seed: int = 1,
@@ -655,4 +658,4 @@ def place_gated_zones(
 ) -> tuple[list[PlacedObject], int, dict[int, LootAccess]]:
     """Seal every eligible loot zone of one level behind a gate or a monolith pair. Returns
     the new objects, the number of access pairs and the access of each loot zone."""
-    return GatedPlacer(zone_records, objs_existing, seed, bounds).run()
+    return GatedPlacer(catalog, zone_records, objs_existing, seed, bounds).run()

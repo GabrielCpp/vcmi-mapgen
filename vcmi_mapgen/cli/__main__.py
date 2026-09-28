@@ -6,6 +6,8 @@ Subcommands:
   render-ontology -> render one sprite (+ passability mask overlay) per documented
                      ontology item — a documentation/debug tool, not part of the pipeline.
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
+  audit           -> report corpus objects the generator cannot reproduce, or print the
+                     gameplay densities it draws from.
   extract-vmap    -> regenerate maps_vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
@@ -24,6 +26,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.cli.audit import audit, densities
 from vcmi_mapgen.cli.corpus_match import corpus_match
 from vcmi_mapgen.cli.extract_vmap import extract_vmap
 from vcmi_mapgen.cli.generate import (
@@ -40,6 +43,7 @@ from vcmi_mapgen.cli.steps import GENERATE_STOP_POINTS
 from vcmi_mapgen.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.catalog.regen import regenerate
 from vcmi_mapgen.vcmi.catalog.tables import CLUSTERS
 from vcmi_mapgen.vcmi.config import load_config
@@ -66,6 +70,8 @@ class Args(argparse.Namespace):
     seeds: Sequence[int] = ()
     vmap: str | None = None
     compare: str | None = None
+    level: int | None = None
+    densities: bool = False
 
 
 def _open_catalog() -> VcmiInstall:
@@ -80,7 +86,17 @@ def cmd_render_ontology(args: Args) -> None:
 
 
 def cmd_mine_stats(args: Args) -> None:
-    mine_stats(args.only or ())
+    mine_stats(VcmiCatalog(), args.only or ())
+
+
+def cmd_audit(args: Args) -> None:
+    _ = _open_catalog()
+    catalog = VcmiCatalog()
+    if args.densities:
+        densities(catalog, args.level or 0)
+        return
+    levels = [args.level] if args.level is not None else [0, 1]
+    raise SystemExit(0 if audit(catalog, levels) else 1)
 
 
 def cmd_generate(args: Args) -> None:
@@ -149,6 +165,19 @@ def main() -> None:
         help="mine only the named statistics (default: all)",
     )
     _ = pms.set_defaults(func=cmd_mine_stats)
+
+    pau = sub.add_parser(
+        "audit",
+        help="report corpus objects the generator cannot reproduce (empty = full variety "
+        + "reachable), on both terrain levels unless --level is given",
+    )
+    _ = pau.add_argument("--level", type=int, default=None, help="0=surface, 1=underground")
+    _ = pau.add_argument(
+        "--densities",
+        action="store_true",
+        help="print the per-terrain gameplay densities instead of auditing",
+    )
+    _ = pau.set_defaults(func=cmd_audit)
 
     pev = sub.add_parser("extract-vmap", help="regenerate maps_vmap/ from the .h3m corpus in maps/")
     _ = pev.set_defaults(func=cmd_extract_vmap)

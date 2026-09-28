@@ -1,5 +1,6 @@
 """Reliability tests for the border plan (vegetation) and the border guards (border)."""
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.border import border_seal as BS
@@ -32,7 +33,7 @@ def _zones() -> tuple[dict[int, Zone], set[Tile], set[Tile]]:
     return zones, ts1, ts2
 
 
-def test_border_plan_closes_or_guards() -> None:
+def test_border_plan_closes_or_guards(catalog: Catalog) -> None:
     """Every cross-zone 8-adjacent open crossing outside the planned entrance bands is
     either SEALED with a blocking decoration or contested by a back-path GUARD's zone of
     control. An unguardable and unsealable free crossing must not survive."""
@@ -47,13 +48,13 @@ def test_border_plan_closes_or_guards() -> None:
     avoid = bands | web_pair
 
     border_plan = BorderPlan(ts1 | ts2, zones, bands, avoid, frozenset[Tile]())
-    plan_objs, sealed = seal_borders(border_plan, [], 3, 0)
-    again = seal_borders(border_plan, [], 3, 0)
+    plan_objs, sealed = seal_borders(catalog, border_plan, [], 3, 0)
+    again = seal_borders(catalog, border_plan, [], 3, 0)
     assert again == (plan_objs, sealed), "deterministic"
     assert sealed and not (sealed & avoid), "seals never land on protected tiles"
 
     guards, guard_tiles, n_open = BS.guard_crossings(
-        BS.LevelGrid(S, S, grid, zones), BS.CrossingRules(bands, set[Tile]()), plan_objs, 3, 0
+        catalog, BS.LevelGrid(S, S, grid, zones), BS.CrossingRules(bands, set[Tile]()), plan_objs, 3
     )
     assert guard_tiles & web_pair, "the unsealable web crossing gets a back-path guard"
     assert n_open == 0

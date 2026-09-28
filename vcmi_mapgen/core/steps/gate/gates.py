@@ -9,11 +9,11 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from itertools import combinations
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, Tile
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 ROOT = project_root()
@@ -55,9 +55,9 @@ class GateStats:
 type Fit = tuple[list[Tile], list[Tile], Tile]
 
 
-def rnd_monster(lvl: int) -> Identity:
+def rnd_monster(catalog: Catalog, lvl: int) -> Identity:
     """Random-monster identity of a level, clamped to 1..7."""
-    return ON.identity_of(RND_MON[max(1, min(7, int(lvl))) - 1])
+    return catalog.identity_of(RND_MON[max(1, min(7, int(lvl))) - 1])
 
 
 def footprint_cells(

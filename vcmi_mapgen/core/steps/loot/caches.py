@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
 from vcmi_mapgen.core.model import (
@@ -41,8 +42,6 @@ from vcmi_mapgen.core.steps.treasure.fill import (
     solo_visit_pool,
 )
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.catalog import decor as DC
-from vcmi_mapgen.vcmi.catalog import objects as ON
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
 # treasure(1-2) → minor(3) → major(4-5) → any/relic(6).
@@ -316,6 +315,7 @@ _DEFAULT_POCKET_CONTEXT = PocketContext()
 
 
 def place_pocket_caches(
+    catalog: Catalog,
     zone_records: Sequence[ZoneRecord],
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
@@ -378,7 +378,7 @@ def place_pocket_caches(
     its normalized depth (0 = at the mouth, 1 = deepest tile) -- the one piece of pocket
     geometry a renderer needs, computed once here so nothing downstream (the debug
     overlay) has to re-derive pocket membership from placed guard objects to draw it."""
-    return _PocketCachePass(zone_records, seed, bounds, context).run()
+    return _PocketCachePass(catalog, zone_records, seed, bounds, context).run()
 
 
 def _guard_stands(g: Tile, pocket: frozenset[Tile], mouth: frozenset[Tile]) -> list[Tile]:
@@ -423,11 +423,13 @@ def _cache_spec(
 class _PocketCachePass:
     def __init__(
         self,
+        catalog: Catalog,
         zone_records: Sequence[ZoneRecord],
         seed: int,
         bounds: tuple[int, int] | None,
         context: PocketContext,
     ) -> None:
+        self.catalog = catalog
         self.seed = seed
         self.bounds = bounds
         self.border_guards = context.border_guards
@@ -466,9 +468,11 @@ class _PocketCachePass:
         precomputed = context.precomputed_pockets
         raw = precomputed if precomputed is not None else find_pockets(self.global_true)
         self.blobs = dedupe_pockets(raw, self.global_true)
-        self.guard_ident = rnd_monster(1)  # mask uniform across levels 1-7; used to pre-check fit
+        self.guard_ident = rnd_monster(
+            catalog, 1
+        )  # mask uniform across levels 1-7; used to pre-check fit
         self.guard_mask = self.guard_ident.mask
-        self.pickup_ident = ON.identity_of(ART_BY_LVL[0])
+        self.pickup_ident = catalog.identity_of(ART_BY_LVL[0])
         self.objs: list[PlacedObject] = []
         self.cover = CoverIndex(context.existing_objs)
         self.guards: list[Tile] = [
@@ -509,7 +513,14 @@ class _PocketCachePass:
 
     def _target(self, reach: AbstractSet[Tile], draw: _PocketDraw) -> PlaceTarget:
         return PlaceTarget(
-            self.objs, self.used, reach, draw.rng, draw.st, bounds=self.bounds, cover=self.cover
+            self.catalog,
+            self.objs,
+            self.used,
+            reach,
+            draw.rng,
+            draw.st,
+            bounds=self.bounds,
+            cover=self.cover,
         )
 
     def _pick_spaced(
@@ -654,8 +665,8 @@ class _PocketCachePass:
 
         terrain = self.terrain_of[pick.zid]
         st = load_gameplay()[terrain]
-        pool_res = DC.pool(Purpose.RESOURCE_PILE, terrain)
-        pool_art = DC.pool(Purpose.REWARD_PICKUP, terrain)
+        pool_res = self.catalog.candidates(Purpose.RESOURCE_PILE, terrain)
+        pool_art = self.catalog.candidates(Purpose.REWARD_PICKUP, terrain)
         rng = random.Random(self.seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)
         # Pocket tiles are passable (in global_true) and reachable (in global_reach8);
         # some may be approach cells of adjacent gameplay objects (excluded from
@@ -679,7 +690,7 @@ class _PocketCachePass:
         # "everything but an artifact" (which would let scholar/corpse/spell-scroll/
         # leanTo/wagon/warriorTomb/denOfThieves leak in too).
         pool_chest = [i for i in pool_art if i.type in LOOT_CHEST_TYPES]
-        pool_vis = solo_visit_pool(terrain, exclude_anims=FILL_EXCL_ANIMS)
+        pool_vis = solo_visit_pool(self.catalog, terrain, exclude_anims=FILL_EXCL_ANIMS)
         draw = _PocketDraw(rng, st, pool_res, pool_art, pool_chest, pool_vis)
         self._commit(pick, ref, cache_spots, draw)
 
@@ -721,7 +732,7 @@ class _PocketCachePass:
             self._place_artifact(art_spot[0], anim, draw)
 
     def _place_guard(self, guard_tile: Tile, lvl: int, draw: _PocketDraw) -> bool:
-        gident = rnd_monster(lvl)
+        gident = rnd_monster(self.catalog, lvl)
         if not place_one(
             self._target(self.global_place, draw),
             PlaceSpec(Purpose.GUARD, None, ident=gident, interactive_only=True),
@@ -737,7 +748,7 @@ class _PocketCachePass:
 
     def _place_artifact(self, t: Tile, anim: str, draw: _PocketDraw) -> None:
         target = self._target(self.global_place, draw)
-        art = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, ON.identity_of(anim))
+        art = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, self.catalog.identity_of(anim))
         if not place_one(target, art, t[0], t[1]):
             _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
 
@@ -779,6 +790,7 @@ SEERHUT_MIN_REACH = 8  # a zone needs at least this many free reachable tiles to
 class SeerHutContext:
     pocket_tiles: AbstractSet[Tile] | None = None
     existing_objs: Sequence[PlacedObject] = ()
+    used_artifacts: set[str] | None = None
 
 
 _DEFAULT_SEERHUT_CONTEXT = SeerHutContext()
@@ -786,6 +798,7 @@ _DEFAULT_SEERHUT_CONTEXT = SeerHutContext()
 
 @dataclass(frozen=True, slots=True)
 class _QuestEnv:
+    catalog: Catalog
     eligible: Sequence[ZoneRecord]
     ptiles: AbstractSet[Tile]
     used_artifacts: set[str]
@@ -795,10 +808,10 @@ class _QuestEnv:
 
 
 def place_seer_hut_quests(
+    catalog: Catalog,
     zone_records: Sequence[ZoneRecord],
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
-    used_artifacts: set[str] | None = None,
     context: SeerHutContext = _DEFAULT_SEERHUT_CONTEXT,
 ) -> tuple[list[PlacedObject], int]:
     """One or more Seer Hut quests for the WHOLE level (VCMI RMG convention: a seer hut's
@@ -814,7 +827,7 @@ def place_seer_hut_quests(
     `open_set`/`reach`/`used` are shared with that pass, so tiles this function spends are
     already excluded when pockets are judged.
 
-    `used_artifacts`, when passed, is a set MUTATED in place and shared across every level's
+    `context.used_artifacts`, when passed, is a set MUTATED in place and shared across every level's
     call for the same map (see `pp_map.build`) -- a named artifact is a map-unique relic in
     vanilla H3, so one quest's target must never double as another level's target too.
 
@@ -828,12 +841,11 @@ def place_seer_hut_quests(
     rng_pair = random.Random(seed ^ 0xEE47)
     objs: list[PlacedObject] = []
     cover = CoverIndex(context.existing_objs)
-    if used_artifacts is None:
-        used_artifacts = set()
+    used_artifacts = context.used_artifacts if context.used_artifacts is not None else set[str]()
     placed = 0
     # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
     _ptiles_global = _quest_pocket_tiles(zone_records, context.pocket_tiles)
-    env = _QuestEnv(eligible, _ptiles_global, used_artifacts, objs, bounds, cover)
+    env = _QuestEnv(catalog, eligible, _ptiles_global, used_artifacts, objs, bounds, cover)
 
     for i in range(n):
         idx_hut, idx_art = rng_pair.sample(range(len(eligible)), 2)
@@ -862,7 +874,11 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     hut_zr = eligible[idx_hut]
 
     pool_hut = sorted(
-        (h for h in DC.pool(Purpose.QUEST_GATE, hut_zr.terrain) if h.type == "seerHut"),
+        (
+            h
+            for h in env.catalog.candidates(Purpose.QUEST_GATE, hut_zr.terrain)
+            if h.type == "seerHut"
+        ),
         key=lambda h: h.animation,
     )
     if not pool_hut:
@@ -905,7 +921,7 @@ def _pick_art_zone(
         cand_pool_art = sorted(
             (
                 a
-                for a in DC.pool(Purpose.REWARD_PICKUP, cand_art_zr.terrain)
+                for a in env.catalog.candidates(Purpose.REWARD_PICKUP, cand_art_zr.terrain)
                 if a.type == "artifact" and a.subtype not in env.used_artifacts
             ),
             key=lambda a: a.animation,
@@ -924,7 +940,14 @@ def _place_art(
     art_cands = sorted(art_eligible)
     rng.shuffle(art_cands)
     target = PlaceTarget(
-        env.objs, art_zr.used, art_zr.reach, rng, st_art, bounds=env.bounds, cover=env.cover
+        env.catalog,
+        env.objs,
+        art_zr.used,
+        art_zr.reach,
+        rng,
+        st_art,
+        bounds=env.bounds,
+        cover=env.cover,
     )
     spec = PlaceSpec(Purpose.REWARD_PICKUP, None, ident=art_ident)
     for t in art_cands:
@@ -941,7 +964,14 @@ def _place_hut(
     rng.shuffle(hut_cands)
     options = _seerhut_quest(rng, art_subtype)
     target = PlaceTarget(
-        env.objs, hut_zr.used, hut_zr.reach, rng, st_hut, bounds=env.bounds, cover=env.cover
+        env.catalog,
+        env.objs,
+        hut_zr.used,
+        hut_zr.reach,
+        rng,
+        st_hut,
+        bounds=env.bounds,
+        cover=env.cover,
     )
     spec = PlaceSpec(Purpose.QUEST_GATE, None, ident=hut_ident, options=options)
     return any(place_one(target, spec, t[0], t[1]) for t in hut_cands)

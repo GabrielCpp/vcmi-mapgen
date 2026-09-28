@@ -10,11 +10,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.gameplay.site import SiteIndex, ZoneSite, back_score, door_cells
 from vcmi_mapgen.core.steps.gate.gates import Fit, footprint_cells
-from vcmi_mapgen.vcmi.catalog.adapter import Ontology
 
 SHORE_NOOK = 4
 
@@ -106,7 +106,7 @@ class Shore:
     objs: list[PlacedObject]
 
 
-def place_shipyards(idx: SiteIndex, shore: Shore, seed: int, ontology: Ontology) -> int:
+def place_shipyards(idx: SiteIndex, shore: Shore, seed: int, catalog: Catalog) -> int:
     """Guarantee a shipyard on every shore the water planner requires one on. Returns how
     many were added."""
     hooks = _ShipyardHooks(idx)
@@ -120,4 +120,4 @@ def place_shipyards(idx: SiteIndex, shore: Shore, seed: int, ontology: Ontology)
         score=hooks.score,
         placed=hooks.placed,
     )
-    return len(WT.ensure_water_seaports(sea, shore.objs, seed, ontology))
+    return len(WT.ensure_water_seaports(sea, shore.objs, seed, catalog))
