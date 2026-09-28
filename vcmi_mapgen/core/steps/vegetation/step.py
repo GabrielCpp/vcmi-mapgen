@@ -13,8 +13,8 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
-from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
+from vcmi_mapgen.core.steps.vegetation.grow import GrowLevel, grow_level, vegetation_models
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone, VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
@@ -86,72 +86,42 @@ class VegetationStep(PipelineStep):
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
+        plan = self._zone_plan(catalog, map_state)
+        models = vegetation_models(catalog, plan)
+        pre_taken = {lvl: _taken(map_state, lvl, pl) for lvl, pl in plan.levels.items()}
+        grown = {
+            level: grow_level(models, self._grow_level(level, pl, pre_taken[level]), self.seed)
+            for level, pl in plan.levels.items()
+        }
+        new_objs = [o for g in grown.values() for o in g.objs]
+        self.objs = new_objs
+        map_state.add_objs(new_objs, TerrainGate(catalog))
+        veg: dict[int, dict[int, VegetatedZone]] = {}
+        for level, pl in plan.levels.items():
+            sealed = self._seal_level(catalog, map_state, level, pl, pre_taken[level])
+            veg[level] = {
+                zid: _sealed(v, sealed & pl.zones[zid].ts) for zid, v in grown[level].zones.items()
+            }
+            _check_islands(map_state, level, pl)
+        self._ctx.provide(plan)
+        self._ctx.provide(VegetationResult(log=tuple(self.log), zones=veg))
+
+    def _zone_plan(self, catalog: Catalog, map_state: MapState) -> ZPL.ZonePlan:
         terrain = ZPL.PlanTerrain(
             self._segmentation, map_state.terrain, self._terrain.tunnel_protect
         )
-        plan = ZPL.plan_player_zones(
+        return ZPL.plan_player_zones(
             catalog,
             ZPL.plan_zones(catalog, terrain, self.seed),
             self._segmentation.zones,
             self._terrain.tunnel_protect,
             self.players,
         )
-        models: dict[str, PP.VegModel] = {}
-        new_objs: list[PlacedObject] = []
-        pre_taken = {lvl: _taken(map_state, lvl, pl) for lvl, pl in plan.levels.items()}
-        veg: dict[int, dict[int, VegetatedZone]] = {}
 
-        for level, pl in plan.levels.items():
-            veg[level] = {}
-            for zid, zone in pl.zones.items():
-                zones = self._segmentation.zones[level]
-                terrain = zone.terrain
-                ts = zone.ts
-
-                if terrain not in models:
-                    models[terrain] = PP.build_model(catalog, terrain)
-                model = models[terrain]
-                if not model.cats:
-                    veg[level][zid] = VegetatedZone()
-                    continue
-
-                zone_seaport_cells = (pl.landings.blk | pl.landings.appr) & ts
-                forbid = _taken(map_state, level, pl) | zone_seaport_cells | zone.town.clear
-                border = frozenset(zone.rim8 - zone.ent_bands - forbid)
-                zobjs, blocked, _ = PP.sample_zone(
-                    PP.ZoneRef(
-                        ts,
-                        self._segmentation.zone_label[level],
-                        zid,
-                        zones[zid].centroid,
-                        level,
-                    ),
-                    model,
-                    seed=self.seed,
-                    opts=PP.SampleOptions(
-                        prot=zone.prot,
-                        forbid=forbid,
-                        border=border,
-                        impassable=zone.town.blk,
-                    ),
-                )
-                new_objs.extend(zobjs)
-                veg[level][zid] = VegetatedZone(
-                    open_set=frozenset(ts - blocked - zone_seaport_cells),
-                    passable=frozenset(ts - blocked),
-                )
-
-        self.objs = new_objs
-        map_state.add_objs(new_objs, TerrainGate(catalog))
-        for level, pl in plan.levels.items():
-            sealed = self._seal_level(catalog, map_state, level, pl, pre_taken[level])
-            veg[level] = {
-                zid: _sealed(v, sealed & pl.zones[zid].ts) for zid, v in veg[level].items()
-            }
-        for level, pl in plan.levels.items():
-            _check_islands(map_state, level, pl)
-        self._ctx.provide(plan)
-        self._ctx.provide(VegetationResult(log=tuple(self.log), zones=veg))
+    def _grow_level(self, level: int, pl: ZPL.PlanLevel, taken: frozenset[Tile]) -> GrowLevel:
+        zones = self._segmentation.zones[level]
+        centroids = {zid: z.centroid for zid, z in zones.items()}
+        return GrowLevel(level, pl, centroids, self._segmentation.zone_label[level], taken)
 
     def _seal_level(
         self,

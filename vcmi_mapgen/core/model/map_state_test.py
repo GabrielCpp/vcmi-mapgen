@@ -136,3 +136,14 @@ def test_cover_index_refuses_a_pile_overlay_over_a_mine_visit_tile() -> None:
     mine = _obj(2, 2, ("A",), purpose=Purpose.MINE)
     pile = _obj(3, 2, ("VA",), purpose=Purpose.RESOURCE_PILE)
     assert not CoverIndex([mine]).try_add(pile)
+
+
+def test_objs_by_level_groups_in_placement_order() -> None:
+    state = MapState(size=8)
+    a, b, c = _obj(0, 0, ("V",)), _obj(2, 2, ("V",)), _obj(4, 4, ("V",))
+    b.level = 1
+    state.objs = [a, b, c]
+    by_level = state.objs_by_level([0, 1, 2])
+    assert by_level == {0: [a, c], 1: [b], 2: []}
+    by_level[0].append(b)
+    assert state.objs == [a, b, c]

@@ -4,31 +4,16 @@ export's job, so no frame or flip leaves this step."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
-from vcmi_mapgen.core.model import MapState, Tile, Zone
+from vcmi_mapgen.core.model import MapState, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
-from vcmi_mapgen.core.steps.terrain_gen.gate_sites import carve_gate_sites, gate_anchor_points
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
-
-
-def _warn_sliver_zones(
-    zones: Mapping[int, Zone], level: int, protect: frozenset[Tile] | None = None
-) -> None:
-    min_area = 25
-    guard: frozenset[Tile] = frozenset() if protect is None else protect
-    for zid, z in zones.items():
-        if z.area < min_area and not (z.tiles_set & guard):
-            print(
-                f"  WARNING: level {level} zone {zid} is very small ({z.area} tiles, "
-                + f"terrain {z.terrain_type})"
-            )
+from vcmi_mapgen.core.steps.terrain_gen.levels import level_protect, raw_levels, segment_levels
+from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
 
 class TerrainStep(PipelineStep):
@@ -68,47 +53,21 @@ class TerrainStep(PipelineStep):
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
-        W = H = self.size
-
-        grid0 = MTOPO.generate(
-            W,
-            H,
-            seed=self.seed,
-            options=MTOPO.MacroOptions(water=self.water, water_mode=self.water_mode, level=0),
+        raw = raw_levels(
+            self.size,
+            self.seed,
+            MTOPO.MacroOptions(water=self.water, water_mode=self.water_mode, level=0),
+            self.subterrain,
         )
-
-        tunnel_protect_cells: set[Tile] = set()
-        grid1: list[list[int]] | None = None
-        if self.subterrain:
-            grid1 = MTOPO.generate(
-                W,
-                H,
-                seed=self.seed ^ 0x51E9,
-                options=MTOPO.MacroOptions(level=1),
-                protect_out=tunnel_protect_cells,
-            )
-            gate_anchors = gate_anchor_points(W, H, self.seed)
-            tunnel_protect_cells |= carve_gate_sites(grid0, grid1, gate_anchors, self.seed)
-        tunnel_protect = frozenset(tunnel_protect_cells)
-
-        raw_grids = {0: grid0}
-        if grid1 is not None:
-            raw_grids[1] = grid1
-
         thin = catalog.thin_terrains()
-        for level, grid in raw_grids.items():
-            protect: frozenset[Tile] = tunnel_protect if level == 1 else frozenset()
-            self.terrain[level] = despeckle(grid, thin, protect)
-
-        self.tunnel_protect = tunnel_protect
+        for level, grid in raw.grids.items():
+            self.terrain[level] = despeckle(grid, thin, level_protect(level, raw.tunnel_protect))
+        self.tunnel_protect = raw.tunnel_protect
         map_state.terrain = self.terrain
         if self._ctx is None:
             raise RuntimeError("TerrainStep.run() requires inject() to have been called")
         self._ctx.provide(TerrainGrids(tunnel_protect=self.tunnel_protect))
-        zones: dict[int, dict[int, Zone]] = {}
-        labels: dict[int, ZoneLabel] = {}
-        for level, grid in self.terrain.items():
-            zones[level], labels[level], _ = segment_level(grid)
-            protect = tunnel_protect if level == 1 else frozenset()
-            _warn_sliver_zones(zones[level], level, protect=protect)
-        self._ctx.provide(Segmentation(zones, labels))
+        segmentation, warnings = segment_levels(self.terrain, self.tunnel_protect)
+        for line in warnings:
+            print(line)
+        self._ctx.provide(segmentation)

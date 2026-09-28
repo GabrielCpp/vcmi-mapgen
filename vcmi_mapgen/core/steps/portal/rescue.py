@@ -85,6 +85,21 @@ class PortalWorld:
     covers: Mapping[int, CoverIndex]
 
 
+def check_reach(world: PortalWorld) -> None:
+    """Raise ``ValueError`` when a level still has a target a hero on foot cannot reach."""
+    for level in sorted(world.grids):
+        cut = unreachable_targets(
+            world.size,
+            world.grids[level],
+            world.objs_by_level[level],
+            world.targets_by_level[level],
+        )
+        if cut:
+            raise ValueError(
+                f"PortalStep: L{level} has {len(cut)} target(s) cut off on foot, first {cut[0]}"
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class _Enclave:
     lvl: int

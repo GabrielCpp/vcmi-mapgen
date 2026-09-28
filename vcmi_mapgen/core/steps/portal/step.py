@@ -39,6 +39,13 @@ def _find_start(
     return None
 
 
+def _added(
+    by_level: Mapping[int, Sequence[PlacedObject]], known: Sequence[PlacedObject]
+) -> list[PlacedObject]:
+    before = {id(o) for o in known}
+    return [o for lvl in sorted(by_level) for o in by_level[lvl] if id(o) not in before]
+
+
 @final
 class PortalStep(PipelineStep):
     """Portal rescue: a zone the start cannot walk to gets a portal pair.
@@ -83,49 +90,28 @@ class PortalStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         grids = map_state.terrain
-        objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in grids}
-        for o in map_state.objs:
-            if o.level in objs_by_level:
-                objs_by_level[o.level].append(o)
-
-        gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
-        start = _find_start(self._player_zids, self._segmentation.zones, self._town_of_zone)
+        by_level = map_state.objs_by_level(grids)
         covers = {
-            lvl: CoverIndex(objs, self._claims.get(lvl, ())) for lvl, objs in objs_by_level.items()
+            lvl: CoverIndex(objs, self._claims.get(lvl, ())) for lvl, objs in by_level.items()
         }
+        world = RS.PortalWorld(
+            self.size,
+            grids,
+            self._segmentation.zones,
+            by_level,
+            self._targets,
+            self._zone_records,
+            covers,
+        )
+        start = _find_start(self._player_zids, self._segmentation.zones, self._town_of_zone)
         if start is not None:
-            n_portals = RS.rescue_unreachable_zones(
-                catalog,
-                RS.PortalWorld(
-                    self.size,
-                    grids,
-                    self._segmentation.zones,
-                    objs_by_level,
-                    self._targets,
-                    self._zone_records,
-                    covers,
-                ),
-                start,
-                gate_xy,
-                self.seed,
-            )
+            gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
+            n_portals = RS.rescue_unreachable_zones(catalog, world, start, gate_xy, self.seed)
             if n_portals:
                 self.log.append(f"PortalStep: {n_portals} portal rescue(s) added")
         for lvl, cover in covers.items():
             self._claims[lvl] = frozenset(cover.claims)
-
-        for level in sorted(grids):
-            cut = RS.unreachable_targets(
-                self.size, grids[level], objs_by_level[level], self._targets[level]
-            )
-            if cut:
-                raise ValueError(
-                    f"PortalStep: L{level} has {len(cut)} target(s) cut off on foot, first {cut[0]}"
-                )
-
-        before = {id(o) for o in map_state.objs}
-        self.objs = [
-            o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl] if id(o) not in before
-        ]
+        RS.check_reach(world)
+        self.objs = _added(by_level, map_state.objs)
         map_state.add_objs(self.objs, TerrainGate(catalog))
         self._ctx.provide(PortalResult(log=self.log))

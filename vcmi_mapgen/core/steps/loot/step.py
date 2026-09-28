@@ -127,10 +127,7 @@ class LootStep(PipelineStep):
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
-        objs_by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in self._zone_records}
-        for o in map_state.objs:
-            if o.level in objs_by_level:
-                objs_by_level[o.level].append(o)
+        objs_by_level = map_state.objs_by_level(self._zone_records)
 
         seerhut_artifacts: set[str] = set()
         pockets_by_level: Pockets = {}

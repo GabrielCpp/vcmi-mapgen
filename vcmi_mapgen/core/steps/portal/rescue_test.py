@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+import pytest
+
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import (
     CoverIndex,
@@ -52,11 +54,7 @@ def _enclave_fixture() -> tuple[int, list[list[int]], dict[int, Zone], set[Tile]
     return size, grid, zones, inner, ts1
 
 
-def test_unreachable_targets_reports_vegetation_walls_only() -> None:
-    """A vegetation wall between two pickups cuts them off, a gameplay wall makes them
-    another island's business, a guard in the way does not cut."""
-    size = 12
-    grid = [[2] * size for _ in range(size)]
+def _wall_and_picks(size: int) -> tuple[list[PlacedObject], list[PlacedObject]]:
     veg_wall = [
         _obj(
             Identity("pineTrees", "pineTrees", "pine", Footprint.one(Role.BLOCKING)),
@@ -77,11 +75,40 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
             Purpose.RESOURCE_PILE,
         ),
     ]
+    return veg_wall, picks
+
+
+def test_unreachable_targets_reports_vegetation_walls_only() -> None:
+    """A vegetation wall between two pickups cuts them off, a gameplay wall makes them
+    another island's business, a guard in the way does not cut."""
+    size = 12
+    grid = [[2] * size for _ in range(size)]
+    veg_wall, picks = _wall_and_picks(size)
     targets = [(2, 5), (10, 5)]
     assert RS.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
     assert RS.unreachable_targets(size, grid, picks, targets) == []
     hard_wall = [replace(o, purpose=Purpose.DWELLING) for o in veg_wall]
     assert RS.unreachable_targets(size, grid, hard_wall + picks, targets) == []
+
+
+def _world(objs: list[PlacedObject]) -> RS.PortalWorld:
+    size = 12
+    return RS.PortalWorld(
+        size,
+        {0: [[2] * size for _ in range(size)]},
+        {0: {}},
+        {0: objs},
+        {0: [(2, 5), (10, 5)]},
+        {0: []},
+        {0: CoverIndex(objs)},
+    )
+
+
+def test_check_reach_raises_on_a_cut_off_target() -> None:
+    veg_wall, picks = _wall_and_picks(12)
+    RS.check_reach(_world(picks))
+    with pytest.raises(ValueError, match="L0 has 1 target"):
+        RS.check_reach(_world(veg_wall + picks))
 
 
 def test_portal_reward_zone(catalog: Catalog) -> None:

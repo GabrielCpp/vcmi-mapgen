@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import build_zone_index
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
+from vcmi_mapgen.core.steps.gated.loot_zones import mark_loot_zones, walk_targets
 from vcmi_mapgen.core.steps.gated.placer import place_gated_zones
 from vcmi_mapgen.core.steps.gated.result import GatedResult
 
@@ -61,10 +61,7 @@ class GatedStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         index = build_zone_index(self._plan, self._gameplay.zones, self._gameplay.landings)
-        by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in index.zone_records}
-        for o in map_state.objs:
-            if o.level in by_level:
-                by_level[o.level].append(o)
+        by_level = map_state.objs_by_level(index.zone_records)
         result = GatedResult()
         for level, zone_records in index.zone_records.items():
             new, n, access, claims = place_gated_zones(
@@ -76,16 +73,8 @@ class GatedStep(PipelineStep):
             )
             for o in new:
                 o.level = level
-            interior: set[Tile] = set()
-            for zr in zone_records:
-                if zr.zid in access:
-                    interior |= zr.ts
-            index.zone_records[level] = [
-                replace(zr, loot_zone=True) if zr.zid in access else zr for zr in zone_records
-            ]
-            targets = index.targets[level]
-            targets.extend((o.x, o.y) for o in new if o.purpose)
-            targets[:] = [t for t in targets if t not in interior]
+            index.zone_records[level] = mark_loot_zones(zone_records, access)
+            index.targets[level][:] = walk_targets(index.targets[level], new, zone_records, access)
             result.access[level] = access
             index.claims[level] = claims
             self.objs.extend(new)

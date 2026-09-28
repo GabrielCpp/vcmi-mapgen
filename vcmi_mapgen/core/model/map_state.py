@@ -249,6 +249,15 @@ class MapState:
             covers=self.covers_at(level, x, y),
         )
 
+    def objs_by_level(self, levels: Iterable[int]) -> dict[int, list[PlacedObject]]:
+        """A fresh list for each of ``levels`` holding the objects on that level, in the
+        order they were placed."""
+        by_level: dict[int, list[PlacedObject]] = {lvl: [] for lvl in levels}
+        for o in self.objs:
+            if o.level in by_level:
+                by_level[o.level].append(o)
+        return by_level
+
     def taken_tiles(self, level: int) -> frozenset[Tile]:
         """Every tile of a level covered by an object or gate-blocked."""
         return frozenset(

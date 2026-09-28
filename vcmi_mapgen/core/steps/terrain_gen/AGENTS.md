@@ -4,6 +4,7 @@
 
 - `despeckle.py`: merges terrain patches too small or too thin for the tile art into the land around them.
 - `gate_sites.py`: the Subterranean Gate sites, carved open on both levels and tunnelled to the nearest cavern.
+- `levels.py`: `raw_levels`, each level's macro grid and tunnel cells, and `segment_levels`, each level's zones and sliver warnings.
 - `macro.py`: the macro terrain model: the planned water mask, zones and corridors, drawn from `MacroStats`.
 - `result.py`: `TerrainGrids`, the tunnel cells, and `Segmentation`, which `TerrainStep` publishes.
 - `step.py`: `TerrainStep`, which also segments each level into same-terrain zones.

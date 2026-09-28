@@ -4,6 +4,8 @@
 
 - `border_plan.py`: the zone-border plan that closes open crossings outside the entrance bands.
   It reads the zone owners and the crossing pairs from `core/planning/borders.py`.
+- `grow.py`: `grow_level`, one level's vegetation grown zone by zone, and `vegetation_models`, one
+  fitted model per terrain.
 - `sample.py`: the marked-point-process sampler that grows one zone's decoration, fitted to
   `VegetationStats` from `core/priors/vegetation.py`.
 - `result.py`: `VegetationResult`, which `VegetationStep` publishes.

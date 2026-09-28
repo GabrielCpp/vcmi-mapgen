@@ -48,6 +48,14 @@ of step, it is a sign one of two things happened:
    `map_state.objs`), so it is published as a side effect of an
    already-legitimate step's `run()`, never as the sole reason a step exists.
 
+## `run` reads, calls and writes
+
+A step's `run()` reads its inputs, calls the functions in its package that decide, and
+writes their results. It stays under 30 lines. A loop that chooses tiles, zones or objects
+lives in the step's package as a function over plain values, with its own test, as
+`vegetation/grow.py`, `scatter/piles.py` and `border/guard.py` do. A step that works level
+by level gets each level's objects from `MapState.objs_by_level`.
+
 ## A step learns about objects through its catalog
 
 `run(self, catalog: Catalog, map_state: MapState)` receives the one `Catalog`
