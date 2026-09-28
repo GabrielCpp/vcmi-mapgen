@@ -22,8 +22,7 @@ def _side(zone_of: dict[Tile, int]) -> PG.GateSide:
 
 
 def _anchors(side0: PG.GateSide, side1: PG.GateSide, seed: int) -> list[Tile]:
-    (objs0, *_), _ = PG.place_gates(side0, side1, size=S, seed=seed)
-    return [(o.x, o.y) for o in objs0]
+    return PG.gate_anchors(side0, side1, S, seed, lambda c, _spread: c)
 
 
 def _open(label: Callable[[int, int], int]) -> dict[Tile, int]:

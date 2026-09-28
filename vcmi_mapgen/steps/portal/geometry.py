@@ -321,10 +321,6 @@ class _PortalRescue:
         self.world = world
         self.reached = reached
         self.seed = seed
-        # per-level placement state, built once from everything already on the map: gameplay
-        # footprints (whole cells, GAP-inflated exactly like place_zone/place_gates) plus
-        # vegetation blocking cells (a teleporter must not sit buried in a tree), plus the
-        # level's named targets as reserved doorways.
         self.state: dict[int, _LevelState] = {}
         for lvl, objs in world.objs_by_level.items():
             self.state[lvl] = _level_state(objs, world.targets_by_level[lvl])

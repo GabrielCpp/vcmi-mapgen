@@ -264,7 +264,6 @@ def protected_web(
     return prot - set(avoid)
 
 
-ATTRACT = 0.7  # log-intensity bonus on `attract` tiles (mine surroundings)
 BORDER_W = 2.5  # log-intensity bonus on `border` tiles (zone-front belt):
 #                                 e^2.5 ~ 12x Papangelou intensity, so growth concentrates
 #                                 along zone borders and reads as a natural ridge. Each side
@@ -282,7 +281,6 @@ class SampleOptions:
     steps_per_tile: int = STEPS_PER_TILE
     prot: AbstractSet[Tile] | None = None
     forbid: AbstractSet[Tile] = _NO_TILES
-    attract: Collection[Tile] = _NO_TILES
     border: Collection[Tile] = _NO_TILES
     impassable: AbstractSet[Tile] = _NO_TILES
 
@@ -300,9 +298,6 @@ def sample_zone(
     (objects, blocked_set, prot) with objects = list[PlacedObject] on level 0.
     `forbid` tiles (gameplay footprints + approach tiles) admit NO vegetation at all —
     neither an anchor nor any footprint cell (decor must not bury gameplay, per the repo rule).
-    `attract` tiles carry a +ATTRACT log-intensity bonus — used for the annulus around MINE
-    footprints so sawmills nestle in forest and gem ponds in growth (approaches and the
-    protected web stay hard zeros, so attraction never costs reachability).
     `border` tiles carry a +BORDER_W log-intensity bonus — the zone-isolation lever: the
     zone's contact front (minus its planned entrance bands, which sit in `prot` as hard
     zeros) densifies into a vegetation ridge with corpus-correct species/clumping, leaving
@@ -371,7 +366,7 @@ class _ZoneSampler:
         self.RM = _ring_masks()
 
         self.cox = self._cox_field(model.sigma)
-        self.att = self._bonus_grid(opts.attract, opts.border)
+        self.att = self._bonus_grid(opts.border)
 
         # padded per-category anchor-count grid (padding = no bounds checks on the window)
         self.C = np.zeros((A, self.H + 2 * RINT, self.W + 2 * RINT), dtype=np.int16)
@@ -421,14 +416,9 @@ class _ZoneSampler:
             cox = np.exp(sigma * field - 0.5 * sigma * sigma)
         return cox
 
-    def _bonus_grid(
-        self, attract: Collection[Tile], border: Collection[Tile]
-    ) -> NDArray[np.float64]:
+    def _bonus_grid(self, border: Collection[Tile]) -> NDArray[np.float64]:
         x0, y0, W, H = self.x0, self.y0, self.W, self.H
         att: NDArray[np.float64] = np.zeros((H, W))  # additive log-bonus grid
-        for x, y in attract:  # mine-surround attraction
-            if 0 <= x - x0 < W and 0 <= y - y0 < H:
-                att[y - y0, x - x0] = ATTRACT
         for x, y in border:  # zone-front densification
             if 0 <= x - x0 < W and 0 <= y - y0 < H:
                 att[y - y0, x - x0] += BORDER_W

@@ -13,3 +13,4 @@
 - `readers/`: loads a `.vmap` back into a `MapState`.
 - `h3m.py`: the `.h3m` parser.
 - `extract_vmap.py`: regenerates the corpus as editor-openable `.vmap` files.
+- `corpus_match.py`: the report comparing object placement in corpus and generated zones.

@@ -10,10 +10,10 @@ from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.models import MapState, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
-from vcmi_mapgen.steps.gate.step import GateResult
+from vcmi_mapgen.steps.gameplay.gate_pairs import GateResult
+from vcmi_mapgen.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.steps.portal import geometry as GEO
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.steps.towns.step import TownsIndex
 from vcmi_mapgen.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
 
@@ -59,7 +59,7 @@ class PortalStep(PipelineStep):
 
     inject(ctx): ``ZoneIndex`` (targets/zone_records, mutated in place), ``TerrainGrids``,
     ``TownsIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
-    defaults to empty when there is no GateStep.
+    defaults to empty when GameplayStep has not run.
 
     Produces: appends the portals and their guards to ``map_state.objs`` and provides
     ``PortalResult``.

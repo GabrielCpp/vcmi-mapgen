@@ -40,20 +40,18 @@ from vcmi_mapgen.steps import (
     BorderStep,
     GameplayStep,
     GatedStep,
-    GateStep,
     LootStep,
     PortalStep,
     ScatterStep,
     SegmentStep,
     TerrainStep,
-    TownsStep,
     TreasureStep,
     VegetationStep,
 )
 from vcmi_mapgen.steps.border.step import BorderResult
+from vcmi_mapgen.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.steps.loot.step import LootResult
 from vcmi_mapgen.steps.portal.step import PortalResult
-from vcmi_mapgen.steps.towns.step import TownsIndex
 from vcmi_mapgen.steps.vegetation.step import VegetationResult
 
 ROOT = project_root()
@@ -62,8 +60,6 @@ ONTOLOGY = Ontology()
 GENERATE_STOP_POINTS = (
     "terrain",
     "segment",
-    "gate",
-    "towns",
     "vegetation",
     "gameplay",
     "gated",
@@ -188,18 +184,15 @@ def _generate_steps(args: Args, water_mode: str) -> list[tuple[str, PipelineStep
         ),
         ("segment", SegmentStep()),
     ]
-    if args.subterrain:
-        steps.append(("gate", GateStep(seed=args.seed)))
+    steps.append(("vegetation", VegetationStep(seed=args.seed)))
     steps.append(
         (
-            "towns",
-            TownsStep(
+            "gameplay",
+            GameplayStep(
                 seed=args.seed, players=args.players, size=args.size, subterrain=args.subterrain
             ),
         )
     )
-    steps.append(("vegetation", VegetationStep(seed=args.seed)))
-    steps.append(("gameplay", GameplayStep(seed=args.seed)))
     steps.append(("gated", GatedStep(seed=args.seed, size=args.size)))
     steps.append(("treasure", TreasureStep(seed=args.seed, size=args.size)))
     steps.append(("border", BorderStep(seed=args.seed, size=args.size)))
@@ -210,8 +203,6 @@ def _generate_steps(args: Args, water_mode: str) -> list[tuple[str, PipelineStep
 
 
 def cmd_generate(args: Args) -> None:
-    if args.stop_after == "gate" and not args.subterrain:
-        sys.exit("--stop-after gate requires --subterrain (no GateStep otherwise)")
     wmode = args.water_mode or ("none" if args.no_water else "normal")
 
     pipeline = Pipeline(ONTOLOGY, args.size)

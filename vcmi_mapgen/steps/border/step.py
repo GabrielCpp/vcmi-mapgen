@@ -15,8 +15,8 @@ from vcmi_mapgen.pipeline import (
 )
 from vcmi_mapgen.steps.border import border_seal as BS
 from vcmi_mapgen.steps.border.entrances import EntranceField, guard_entrances
+from vcmi_mapgen.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.steps.towns.step import TownsIndex
 from vcmi_mapgen.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
 

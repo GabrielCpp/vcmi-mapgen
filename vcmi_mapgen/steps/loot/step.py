@@ -10,8 +10,8 @@ from vcmi_mapgen.kit.topology import find_pockets
 from vcmi_mapgen.models import MapState, PlacedObject, Pockets, Tile, ZoneRecord
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.steps.loot import caches as CA
-from vcmi_mapgen.steps.towns.step import TownsIndex
 from vcmi_mapgen.steps.zone_index import ZoneIndex
 from vcmi_mapgen.validate import TerrainGate
 

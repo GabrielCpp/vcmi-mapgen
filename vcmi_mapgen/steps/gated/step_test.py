@@ -9,10 +9,8 @@ from vcmi_mapgen.pipeline import Pipeline
 from vcmi_mapgen.steps import (
     GameplayStep,
     GatedStep,
-    GateStep,
     SegmentStep,
     TerrainStep,
-    TownsStep,
     TreasureStep,
     VegetationStep,
 )
@@ -28,13 +26,10 @@ def _run_through_treasure(
             TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain)
         )
         _ = pipeline.add_step(SegmentStep())
-        if subterrain:
-            _ = pipeline.add_step(GateStep(seed=seed))
-        _ = pipeline.add_step(
-            TownsStep(seed=seed, players=players, size=size, subterrain=subterrain)
-        )
         _ = pipeline.add_step(VegetationStep(seed=seed))
-        _ = pipeline.add_step(GameplayStep(seed=seed))
+        _ = pipeline.add_step(
+            GameplayStep(seed=seed, players=players, size=size, subterrain=subterrain)
+        )
         _ = pipeline.add_step(GatedStep(seed=seed, size=size))
         _ = pipeline.add_step(TreasureStep(seed=seed, size=size))
         map_state = pipeline.run()

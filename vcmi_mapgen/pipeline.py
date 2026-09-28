@@ -58,12 +58,12 @@ __all__ = [
 
 @dataclass
 class ZoneWorkspace:
-    """One zone's handoff data, mutated in place as Towns -> Vegetation -> Gameplay ->
-    Gated each run. Not a MapState field: this is step-collaboration bookkeeping, not a
+    """One zone's handoff data, mutated in place as Vegetation -> Gameplay -> Gated
+    each run. Not a MapState field: this is step-collaboration bookkeeping, not a
     map-level fact anything outside the placement steps needs to read."""
 
     terrain: str = ""
-    ts: frozenset[Tile] = frozenset()  # set by GameplayStep
+    ts: frozenset[Tile] = frozenset()  # set by the zone plan
     ts_full: frozenset[Tile] = frozenset()
     gobjs: list[PlacedObject] = field(default_factory=list)
     occupied: frozenset[Tile] = frozenset()
@@ -76,7 +76,6 @@ class ZoneWorkspace:
     blocked: frozenset[Tile] = frozenset()  # set by VegetationStep
     open_set: frozenset[Tile] = frozenset()
     passable: frozenset[Tile] = frozenset()
-    planned: list[PlacedObject] = field(default_factory=list)
     reach: frozenset[Tile] = frozenset()
     used: frozenset[Tile] = frozenset()
 
@@ -88,7 +87,8 @@ class LevelWorkspace:
     ridge: frozenset[Tile] = frozenset()
     hard_avoid: set[Tile] = field(default_factory=set)
     guard_tiles: frozenset[Tile] = frozenset()
-    # seaport blocking/approach cells (set by GameplayStep) — vegetation must forbid them
+    sea: tuple[PlacedObject, ...] = ()
+    # seaport cells: the zone plan's planned landings, then GameplayStep's shipyard blocking cells
     seaport_blk: frozenset[Tile] = frozenset()
     seaport_appr: frozenset[Tile] = frozenset()
     town_of_zone: dict[int, PlacedObject] = field(
@@ -123,8 +123,9 @@ class ProviderRegistry:
     A producing step's ``run()`` calls ``provide(value)`` once it has computed its typed
     result. A later step's ``inject()`` calls ``require(SomeType)`` for a value some
     earlier step is guaranteed to have produced by then, or ``get(SomeType, default)``
-    when the producing step might not have run at all (e.g. ``GateStep`` only runs for
-    subterrain maps — its consumer reads an empty default instead).
+    when the producing step might not have run at all (e.g. ``GameplayStep`` only
+    places gates on subterrain maps, so ``PortalStep`` reads an empty ``GateResult`` default
+    before it has run).
     ``get_or_create(SomeType, factory)`` is for the one case where the FIRST demander
     creates the value and every later demander mutates that SAME instance further
     (``PlacementWorkspace``) — "the pipeline computes it for the first person who

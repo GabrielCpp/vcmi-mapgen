@@ -6,19 +6,20 @@ from dataclasses import dataclass, field
 from typing import override
 
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.models import MapState, PlacedObject, Tile, footprint
+from vcmi_mapgen.models import MapState, PlacedObject, Tile
+from vcmi_mapgen.models.map_state import index_of
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.pipeline import (
     LevelWorkspace,
     PipelineStep,
     PlacementWorkspace,
     ProviderRegistry,
-    ZoneWorkspace,
 )
 from vcmi_mapgen.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.steps.vegetation import sample as PP
 from vcmi_mapgen.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.steps.vegetation.islands import open_islands
+from vcmi_mapgen.steps.zone_plan import plan_zones
 from vcmi_mapgen.validate import TerrainGate
 
 
@@ -27,40 +28,6 @@ class VegetationResult:
     """Diagnostic log lines for the CLI to print."""
 
     log: list[str] = field(default_factory=list)
-
-
-def _cheb_ring(
-    ts: frozenset[Tile], forbid: frozenset[Tile], cells: set[Tile], lo: int, hi: int
-) -> set[Tile]:
-    if not cells:
-        return set()
-    return {
-        t
-        for t in ts
-        if t not in forbid
-        and lo <= min(max(abs(t[0] - cx), abs(t[1] - cy)) for cx, cy in cells) <= hi
-    }
-
-
-def _attract(zw: ZoneWorkspace, ts: frozenset[Tile], forbid: frozenset[Tile]) -> frozenset[Tile]:
-    mine_cells = {
-        (mcx, mcy)
-        for o in zw.gobjs
-        if o.purpose == "MINE"
-        for mcx, mcy, mblk in OR.mask_cells(o.mask, o.x, o.y)
-        if mblk
-    }
-    planned_cells = {(px, py) for o in zw.planned for px, py, _b in OR.mask_cells(o.mask, o.x, o.y)}
-    return frozenset(
-        _cheb_ring(ts, forbid, mine_cells, 2, 3) | _cheb_ring(ts, forbid, planned_cells, 1, 3)
-    )
-
-
-def _planned_tiles(lvl_ws: LevelWorkspace) -> frozenset[Tile]:
-    """Every tile a planned attraction covers on this level, its entrance approach included."""
-    return frozenset(
-        tile for zw in lvl_ws.zones.values() for o in zw.planned for tile, _role in footprint(o)
-    ) | frozenset(t for zw in lvl_ws.zones.values() for t in zw.approaches)
 
 
 def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> None:
@@ -84,6 +51,11 @@ def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> N
         )
 
 
+def _taken(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> frozenset[Tile]:
+    sea = frozenset(t for lvl, t in index_of(list(lvl_ws.sea)) if lvl == level)
+    return map_state.taken_tiles(level) | sea
+
+
 class VegetationStep(PipelineStep):
     """Corpus-fitted Gibbs marked-point-process vegetation, per zone.
 
@@ -91,9 +63,10 @@ class VegetationStep(PipelineStep):
         seed  RNG seed.
 
     Reads ``map_state.zones`` (SegmentStep's output) directly in run(). inject(ctx):
-    the folded-in ``workspace`` (a ``PlacementWorkspace``, written by TownsStep);
-    each zone's ``ZoneWorkspace`` supplies ``prot``/``occupied``/``gblocked``/
-    ``approaches``/``gobjs``/``rim8``/``ent_bands``, and this step writes
+    ``TerrainGrids`` and the ``PlacementWorkspace``, created here and filled by
+    ``zone_plan.plan_zones`` before any tree grows; each zone's ``ZoneWorkspace``
+    supplies ``prot``/``occupied``/``gblocked``/``approaches``/``gobjs``/``rim8``/
+    ``ent_bands``, and this step writes
     ``blocked``/``open_set``/``passable`` back into the same object for
     GatedStep.
 
@@ -107,24 +80,26 @@ class VegetationStep(PipelineStep):
         self.log: list[str] = []
         self._ctx: ProviderRegistry = ProviderRegistry()
         self._workspace: PlacementWorkspace | None = None
+        self._terrain: TerrainGrids = TerrainGrids()
         self._tunnel_protect: frozenset[Tile] = frozenset()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
-        self._workspace = ctx.require(PlacementWorkspace)
-        self._tunnel_protect = ctx.require(TerrainGrids).tunnel_protect
+        self._workspace = ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)
+        self._terrain = ctx.require(TerrainGrids)
+        self._tunnel_protect = self._terrain.tunnel_protect
 
     @override
     def run(self, ontology: Ontology, map_state: MapState) -> None:
         if self._workspace is None:
             raise RuntimeError("VegetationStep.run() requires inject() to have been called")
+        plan_zones(self._workspace, map_state, self._terrain, self.seed, ontology)
         models: dict[str, PP.VegModel] = {}
         new_objs: list[PlacedObject] = []
-        pre_taken = {lvl: map_state.taken_tiles(lvl) for lvl in self._workspace.levels}
+        pre_taken = {lvl: _taken(map_state, lvl, lw) for lvl, lw in self._workspace.levels.items()}
 
         for level, lvl_ws in self._workspace.levels.items():
-            planned = _planned_tiles(lvl_ws)
             for zid, zw in lvl_ws.zones.items():
                 zones = map_state.zones[level]
                 terrain = zw.terrain
@@ -139,8 +114,7 @@ class VegetationStep(PipelineStep):
 
                 # Seaport footprint in this zone must be excluded from vegetation
                 zone_seaport_cells = (lvl_ws.seaport_blk | lvl_ws.seaport_appr) & ts_full
-                forbid = map_state.taken_tiles(level) | zone_seaport_cells | zw.occupied | planned
-                attract = _attract(zw, ts, forbid)
+                forbid = _taken(map_state, level, lvl_ws) | zone_seaport_cells | zw.occupied
                 # zone-isolation border belt: the whole 8-connected rim minus the planned
                 # entrance bands (those sit in `prot` as hard zeros) gets the +BORDER_W
                 # vegetation bias — both zones densify their own side, so the border reads
@@ -153,7 +127,6 @@ class VegetationStep(PipelineStep):
                     opts=PP.SampleOptions(
                         prot=zw.prot,
                         forbid=forbid,
-                        attract=attract,
                         border=border,
                         impassable=zw.gblocked,
                     ),
@@ -205,7 +178,7 @@ class VegetationStep(PipelineStep):
             bands |= zw.ent_bands
             web |= zw.prot
             avoid |= set(zw.approaches) | zw.occupied
-        level_objs = [o for o in map_state.objs if o.level == level]
+        level_objs = [o for o in [*lvl_ws.sea, *map_state.objs] if o.level == level]
         sealers, sealed = seal_borders(
             BorderPlan(land, map_state.zones[level], bands, avoid, web),
             level_objs,

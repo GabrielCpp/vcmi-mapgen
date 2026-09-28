@@ -10,7 +10,7 @@ exact same helpers) imports them from here rather than duplicating them.
 import collections
 import random
 import zlib
-from collections.abc import Container, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
@@ -185,8 +185,11 @@ class SeaMap:
     H: int
     grid: Sequence[Sequence[int]]
     zones: Mapping[int, Zone]
-    web: AbstractSet[Tile] = frozenset()
     reserved: AbstractSet[Tile] = frozenset()
+    accept: Callable[[PlacedObject], bool] | None = None
+    score: Callable[[Identity, Tile], int] | None = None
+    placed: Callable[[PlacedObject], None] | None = None
+    quiet: bool = False
 
 
 def ensure_water_seaports(
@@ -350,6 +353,10 @@ class _SeaportPlanner:
         # Anchor positions of seaports already in objs (for 20-tile spacing constraint)
         self.placed_anchors = [(o.x, o.y) for o in objs if o.type == "shipyard"]
 
+    def _warn(self, msg: str) -> None:
+        if not self.sea.quiet:
+            print(msg)
+
     def _register(self, o: PlacedObject) -> None:
         for tile, role in footprint(o):
             self.covered_tiles.add(tile)
@@ -382,7 +389,7 @@ class _SeaportPlanner:
         # Approach tile must not be occupied (dark-green X tile must be accessible)
         if approach in self.existing_blk:
             return False
-        if any(c in self.existing_blk or c in self.sea.web for c in blk):
+        if any(c in self.existing_blk for c in blk):
             return False
         if any(c in self.sea.reserved for c in allc):
             return False
@@ -391,13 +398,12 @@ class _SeaportPlanner:
             return False
         if self._blocks_a_structure_front(set(blk)) or self._stacks_on_others(ident, ax, ay):
             return False
-        return not (
-            check_spacing
-            and any(
-                (ax - px) ** 2 + (ay - py) ** 2 < SEAPORT_SPACING_SQ
-                for px, py in self.placed_anchors
-            )
-        )
+        if check_spacing and any(
+            (ax - px) ** 2 + (ay - py) ** 2 < SEAPORT_SPACING_SQ for px, py in self.placed_anchors
+        ):
+            return False
+        accept = self.sea.accept
+        return accept is None or accept(PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT"))
 
     def _do_place(self, ident: Identity, ax: int, ay: int) -> PlacedObject:
         _, blk, _ = _seaport_footprint(ax, ay, ident.mask)
@@ -410,6 +416,8 @@ class _SeaportPlanner:
         o = PlacedObject.at(ident, (ax, ay), purpose="WATER_TRANSPORT")
         self.new_objs.append(o)
         self._register(o)
+        if self.sea.placed is not None:
+            self.sea.placed(o)
         return o
 
     def _try_place(
@@ -430,7 +438,10 @@ class _SeaportPlanner:
         rng = random.Random(self.seed ^ zlib.crc32(label.encode()) ^ 0x53A9)
         shuffled = list(cand_tiles)
         rng.shuffle(shuffled)
-        cap = shuffled[:300]
+        cap = shuffled
+        score = self.sea.score
+        if score is not None:
+            cap.sort(key=lambda t: -score(ident, t))
 
         for ax, ay in cap:
             if self._candidate_ok(ts_set, ident, ax, ay, check_spacing=True):
@@ -514,7 +525,7 @@ class _SeaportPlanner:
             ts_set |= set(self.sea.zones[zid].tiles_set)
         ident = self._shore_shipyard(zids_here)
         if ident is None:
-            print(
+            self._warn(
                 f"  WARNING: no seaport placed on shore near zone(s) {zids_here} "
                 + f"({len(shore)} shore tiles) — no shipyard identity for any "
                 + "bordering terrain"
@@ -525,7 +536,7 @@ class _SeaportPlanner:
         near_coastal = _expand_inland(set(shore), ts_set)
         o = self._try_place(ts_set, list(near_coastal), label, ident)
         if not o:
-            print(
+            self._warn(
                 f"  WARNING: no seaport placed on shore near zone(s) {zids_here} "
                 + f"({len(shore)} shore tiles) — no valid near-coastal anchor found"
             )
@@ -553,7 +564,7 @@ class _SeaportPlanner:
             return False
         ident = self._shipyard_ident(terrain)
         if ident is None:
-            print(
+            self._warn(
                 f"  WARNING: no seaport placed on zone {zid} "
                 + f"({terrain}, {z.area} tiles) — no shipyard identity for this terrain"
             )
@@ -567,7 +578,7 @@ class _SeaportPlanner:
         near_coastal = _expand_inland(set(coastal_set), ts_set)
         o = self._try_place(ts_set, list(near_coastal), label, ident)
         if not o:
-            print(
+            self._warn(
                 f"  WARNING: no seaport placed on zone {zid} "
                 + f"({terrain}, {z.area} tiles) — "
                 + "no valid near-coastal anchor found"

@@ -1,15 +1,11 @@
-"""Subterranean Gate placement — Gate-only logic split out of pp_gameplay.py.
-
-Also owns the low-level gameplay-footprint fitting helpers (`footprint_cells`/`fits`/`GAP`) and
-`rnd_monster`: GateStep is the first step in pipeline order to need them, and the later
-placement steps (which need the same helpers for mines, pocket guards, and portal rescue)
-import them from here rather than duplicating them or inventing a generic shared module.
+"""Subterranean Gate statistics and spreading, and the gameplay-footprint fitting helpers
+(`footprint_cells`/`fits`/`GAP`) and `rnd_monster` every placement step shares.
 """
 
 import json
 import math
 import random
-from collections.abc import Container, Iterable, Mapping
+from collections.abc import Callable, Container, Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from itertools import combinations
@@ -18,7 +14,7 @@ from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.models import Identity, PlacedObject, Tile
+from vcmi_mapgen.models import Identity, Tile
 
 ROOT = project_root()
 GATE_STATS_PATH = ROOT / "data" / "pp" / "gate_stats.json"
@@ -56,7 +52,6 @@ class GateStats:
 
 
 type Fit = tuple[list[Tile], list[Tile], Tile]
-type LevelGates = tuple[list[PlacedObject], set[Tile], set[Tile], list[Tile]]
 
 
 def rnd_monster(lvl: int) -> Identity:
@@ -101,24 +96,17 @@ class Clearance:
 def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -> Fit | None:
     """Legality: whole footprint in-zone, at least GAP free tiles from every other gameplay
     footprint (`near` = existing cells inflated by GAP), no squatting on an earlier object's
-    approach tile (`reserved`), own approach tile in-zone and standable. `avoid` (the
-    underground tunnel/gate-connector protect set — empty on the surface) keeps gameplay
-    footprints off cells terrain generation already fought to keep walkable: those cells
-    are guarded from vegetation via `protected_web`, but gameplay placement runs BEFORE
-    that web is built, so without this check a town/mine/monster footprint could still
-    silently wall off a corridor that vegetation would otherwise have left alone."""
+    approach tile (`reserved`), own approach tile in-zone and standable. No cell and no
+    approach may touch `avoid`, the ground a later object has claimed."""
     allc, blk, approach = footprint_cells(ident, anchor[0], anchor[1])
     if approach is None:
         return None
     for cell in allc:
         if cell not in ts or cell in clear.near or cell in clear.reserved or cell in clear.avoid:
             return None
-    if (
-        approach not in ts
-        or approach in clear.occupied
-        or approach in blk
-        or approach in clear.avoid
-    ):
+    if approach not in ts or approach in clear.occupied or approach in blk:
+        return None
+    if approach in clear.avoid:
         return None
     return allc, blk, approach
 
@@ -213,7 +201,7 @@ def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:
 
 
 @dataclass
-class _Spread:
+class Spread:
     side0: GateSide
     side1: GateSide
     min_gap: float
@@ -235,80 +223,36 @@ class _Spread:
                 used.add(zone_of[c])
 
 
-def place_gates(
-    side0: GateSide, side1: GateSide, size: int, seed: int = 1
-) -> tuple[LevelGates, LevelGates]:
-    """Subterranean Gate pairs: one `avtcave` object at the IDENTICAL (x, y) on both levels —
-    `kit/reachability.py`'s `_gate_links` already pairs gates by exact-(x, y) match, so no other
-    linking is needed. Candidates are tiles walkable on BOTH levels (`ts0 & ts1`); footprint
-    legality (`fits`, reused unchanged) is checked against the UNION of both levels' already-
-    placed gameplay footprints (`occ0`/`occ1`, GAP-inflated the same way `place_zone` does
-    internally) plus their existing approach tiles (`appr0`/`appr1`, so a gate can never
-    squat on a mine's or town's doorway), so a gate can never land on top of existing
-    objects on either side. The gate count is drawn from corpus maps of the same width
-    (`mine_gate_stats`) and is an upper bound. Each zone (`zone_of`) on either level hosts at
-    most one gate, and no two gates sit closer than the corpus spacing floor, so pairs spread
-    across the map instead of clustering in one big zone. The underground-side approach — the
-    harder, descending direction — gets a random monster guard at the corpus zone-gate
-    probability (0.65, matching `place_zone`'s own gate-band convention); the surface side is
-    left open.
-
-    Returns `(objs0, occ0, blk0, appr0), (objs1, occ1, blk1, appr1)` — the same 4-tuple shape
-    `place_zone` returns per level, so `pp_map.build()` folds gate placement into its existing
-    per-level object/occupied/blocked/approach aggregation with no special-casing."""
+def gate_anchors(
+    side0: GateSide,
+    side1: GateSide,
+    size: int,
+    seed: int,
+    place: Callable[[Tile, Spread], Tile | None],
+) -> list[Tile]:
+    """Walk the tiles land on both levels in a seeded order and let ``place`` put a gate
+    pair near each one the spread admits. ``place`` returns the anchor it used, or None.
+    The count is drawn from corpus maps of the same width and is an upper bound. Each zone
+    on either level hosts at most one gate, and no two gates sit closer than the corpus
+    spacing floor."""
     rng = random.Random(seed ^ 0x6A7E)
-    objs0: list[PlacedObject] = []
-    objs1: list[PlacedObject] = []
-    occ0n: set[Tile] = set()
-    occ1n: set[Tile] = set()
-    blk0n: set[Tile] = set()
-    blk1n: set[Tile] = set()
-    appr0n: list[Tile] = []
-    appr1n: list[Tile] = []
     ts_both = side0.ts & side1.ts
     if not ts_both:
-        return (objs0, occ0n, blk0n, appr0n), (objs1, occ1n, blk1n, appr1n)
+        return []
     st = mine_gate_stats()
     target = st.draw_count(size, rng)
-    spread = _Spread(side0, side1, st.min_gap(size))
-    ident = ON.identity_of(GATE_ANIM)
+    spread = Spread(side0, side1, st.min_gap(size))
     cands = sorted(ts_both)
     rng.shuffle(cands)
-    occupied = set(side0.occ) | set(side1.occ)
-    near: set[Tile] = set()
-    inflate_gap(near, occupied)
-    reserved = set(side0.appr) | set(side1.appr)
+    out: list[Tile] = []
     for c in cands:
-        if len(objs0) >= target:
+        if len(out) >= target:
             break
         if not spread.admits(c):
             continue
-        fit = fits(ident, c, ts_both, Clearance(occupied, near, reserved))
-        if fit is None:
+        anchor = place(c, spread)
+        if anchor is None:
             continue
-        allc, blk, approach = fit
-        occupied.update(allc)
-        inflate_gap(near, allc)
-        reserved.add(approach)
-        spread.take(c)
-        for lvl, objs, occn, blkn, apprn in (
-            (0, objs0, occ0n, blk0n, appr0n),
-            (1, objs1, occ1n, blk1n, appr1n),
-        ):
-            objs.append(PlacedObject.at(ident, c, level=lvl, purpose="TRANSPORT"))
-            occn.update(allc)
-            blkn.update(blk)
-            apprn.append(approach)
-        if rng.random() < 0.65:  # guard only the underground (descending) approach
-            gident = rnd_monster(3)
-            objs1.append(
-                PlacedObject.at(
-                    gident,
-                    approach,
-                    level=1,
-                    purpose="GUARD",
-                    options={"character": "hostile"},
-                )
-            )
-            occ1n.add(approach)
-    return (objs0, occ0n, blk0n, appr0n), (objs1, occ1n, blk1n, appr1n)
+        spread.take(anchor)
+        out.append(anchor)
+    return out

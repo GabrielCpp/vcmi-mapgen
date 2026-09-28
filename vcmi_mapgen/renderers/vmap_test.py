@@ -11,9 +11,10 @@ from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit import json_value as jv
 from vcmi_mapgen.kit import paths as vcmi_paths
 from vcmi_mapgen.kit import tiling as ZE
-from vcmi_mapgen.models import Identity, JsonValue, MapState, PlacedObject, Zone
+from vcmi_mapgen.models import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
 from vcmi_mapgen.steps.gameplay import mines as PG
+from vcmi_mapgen.steps.gameplay.step import place_open_zone
 
 RANDOMMAPS_GLOB = os.path.join(vcmi_paths.vcmi_home(), "Maps", "RandomMaps", "*.vmap")
 needs_vcmi = pytest.mark.skipif(
@@ -112,17 +113,7 @@ def test_vmap_export_game_contracts(tmp_path: Path) -> None:
         pytest.skip("gameplay stats not mined")
     # a placed zone carries the game-time options on the right purposes
     ts = {(x, y) for x in range(30) for y in range(24)}
-    zones = {
-        1: Zone(
-            terrain_type=2,
-            area=len(ts),
-            centroid=(14.5, 11.5),
-            tiles=sorted(ts),
-            tiles_set=frozenset(ts),
-        )
-    }
-    objs: list[PlacedObject]
-    objs = PG.place_zone(ts, zones, 1, "grass", PG.ZoneOptions(seed=3, force_town=True)).objs
+    objs: list[PlacedObject] = place_open_zone(ts, "grass", 3, player=True).gobjs
     town = next(o for o in objs if o.purpose == "TOWN")
     START_BUILDINGS: JsonValue = {
         "allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]

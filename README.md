@@ -28,14 +28,12 @@ Everything is **learned from real maps** (`maps/`, 159 classic `.h3m` maps) and
    Subterranean Gate pairs.
 2. **Terrain** — corpus-learned transition tiles (shores, terrain edges) so
    coastlines and terrain borders look hand-drawn.
-3. **Towns and mines** — towns and mines placed with corpus-fitted densities;
-   every town gets its sawmill and ore pit; gold mines scale with the number of
-   towns; a protected walkable web guarantees every object stays reachable
-   (validated, not hoped for).
-4. **Vegetation** — a corpus-fitted Gibbs marked point process scatters trees,
-   rocks and lakes with the same clustering statistics as the real maps.
-5. **Attractions** — dwellings, banks and shrines settle next to the vegetation,
-   on spots that keep the walkable field in one piece.
+3. **Vegetation** — a corpus-fitted Gibbs marked point process scatters trees,
+   rocks and lakes with the same clustering statistics as the real maps. A
+   protected walkable web keeps every zone entrance reachable.
+4. **Gameplay** — gates, towns, mines, shipyards, dwellings, banks and shrines
+   settle with their backs against the vegetation. Each zone holds objects at the
+   corpus rate. Every town gets its sawmill and ore pit.
 6. **Loot** — unguarded scatter along routes, guarded caches in pockets with a
    monster on the mouth; guard level scales with the guarded value.
 

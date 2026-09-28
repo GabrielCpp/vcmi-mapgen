@@ -12,13 +12,11 @@ from vcmi_mapgen.steps import (
     BorderStep,
     GameplayStep,
     GatedStep,
-    GateStep,
     LootStep,
     PortalStep,
     ScatterStep,
     SegmentStep,
     TerrainStep,
-    TownsStep,
     TreasureStep,
     VegetationStep,
 )
@@ -59,10 +57,8 @@ def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
             TerrainStep(size=SIZE, seed=seed, water_mode="normal", subterrain=True),
         ),
         ("segment", SegmentStep()),
-        ("gate", GateStep(seed=seed)),
-        ("towns", TownsStep(seed=seed, players=PLAYERS, size=SIZE, subterrain=True)),
         ("vegetation", VegetationStep(seed=seed)),
-        ("gameplay", GameplayStep(seed=seed)),
+        ("gameplay", GameplayStep(seed=seed, players=PLAYERS, size=SIZE, subterrain=True)),
         ("gated", GatedStep(seed=seed, size=SIZE)),
         ("treasure", TreasureStep(seed=seed, size=SIZE)),
         ("border", BorderStep(seed=seed, size=SIZE)),
@@ -118,20 +114,18 @@ def test_segment_writes_zones(transitions: dict[str, tuple[Snapshot, Snapshot]])
     assert after.zones > 0
 
 
-def test_gate_writes_gate_blk(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:
-    before, after = transitions["gate"]
+def test_gameplay_writes_gate_blk(transitions: dict[str, tuple[Snapshot, Snapshot]]) -> None:
+    before, after = transitions["gameplay"]
     assert before.gate_blk == 0
     assert after.gate_blk > 0
 
 
-def test_towns_writes_objs_and_player_towns(
+def test_gameplay_writes_player_towns(
     transitions: dict[str, tuple[Snapshot, Snapshot]],
 ) -> None:
-    before, after = transitions["towns"]
-    assert before.objs == ()
+    before, after = transitions["gameplay"]
     assert before.player_towns == ()
-    assert len(after.objs) > 0
-    assert len(after.player_towns) > 0
+    assert len(after.player_towns) == PLAYERS
 
 
 @pytest.mark.parametrize("name", ["vegetation", "gameplay", "border", "loot", "scatter"])
