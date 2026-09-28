@@ -7,6 +7,7 @@
 - `grow.py`: `grow_level`, one level's vegetation grown zone by zone, and `vegetation_models`, one
   fitted model per terrain.
 - `sample.py`: the marked-point-process sampler that grows one zone's decoration, fitted to
-  `VegetationStats` from `core/priors/vegetation.py`.
+  `VegetationStats` from `core/priors/vegetation.py`. It keeps `core/planning/web.py`'s
+  protected web clear.
 - `result.py`: `VegetationResult`, which `VegetationStep` publishes.
 - `step.py`: `VegetationStep`.

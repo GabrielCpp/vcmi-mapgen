@@ -1,8 +1,29 @@
 import pytest
 
-from vcmi_mapgen.core.model import BORDER, CoverIndex, MapState, PlacedObject, PlacementError, Role
+from vcmi_mapgen.core.model import (
+    BORDER,
+    CoverIndex,
+    Footprint,
+    MapState,
+    PlacedObject,
+    PlacementError,
+    Role,
+)
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.vcmi.footprint import footprint_of
+
+_ROLE = {"B": Role.BLOCKING, "X": Role.ENTRANCE, "A": Role.VISIT, "V": Role.OVERLAY}
+
+
+def _footprint(mask: tuple[str, ...]) -> Footprint:
+    """A footprint drawn as rows anchored at the bottom-right cell: B blocking, X entrance,
+    A visit, V overlay."""
+    h = len(mask)
+    cells = tuple(
+        (c - (len(row) - 1), r - (h - 1), _ROLE[ch])
+        for r, row in enumerate(mask)
+        for c, ch in enumerate(row)
+    )
+    return Footprint(max(len(row) for row in mask), h, cells)
 
 
 class _NoRules:
@@ -17,7 +38,7 @@ def _obj(x: int, y: int, mask: tuple[str, ...], purpose: str = "") -> PlacedObje
         level=0,
         purpose=purpose,
         kind="thing",
-        footprint=footprint_of(mask),
+        footprint=_footprint(mask),
     )
 
 

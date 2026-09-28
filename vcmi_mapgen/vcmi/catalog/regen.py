@@ -1,8 +1,8 @@
 """Rebuild the catalog's two JSON tables from the editor's own object table.
 
 The taxonomy is derived from the AUTHORITATIVE VCMI/H3 object table (objects.txt in the LOD),
-the absolute list the map editor places, and written to ``data/ontology/taxonomy.json`` and
-``data/ontology/leaf_meta.json``. Run ``uv run python -m vcmi_mapgen.cli regen-ontology``.
+the absolute list the map editor places, and written to ``vcmi/catalog/data/taxonomy.json`` and
+``vcmi/catalog/data/leaf_meta.json``. Run ``uv run python -m vcmi_mapgen.cli regen-ontology``.
 objects.txt columns: DEF, passability(48), triggers(48), allowedTerrains(9), nativeTerrain(9),
 class, subclass, group, isOverlay. The 9-bit terrain masks are MSB->LSB = terrain 8..0
 (water..dirt); bit i means terrain (8 - i).

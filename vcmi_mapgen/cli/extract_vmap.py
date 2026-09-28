@@ -7,25 +7,21 @@ dialect; see the vmap-unification plan). Run:
 `uv run python -m vcmi_mapgen.cli extract-vmap`.
 """
 
-import glob
 import os
 import re
+from pathlib import Path
 
 from vcmi_mapgen.core.model import PlacedObject
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.config import VcmiConfig
 from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import h3m
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.mask import build_mask_from_h3m
+from vcmi_mapgen.vcmi.formats.vmap.reader import header_template
 from vcmi_mapgen.vcmi.formats.vmap.terrain import export_mask, visitable_from
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
 from vcmi_mapgen.vcmi.tiles import Cell, tile_string
-
-ROOT = project_root()
-OUT = str(ROOT / "maps_vmap")
-_HEADER_TEMPLATE = jv.as_object(jv.loads((ROOT / "data" / "vmap_header_template.json").read_text()))
 
 
 def _blank_players() -> list[PlayerSlot]:
@@ -33,7 +29,7 @@ def _blank_players() -> list[PlayerSlot]:
         PlayerSlot(
             id=color, can_play=jv.as_str(jv.as_object(pl).get("canPlay"), "false"), main_town=None
         )
-        for color, pl in jv.as_object(_HEADER_TEMPLATE["players"]).items()
+        for color, pl in jv.as_object(header_template()["players"]).items()
     ]
 
 
@@ -102,14 +98,14 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
             terrain=terrain,
             objects=objects,
             players=_blank_players(),
-            victory_icon_index=jv.opt_int(_HEADER_TEMPLATE["victoryIconIndex"]),
-            victory_message=jv.opt_object(_HEADER_TEMPLATE["victoryMessage"]),
-            defeat_icon_index=jv.opt_int(_HEADER_TEMPLATE["defeatIconIndex"]),
-            defeat_message=jv.opt_object(_HEADER_TEMPLATE["defeatMessage"]),
-            triggered_events=jv.opt_object(_HEADER_TEMPLATE["triggeredEvents"]),
+            victory_icon_index=jv.opt_int(header_template()["victoryIconIndex"]),
+            victory_message=jv.opt_object(header_template()["victoryMessage"]),
+            defeat_icon_index=jv.opt_int(header_template()["defeatIconIndex"]),
+            defeat_message=jv.opt_object(header_template()["defeatMessage"]),
+            triggered_events=jv.opt_object(header_template()["triggeredEvents"]),
             extra={
-                "versionMajor": _HEADER_TEMPLATE["versionMajor"],
-                "versionMinor": _HEADER_TEMPLATE["versionMinor"],
+                "versionMajor": header_template()["versionMajor"],
+                "versionMinor": header_template()["versionMinor"],
             },
         ),
         unresolved,
@@ -117,9 +113,9 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
     )
 
 
-def extract_vmap(config: VcmiConfig) -> None:
-    os.makedirs(OUT, exist_ok=True)
-    maps = sorted(glob.glob(f"{ROOT}/maps/*.h3m"))
+def extract_vmap(config: VcmiConfig, h3m_dir: Path, out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    maps = sorted(str(p) for p in h3m_dir.glob("*.h3m"))
     ok = 0
     total_obj = 0
     total_unresolved = 0
@@ -129,7 +125,7 @@ def extract_vmap(config: VcmiConfig) -> None:
         except Exception as e:
             print("PARSE FAIL", os.path.basename(p), e)
             continue
-        _ = write(doc, f"{OUT}/{os.path.basename(p)[:-4]}.vmap")
+        _ = write(doc, str(out_dir / f"{os.path.basename(p)[:-4]}.vmap"))
         total_obj += n_obj
         total_unresolved += unresolved
         ok += 1

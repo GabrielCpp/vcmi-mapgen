@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.model import Dwelling, Identity, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 
@@ -43,10 +43,7 @@ def rest_mines(
     return {
         res: ids
         for res, ids in mines.items()
-        if res not in used_res
-        and ids
-        and res not in ("abandoned", "mine")  # both abandoned-mine variants
-        and (res != "goldMine" or gold_ok)
+        if res not in used_res and ids and (res != "goldMine" or gold_ok)
     }
 
 
@@ -59,5 +56,5 @@ def tie_dwellings(catalog: Catalog, objs: Iterable[PlacedObject]) -> None:
     town = next((o for o in objs if o.purpose == Purpose.TOWN), None)
     if town is not None:
         for o in objs:
-            if (catalog.identity_of(o.kind).type or "").startswith("randomDwelling"):
+            if catalog.identity_of(o.kind).type in catalog.types_with(Trait.RANDOM_DWELLING):
                 o.payload = Dwelling((town.x, town.y, town.level))

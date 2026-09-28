@@ -11,29 +11,20 @@ Run: `uv run pytest vcmi_mapgen/renderers/sprites_test.py -q`
 """
 
 import struct
-from pathlib import Path
 
 import pytest
 from PIL import Image
 
 import vcmi_mapgen.renderers.sprites as RE
-from vcmi_mapgen.cli.settings import load_settings
+from vcmi_mapgen.conftest import corpus_map, find_install
 from vcmi_mapgen.core.model import Footprint, PlacedObject
-from vcmi_mapgen.corpus.maps import load_corpus_map
 from vcmi_mapgen.vcmi.formats.lod import LOD_FILES, LodIndex, lod
-from vcmi_mapgen.vcmi.install import InstallNotFoundError
 
 TEST_MAP = "All for One"
 
 
-def _data_dir() -> Path | None:
-    try:
-        return load_settings().install().data_dir
-    except InstallNotFoundError:
-        return None
-
-
-DATA_DIR = _data_dir()
+_INSTALL = find_install()
+DATA_DIR = _INSTALL.data_dir if _INSTALL is not None else None
 pytestmark = pytest.mark.skipif(
     DATA_DIR is None or not any((DATA_DIR / f).exists() for f in LOD_FILES),
     reason="H3 sprite LOD files not found (set VCMI_HOME)",
@@ -80,7 +71,7 @@ def test_decode_coverage_over_corpus_sprites() -> None:
     the test map must, when present in the LOD, decode to a non-empty frame of the
     header-declared size. Sprites genuinely absent from the LOD are reported, not
     failed (that is a data-availability issue, not a decoder fault)."""
-    fm = load_corpus_map(TEST_MAP)
+    fm = corpus_map(TEST_MAP)
     anims = sorted({o.kind for o in fm.objs if o.kind})
     assert anims, "no object animations found in the test map"
 

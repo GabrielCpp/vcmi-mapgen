@@ -9,14 +9,12 @@ import os
 
 from PIL import Image
 
+from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.terrain_gen.macro import MacroOptions, generate, report
 from vcmi_mapgen.corpus.priors import load_priors
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers.palette import TERRAIN_RGB
 from vcmi_mapgen.renderers.palette import TERRAIN_TILE_PX as _TILE
-
-ROOT = project_root()
 
 
 class _Args(argparse.Namespace):
@@ -33,7 +31,8 @@ def main() -> None:
     _ = ap.add_argument("--water", type=float, default=None)
     _ = ap.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
     args = ap.parse_args(namespace=_Args())
-    priors = load_priors().terrain[args.level]
+    settings = load_settings()
+    priors = load_priors(settings.pp_dir).terrain[args.level]
     st = priors.macro
     barrier_name = "water" if args.level == 0 else "rock"
     median_area = st.areas[len(st.areas) // 2]
@@ -48,7 +47,7 @@ def main() -> None:
         for x, t in enumerate(row):
             box = (x * _TILE, y * _TILE, (x + 1) * _TILE, (y + 1) * _TILE)
             img.paste(TERRAIN_RGB[Terrain(t)], box)
-    out = str(ROOT / "out" / "render" / "pp" / f"macro_s{args.seed}.png")
+    out = str(settings.out_dir / "render" / "pp" / f"macro_s{args.seed}.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     img.save(out)
     print("->", out)

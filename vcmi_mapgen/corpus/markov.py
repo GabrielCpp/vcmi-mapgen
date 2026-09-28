@@ -8,7 +8,7 @@ from typing import cast
 
 from vcmi_mapgen.core.model import JsonValue
 from vcmi_mapgen.core.priors.markov import MarkovModel, MarkovModel4, MarkovTables
-from vcmi_mapgen.kit import pp_cache
+from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 SOURCE = "vcmi_mapgen.corpus.mine.markov.learn, learn4"
@@ -41,14 +41,14 @@ def _table_from_json[K: tuple[int, ...]](raw: JsonValue) -> _Table[K]:
     return table
 
 
-def tables_path(level: int) -> Path:
-    return pp_cache.PP_DIR / f"markov_{level}.json"
+def tables_path(pp_dir: Path, level: int) -> Path:
+    return pp_dir / f"markov_{level}.json"
 
 
-def save_tables(level: int, tables: MarkovTables) -> None:
+def save_tables(pp_dir: Path, level: int, tables: MarkovTables) -> None:
     chain, chain4 = tables.chain, tables.chain4
-    pp_cache.write(
-        tables_path(level),
+    cache.write(
+        tables_path(pp_dir, level),
         SOURCE,
         {
             "full": _table_to_json(chain.full),
@@ -63,8 +63,8 @@ def save_tables(level: int, tables: MarkovTables) -> None:
 
 
 @functools.cache
-def load_tables(level: int) -> MarkovTables:
-    raw = pp_cache.read(tables_path(level))
+def load_tables(pp_dir: Path, level: int) -> MarkovTables:
+    raw = cache.read(tables_path(pp_dir, level))
     chain = MarkovModel(
         full=_table_from_json(raw.get("full")),
         pair=_table_from_json(raw.get("pair")),

@@ -110,8 +110,9 @@ class VegetationStep(PipelineStep):
         self._ctx.provide(VegetationResult(log=tuple(self.log), zones=veg))
 
     def _zone_plan(self, catalog: Catalog, map_state: MapState) -> ZPL.ZonePlan:
+        seg = self._segmentation
         terrain = ZPL.PlanTerrain(
-            self._segmentation, map_state.terrain, self._terrain.tunnel_protect
+            seg.zones, seg.zone_label, map_state.terrain, self._terrain.tunnel_protect
         )
         return ZPL.plan_player_zones(
             catalog,

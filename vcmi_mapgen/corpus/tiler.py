@@ -6,7 +6,7 @@ import functools
 from pathlib import Path
 
 from vcmi_mapgen.core.model import JsonValue
-from vcmi_mapgen.kit import pp_cache
+from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.tiles import SigTable, TilerTables, ViewMirror
 
@@ -34,13 +34,13 @@ def _sig_table_from_json(raw: JsonValue) -> SigTable:
     return table
 
 
-def tiler_path() -> Path:
-    return pp_cache.PP_DIR / "tiler.json"
+def tiler_path(pp_dir: Path) -> Path:
+    return pp_dir / "tiler.json"
 
 
-def save_tiler(tables: TilerTables) -> None:
-    pp_cache.write(
-        tiler_path(),
+def save_tiler(pp_dir: Path, tables: TilerTables) -> None:
+    cache.write(
+        tiler_path(pp_dir),
         SOURCE,
         {
             "exact": [[t, list(sig), _counts_to_json(c)] for (t, sig), c in tables.exact.items()],
@@ -51,8 +51,8 @@ def save_tiler(tables: TilerTables) -> None:
 
 
 @functools.cache
-def load_tiler() -> TilerTables:
-    raw = pp_cache.read(tiler_path())
+def load_tiler(pp_dir: Path) -> TilerTables:
+    raw = cache.read(tiler_path(pp_dir))
     clean: dict[int, collections.Counter[ViewMirror]] = {}
     for entry in jv.as_list(raw.get("clean")):
         t, counts = jv.as_list(entry)

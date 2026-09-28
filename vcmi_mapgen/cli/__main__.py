@@ -11,7 +11,7 @@ Subcommands:
   extract-vmap    -> regenerate maps_vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
-  regen-ontology  -> rebuild data/ontology/*.json from the editor's objects.txt.
+  regen-ontology  -> rebuild vcmi/catalog/data/*.json from the editor's objects.txt.
 
 `generate` builds and runs a ``Pipeline`` (see ``core/pipeline.py``) from
 ``cli.steps.build_steps``; `render-ontology` stays outside that model entirely — it
@@ -37,10 +37,10 @@ from vcmi_mapgen.cli.generate import (
     GenerateOptions,
     generate,
 )
+from vcmi_mapgen.cli.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.cli.render_sprites import render_sprites
-from vcmi_mapgen.cli.settings import load_settings, open_install
+from vcmi_mapgen.cli.settings import Settings, load_settings, open_install
 from vcmi_mapgen.cli.steps import GENERATE_STOP_POINTS
-from vcmi_mapgen.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
@@ -74,34 +74,38 @@ class Args(argparse.Namespace):
     densities: bool = False
 
 
-def _open_catalog() -> VcmiInstall:
-    install = open_install(load_settings())
+def _open_catalog(settings: Settings) -> VcmiInstall:
+    install = open_install(settings)
     ON.use_config(load_config(install))
     return install
 
 
 def cmd_render_ontology(args: Args) -> None:
-    install = _open_catalog()
-    render_ontology(lod(install.data_dir), args.out)
+    settings = load_settings()
+    install = _open_catalog(settings)
+    render_ontology(lod(install.data_dir), args.out or str(settings.out_dir / "ontology"))
 
 
 def cmd_mine_stats(args: Args) -> None:
-    mine_stats(VcmiCatalog(), args.only or ())
+    mine_stats(VcmiCatalog(), load_settings(), args.only or ())
 
 
 def cmd_audit(args: Args) -> None:
-    _ = _open_catalog()
+    settings = load_settings()
+    _ = _open_catalog(settings)
     catalog = VcmiCatalog()
     if args.densities:
-        densities(catalog, args.level or 0)
+        densities(catalog, settings.pp_dir, args.level or 0)
         return
     levels = [args.level] if args.level is not None else [0, 1]
-    raise SystemExit(0 if audit(catalog, levels) else 1)
+    raise SystemExit(0 if audit(catalog, settings.pp_dir, levels) else 1)
 
 
 def cmd_generate(args: Args) -> None:
+    settings = load_settings()
     generate(
-        _open_catalog(),
+        _open_catalog(settings),
+        settings,
         GenerateOptions(
             seed=args.seed,
             size=args.size,
@@ -117,19 +121,22 @@ def cmd_generate(args: Args) -> None:
 
 
 def cmd_extract_vmap(_args: Args) -> None:
-    extract_vmap(load_config(open_install(load_settings())))
+    settings = load_settings()
+    extract_vmap(load_config(open_install(settings)), settings.h3m_dir, settings.maps_dir)
 
 
 def cmd_corpus_match(args: Args) -> None:
-    _ = _open_catalog()
-    corpus_match(args.seeds, args.size, args.subterrain)
+    settings = load_settings()
+    _ = _open_catalog(settings)
+    corpus_match(settings, args.seeds, args.size, args.subterrain)
 
 
 def cmd_render_sprites(args: Args) -> None:
-    install = _open_catalog()
+    settings = load_settings()
+    install = _open_catalog(settings)
     if args.vmap is None:
         raise SystemExit("render-sprites needs a .vmap path")
-    render_sprites(install, args.vmap, args.compare, args.out)
+    render_sprites(install, settings, args.vmap, args.compare, args.out)
 
 
 def cmd_regen_ontology(_args: Args) -> None:
@@ -197,7 +204,7 @@ def main() -> None:
     _ = prs.set_defaults(func=cmd_render_sprites)
 
     pro_regen = sub.add_parser(
-        "regen-ontology", help="rebuild data/ontology/*.json from the editor's objects.txt"
+        "regen-ontology", help="rebuild vcmi/catalog/data/*.json from the editor's objects.txt"
     )
     _ = pro_regen.set_defaults(func=cmd_regen_ontology)
 

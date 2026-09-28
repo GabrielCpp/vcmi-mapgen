@@ -210,12 +210,12 @@ data the Map file writes.
 | Priors | Reshape | `data/pp/*.json`, committed | Four of six statistics are cached. The Markov border model and the tile art table learn from all 159 maps on every run. Only the gameplay and gate files carry a version. See M11. |
 | Catalog | Reshape | `vcmi/catalog/` | The pipeline receives an `Ontology` instance, but 19 modules call the module-level accessors. A test cannot hand in a small catalog. See M12. |
 | Terrain layout | Exists | `core/steps/terrain_gen/` | Owns and never-knows match. It also computes tile art. See M13. |
-| Tile art | Reshape | `kit/tiling.py`, called from the terrain step | Generation computes it, and it reads the corpus each process. See M13. |
+| Tile art | Reshape | `vcmi/tiles.py`, called by the export and the PNG renderer | Generation no longer computes it. See M13. |
 | Zone | Exists | `core/grid/segment.py`, `core/steps/terrain_gen/step.py` | Water and rock are barriers. The zone plan drops zones under 25 tiles. |
-| Water body | Exists | `core/steps/zone_plan.py` | A flood fill over water tiles. |
-| Passage | Reshape | `kit/topology.py`, planned in `core/steps/zone_plan.py` | The code opens one or two fixed 3-tile entrances per zone pair and densifies the rest of the border. The spec opens a band sized by the corpus open fraction. See M1. |
+| Water body | Exists | `core/planning/zone_plan.py` | A flood fill over water tiles. |
+| Passage | Reshape | `core/planning/entrances.py`, planned in `core/planning/zone_plan.py` | The code opens one or two fixed 3-tile entrances per zone pair and densifies the rest of the border. The spec opens a band sized by the corpus open fraction. See M1. |
 | Walkable web | Exists | `core/steps/vegetation/sample.py`, extended in `core/steps/gameplay/site.py` | Built from entrances, landings and town rooms before vegetation. Each committed approach links to it. A cut web reroutes. See M2. |
-| Player zones | Exists | `core/planning/player_zones.py`, room kept in `core/steps/zone_plan.py` | Greedy max-min on centroid distance, largest zone first, only zones with room for a town. Chosen before vegetation. |
+| Player zones | Exists | `core/planning/player_zones.py`, room kept in `core/planning/zone_plan.py` | Greedy max-min on centroid distance, largest zone first, only zones with room for a town. Chosen before vegetation. |
 | Vegetation | Exists | `core/steps/vegetation/` | Hard zeros on the web and the town room hold. The vegetation layer also builds the whole zone plan. See M14. |
 | Zone budget | Exists | `core/steps/gameplay/draw.py` | One total per zone at the corpus rate. Forced objects count inside it. A moved town or a shipyard spends slots after the draw. |
 | Economy ledger | Reshape | `core/steps/gameplay/economy.py`, consumed in `draw.py` and `step.py` | Map-wide and passed through zones in sorted order. A basic mine that finds no spot only prints a warning. See M7. |
@@ -226,9 +226,9 @@ data the Map file writes.
 | Pocket | Exists | `core/steps/loot/pockets.py` | Not inspected beyond its guard spacing call. |
 | Cache | Exists | `core/steps/loot/pickups.py` | Not inspected beyond its guard spacing call. |
 | Scatter | Exists | `core/steps/scatter/` | Runs last. Keeps off every guard's zone of control. |
-| Water population | Exists | `core/steps/zone_plan.py`, `core/steps/gameplay/water.py` | Drawn before vegetation, committed first by the gameplay layer. See M3. |
-| Landing | Exists | `core/steps/zone_plan.py` | One landing per shore, joined to the web, kept free of vegetation. |
-| Reachability audit | New | Reshape `kit/reachability.py` into a check the CLI runs before writing | That module is imported by one test only, and its docstring names deleted modules. Vegetation raises on a walled-off pocket, and a portal pair rescues an unreachable zone. No check runs on the finished map. See M8. |
+| Water population | Exists | `core/planning/zone_plan.py`, `core/placement/water.py` | Drawn before vegetation, committed first by the gameplay layer. See M3. |
+| Landing | Exists | `core/planning/zone_plan.py` | One landing per shore, joined to the web, kept free of vegetation. |
+| Reachability audit | New | A check the CLI runs before writing | The old `kit/reachability.py` had no production caller and was deleted. Vegetation raises on a walled-off pocket, and a portal pair rescues an unreachable zone. No check runs on the finished map. See M8. |
 | Scenario | Reshape | `vcmi/players.py` | The writer applies slots, teams, owners and victory after building the document. It sizes the slots from the towns placed, not from the players asked for. See M6. |
 | Map | Exists | `core/model/map_state.py` | Appends and checks only the new objects. `set_objs` replaces the list and has no caller. |
 | Map file | Exists | `vcmi/export.py`, `renderers/vmap.py`, `vcmi/formats/vmap/` | Sets visitable directions on every object. |

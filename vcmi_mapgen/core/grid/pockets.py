@@ -1,7 +1,8 @@
 """Pocket (sealable-nook) detection and each pocket tile's depth from its mouth."""
 
 import collections
-from collections.abc import Collection, Container
+from collections.abc import Collection, Container, Mapping
+from itertools import pairwise
 
 from vcmi_mapgen.core.grid.geometry import NB4, NB8
 from vcmi_mapgen.core.grid.reach import distances
@@ -184,3 +185,53 @@ def pocket_depths(pocket: frozenset[Tile], mouth: frozenset[Tile]) -> dict[Tile,
         (gx + dx, gy + dy) for gx, gy in mouth for dx, dy in NB8 if (gx + dx, gy + dy) in pocket
     ]
     return distances(pocket, sources, NB8)
+
+
+def dedupe_pockets(
+    pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]],
+    reach: Container[Tile] = (),
+) -> list[list[tuple[Tile, frozenset[Tile], frozenset[Tile]]]]:
+    """Collapse near-duplicate mouth candidates into one CANDIDATE LIST per genuine physical
+    nook. `find_pockets` returns one entry per candidate MOUTH tile, but several nearby
+    tiles each independently qualify as "the" guard spot of the same nook (a ZoC-neck is 3x3,
+    so a flat-face nook alone yields ~4 candidates) -- and in H3 a guard already threatens
+    every adjacent tile (stepping next to a wandering monster forces combat), so one guard
+    placed at a shared neck already gates every mouth candidate touching it. Merge
+    guard_tile+pocket tiles into 4-connected blobs (union-find over shared tiles).
+
+    `pockets` maps guard_tile -> (pocket_frozenset, mouth_frozenset) as returned by
+    `find_pockets`.
+
+    Returns a list of candidate lists (one list per nook), each sorted by `mouth_key`
+    over `reach` (in-neck first, then largest pocket, then orthogonal-front), outer list
+    sorted best-top-candidate first. Each candidate is a (guard_tile, pocket, mouth_fs)
+    triple. The caller tries candidates within a blob in order and falls back to the next
+    one when the top pick's mouth tile is unusable."""
+    items = [(g, pocket, mouth_fs) for g, (pocket, mouth_fs) in pockets.items()]
+    owner: collections.defaultdict[Tile, list[int]] = collections.defaultdict(list)
+    for idx, (g, pocket, _mouth_fs) in enumerate(items):
+        for t in (g, *pocket):
+            owner[t].append(idx)
+    parent = list(range(len(items)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for idxs in owner.values():
+        for a, b in pairwise(idxs):
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[ra] = rb
+
+    groups: collections.defaultdict[int, list[tuple[Tile, frozenset[Tile], frozenset[Tile]]]] = (
+        collections.defaultdict(list)
+    )
+    for idx, (g, pocket, mouth_fs) in enumerate(items):
+        groups[find(idx)].append((g, pocket, mouth_fs))
+    blobs = [
+        sorted(cands, key=lambda kv: mouth_key(reach, kv[0], kv[1])) for cands in groups.values()
+    ]
+    return sorted(blobs, key=lambda cands: mouth_key(reach, cands[0][0], cands[0][1]))

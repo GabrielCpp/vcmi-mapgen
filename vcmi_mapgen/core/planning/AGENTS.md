@@ -10,6 +10,8 @@ steps.
   border plan and the border guards both read.
 - `entrances.py`: each zone's fronts, its `Gate` values and the planned entrances. Every
   function reads the zone label grid, never the zones dict.
+- `web.py`: `protected_web`, one zone's spanning backbone and rim gate bands, which the zone
+  plan and the vegetation sampler keep free of blocking objects.
 - `player_zones.py`: `select_player_zones`, the greedy max-min pick of the player zones.
 - `zone_plan.py`: each zone's entrances, walkable web and sea plan, and the player zones with the room kept for their town. `VegetationStep` builds it first.
 - `zone_index.py`: `ZoneRecord`, one zone's tiles and reach, the per-level claimed cells, and the per-level zone records and walk targets the placement steps after vegetation share. Every `ZoneRecord` is built here.

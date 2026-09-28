@@ -1,14 +1,12 @@
 """Load and save the corpus gate estimator in ``data/pp/gate_stats.json``."""
 
+from pathlib import Path
+
 from vcmi_mapgen.core.priors.gates import GateStats
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
-ROOT = project_root()
-
-
-GATE_STATS_PATH = ROOT / "data" / "pp" / "gate_stats.json"
+GATE_STATS_FILE = "gate_stats.json"
 
 
 GATE_STATS_VERSION = 2
@@ -17,8 +15,8 @@ GATE_STATS_VERSION = 2
 GATE_STATS_SOURCE = "vcmi_mapgen.corpus.mine.gates.mine_gate_stats"
 
 
-def load_gate_stats() -> GateStats:
-    st = pp_cache.read(GATE_STATS_PATH, version=GATE_STATS_VERSION)
+def load_gate_stats(pp_dir: Path) -> GateStats:
+    st = cache.read(pp_dir / GATE_STATS_FILE, version=GATE_STATS_VERSION)
     frac = st.get("min_gap_frac")
     return GateStats(
         counts_by_size={
@@ -30,9 +28,9 @@ def load_gate_stats() -> GateStats:
     )
 
 
-def save_gate_stats(st: GateStats) -> None:
-    pp_cache.write(
-        GATE_STATS_PATH,
+def save_gate_stats(pp_dir: Path, st: GateStats) -> None:
+    cache.write(
+        pp_dir / GATE_STATS_FILE,
         GATE_STATS_SOURCE,
         {
             "_version": GATE_STATS_VERSION,

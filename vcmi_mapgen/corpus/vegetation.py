@@ -5,12 +5,9 @@ from pathlib import Path
 
 from vcmi_mapgen.core.model import JsonValue
 from vcmi_mapgen.core.priors.vegetation import CellStats, VegetationStats
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value
 
-ROOT = project_root()
-PP_DIR = str(ROOT / "data" / "pp")
 SOURCE = "vcmi_mapgen.corpus.mine.vegetation.mine"
 
 
@@ -88,19 +85,19 @@ def _stats_to_json(st: VegetationStats) -> dict[str, object]:
     }
 
 
-def _stats_path(terrain: str) -> Path:
-    return Path(PP_DIR) / f"veg_{terrain}.json"
+def stats_path(pp_dir: Path, terrain: str) -> Path:
+    return pp_dir / f"veg_{terrain}.json"
 
 
-def save_vegetation(stats: Mapping[str, VegetationStats]) -> None:
+def save_vegetation(pp_dir: Path, stats: Mapping[str, VegetationStats]) -> None:
     for terr, st in stats.items():
-        pp_cache.write(_stats_path(terr), SOURCE, _stats_to_json(st))
+        cache.write(stats_path(pp_dir, terr), SOURCE, _stats_to_json(st))
 
 
-def load_vegetation(terrain: str) -> VegetationStats:
-    return _stats_from_json(pp_cache.read(_stats_path(terrain)))
+def load_vegetation(pp_dir: Path, terrain: str) -> VegetationStats:
+    return _stats_from_json(cache.read(stats_path(pp_dir, terrain)))
 
 
-def vegetation_terrains() -> list[str]:
+def vegetation_terrains(pp_dir: Path) -> list[str]:
     """The terrain names that have saved vegetation statistics, sorted."""
-    return sorted(p.stem.removeprefix("veg_") for p in Path(PP_DIR).glob("veg_*.json"))
+    return sorted(p.stem.removeprefix("veg_") for p in pp_dir.glob("veg_*.json"))

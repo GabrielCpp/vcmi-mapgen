@@ -13,31 +13,22 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.cli.steps import StepConfig, build_steps
+from vcmi_mapgen.conftest import SETTINGS, corpus_tiler, find_install
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import VmapRenderer
 from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
-from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 
-GOLDEN = project_root() / "data" / "golden.json"
+GOLDEN = SETTINGS.root / "data" / "golden.json"
 MAPS = (("s1_48", StepConfig(1, 48)), ("s3_72_sub", StepConfig(3, 72, subterrain=True)))
 
 
-def _install() -> VcmiInstall | None:
-    try:
-        return load_settings().install()
-    except InstallNotFoundError:
-        return None
-
-
-INSTALL = _install()
+INSTALL = find_install()
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +45,7 @@ def _generate(priors: Priors, config: StepConfig) -> MapState:
 
 
 def _digest(state: MapState, out_dir: Path) -> str:
-    path = VmapRenderer(out_dir=str(out_dir)).render(state, "golden.vmap", name="golden")
+    path = VmapRenderer(str(out_dir), corpus_tiler()).render(state, "golden.vmap", name="golden")
     doc = VM.read(path)
     objects = sorted(json.dumps(dataclasses.asdict(o), sort_keys=True) for o in doc.objects)
     gate_blk = {str(lvl): sorted(tiles) for lvl, tiles in sorted(state.gate_blk.items())}

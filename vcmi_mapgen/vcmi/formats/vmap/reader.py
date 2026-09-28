@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import re
 import zipfile
+from functools import cache
+from pathlib import Path
 from typing import TypedDict
 
 from vcmi_mapgen.core.model import JsonValue
@@ -89,7 +91,7 @@ def header_fields(header: dict[str, JsonValue]) -> HeaderFields:
     """A raw `header.json` dict -> the VmapDocument kwargs it carries (players, teams,
     victory/defeat, `extra`). Reusable wherever a document is built from a bare header
     dict rather than a whole `.vmap` file -- e.g. from a real RMG-produced header, or
-    the static `data/vmap_header_template.json` fallback (see
+    the static `header_template()` fallback (see
     `vcmi.export.build_document`).
     """
     return {
@@ -114,6 +116,13 @@ def read_header(path: str) -> dict[str, JsonValue]:
     `VmapDocument` from via `header_fields`, without reading the whole file."""
     with zipfile.ZipFile(path) as z:
         return jv.as_object(_relaxed(z.read("header.json").decode("utf-8", "replace")))
+
+
+@cache
+def header_template() -> dict[str, JsonValue]:
+    """The static header a `.vmap` falls back to when no RMG-produced map is at hand, from
+    ``vcmi/formats/vmap/header_template.json``."""
+    return jv.as_object(jv.loads((Path(__file__).parent / "header_template.json").read_text()))
 
 
 def _grid(value: JsonValue) -> list[list[str]]:

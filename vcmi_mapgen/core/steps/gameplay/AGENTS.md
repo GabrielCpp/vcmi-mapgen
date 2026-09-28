@@ -9,4 +9,3 @@
   `GateResult` and `TownsIndex`, which `GameplayStep` publishes.
 - `gate_pairs.py`: the Subterranean Gate pairs placed against the vegetated field, and the spread that keeps them apart.
 - `shipyards.py`: which shipyard anchors are legal and which one each shore gets.
-- `water.py`: the water-body objects and the seaport guarantee.

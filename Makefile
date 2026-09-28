@@ -12,6 +12,7 @@ lint:
 	uv run ruff check vcmi_mapgen
 	uv run ruff format --check vcmi_mapgen
 	uv run basedpyright
+	uv run lint-imports
 
 test:
 	uv run python -m pytest -q -n auto --dist loadfile

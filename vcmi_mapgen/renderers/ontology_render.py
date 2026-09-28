@@ -15,14 +15,11 @@ from collections.abc import Sequence
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import sprites as RE
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog import regen as RG
 from vcmi_mapgen.vcmi.catalog import tables as TB
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
-
-ROOT = project_root()
 
 # Editor-style passability overlay colours (the four real mask states; see ontology mask docs).
 _MASK_OVERLAY_COLORS: dict[str, tuple[int, int, int, int]] = {
@@ -87,7 +84,7 @@ def _mask_overlay(full_sprite: Image.Image, grid: Sequence[str], tile: int) -> I
     return base
 
 
-def render_ontology(index: LodIndex, out: str | None = None) -> None:
+def render_ontology(index: LodIndex, out: str) -> None:
     """Render every leaf of the ontology tree to its full path on disk:
     out/ontology/<CLUSTER>/<PURPOSE>/<type>/<terrain>/<leaf>.png
     and, next to each, `<leaf>.mask.png` -- the same sprite with its passability mask overlaid
@@ -98,7 +95,7 @@ def render_ontology(index: LodIndex, out: str | None = None) -> None:
     -> leaf edge down to the sprite. A leaf's sprite is its `animation` DEF (frame 0); colour-keyed
     quest objects (border gate/guard, keymaster tent) sit under "land" with one leaf per colour.
     """
-    out_root = out or os.path.join(ROOT, "out", "ontology")
+    out_root = out
     tree = ON.build_tree()
 
     if os.path.isdir(out_root):  # rebuild cleanly (path shape may change across runs)

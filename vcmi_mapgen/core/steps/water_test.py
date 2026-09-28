@@ -1,4 +1,4 @@
-"""Reliability tests for steps.gameplay.water (water-body population + seaport guarantee)."""
+"""Reliability tests for core.placement.water (water-body population + seaport guarantee)."""
 
 import random
 import zlib
@@ -7,16 +7,26 @@ from collections.abc import Iterable, Sequence
 import pytest
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement import water as WT
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro as MT
-from vcmi_mapgen.vcmi.footprint import footprint_of
 
 Grid = list[list[int]]
+
+_ARENA_ROWS = (
+    (Role.OVERLAY, Role.OVERLAY, Role.OVERLAY),
+    (Role.BLOCKING, Role.BLOCKING, Role.BLOCKING),
+    (Role.BLOCKING, Role.ENTRANCE, Role.BLOCKING),
+)
+_ARENA = Footprint(
+    3,
+    3,
+    tuple((c - 2, r - 2, role) for r, row in enumerate(_ARENA_ROWS) for c, role in enumerate(row)),
+)
 
 
 def _zone(tiles: Iterable[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
@@ -260,7 +270,7 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row(catalog: Ca
         level=0,
         purpose=Purpose.STAT_PERMANENT,
         kind="",
-        footprint=footprint_of(("VVV", "BBB", "BXB")),
+        footprint=_ARENA,
     )
     front = FP.front_tiles(arena.footprint, arena.x, arena.y)
     assert front == {(1, 3), (2, 3), (3, 3)}, "fixture assumption broke: unexpected front tiles"

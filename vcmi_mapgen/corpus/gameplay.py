@@ -5,18 +5,8 @@ from pathlib import Path
 
 from vcmi_mapgen.core.model import JsonValue
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
-
-ROOT = project_root()
-
-
-STATS_PATH = str(ROOT / "data" / "pp" / "gameplay_stats.json")
-
-
-STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "gameplay_stats_underground.json")
-
 
 SOURCE = "vcmi_mapgen.corpus.mine.gameplay.mine_gameplay"
 
@@ -73,17 +63,17 @@ def _stats_to_json(st: TerrainStats) -> dict[str, JsonValue]:
     }
 
 
-def _stats_path(level: int) -> Path:
-    return Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
+def stats_path(pp_dir: Path, level: int) -> Path:
+    return pp_dir / ("gameplay_stats.json" if level == 0 else "gameplay_stats_underground.json")
 
 
-def load_gameplay(level: int = 0) -> dict[str, TerrainStats]:
-    st = pp_cache.read(_stats_path(level), version=STATS_VERSION)
-    return {k: _stats_from_json(v) for k, v in st.items() if k not in pp_cache.META_KEYS}
+def load_gameplay(pp_dir: Path, level: int = 0) -> dict[str, TerrainStats]:
+    st = cache.read(stats_path(pp_dir, level), version=STATS_VERSION)
+    return {k: _stats_from_json(v) for k, v in st.items() if k not in cache.META_KEYS}
 
 
-def save_gameplay(level: int, stats: Mapping[str, TerrainStats]) -> None:
+def save_gameplay(pp_dir: Path, level: int, stats: Mapping[str, TerrainStats]) -> None:
     payload: dict[str, object] = {"_version": STATS_VERSION}
     for t, tst in stats.items():
         payload[t] = _stats_to_json(tst)
-    pp_cache.write(_stats_path(level), SOURCE, payload)
+    cache.write(stats_path(pp_dir, level), SOURCE, payload)

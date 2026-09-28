@@ -3,14 +3,11 @@
 import collections
 from pathlib import Path
 
-import pytest
-
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.markov import MarkovTables
 from vcmi_mapgen.corpus.markov import load_tables, save_tables
 from vcmi_mapgen.corpus.mine.markov import learn, learn4
-from vcmi_mapgen.kit import pp_cache
 
 type Table = collections.defaultdict[tuple[int, ...], collections.Counter[int]]
 
@@ -25,17 +22,12 @@ def _order(table: Table) -> list[tuple[tuple[int, ...], list[tuple[int, int]]]]:
     return [(k, list(c.items())) for k, c in table.items()]
 
 
-def test_tables_round_trip_keeps_counter_order(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_tables_round_trip_keeps_counter_order(tmp_path: Path) -> None:
     grid = [[3, 1, 3, 2], [1, 3, 2, 1], [2, 2, 1, 3], [3, 1, 1, 2]]
     maps = [_corpus_map(grid), _corpus_map([row[::-1] for row in grid])]
     tables = MarkovTables(chain=learn(0, maps), chain4=learn4(0, maps))
-    monkeypatch.setattr(pp_cache, "PP_DIR", tmp_path)
-    save_tables(0, tables)
-    load_tables.cache_clear()
-    loaded = load_tables(0)
-    load_tables.cache_clear()
+    save_tables(tmp_path, 0, tables)
+    loaded = load_tables(tmp_path, 0)
     pairs: list[tuple[Table, Table]] = [
         (loaded.chain.full, tables.chain.full),
         (loaded.chain.pair, tables.chain.pair),

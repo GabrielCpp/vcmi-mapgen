@@ -4,6 +4,7 @@ terrain and its neighbours' terrains. The miner reads tile strings straight from
 
 import collections
 from collections.abc import Iterable, Iterator, Sequence
+from pathlib import Path
 
 from vcmi_mapgen.corpus.maps import all_map_names, corpus_path
 from vcmi_mapgen.vcmi.formats import vmap as VM
@@ -19,11 +20,11 @@ from vcmi_mapgen.vcmi.tiles import (
 type TileGrid = Sequence[Sequence[str]]
 
 
-def corpus_tile_grids() -> Iterator[TileGrid]:
-    """Every level of every corpus map that reads, as tile strings."""
-    for name in all_map_names():
+def corpus_tile_grids(maps_dir: Path) -> Iterator[TileGrid]:
+    """Every level of every corpus map under ``maps_dir`` that reads, as tile strings."""
+    for name in all_map_names(maps_dir):
         try:
-            doc = VM.read(corpus_path(name))
+            doc = VM.read(corpus_path(maps_dir, name))
         except Exception:
             continue
         yield from doc.terrain

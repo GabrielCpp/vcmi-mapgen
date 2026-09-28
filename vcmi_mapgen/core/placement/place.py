@@ -5,7 +5,7 @@ from collections.abc import Collection, Container, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.reach import distances
 from vcmi_mapgen.core.model import (
     CoverIndex,
@@ -87,16 +87,18 @@ def _guard_cells(
     return cells
 
 
-def _payload(ident: Identity, spec: PlaceSpec, rng: random.Random) -> Payload | None:
-    """A guard is hostile, a pandoraBox draws its reward, and a spell scroll carries the
+def _payload(
+    catalog: Catalog, ident: Identity, spec: PlaceSpec, rng: random.Random
+) -> Payload | None:
+    """A guard is hostile, a reward box draws its reward, and a spell scroll carries the
     spell its identity names as subtype. A payload on `spec` wins over all three."""
     if spec.payload is not None:
         return spec.payload
     if spec.purpose == Purpose.GUARD:
         return Guard()
-    if ident.type == "pandoraBox":
+    if ident.type in catalog.types_with(Trait.REWARD_BOX):
         return pandora_reward(rng)
-    if ident.type == "spellScroll":
+    if ident.type in catalog.types_with(Trait.SCROLL):
         return Scroll(str(ident.subtype))
     return None
 
@@ -131,7 +133,7 @@ def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
     o = PlacedObject.at(ident, (x, y), purpose=spec.purpose)
     if not target.cover.try_claim(o, cells):
         return False
-    o.payload = _payload(ident, spec, rng)
+    o.payload = _payload(target.catalog, ident, spec, rng)
     if spec.cache:  # a guarded-pocket pickup, not open scatter — informational marker only,
         o.cache = True  # ignored by the vmap exporter, used by tests
     target.objs.append(o)

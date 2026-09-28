@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.planning.web import ZoneRef
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, ZonePlan
 from vcmi_mapgen.core.priors.vegetation import VegetationStats
 from vcmi_mapgen.core.steps.vegetation import sample as PP
@@ -64,7 +65,7 @@ def grow_level(models: Mapping[str, PP.VegModel], lv: GrowLevel, seed: int) -> G
         seaport = landings & zone.ts
         forbid = lv.taken | seaport | zone.town.clear
         zobjs, blocked, _ = PP.sample_zone(
-            PP.ZoneRef(zone.ts, lv.label, zid, lv.centroids[zid], lv.level),
+            ZoneRef(zone.ts, lv.label, zid, lv.centroids[zid], lv.level),
             model,
             seed=seed,
             opts=PP.SampleOptions(

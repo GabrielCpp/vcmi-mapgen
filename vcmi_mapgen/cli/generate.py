@@ -5,6 +5,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.cli.steps import StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
@@ -16,7 +17,7 @@ from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 from vcmi_mapgen.corpus.priors import load_priors
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.renderers import PngRenderer, VmapRenderer
 from vcmi_mapgen.renderers.overlays import (
     BlockingOverlay,
@@ -32,7 +33,6 @@ from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 
-ROOT = project_root()
 CATALOG = VcmiCatalog()
 
 # Every factory takes `pockets` (LootStep's LootResult.pockets) and `zones`
@@ -132,10 +132,10 @@ class GenerateOptions:
     stop_after: str | None
 
 
-def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
+def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
     pipeline = Pipeline(CATALOG, opts.size)
     config = StepConfig(opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain)
-    for point_name, step in build_steps(load_priors(), config):
+    for point_name, step in build_steps(load_priors(settings.pp_dir), config):
         _ = pipeline.add_step(step)
         if point_name == opts.stop_after:
             break
@@ -159,11 +159,13 @@ def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
     )
 
     renderers = _parse_renderers(opts.renderers)
+    tables = load_tiler(settings.pp_dir)
+    pp_out = settings.out_dir / "render" / "pp"
 
     if "png" in renderers:
         index = lod(install.data_dir)
-        png_renderer = PngRenderer(index)
-        png = os.path.join(str(ROOT), "out", "render", "pp", f"ppmap_s{opts.seed}.png")
+        png_renderer = PngRenderer(index, str(pp_out), tables)
+        png = str(pp_out / f"ppmap_s{opts.seed}.png")
         os.makedirs(os.path.dirname(png), exist_ok=True)
         png_renderer.render(map_state, level=0).save(png)
         print(f"  {png}")
@@ -174,17 +176,15 @@ def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
         zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
         overlays = parse_overlays(opts.overlays, loot_result.pockets, zones)
         if overlays:
-            overlay_renderer = PngRenderer(index, overlays=overlays)
+            overlay_renderer = PngRenderer(index, str(pp_out), tables, overlays)
             ov_img = overlay_renderer.render(map_state, level=0)
-            ov_png = os.path.join(
-                str(ROOT), "out", "render", "pp", f"ppmap_s{opts.seed}_overlays.png"
-            )
+            ov_png = str(pp_out / f"ppmap_s{opts.seed}_overlays.png")
             os.makedirs(os.path.dirname(ov_png), exist_ok=True)
             ov_img.save(ov_png)
             print(f"  {ov_png}")
 
     if "vmap" in renderers:
-        vmap_renderer = VmapRenderer(install=install)
+        vmap_renderer = VmapRenderer(str(settings.out_dir / "vmap"), tables, install)
         vmap = vmap_renderer.render(
             map_state,
             f"ppmap_s{opts.seed}.vmap",

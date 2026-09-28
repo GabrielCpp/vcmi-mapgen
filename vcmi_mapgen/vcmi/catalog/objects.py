@@ -14,22 +14,22 @@ from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.vcmi import terrain as vterrain
 from vcmi_mapgen.vcmi.catalog.tables import (
-    ARTIFACT_TIERS,
-    CLASS_NAMES,
     DECOR_NAMES,
     FACTION,
     GATE_NAMES,
     GATE_TYPES,
     MINE_RES,
-    MONSTER_LEVELS,
     PURPOSE,
     RELATIONAL,
     RESOURCE,
-    SPELL_LEVELS,
     TERRAIN_COUPLED,
     ClassInfo,
     Taxonomy,
+    artifact_tiers,
+    class_names,
     leaf_meta,
+    monster_levels,
+    spell_levels,
     taxonomy,
     vcmi_type_classes,
 )
@@ -70,7 +70,7 @@ def _is_decoration(name: str) -> bool:
 
 
 def name_of(cid: int) -> str:
-    return CLASS_NAMES.get(cid, f"CLASS_{cid}")
+    return class_names().get(cid, f"CLASS_{cid}")
 
 
 def resolve(cid: int, subclass: int) -> ClassInfo:
@@ -105,7 +105,7 @@ def resolve(cid: int, subclass: int) -> ClassInfo:
 
 def build_tree() -> Taxonomy:
     """Return the full CLUSTER->PURPOSE->type->terrain->leaf taxonomy from
-    ``data/ontology/taxonomy.json``."""
+    ``vcmi/catalog/data/taxonomy.json``."""
     return taxonomy()
 
 
@@ -284,36 +284,36 @@ def mines_by_resource(terrain: str | int) -> dict[str, list[Identity]]:
 def spell_level(name: str) -> int | None:
     """A spell's mage-guild level (1-5), or ``None`` if `name` isn't a real hero-castable
     spell (a creature-only special ability, or not a recognized VCMI spell identifier)."""
-    return SPELL_LEVELS.get(name)
+    return spell_levels().get(name)
 
 
 def spells_by_level(level: int) -> list[str]:
     """Sorted list of spell identifiers at mage-guild `level` (1-5)."""
-    return sorted(n for n, lvl in SPELL_LEVELS.items() if lvl == level)
+    return sorted(n for n, lvl in spell_levels().items() if lvl == level)
 
 
 def artifact_tier(name: str) -> str | None:
     """An artifact's rarity tier ('treasure'/'minor'/'major'/'relic'), or ``None`` if
     `name` isn't a randomly-obtainable artifact (a war machine, the Spell Book/Scroll,
     the Grail, or not a recognized VCMI artifact identifier)."""
-    return ARTIFACT_TIERS.get(name)
+    return artifact_tiers().get(name)
 
 
 def artifacts_by_tier(tier: str) -> list[str]:
     """Sorted list of artifact identifiers in rarity `tier`
     ('treasure'/'minor'/'major'/'relic')."""
-    return sorted(n for n, t in ARTIFACT_TIERS.items() if t == tier)
+    return sorted(n for n, t in artifact_tiers().items() if t == tier)
 
 
 def monster_level(name: str) -> int | None:
     """A creature's town tier (1-7; 0 for war machines/siege equipment), or ``None`` if
     `name` isn't a recognized VCMI creature identifier."""
-    return MONSTER_LEVELS.get(name)
+    return monster_levels().get(name)
 
 
 def monsters_by_level(level: int) -> list[str]:
     """Sorted list of creature identifiers at town tier `level`."""
-    return sorted(n for n, lvl in MONSTER_LEVELS.items() if lvl == level)
+    return sorted(n for n, lvl in monster_levels().items() if lvl == level)
 
 
 def purpose_of_type(type_name: str | None) -> Purpose | None:

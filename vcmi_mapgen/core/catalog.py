@@ -9,6 +9,7 @@ depends on it. `vcmi.catalog.adapter.VcmiCatalog` is the production implementati
 """
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Literal, Protocol
 
 from vcmi_mapgen.core.model import Footprint, Identity
@@ -16,6 +17,30 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 
 type ArtifactTier = Literal["treasure", "minor", "major", "relic"]
+
+
+class Trait(StrEnum):
+    """A kind of object some decision singles out. The catalog says which object types
+    carry each trait, so the core never names a type.
+
+    `REWARD_BOX` draws a reward when placed. `SCROLL` carries the spell its subtype names.
+    `SHIPYARD` builds boats. `ARTIFACT` is one artifact pickup. `SPACED` keeps a distance
+    from its twins in pockets. `LUCK` stays out of the loot fill. `MEAGER` is a pickup too
+    poor for an artifact slot. `HERO_BOOST` strengthens the visiting hero. `CHEST` and
+    `ZONE_CHEST` are the chest kinds, the second drawn only in loot zones.
+    `RANDOM_DWELLING` resolves to a dwelling of the town it is tied to."""
+
+    REWARD_BOX = "reward_box"
+    SCROLL = "scroll"
+    SHIPYARD = "boat_builder"
+    ARTIFACT = "artifact_pickup"
+    SPACED = "spaced"
+    LUCK = "luck"
+    MEAGER = "meager"
+    HERO_BOOST = "hero_boost"
+    CHEST = "chest"
+    ZONE_CHEST = "zone_chest"
+    RANDOM_DWELLING = "random_dwelling"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,7 +91,12 @@ class Catalog(Protocol):
         ...
 
     def mines_by_resource(self, terrain: str | int) -> dict[str, list[Identity]]:
-        """The mine identities on a terrain, grouped by the resource they yield."""
+        """The mine identities on a terrain, grouped by the resource they yield. Abandoned
+        mines yield no fixed resource and are left out."""
+        ...
+
+    def types_with(self, trait: Trait) -> tuple[str, ...]:
+        """The object types that carry a trait, in the catalog's order."""
         ...
 
     def spells(self, level: int) -> list[str]:

@@ -1,5 +1,8 @@
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
+from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.priors.markov import MarkovTables
@@ -21,35 +24,46 @@ from vcmi_mapgen.corpus.vegetation import save_vegetation
 LEVELS = (0, 1)
 
 
-def _macro(maps: Sequence[MapState], _catalog: Catalog) -> None:
+@dataclass(frozen=True, slots=True)
+class MineInput:
+    """What every miner reads: the loaded corpus, the catalog, and the directories the corpus
+    and the mined caches live in."""
+
+    maps: Sequence[MapState]
+    catalog: Catalog
+    pp_dir: Path
+    maps_dir: Path
+
+
+def _macro(m: MineInput) -> None:
     for level in LEVELS:
-        save_macro(level, mine_macro(level, maps))
+        save_macro(m.pp_dir, level, mine_macro(level, m.maps))
 
 
-def _markov(maps: Sequence[MapState], _catalog: Catalog) -> None:
+def _markov(m: MineInput) -> None:
     for level in LEVELS:
-        tables = MarkovTables(chain=learn(level, maps), chain4=learn4(level, maps))
-        save_tables(level, tables)
+        tables = MarkovTables(chain=learn(level, m.maps), chain4=learn4(level, m.maps))
+        save_tables(m.pp_dir, level, tables)
 
 
-def _tiler(_maps: Sequence[MapState], _catalog: Catalog) -> None:
-    save_tiler(learn_tiler(corpus_tile_grids()))
+def _tiler(m: MineInput) -> None:
+    save_tiler(m.pp_dir, learn_tiler(corpus_tile_grids(m.maps_dir)))
 
 
-def _gates(maps: Sequence[MapState], _catalog: Catalog) -> None:
-    save_gate_stats(mine_gate_stats(maps))
+def _gates(m: MineInput) -> None:
+    save_gate_stats(m.pp_dir, mine_gate_stats(m.maps))
 
 
-def _gameplay(maps: Sequence[MapState], catalog: Catalog) -> None:
+def _gameplay(m: MineInput) -> None:
     for level in LEVELS:
-        save_gameplay(level, mine_gameplay(catalog, level, maps))
+        save_gameplay(m.pp_dir, level, mine_gameplay(m.catalog, level, m.maps))
 
 
-def _vegetation(maps: Sequence[MapState], catalog: Catalog) -> None:
-    save_vegetation(mine_vegetation(catalog, maps))
+def _vegetation(m: MineInput) -> None:
+    save_vegetation(m.pp_dir, mine_vegetation(m.catalog, m.maps))
 
 
-MINERS: dict[str, Callable[[Sequence[MapState], Catalog], None]] = {
+MINERS: dict[str, Callable[[MineInput], None]] = {
     "macro": _macro,
     "markov": _markov,
     "tiler": _tiler,
@@ -59,10 +73,11 @@ MINERS: dict[str, Callable[[Sequence[MapState], Catalog], None]] = {
 }
 
 
-def mine_stats(catalog: Catalog, only: Sequence[str] = ()) -> None:
-    maps = corpus_maps()
+def mine_stats(catalog: Catalog, settings: Settings, only: Sequence[str] = ()) -> None:
+    maps = corpus_maps(settings.maps_dir)
+    mine_input = MineInput(maps, catalog, settings.pp_dir, settings.maps_dir)
     for name, miner in MINERS.items():
         if only and name not in only:
             continue
         print(f"mining {name} over {len(maps)} maps")
-        miner(maps, catalog)
+        miner(mine_input)

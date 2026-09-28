@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement import scatter as SC
 from vcmi_mapgen.core.placement.guards import guard_zoc
@@ -62,13 +63,12 @@ def scatter_level(
             catalog,
             SC.ScatterZone(
                 zone.ts,
-                lv.label,
                 zr.zid,
                 zone.terrain,
                 lv.gameplay[zone.terrain],
                 pz.open_set - (zone.rim8 - zone.ent_bands),
                 pz.prot,
-                entrances=list(zone.entrances),
+                [e.band for e in zone.entrances],
             ),
             SC.ScatterConfig(
                 seed=seed, bounds=(size, size), cover=cover, reach_in=set(zr.reach), avoid=zoc
@@ -80,6 +80,6 @@ def scatter_level(
         pk = collections.Counter(o.purpose for o in piles)
         log.append(
             f"  L{lv.level} zone {zr.zid:>3} {zone.terrain:<8} {len(zone.ts):>5} tiles: "
-            + f"scatter res={pk.get('RESOURCE_PILE', 0)}"
+            + f"scatter res={pk.get(Purpose.RESOURCE_PILE, 0)}"
         )
     return Piles(tuple(objs), tuple(log))

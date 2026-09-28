@@ -3,7 +3,12 @@ stateless template-mask codecs the rest of the engine needs."""
 
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.mask import build_mask_from_h3m
-from vcmi_mapgen.vcmi.formats.vmap.reader import header_fields, read, read_header
+from vcmi_mapgen.vcmi.formats.vmap.reader import (
+    header_fields,
+    header_template,
+    read,
+    read_header,
+)
 from vcmi_mapgen.vcmi.formats.vmap.terrain import (
     export_mask,
     vcmi_mask,
@@ -18,6 +23,7 @@ __all__ = [
     "build_mask_from_h3m",
     "export_mask",
     "header_fields",
+    "header_template",
     "read",
     "read_header",
     "vcmi_mask",

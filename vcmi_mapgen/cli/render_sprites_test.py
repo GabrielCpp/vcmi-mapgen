@@ -6,24 +6,15 @@ import pytest
 from PIL import Image
 
 from vcmi_mapgen.cli.render_sprites import render_sprites
-from vcmi_mapgen.cli.settings import load_settings
-from vcmi_mapgen.corpus.maps import corpus_path
+from vcmi_mapgen.conftest import SETTINGS, corpus_map_path, find_install
 from vcmi_mapgen.renderers.sprites import TILE
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.lod import LOD_FILES
-from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 
 TEST_MAP = "All for One"
 
 
-def _install() -> VcmiInstall | None:
-    try:
-        return load_settings().install()
-    except InstallNotFoundError:
-        return None
-
-
-INSTALL = _install()
+INSTALL = find_install()
 pytestmark = pytest.mark.skipif(
     INSTALL is None or not any((INSTALL.data_dir / f).exists() for f in LOD_FILES),
     reason="H3 sprite LOD files not found (set VCMI_HOME)",
@@ -33,7 +24,8 @@ pytestmark = pytest.mark.skipif(
 def test_compare_renders_real_and_generated_side_by_side(tmp_path: Path) -> None:
     assert INSTALL is not None
     out = tmp_path / "side_by_side.png"
-    render_sprites(INSTALL, corpus_path(TEST_MAP), compare=TEST_MAP, out=str(out))
-    surf = VM.read(corpus_path(TEST_MAP)).terrain[0]
+    path = str(corpus_map_path(TEST_MAP))
+    render_sprites(INSTALL, SETTINGS, path, compare=TEST_MAP, out=str(out))
+    surf = VM.read(path).terrain[0]
     with Image.open(out) as img:
         assert img.size == (2 * len(surf[0]) * TILE + 8, len(surf) * TILE)

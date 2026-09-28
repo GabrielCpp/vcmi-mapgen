@@ -1,7 +1,7 @@
 # core/model/ — data models, not logic
 
 Every class here is a plain data container. Nothing in this folder computes, searches,
-or derives anything — that logic lives in `core/steps/`, `kit/`, or `renderers/`. If you're
+or derives anything — that logic lives in `core/steps/`, `core/placement/`, `core/grid/`, or `renderers/`. If you're
 about to add a method here that does more than return/assemble already-known fields,
 it belongs somewhere else.
 

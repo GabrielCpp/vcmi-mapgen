@@ -1,31 +1,25 @@
 """End-to-end test of VmapRenderer: a placed zone written to .vmap keeps its game contracts."""
 
-import os
 import zipfile
 from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.cli.settings import load_settings
-from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
+from vcmi_mapgen.conftest import (
+    OpenZone,
+    OpenZonePlacer,
+    corpus_tiler,
+    find_install,
+    gameplay_mined,
+)
 from vcmi_mapgen.core.model import JsonValue, MapState, PlacedObject
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.renderers.vmap import VmapRenderer
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
-from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 from vcmi_mapgen.vcmi.options import CORE_SPELLS, options_of
 
-
-def _install() -> VcmiInstall | None:
-    try:
-        return load_settings().install()
-    except InstallNotFoundError:
-        return None
-
-
-INSTALL = _install()
+INSTALL = find_install()
 needs_vcmi = pytest.mark.skipif(
     INSTALL is None or not any((INSTALL.home / "Maps" / "RandomMaps").glob("*.vmap")),
     reason="VCMI template .vmap not available",
@@ -74,7 +68,7 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
         "VBBBBB",
         "VBBABB",
     )
-    if not os.path.exists(STATS_PATH):
+    if not gameplay_mined():
         pytest.skip("gameplay stats not mined")
     # a placed zone carries the game-time options on the right purposes
     ts = {(x, y) for x in range(30) for y in range(24)}
@@ -94,7 +88,7 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
     grid = [[2] * 30 for _ in range(24)]
     terrain = [[Terrain(t) for t in row] for row in grid]
     state = MapState(size=max(len(terrain), len(terrain[0])), terrain={0: terrain}, objs=objs)
-    p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
+    p = VmapRenderer(str(tmp_path), corpus_tiler(), INSTALL).render(
         state, "test_pp_contracts.vmap", name="test"
     )
     vobjs = _objects(p)

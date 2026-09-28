@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import random
-import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Self
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile
+from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
@@ -19,50 +18,13 @@ from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 
 _LOOT_ART_W: dict[ArtifactTier, int] = {"treasure": 5, "minor": 15, "major": 35, "relic": 45}
-FILL_EXCL_TYPES = frozenset({"fountainOfFortune", "idolOfFortune"})
-_LOOT_ART_EXCL_TYPES = frozenset({"leanTo", "wagon", "warriorTomb", "denOfThieves"})
-LOOT_CHEST_TYPES = ("treasureChest", "campfire", "pandoraBox")
-_LOOT_ZONE_CHEST_EXTRA_TYPES = ("scholar",)
 _LOOT_SCROLL_LEVELS = (4, 5)
-_LOOT_HERO_STRUCTURE_TYPES = frozenset({"learningStone", "gardenOfRevelation", "starAxis"})
 _LOOT_HERO_STRUCTURE_COUNT = 2
 LOOT_HERO_STRUCTURE_MIN_SEP = 2
 _LOOT_RARE_RESOURCE_SUBTYPES = frozenset(
     {Resource.MERCURY, Resource.SULFUR, Resource.CRYSTAL, Resource.GEMS, Resource.GOLD}
 )
-_SOLO_VIS_PURPOSES = (Purpose.BONUS_TEMP, Purpose.SPELL_SKILL, Purpose.MANA, Purpose.STAT_PERMANENT)
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
-
-
-def shrine_spell_level(anim: str) -> int:
-    """The spell level of a shrine animation, or 0 for anything that is not a shrine."""
-    m = re.match(r"avxl(\d)sh", anim, re.IGNORECASE)
-    return int(m.group(1)) if m else 0
-
-
-def solo_visit_pool(
-    catalog: Catalog,
-    terrain: str,
-    exclude_types: Collection[str] = (),
-    min_shrine_level: int | None = None,
-) -> list[Identity]:
-    """Objects with exactly one visit tile and no blocking body cells, so they are safe to
-    cache inside pockets."""
-    seen: set[str] = set()
-    out: list[Identity] = []
-    for purpose in _SOLO_VIS_PURPOSES:
-        for ident in catalog.candidates(purpose, terrain):
-            anim = ident.kind.lower()
-            if anim in seen or ident.type in exclude_types:
-                continue
-            if min_shrine_level is not None and 0 < shrine_spell_level(anim) < min_shrine_level:
-                continue
-            n_visit = sum(r.interactive for _dx, _dy, r in ident.footprint.cells)
-            n_body = sum(r is Role.BLOCKING for _dx, _dy, r in ident.footprint.cells)
-            if n_visit == 1 and n_body == 0:
-                seen.add(anim)
-                out.append(ident)
-    return out
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,18 +41,18 @@ class _LootPools:
         pool_vis = [
             i
             for i in catalog.candidates(Purpose.STAT_PERMANENT, terrain)
-            if i.type in _LOOT_HERO_STRUCTURE_TYPES
+            if i.type in catalog.types_with(Trait.HERO_BOOST)
         ]
         pool_art = [
             i
             for i in catalog.candidates(Purpose.REWARD_PICKUP, terrain)
-            if i.type not in _LOOT_ART_EXCL_TYPES
+            if i.type not in catalog.types_with(Trait.MEAGER)
         ]
         pool_res = catalog.candidates(Purpose.RESOURCE_PILE, terrain)
-        kinds = LOOT_CHEST_TYPES + _LOOT_ZONE_CHEST_EXTRA_TYPES
+        kinds = catalog.types_with(Trait.CHEST) + catalog.types_with(Trait.ZONE_CHEST)
         pool_chest = [i for i in pool_art if i.type in kinds]
         chest_kind_pools = {kind: [i for i in pool_chest if i.type == kind] for kind in kinds}
-        chest_kind_pools["spellScroll"] = [
+        chest_kind_pools[Trait.SCROLL] = [
             catalog.spell_scroll(n) for lvl in _LOOT_SCROLL_LEVELS for n in catalog.spells(lvl)
         ]
         return cls(
@@ -137,7 +99,7 @@ def _fill_background(
 def _fill_hero_structures(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
     free = sorted(zone.reach - target.cover.claims)
     zone.rng.shuffle(free)
-    for struct_type in sorted(_LOOT_HERO_STRUCTURE_TYPES):
+    for struct_type in sorted({i.type for i in pools.pool_vis if i.type is not None}):
         candidates = [i for i in pools.pool_vis if i.type == struct_type]
         if not candidates:
             continue

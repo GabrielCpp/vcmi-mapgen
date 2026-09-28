@@ -11,8 +11,7 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
-from vcmi_mapgen.core.grid.segment import ZoneLabel
-from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import PICKUP_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.intensity import (
     Covariates,
@@ -22,7 +21,6 @@ from vcmi_mapgen.core.placement.intensity import (
     scaled_cap,
 )
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one, web_dist
-from vcmi_mapgen.core.planning.entrances import zone_gate_bands
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 CAPS = {
@@ -39,13 +37,12 @@ _NO_AVOID: frozenset[Tile] = frozenset()
 @dataclass(frozen=True, slots=True)
 class ScatterZone:
     ts: AbstractSet[Tile]
-    zone_label: ZoneLabel
     zid: int
     terrain: str
     st: TerrainStats
     open_set: AbstractSet[Tile]
     prot: Collection[Tile]
-    entrances: Sequence[Entrance] | None = None
+    gate_bands: Sequence[AbstractSet[Tile]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,13 +62,8 @@ def _stoch(rng: random.Random, x: float, cap: int) -> int:
     return min(n, cap)
 
 
-def _scatter_gate_dist(zone: ScatterZone, st: TerrainStats) -> dict[Tile, int]:
-    if zone.entrances is not None:  # isolation plan: gd measures from the
-        bands = [b for _r, b, _o in zone.entrances]  # planned narrow crossings
-    else:
-        gates = zone_gate_bands(zone.ts, zone.zone_label, zone.zid, open_frac=st.border_open_frac)
-        bands = [g.band for g in gates]
-    return gate_dist(zone.ts, set[Tile]().union(*bands) if bands else set())
+def _scatter_gate_dist(zone: ScatterZone) -> dict[Tile, int]:
+    return gate_dist(zone.ts, set[Tile]().union(*zone.gate_bands))
 
 
 def place_scatter(
@@ -102,7 +94,7 @@ def place_scatter(
     reach = set(dweb) if config.reach_in is None else config.reach_in  # reachable open tiles only
     op = openness(zone.open_set)
     ed = edge_dist(ts)
-    gd = _scatter_gate_dist(zone, st)
+    gd = _scatter_gate_dist(zone)
 
     pool_res = catalog.candidates(Purpose.RESOURCE_PILE, zone.terrain)
 

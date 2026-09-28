@@ -1,8 +1,7 @@
 """Tests for the pocket geometry the guarded caches build on."""
 
-from vcmi_mapgen.core.grid.pockets import find_pockets
+from vcmi_mapgen.core.grid.pockets import dedupe_pockets, find_pockets
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.core.steps.loot.pockets import dedupe_pockets
 
 
 def _field(w: int, h: int, walls: set[Tile]) -> set[Tile]:

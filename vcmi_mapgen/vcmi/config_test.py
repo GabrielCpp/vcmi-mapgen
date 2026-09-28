@@ -6,19 +6,11 @@ otherwise, same gating pattern as sprites_test.py's H3 sprite LOD check.
 
 import pytest
 
-from vcmi_mapgen.cli.settings import load_settings
+from vcmi_mapgen.conftest import find_install
 from vcmi_mapgen.vcmi.config import VcmiConfig, load_config
-from vcmi_mapgen.vcmi.install import InstallNotFoundError
 
-
-def _config() -> VcmiConfig:
-    try:
-        return load_config(load_settings().install())
-    except InstallNotFoundError:
-        return VcmiConfig()
-
-
-CONFIG = _config()
+_INSTALL = find_install()
+CONFIG = load_config(_INSTALL) if _INSTALL is not None else VcmiConfig()
 
 pytestmark = pytest.mark.skipif(
     not CONFIG.classes, reason="no local VCMI install config/ tree found"

@@ -3,6 +3,7 @@ densities it draws from."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.purpose import PICKUP_PURPOSES, VISIT_PURPOSES, Purpose
@@ -50,7 +51,7 @@ PLACED_PURPOSES = (
 ) - set(AUDIT_EXCLUDED)
 
 
-def audit_variety(catalog: Catalog, level: int = 0) -> list[AuditGap]:
+def audit_variety(catalog: Catalog, pp_dir: Path, level: int = 0) -> list[AuditGap]:
     """Corpus-variety audit: every (purpose, animation) with a nonzero corpus count on land
     must (a) resolve through the catalog and (b) be reachable through a generator pool —
     i.e. its purpose is placed and the animation sits in `gameplay_pool` for at least one
@@ -58,7 +59,7 @@ def audit_variety(catalog: Catalog, level: int = 0) -> list[AuditGap]:
     `AuditGap`s (empty = the generated maps can reach the corpus's full visitable variety).
     `level` selects which level's corpus stats table to audit (0 = surface, 1 = underground:
     both must stay green since `--subterrain` places gameplay from the level-1 table too)."""
-    st = load_gameplay(level=level)
+    st = load_gameplay(pp_dir, level)
     land = land_names(catalog)
     seen: dict[tuple[str, str], int] = {}  # (purpose, anim) -> total corpus count
     for terr in land:
@@ -83,11 +84,11 @@ def audit_variety(catalog: Catalog, level: int = 0) -> list[AuditGap]:
     return gaps
 
 
-def audit(catalog: Catalog, levels: Sequence[int]) -> bool:
+def audit(catalog: Catalog, pp_dir: Path, levels: Sequence[int]) -> bool:
     """Print the variety gaps of each level. True when every level is gap-free."""
     ok = True
     for lvl in levels:
-        gaps = audit_variety(catalog, level=lvl)
+        gaps = audit_variety(catalog, pp_dir, lvl)
         print(f"-- level {lvl} --")
         for reason, note in AUDIT_EXCLUDED.items():
             print(f"excluded {reason}: {note}")
@@ -101,9 +102,9 @@ def audit(catalog: Catalog, levels: Sequence[int]) -> bool:
     return ok
 
 
-def densities(catalog: Catalog, level: int) -> None:
+def densities(catalog: Catalog, pp_dir: Path, level: int) -> None:
     """Print each land terrain's per-purpose density, border openness and guard fractions."""
-    st = load_gameplay(level=level)
+    st = load_gameplay(pp_dir, level)
     for t in land_names(catalog):
         d = st[t]
         dens = {p: round(c / max(d.tiles, 1) * 1000, 2) for p, c in d.counts.items()}

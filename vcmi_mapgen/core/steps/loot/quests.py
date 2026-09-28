@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -152,7 +152,8 @@ def _pick_art_zone(
             (
                 a
                 for a in env.catalog.candidates(Purpose.REWARD_PICKUP, cand_art_zr.terrain)
-                if a.type == "artifact" and a.subtype not in env.used_artifacts
+                if a.type in env.catalog.types_with(Trait.ARTIFACT)
+                and a.subtype not in env.used_artifacts
             ),
             key=lambda a: a.kind,
         )

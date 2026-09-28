@@ -23,7 +23,6 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.intensity import gate_dist
 from vcmi_mapgen.core.placement.site import back_score
 from vcmi_mapgen.core.planning.entrances import zone_fronts, zone_gates
-from vcmi_mapgen.corpus.maps import all_map_names, load_corpus_map
 
 MEASURES = ("depth", "gate", "open", "back")
 EDGES = (20, 60, 100, 150, 250, 500, 1000)
@@ -121,10 +120,9 @@ def measure_level(
             _measure_zone(tally, fld, ts, _zone_gate_dist(ts, label, zid), by_zone[zid])
 
 
-def corpus_tally() -> Tally:
+def corpus_tally(maps: Iterable[MapState]) -> Tally:
     tally = Tally()
-    for name in all_map_names():
-        m = load_corpus_map(name)
+    for m in maps:
         for level, grid in m.terrain.items():
             measure_level(tally, grid, [o for o in m.objs if o.level == level])
     return tally

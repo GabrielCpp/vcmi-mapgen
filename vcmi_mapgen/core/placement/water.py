@@ -14,7 +14,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.reach import reach
 from vcmi_mapgen.core.model import (
     CoverIndex,
@@ -35,6 +35,7 @@ from vcmi_mapgen.core.placement.identity import (
 )
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
+SHORE_NOOK = 4
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
 BORDER_ZONE_MIN_AREA = 30  # skip a seaport on a bordering land zone too small to bother
@@ -286,7 +287,7 @@ class _SeaportPlanner:
         self.placed_anchors = [(o.x, o.y) for o in objs if self._shipyard(o)]
 
     def _shipyard(self, o: PlacedObject) -> bool:
-        return self.catalog.identity_of(o.kind).type == "shipyard"
+        return self.catalog.identity_of(o.kind).type in self.catalog.types_with(Trait.SHIPYARD)
 
     def _warn(self, msg: str) -> None:
         if not self.sea.quiet:
@@ -428,7 +429,7 @@ class _SeaportPlanner:
             (
                 i
                 for i in self.catalog.candidates(Purpose.WATER_TRANSPORT, terrain)
-                if i.type == "shipyard"
+                if i.type in self.catalog.types_with(Trait.SHIPYARD)
             ),
             None,
         )

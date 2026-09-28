@@ -2,10 +2,10 @@
 candidate pool by a weight such as the corpus mix."""
 
 import random
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Collection, Iterable
 
 from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
-from vcmi_mapgen.core.model import Identity
+from vcmi_mapgen.core.model import Identity, Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
@@ -54,3 +54,26 @@ def pick_fixed_identity(
 ) -> Identity | None:
     w = st_t.anim_w.get(purpose, {})
     return pick_kind(pool, lambda i: w.get(i.kind.lower(), 0) + 0.2, rng)
+
+
+_SOLO_VIS_PURPOSES = (Purpose.BONUS_TEMP, Purpose.SPELL_SKILL, Purpose.MANA, Purpose.STAT_PERMANENT)
+
+
+def solo_visit_pool(
+    catalog: Catalog, terrain: str, exclude_types: Collection[str] = ()
+) -> list[Identity]:
+    """Objects with exactly one visit tile and no blocking body cells, so they are safe to
+    cache inside pockets."""
+    seen: set[str] = set()
+    out: list[Identity] = []
+    for purpose in _SOLO_VIS_PURPOSES:
+        for ident in catalog.candidates(purpose, terrain):
+            anim = ident.kind.lower()
+            if anim in seen or ident.type in exclude_types:
+                continue
+            n_visit = sum(r.interactive for _dx, _dy, r in ident.footprint.cells)
+            n_body = sum(r is Role.BLOCKING for _dx, _dy, r in ident.footprint.cells)
+            if n_visit == 1 and n_body == 0:
+                seen.add(anim)
+                out.append(ident)
+    return out

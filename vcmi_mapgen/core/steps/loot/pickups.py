@@ -9,27 +9,27 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
-from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, pocket_depths
+from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
+from vcmi_mapgen.core.grid.pockets import (
+    POCKET_MAX_TILES,
+    dedupe_pockets,
+    find_pockets,
+    pocket_depths,
+)
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced
+from vcmi_mapgen.core.placement.identity import solo_visit_pool
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.loot.pockets import (
-    dedupe_pockets,
     guard_stand,
     guard_stands,
     home_mine_protect_pairs,
     reach8,
     reachable,
-)
-from vcmi_mapgen.core.steps.treasure.fill import (
-    FILL_EXCL_TYPES,
-    LOOT_CHEST_TYPES,
-    solo_visit_pool,
 )
 
 ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier | None, ...] = (
@@ -40,9 +40,6 @@ ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier | None, ...] = (
     "major",
     None,
 )
-
-# Types that must maintain a minimum map-fraction separation between any two instances in pockets.
-_POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,7 +172,7 @@ class _PocketCachePass:
         self._sep_sq = (bounds[0] / 5.0) ** 2 if bounds else 0.0
         self._spaced: dict[
             str, list[Tile]
-        ] = {}  # type -> [(x, y)] of placed instances in _POCKET_SPACED_TYPES
+        ] = {}  # type -> [(x, y)] of placed instances of spaced types
 
         for zr in zone_records:
             self._absorb(zr)
@@ -228,7 +225,7 @@ class _PocketCachePass:
         return (
             not self._sep_sq
             or typ is None
-            or typ not in _POCKET_SPACED_TYPES
+            or typ not in self.catalog.types_with(Trait.SPACED)
             or not any(
                 (tx - px) ** 2 + (ty - py) ** 2 < self._sep_sq
                 for px, py in self._spaced.get(typ, ())
@@ -236,7 +233,7 @@ class _PocketCachePass:
         )
 
     def _register(self, ident: Identity | None, tx: int, ty: int) -> None:
-        if ident and ident.type is not None and ident.type in _POCKET_SPACED_TYPES:
+        if ident and ident.type is not None and ident.type in self.catalog.types_with(Trait.SPACED):
             self._spaced.setdefault(ident.type, []).append((tx, ty))
 
     def _target(self, reach: AbstractSet[Tile], draw: _PocketDraw) -> PlaceTarget:
@@ -410,8 +407,9 @@ class _PocketCachePass:
         # resources, and one-tile hero-strengthening structures" (user-mandated), not
         # "everything but an artifact" (which would let scholar/corpse/spell-scroll/
         # leanTo/wagon/warriorTomb/denOfThieves leak in too).
-        pool_chest = [i for i in pool_art if i.type in LOOT_CHEST_TYPES]
-        pool_vis = solo_visit_pool(self.catalog, terrain, exclude_types=FILL_EXCL_TYPES)
+        pool_chest = [i for i in pool_art if i.type in self.catalog.types_with(Trait.CHEST)]
+        luck = self.catalog.types_with(Trait.LUCK)
+        pool_vis = solo_visit_pool(self.catalog, terrain, exclude_types=luck)
         draw = _PocketDraw(rng, st, pool_res, pool_art, pool_chest, pool_vis)
         self._commit(pick, ref, cache_spots, draw)
 

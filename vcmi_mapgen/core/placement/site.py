@@ -55,9 +55,6 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 MINE_GUARD_LVL = {
     "sawmill": 1,
     "orePit": 1,
-    "waterWheel": 3,
-    "windmill": 3,
-    "mysticalGarden": 3,
     "alchemistLab": 4,
     "sulfurDune": 4,
     "gemPond": 5,

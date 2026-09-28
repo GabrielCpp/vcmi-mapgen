@@ -9,6 +9,7 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import Pockets, find_pockets
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
@@ -124,9 +125,10 @@ class LootStep(PipelineStep):
         targets.extend((o.x, o.y) for o in cobjs)
         self._claims[level] = frozenset(cover.claims)
         ck = collections.Counter(o.purpose for o in cobjs)
+        res, art = ck.get(Purpose.RESOURCE_PILE, 0), ck.get(Purpose.REWARD_PICKUP, 0)
         print(
-            f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "
-            + f"art={ck.get('REWARD_PICKUP', 0)} guard={ck.get('GUARD', 0)}"
+            f"  L{level} pockets: {n_pockets} found, cache res={res} "
+            + f"art={art} guard={ck.get(Purpose.GUARD, 0)}"
         )
         return [*qobjs, *cobjs], pocket_depth_by_tile
 

@@ -3,17 +3,14 @@
 from __future__ import annotations
 
 from vcmi_mapgen.core.model import JsonValue, MapState
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.footprint import mask_rows
-from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import VcmiInstall
 from vcmi_mapgen.vcmi.options import options_of
 from vcmi_mapgen.vcmi.players import main_town
 from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
 
-ROOT = project_root()
 ALL_SIDES: tuple[str, ...] = ("+++", "+-+", "+++")
 
 
@@ -24,8 +21,7 @@ def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
     rmg = list((install.home / "Maps" / "RandomMaps").glob("*.vmap")) if install else []
     if rmg:
         return VM.read_header(str(rmg[0]))
-    tpl = ROOT / "data" / "vmap_header_template.json"
-    return jv.as_object(jv.loads(tpl.read_text()))
+    return VM.header_template()
 
 
 def build_document(

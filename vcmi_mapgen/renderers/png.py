@@ -10,30 +10,26 @@ from PIL import Image
 
 import vcmi_mapgen.renderers.sprites as RED
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.corpus.tiler import load_tiler
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers.overlays.base import MapOverlay
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
 from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
-
-ROOT = project_root()
 
 
 class PngRenderer:
     """Render a MapState to editor-quality 32px H3 sprite PNGs.
 
-    The tile art comes from ``tables``, the corpus tiler by default. Overlays are RGBA
+    The tile art comes from ``tables``, the corpus tiler the caller loaded. Overlays are RGBA
     layers composited over the base sprite render; any number of overlay instances can be
     stacked in order.
 
     Usage::
 
-        renderer = PngRenderer(lod(install.data_dir), out_dir="out/render/pp")
+        renderer = PngRenderer(lod(install.data_dir), "out/render/pp", tables)
         img = renderer.render(state, level=0)          # returns PIL Image
         path = renderer.save(state, "mymap.png")       # saves and returns path
 
         from vcmi_mapgen.renderers.overlays import ZoneOverlay, BlockingOverlay
-        renderer = PngRenderer(index, overlays=[ZoneOverlay(), BlockingOverlay()])
+        renderer = PngRenderer(index, out_dir, tables, [ZoneOverlay(), BlockingOverlay()])
     """
 
     index: LodIndex
@@ -44,14 +40,14 @@ class PngRenderer:
     def __init__(
         self,
         index: LodIndex,
-        out_dir: str | None = None,
+        out_dir: str,
+        tables: TilerTables,
         overlays: Iterable[MapOverlay] = (),
-        tables: TilerTables | None = None,
     ) -> None:
         self.index = index
-        self.out_dir = out_dir or str(ROOT / "out" / "render" / "pp")
+        self.out_dir = out_dir
         self._overlays = list(overlays)
-        self.tables = tables or load_tiler()
+        self.tables = tables
 
     def render(self, state: MapState, level: int = 0, title: str = "") -> Image.Image:
         """Return a PIL Image for the given level, with overlays composited."""

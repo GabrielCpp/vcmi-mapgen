@@ -5,27 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.cli.settings import load_settings
+from vcmi_mapgen.conftest import corpus_tiler, find_install
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.roles import RANDOM_TOWN
 from vcmi_mapgen.vcmi.export import build_document
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
-from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 from vcmi_mapgen.vcmi.players import apply_playability, parse_teams
 
-
-def _install() -> VcmiInstall | None:
-    try:
-        return load_settings().install()
-    except InstallNotFoundError:
-        return None
-
-
-INSTALL = _install()
+INSTALL = find_install()
 needs_vcmi = pytest.mark.skipif(
     INSTALL is None or not any((INSTALL.home / "Maps" / "RandomMaps").glob("*.vmap")),
     reason="VCMI template .vmap not available",
@@ -53,7 +43,7 @@ def _players(h: dict[str, JsonValue]) -> dict[str, dict[str, JsonValue]]:
 
 
 def _write(state: MapState, path: Path, teams_spec: str) -> str:
-    doc = build_document(state, "test", INSTALL, load_tiler())
+    doc = build_document(state, "test", INSTALL, corpus_tiler())
     teams = parse_teams(teams_spec, len(state.player_towns))
     apply_playability(doc, state.player_towns, teams)
     return VM.write(doc, str(path))

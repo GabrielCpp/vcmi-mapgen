@@ -2,7 +2,7 @@
 
 from typing import final
 
-from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec
+from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec, Trait
 from vcmi_mapgen.core.model import Footprint, Identity, Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -57,7 +57,11 @@ class VcmiCatalog:
         return None if cat in DC.EXCLUDE_DECOR_TYPES else cat
 
     def mines_by_resource(self, terrain: str | int) -> dict[str, list[Identity]]:
-        return OB.mines_by_resource(terrain)
+        mines = OB.mines_by_resource(terrain)
+        return {res: ids for res, ids in mines.items() if res not in RO.ABANDONED_MINES}
+
+    def types_with(self, trait: Trait) -> tuple[str, ...]:
+        return RO.TRAIT_TYPES[trait]
 
     def spells(self, level: int) -> list[str]:
         return OB.spells_by_level(level)
@@ -102,7 +106,7 @@ class VcmiCatalog:
 
     def spell_scroll(self, spell: str) -> Identity:
         return Identity(
-            type="spellScroll",
+            type=RO.TRAIT_TYPES[Trait.SCROLL][0],
             subtype=spell,
             kind=RO.SPELL_SCROLL,
             footprint=Footprint.one(Role.VISIT),

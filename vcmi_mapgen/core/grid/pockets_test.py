@@ -2,7 +2,6 @@
 
 from vcmi_mapgen.core.grid import pockets as PK
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.core.steps.loot.pockets import dedupe_pockets
 
 
 def test_pocket_depths_increase_from_mouth_to_deepest_tile() -> None:
@@ -54,7 +53,7 @@ def _top_pocket(reach: set[Tile]) -> tuple[Tile, frozenset[Tile], frozenset[Tile
     pipeline always calls it. Asserts exactly one physical nook was found and returns
     its (guard_tile, pocket, mouth_fs)."""
     raw = PK.find_pockets(reach)
-    blobs = dedupe_pockets(raw, frozenset(reach))
+    blobs = PK.dedupe_pockets(raw, frozenset(reach))
     assert len(blobs) == 1, f"expected exactly one physical nook, got {len(blobs)}"
     return blobs[0][0]  # best candidate in the blob
 

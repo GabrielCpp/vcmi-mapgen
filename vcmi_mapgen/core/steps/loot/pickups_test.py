@@ -11,10 +11,19 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import legal_cells
 from vcmi_mapgen.core.placement.scatter import ScatterConfig, ScatterZone, place_scatter
+from vcmi_mapgen.core.planning.entrances import zone_gate_bands
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.priors.gameplay import GameplayStats
+from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.loot import pickups as CA
+
+
+def _scatter_zone(
+    ts: set[Tile], st: TerrainStats, open_set: set[Tile], prot: set[Tile]
+) -> ScatterZone:
+    label = label_zones({1: _zone(ts)})
+    bands = [g.band for g in zone_gate_bands(ts, label, 1, open_frac=st.border_open_frac)]
+    return ScatterZone(ts, 1, "grass", st, open_set, prot, bands)
 
 
 def _pickups(
@@ -42,17 +51,12 @@ def _pickups(
 def test_pickup_layer_legal_and_deterministic(catalog: Catalog, priors: Priors) -> None:
 
     ts = {(x, y) for x in range(30) for y in range(24)}
-    label = label_zones({1: _zone(ts)})
     G = priors.gameplay[0]
     # synthetic open field with a sealed-off pocket-ish structure: a web cross + nooks
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     open_set = set(ts)
-    o1 = _pickups(
-        catalog, ScatterZone(ts, label, 1, "grass", G["grass"], open_set, prot), G, seed=6
-    )
-    o2 = _pickups(
-        catalog, ScatterZone(ts, label, 1, "grass", G["grass"], open_set, prot), G, seed=6
-    )
+    o1 = _pickups(catalog, _scatter_zone(ts, G["grass"], open_set, prot), G, seed=6)
+    o2 = _pickups(catalog, _scatter_zone(ts, G["grass"], open_set, prot), G, seed=6)
     assert o1 == o2, "pickup layer must be seed-deterministic"
     assert o1, "a 720-tile grass zone should hold pickups"
 
@@ -104,14 +108,11 @@ def test_scatter_places_resource_piles(catalog: Catalog, priors: Priors) -> None
     """Unguarded scatter places resource piles, a mix of fixed and random resources, and
     a real zone always yields some."""
     ts = {(x, y) for x in range(30) for y in range(24)}
-    label = label_zones({1: _zone(ts)})
     G = priors.gameplay[0]
     prot = {(x, 12) for x in range(30)} | {(15, y) for y in range(24)}
     piles: list[PlacedObject] = []
     for seed in range(1, 10):
-        objs = _pickups(
-            catalog, ScatterZone(ts, label, 1, "grass", G["grass"], set(ts), prot), G, seed=seed
-        )
+        objs = _pickups(catalog, _scatter_zone(ts, G["grass"], set(ts), prot), G, seed=seed)
         piles += [o for o in objs if o.purpose == Purpose.RESOURCE_PILE]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"

@@ -5,13 +5,9 @@ from pathlib import Path
 
 from vcmi_mapgen.core.model import JsonValue
 from vcmi_mapgen.core.priors.macro import MacroStats
-from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value
 
-ROOT = project_root()
-STATS_PATH = str(ROOT / "data" / "pp" / "macro_stats.json")
-STATS_PATH_UNDERGROUND = str(ROOT / "data" / "pp" / "macro_stats_underground.json")
 SOURCE = "vcmi_mapgen.corpus.mine.macro.mine_macro"
 
 
@@ -43,13 +39,13 @@ def _stats_to_json(st: MacroStats) -> dict[str, object]:
     }
 
 
-def _stats_path(level: int) -> Path:
-    return Path(STATS_PATH if level == 0 else STATS_PATH_UNDERGROUND)
+def _stats_path(pp_dir: Path, level: int) -> Path:
+    return pp_dir / ("macro_stats.json" if level == 0 else "macro_stats_underground.json")
 
 
-def load_macro(level: int = 0) -> MacroStats:
-    return _stats_from_json(pp_cache.read(_stats_path(level)))
+def load_macro(pp_dir: Path, level: int = 0) -> MacroStats:
+    return _stats_from_json(cache.read(_stats_path(pp_dir, level)))
 
 
-def save_macro(level: int, st: MacroStats) -> None:
-    pp_cache.write(_stats_path(level), SOURCE, _stats_to_json(st))
+def save_macro(pp_dir: Path, level: int, st: MacroStats) -> None:
+    cache.write(_stats_path(pp_dir, level), SOURCE, _stats_to_json(st))

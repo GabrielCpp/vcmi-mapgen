@@ -54,3 +54,72 @@ markers = [
     "slow: a whole-pipeline seed sweep, run by `make sweep`",
     "golden: the generated-map hash oracle, run by `make golden`",
 ]
+
+[tool.importlinter]
+root_package = "vcmi_mapgen"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layers run from the command line down to the model"
+type = "layers"
+layers = [
+    "vcmi_mapgen.cli",
+    "vcmi_mapgen.renderers",
+    "vcmi_mapgen.corpus",
+    "vcmi_mapgen.vcmi",
+    "vcmi_mapgen.core.steps",
+    "vcmi_mapgen.core.pipeline",
+    "vcmi_mapgen.core.planning",
+    "vcmi_mapgen.core.placement",
+    "vcmi_mapgen.core.grid",
+    "vcmi_mapgen.core.catalog | vcmi_mapgen.core.priors",
+    "vcmi_mapgen.core.model",
+]
+ignore_imports = ["vcmi_mapgen.** -> vcmi_mapgen.conftest"]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "Core imports only core, the standard library and numpy"
+type = "forbidden"
+source_modules = ["vcmi_mapgen.core"]
+forbidden_modules = [
+    "vcmi_mapgen.cli",
+    "vcmi_mapgen.renderers",
+    "vcmi_mapgen.corpus",
+    "vcmi_mapgen.vcmi",
+    "PIL",
+]
+allow_indirect_imports = "true"
+ignore_imports = ["vcmi_mapgen.** -> vcmi_mapgen.conftest"]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "A step imports another step only through its result module"
+type = "independence"
+modules = [
+    "vcmi_mapgen.core.steps.border",
+    "vcmi_mapgen.core.steps.gameplay",
+    "vcmi_mapgen.core.steps.gated",
+    "vcmi_mapgen.core.steps.loot",
+    "vcmi_mapgen.core.steps.portal",
+    "vcmi_mapgen.core.steps.scatter",
+    "vcmi_mapgen.core.steps.terrain_gen",
+    "vcmi_mapgen.core.steps.treasure",
+    "vcmi_mapgen.core.steps.vegetation",
+]
+ignore_imports = [
+    "vcmi_mapgen.core.steps.** -> vcmi_mapgen.core.steps.*.result",
+    "vcmi_mapgen.** -> vcmi_mapgen.conftest",
+]
+unmatched_ignore_imports_alerting = "none"
+
+[[tool.importlinter.contracts]]
+name = "Only the command line reads the corpus maps and runs the miners"
+type = "protected"
+protected_modules = ["vcmi_mapgen.corpus.maps", "vcmi_mapgen.corpus.mine"]
+allowed_importers = [
+    "vcmi_mapgen.cli",
+    "vcmi_mapgen.corpus.mine",
+    "vcmi_mapgen.corpus.maps_test",
+    "vcmi_mapgen.conftest",
+]

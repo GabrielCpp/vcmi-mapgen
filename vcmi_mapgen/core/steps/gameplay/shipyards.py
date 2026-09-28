@@ -12,12 +12,10 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.placement import water as WT
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import Fit
 from vcmi_mapgen.core.placement.site import SiteIndex, ZoneSite, back_score, door_cells
-from vcmi_mapgen.core.steps.gameplay import water as WT
-
-SHORE_NOOK = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +67,7 @@ class _ShipyardHooks:
         touched[id(owner)] = owner
         reaches: list[tuple[ZoneSite, set[Tile]]] = []
         for site in touched.values():
-            reach = site.reach_without(blk, SHORE_NOOK)
+            reach = site.reach_without(blk, WT.SHORE_NOOK)
             if reach is None or (site is owner and approach not in reach):
                 return False
             reaches.append((site, reach))

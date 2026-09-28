@@ -5,7 +5,7 @@ import contextlib
 import io
 from typing import final
 
-from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec
+from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec, Trait
 from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -15,8 +15,8 @@ from vcmi_mapgen.core.placement.site import PlacedZone
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, PlanZone, ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps import ScatterStep
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
+from vcmi_mapgen.core.steps.scatter.step import ScatterStep
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 
 PILE = Identity("fakePile", "gold", "fake_pile", Footprint.one(Role.VISIT))
@@ -63,6 +63,10 @@ class FakeCatalog:
     def mines_by_resource(self, terrain: str | int) -> dict[str, list[Identity]]:
         self.asked.append(("mines_by_resource", str(terrain)))
         return {}
+
+    def types_with(self, trait: Trait) -> tuple[str, ...]:
+        self.asked.append(("types_with", str(trait)))
+        return ()
 
     def spells(self, level: int) -> list[str]:
         self.asked.append(("spells", str(level)))

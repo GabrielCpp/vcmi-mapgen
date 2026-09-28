@@ -72,6 +72,9 @@ asks about an object: identity, footprint, terrain coupling, candidates, decorat
 mines or spells. No module under `core/` imports `vcmi.catalog`. A test can hand a step a
 small fake catalog, as `scatter/step_test.py` does.
 
+A test that runs two steps together sits in `core/steps/` itself, as `gameplay_step_test.py`
+and `water_test.py` do, because no step package may import another step.
+
 ## Every placement step is additive
 
 A step appends its own objects with `map_state.add_objs(new, rules)`. It never removes,
@@ -80,7 +83,7 @@ each object with `CoverIndex.try_claim` and the terrain gate, and try the next c
 when one is refused. A group that fails part way rolls the cover back to its `mark()`. Only `VegetationStep` may raise, when it walls off a pocket.
 
 The step that places a guarded object also places its monster. No guard stands within
-Chebyshev 2 of another (`core.steps.placement.guard_spaced`), so no later pass deletes
+Chebyshev 2 of another (`core.placement.guards.guard_spaced`), so no later pass deletes
 duplicate guards.
 
 ## How a step publishes a value for a later step

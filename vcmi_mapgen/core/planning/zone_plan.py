@@ -11,7 +11,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from typing import final
 
-from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.grid.reach import STEPS4
@@ -19,16 +19,14 @@ from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import Entrance, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement import water as WT
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
 from vcmi_mapgen.core.planning.entrances import plan_entrances
 from vcmi_mapgen.core.planning.player_zones import select_player_zones
+from vcmi_mapgen.core.planning.web import WebOptions, ZoneRef, protected_web
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
-from vcmi_mapgen.core.steps.gameplay import shipyards as SH
-from vcmi_mapgen.core.steps.gameplay import water as WT
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
-from vcmi_mapgen.core.steps.vegetation import sample as PP
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -108,7 +106,7 @@ def seaport_cells(catalog: Catalog, objs: Iterable[PlacedObject]) -> tuple[set[T
     seaport_blk: set[Tile] = set()
     seaport_appr: set[Tile] = set()
     for so in objs:
-        if catalog.identity_of(so.kind).type == "shipyard":
+        if catalog.identity_of(so.kind).type in catalog.types_with(Trait.SHIPYARD):
             for scx, scy, sblk in FP.anchored_cells(so.footprint, so.x, so.y):
                 if sblk:
                     seaport_blk.add((scx, scy))
@@ -169,7 +167,7 @@ class _LandingCheck:
                 n = (x + dx, y + dy)
                 if n in self.land and n not in cut and n not in stranded:
                     stranded |= self._pocket(n, cut)
-        return len(stranded) <= SH.SHORE_NOOK
+        return len(stranded) <= WT.SHORE_NOOK
 
 
 def plan_landings(
@@ -265,11 +263,11 @@ class _ZonePlanner:
         seedt = min(ts, key=lambda t: (t[0] - round(zcx)) ** 2 + (t[1] - round(zcy)) ** 2)
         ent_bands: set[Tile] = set[Tile]().union(*(b for _r, b, _o in z_entr)) if z_entr else set()
         rim8 = self.rim_all & ts
-        prot = PP.protected_web(
-            PP.ZoneRef(ts, lp.zone_label, zid, z.centroid),
+        prot = protected_web(
+            ZoneRef(ts, lp.zone_label, zid, z.centroid),
             edge_dist(ts),
             seedt,
-            PP.WebOptions(
+            WebOptions(
                 open_frac=lp.gstats[terrain].border_open_frac,
                 entrances=z_entr,
                 keep_off=rim8,
@@ -366,10 +364,11 @@ def plan_player_zones(
 
 @dataclass(frozen=True, slots=True)
 class PlanTerrain:
-    """What a zone plan reads of the terrain: the segmentation, each level's ``Terrain``
-    grid and the underground tunnel cells."""
+    """What a zone plan reads of the terrain: each level's zones and zone label grid, each
+    level's ``Terrain`` grid and the underground tunnel cells."""
 
-    segmentation: Segmentation
+    zones: Mapping[int, Mapping[int, Zone]]
+    zone_label: Mapping[int, ZoneLabel]
     grids: Mapping[int, list[list[Terrain]]]
     tunnel_protect: frozenset[Tile]
 
@@ -382,12 +381,12 @@ def plan_zones(
     landings kept open for them."""
     levels: dict[int, PlanLevel] = {}
     for level in sorted(terrain.grids):
-        zones = terrain.segmentation.zones[level]
+        zones = terrain.zones[level]
         planner = _ZonePlanner(
             _LevelPlan(
                 catalog,
                 zones,
-                terrain.segmentation.zone_label[level],
+                terrain.zone_label[level],
                 terrain.tunnel_protect if level == 1 else NO_TILES,
                 gameplay[level],
             )
