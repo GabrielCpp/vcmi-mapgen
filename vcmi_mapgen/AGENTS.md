@@ -27,14 +27,13 @@
 
 ## Segmentation
 
-- `kit.terrain_segment.segment(terrain_level)` returns `(zones, zone_label)`. It is a
-  4-connected flood fill by terrain type. Water (8) and rock (9) are barriers, with
-  `zone_label` set to -1.
-- `kit.terrain_segment.compute_static_features(...)` returns a per-tile feature array.
-  Channel 20 is the BFS distance to the zone boundary, normalised by the square root of
-  the zone area. It measures interior depth.
-- `kit.segmentation.segment_level(level)` runs both and adds per-zone canonical
-  coordinates. `SegmentStep` calls it.
+- `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`. It
+  is the module's one public entry, and `SegmentStep` calls it.
+- The segmentation is a 4-connected flood fill by terrain type. Water (8) and rock (9)
+  are barriers, with `zone_label` set to -1.
+- Each zone tile's canonical coordinates are `(depth, sweep)`. Depth comes from the BFS
+  distance to the zone boundary, renormalised to the zone's own range. Sweep is the
+  tile's angle around the zone centroid.
 
 ## Rendering
 

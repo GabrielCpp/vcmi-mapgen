@@ -44,10 +44,10 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     and `steps/zone_index.py` hold helpers several placement steps share.
     `steps/zone_plan.py` builds the zone entrances, the walkable web and the sea plan that
     `VegetationStep` starts from.
-  - `kit/`: step-independent helpers. It covers geometry, reachability, topology,
-    segmentation (`terrain_segment.py`, `segmentation.py`), autotiling (`tiling.py`),
-    the corpus loader (`objects.py`), VCMI config lookup (`vcmi_config.py`), and the
-    `.vmap` reader and writer (`vmap/`).
+  - `core/grid/`: pure grid algorithms: segmentation (`segment.py`), components,
+    geodesic paths, pockets, edge distance and noise.
+  - `kit/`: step-independent helpers. It covers topology, autotiling (`tiling.py`) and
+    the corpus loader (`objects.py`).
   - `ontology.py`: object identity, footprints, terrain coupling and decoration category.
   - `renderers/`: `PngRenderer` with real H3 sprites (`png.py`, `sprites.py`),
     `VmapRenderer` for playable `.vmap` export (`vmap.py`), the debug overlays
