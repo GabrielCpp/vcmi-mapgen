@@ -25,12 +25,21 @@
   bottom-right cell. `'B'` is blocking, `'A'` and `'V'` are visitable or overlay, and
   `' '` is empty. `models.footprint(obj)` gives each covered tile with its `Role`.
 
+## Terrain
+
+- `core.model.terrain.Terrain` is the terrain vocabulary the steps use. Compare against its
+  members and its `is_water`, `is_barrier` and `is_land` properties, never against a bare
+  code such as 8.
+- `vcmi.terrain.TERRAINS` maps each `Terrain` to its Heroes III code, VCMI tile prefix and
+  name. `name_of(code)` gives the name the catalog keys on. No other module holds a copy of
+  those codes, prefixes or names.
+
 ## Segmentation
 
 - `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`. It
   is the module's one public entry, and `SegmentStep` calls it.
-- The segmentation is a 4-connected flood fill by terrain type. Water (8) and rock (9)
-  are barriers, with `zone_label` set to -1.
+- The segmentation is a 4-connected flood fill by terrain type. Water and rock are
+  barriers (`Terrain.is_barrier`), with `zone_label` set to -1.
 - Each zone tile's canonical coordinates are `(depth, sweep)`. Depth comes from the BFS
   distance to the zone boundary, renormalised to the zone's own range. Sweep is the
   tile's angle around the zone centroid.
