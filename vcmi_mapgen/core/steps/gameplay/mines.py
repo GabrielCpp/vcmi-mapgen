@@ -708,6 +708,10 @@ if __name__ == "__main__":
     _ = ap.add_argument("--level", type=int, default=None, help="0=surface, 1=underground")
     args = ap.parse_args(namespace=_Args())
     if args.audit:
+        from vcmi_mapgen.cli.settings import load_settings, open_install
+        from vcmi_mapgen.vcmi.config import load_config
+
+        ON.use_config(load_config(open_install(load_settings())))
         levels = [args.level] if args.level is not None else [0, 1]
         bad = False
         for lvl in levels:

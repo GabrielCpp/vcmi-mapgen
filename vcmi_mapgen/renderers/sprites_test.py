@@ -11,26 +11,40 @@ are absent (e.g. CI without a VCMI install).
 Run: `uv run pytest vcmi_mapgen/renderers/sprites_test.py -q`
 """
 
-import os
 import struct
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
 import vcmi_mapgen.kit.objects as OR
 import vcmi_mapgen.renderers.sprites as RE
+from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import PlacedObject
-from vcmi_mapgen.vcmi.formats.lod import LOD_DIR, LOD_FILES, lod
+from vcmi_mapgen.vcmi.formats.lod import LOD_FILES, LodIndex, lod
+from vcmi_mapgen.vcmi.install import InstallNotFoundError
 
 TEST_MAP = "All for One"
 
-# Skip the whole module if the H3 sprite LODs are not installed on this machine.
-_lod_present = os.path.isdir(LOD_DIR) and any(
-    os.path.exists(os.path.join(LOD_DIR, f)) for f in LOD_FILES
-)
+
+def _data_dir() -> Path | None:
+    try:
+        return load_settings().install().data_dir
+    except InstallNotFoundError:
+        return None
+
+
+DATA_DIR = _data_dir()
 pytestmark = pytest.mark.skipif(
-    not _lod_present, reason=f"H3 sprite LOD files not found in {LOD_DIR}"
+    DATA_DIR is None or not any((DATA_DIR / f).exists() for f in LOD_FILES),
+    reason="H3 sprite LOD files not found (set VCMI_HOME)",
 )
+
+
+def _index() -> LodIndex:
+    assert DATA_DIR is not None
+    return lod(DATA_DIR)
+
 
 # One representative DEF per H3 sprite compression format (discovered from the LOD):
 #   0 = raw, 1 = per-line RLE, 2 = per-line typed RLE, 3 = per-32px-block typed RLE.
@@ -45,7 +59,7 @@ FORMAT_REPRESENTATIVES: dict[int, str] = {
 # --------------------------------------------------------------------------- helpers
 def _first_frame_header(defname: str) -> tuple[int, int, int]:
     """(comp, fullW, fullH) read straight from the DEF's first frame header."""
-    data = lod().read(defname)
+    data = _index().read(defname)
     assert data and len(data) >= 40, f"{defname}: empty/short DEF"
     pos = 16 + 256 * 3
     _bid, nframes = struct.unpack_from("<II", data, pos)
@@ -71,7 +85,7 @@ def test_all_four_def_formats_decode(fmt: int, defname: str) -> None:
     comp, fullw, fullh = _first_frame_header(defname)
     assert comp == fmt, f"{defname}: expected format {fmt}, header says {comp}"
 
-    groups = RE.get_def(defname)
+    groups = RE.get_def(_index(), defname)
     assert groups and groups[0], f"{defname}: no frames decoded"
     frame0 = groups[0][0]
     assert frame0.size == (fullw, fullh), (
@@ -83,9 +97,9 @@ def test_all_four_def_formats_decode(fmt: int, defname: str) -> None:
 def test_every_terrain_tile_decodes() -> None:
     """Every terrain .def decodes, and terr_tile_img yields a 32x32 non-empty tile."""
     for tc, defname in RE.TERR_DEF.items():
-        groups = RE.get_def(defname)
+        groups = RE.get_def(_index(), defname)
         assert groups and groups[0], f"terrain {tc} ({defname}) failed to decode"
-        tile = RE.terr_tile_img(f"{tc}0_")
+        tile = RE.terr_tile_img(_index(), f"{tc}0_")
         assert tile.size == (RE.TILE, RE.TILE), f"{tc}: tile size {tile.size}"
         assert _nonempty(tile), f"{tc} ({defname}): terrain tile is fully transparent"
 
@@ -98,7 +112,7 @@ def test_known_object_sprites_decode() -> None:
         "AVTrndm0": (64, 32),  # random treasure
     }
     for anim, expect in known.items():
-        groups = RE.get_def(anim)
+        groups = RE.get_def(_index(), anim)
         assert groups and groups[0], f"{anim}: not decoded"
         frame0 = groups[0][0]
         assert frame0.size == expect, f"{anim}: size {frame0.size}, expected {expect}"
@@ -118,14 +132,14 @@ def test_decode_coverage_over_corpus_sprites() -> None:
     bad: list[tuple[str, str]] = []
     checked = 0
     for anim in anims:
-        data = lod().read(anim)
+        data = _index().read(anim)
         if not data or len(data) < 40:  # not in LOD (data availability, not decoder)
             absent.append(anim)
             continue
         checked += 1
         try:
             _comp, fullw, fullh = _first_frame_header(anim)
-            groups = RE.get_def(anim)
+            groups = RE.get_def(_index(), anim)
         except Exception as e:
             bad.append((anim, f"exc:{e}"))
             continue
@@ -149,7 +163,7 @@ def test_render_is_deterministic() -> None:
         PlacedObject(4, 4, 0, "", "", None, "AVLpntr7", ()),
         PlacedObject(2, 5, 0, "", "", None, "AVLman30", ()),
     ]
-    a = RE.render_map(surf, objs)
-    b = RE.render_map(surf, objs)
+    a = RE.render_map(_index(), surf, objs)
+    b = RE.render_map(_index(), surf, objs)
     assert a.size == b.size
     assert a.tobytes() == b.tobytes(), "renderer is not deterministic"

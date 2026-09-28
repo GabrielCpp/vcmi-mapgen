@@ -1,5 +1,5 @@
 """Hardcoded rendering-presentation constants for terrain — NOT sourced from VCMI config
-(unrelated to kit.vcmi_config's identifier resolution, despite sharing a terrain-code key)."""
+(unrelated to vcmi.config's identifier resolution, despite sharing a terrain-code key)."""
 
 # Terrain palette: terrain code (int) → RGB tuple.
 # Used by schematic renders and overlays.

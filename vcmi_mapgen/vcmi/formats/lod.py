@@ -2,11 +2,9 @@ import os
 import struct
 import zlib
 from functools import cache
+from pathlib import Path
 from typing import NamedTuple
 
-from vcmi_mapgen.kit.paths import vcmi_home
-
-LOD_DIR = os.path.join(vcmi_home(), "Data")
 LOD_FILES = ["H3sprite.lod", "H3ab_spr.lod", "H3bitmap.lod", "H3ab_bmp.lod"]
 
 
@@ -18,10 +16,10 @@ class LodEntry(NamedTuple):
 
 
 class LodIndex:
-    def __init__(self) -> None:
+    def __init__(self, data_dir: Path) -> None:
         self._files: dict[str, LodEntry] = {}
         for lodname in LOD_FILES:
-            path = os.path.join(LOD_DIR, lodname)
+            path = os.path.join(data_dir, lodname)
             if not os.path.exists(path):
                 continue
             with open(path, "rb") as f:
@@ -58,5 +56,5 @@ class LodIndex:
 
 
 @cache
-def lod() -> LodIndex:
-    return LodIndex()
+def lod(data_dir: Path) -> LodIndex:
+    return LodIndex(data_dir)

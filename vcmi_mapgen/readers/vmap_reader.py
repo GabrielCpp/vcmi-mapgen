@@ -19,7 +19,7 @@ class VmapReader:
     Usage::
 
         state = VmapReader().read("out/vmap/mymap.vmap")
-        img = PngRenderer().render(state, level=0)
+        img = PngRenderer(index).render(state, level=0)
     """
 
     def read(self, path: str) -> MapState:

@@ -24,9 +24,9 @@ from random import Random
 from typing import cast
 
 from vcmi_mapgen.core.model import Identity, Mask
-from vcmi_mapgen.kit import vcmi_config
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.vcmi.formats.lod import lod
+from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, VcmiConfig
+from vcmi_mapgen.vcmi.formats.lod import LodIndex
 
 type Taxonomy = dict[str, dict[str, dict[str, dict[str, list[str] | dict[str, str]]]]]
 
@@ -78,7 +78,7 @@ CLASS_NAMES = {
 #     already plain JSON, no legacy table involved) -- needs a VCMI *source* checkout.
 #   - SPELL_LEVELS / ARTIFACT_TIERS: the level/tier field itself lives in the original
 #     H3 game's own legacy text tables (DATA/SPTRAITS.TXT / DATA/ARTRAITS.TXT, inside
-#     H3bitmap.lod -- readable via vcmi.formats.lod.lod().read(), same mechanism
+#     H3bitmap.lod -- readable via vcmi.formats.lod.lod(data_dir).read(), same mechanism
 #     objects.txt uses), but mapping a row to its VCMI identifier requires VCMI *source*
 #     config too (config/spells/*.json / config/artifacts.json's "index" field, zipped
 #     positionally against the legacy table's file-order rows -- verified by spot-check,
@@ -3485,7 +3485,7 @@ def iter_leaves(tree: Taxonomy | None = None) -> Iterator[tuple[str, str, str, s
 # Placement / category accessors — the ontology as the SINGLE SOURCE OF TRUTH for object
 # identity, footprint mask, terrain coupling and decoration category. The whole generation
 # pipeline (tile placement -> .vmap -> rendering) draws from these instead of the corpus.
-# `type`/`subtype` in a placement identity come from `kit.vcmi_config` (same as the corpus path),
+# `type`/`subtype` in a placement identity come from `vcmi.config` (same as the corpus path),
 # so an ontology identity is a drop-in for the old objlib identity.
 # ---------------------------------------------------------------------------
 
@@ -3559,11 +3559,18 @@ def footprint_size(animation: str) -> int:
     return sum(len(row) for row in mask_of(animation))
 
 
+_CONFIG: list[VcmiConfig] = [EMPTY_CONFIG]
+
+
+def use_config(config: VcmiConfig) -> None:
+    _CONFIG[0] = config
+
+
 def identity_of(animation: str) -> Identity:
     """Placement ``Identity`` (type, subtype, animation, mask) for an animation — a drop-in for
     the corpus objlib identity, sourced entirely from the ontology + objects.txt metadata."""
     cls, sub = cls_sub_of(animation)
-    r = vcmi_config.resolve(cls, sub) if cls is not None and sub is not None else None
+    r = _CONFIG[0].resolve(cls, sub) if cls is not None and sub is not None else None
     return Identity(
         type=r[0] if r else None,
         subtype=r[1] if r else None,
@@ -3654,7 +3661,7 @@ def gameplay_pool(terrain: str | int, purpose: str) -> list[Identity]:
 def mines_by_resource(terrain: str | int) -> dict[str, list[Identity]]:
     """``{resource: [identity]}`` for MINE objects placeable on a terrain — the resource bucket
     (wood,
-    ore, gold, …) is the ontology-resolved subtype (``kit.vcmi_config`` -> :data:`MINE_RES`). Lets
+    ore, gold, …) is the ontology-resolved subtype (``vcmi.config`` -> :data:`MINE_RES`). Lets
     a town
     economy guarantee a wood + ore mine without touching the corpus."""
     out: dict[str, list[Identity]] = {}
@@ -3894,25 +3901,25 @@ def _fill_overhang(grid: list[list[str]]) -> None:
 
 
 @cache
-def _full_grids() -> dict[str, Mask]:
+def _full_grids(index: LodIndex) -> dict[str, Mask]:
     grids: dict[str, Mask] = {}
-    for anim, p1, p2 in _objects_txt_raw():
+    for anim, p1, p2 in _objects_txt_raw(index):
         if len(p1) == 48 and len(p2) == 48:
             grids[anim] = _decode_mask_grid(p1, p2)
     return grids
 
 
-def full_mask_of(animation: str) -> Mask | None:
+def full_mask_of(index: LodIndex, animation: str) -> Mask | None:
     """The full 6-row x 8-col visual footprint grid (B/X/A/V/'.') for an animation, bottom-left
     anchored -- for editor-style overlays. Empty ('.') outside the object footprint. See
     :func:`_decode_mask_grid`."""
-    return _full_grids().get((animation or "").lower())
+    return _full_grids(index).get((animation or "").lower())
 
 
-def _def_tile_dims(animation: str) -> tuple[int, int] | None:
+def _def_tile_dims(index: LodIndex, animation: str) -> tuple[int, int] | None:
     """(width, height) of an animation's sprite in 32px TILES, from the DEF file header in the
     H3 LOD (type u32, width u32, height u32). None when the DEF is absent."""
-    data = lod().read(animation + ".def")
+    data = index.read(animation + ".def")
     if not data or len(data) < 12:
         return None
     _typ, w, h = struct.unpack_from("<III", data, 0)
@@ -3949,9 +3956,9 @@ def _decode_mask_full(passability: str, triggers: str, tile_dims: tuple[int, int
     )
 
 
-def _objects_txt_raw() -> list[tuple[str, str, str]]:
+def _objects_txt_raw(index: LodIndex) -> list[tuple[str, str, str]]:
     """[(animation, passability48, triggers48), ...] straight from objects.txt (no decode)."""
-    raw = lod().read("objects.txt")
+    raw = index.read("objects.txt")
     if raw is None:
         raise RuntimeError("objects.txt not found in the H3 LOD")
     out: list[tuple[str, str, str]] = []
@@ -3966,10 +3973,10 @@ def _objects_txt_raw() -> list[tuple[str, str, str]]:
     return out
 
 
-def _objects_txt_records() -> list[tuple[str, str, str, int, int, Mask]]:
+def _objects_txt_records(index: LodIndex) -> list[tuple[str, str, str, int, int, Mask]]:
     """[(animation, allowedMask, nativeMask, class, subclass, mask), ...] from the LOD's
     objects.txt. ``mask`` is the decoded B/A/V footprint (see :func:`_decode_mask`)."""
-    raw = lod().read("objects.txt")
+    raw = index.read("objects.txt")
     if raw is None:
         raise RuntimeError("objects.txt not found in the H3 LOD")
     recs: list[tuple[str, str, str, int, int, Mask]] = []
@@ -4006,28 +4013,28 @@ def _template_terrains(allowed_mask: str, native_mask: str, coupled: bool) -> li
     return ["land"]
 
 
-def _derive_leaf_meta() -> dict[str, LeafMeta]:
+def _derive_leaf_meta(index: LodIndex) -> dict[str, LeafMeta]:
     """{animation: {"cls", "sub", "mask"}} for every objects.txt template — the per-animation
     placement metadata the ontology exposes via :func:`identity_of` / :func:`mask_of`, windowed
     to the sprite's full tile extent and already in `mask_cells`'s anchor convention
     (:func:`_decode_mask_full`), so the same footprint serves gameplay placement AND (with X->A)
     `.vmap` export (:func:`vmap_mask_of`) with no reversal in between."""
-    bits = {anim: (p1, p2) for anim, p1, p2 in _objects_txt_raw()}
+    bits = {anim: (p1, p2) for anim, p1, p2 in _objects_txt_raw(index)}
     meta: dict[str, LeafMeta] = {}
-    for anim, _allowed, _native, cls, sub, mask in _objects_txt_records():
+    for anim, _allowed, _native, cls, sub, mask in _objects_txt_records(index):
         p1, p2 = bits.get(anim, ("", ""))
         if len(p1) == 48 and len(p2) == 48:
-            leaf_mask = _decode_mask_full(p1, p2, _def_tile_dims(anim))
+            leaf_mask = _decode_mask_full(p1, p2, _def_tile_dims(index, anim))
         else:
             leaf_mask = mask
         meta[anim] = LeafMeta(cls, sub, leaf_mask)
     return meta
 
 
-def _derive_taxonomy() -> Taxonomy:
+def _derive_taxonomy(index: LodIndex) -> Taxonomy:
     """Build the CLUSTER->PURPOSE->type->terrain->leaf tree from objects.txt + the ontology."""
     raw: dict[str, dict[str, dict[str, dict[str, dict[str, str]]]]] = {}
-    for anim, allowed, native, cls, sub, _mask in _objects_txt_records():
+    for anim, allowed, native, cls, sub, _mask in _objects_txt_records(index):
         r = resolve(cls, sub)
         typ = r.name
         if typ in COLOR_KEYED_NAMES:
@@ -4101,11 +4108,11 @@ def _rewrite_block(src: str, begin: str, end: str, text: str) -> str:
     return f"{head}{text}\n{tail}"
 
 
-def regenerate() -> Taxonomy:
+def regenerate(index: LodIndex) -> Taxonomy:
     """Derive the taxonomy + per-animation placement metadata from objects.txt and rewrite
     both the TAXONOMY and LEAF_META literals in this file."""
-    tree = _derive_taxonomy()
-    meta = _derive_leaf_meta()
+    tree = _derive_taxonomy(index)
+    meta = _derive_leaf_meta(index)
     path = os.path.join(_HERE, "ontology.py")
     with open(path) as fh:
         src = fh.read()
@@ -4225,14 +4232,17 @@ class Ontology:
     def category_terrain_matrix(self) -> list[list[bool]]:
         return category_terrain_matrix()
 
-    def full_mask_of(self, animation: str) -> Mask | None:
-        return full_mask_of(animation)
-
 
 if __name__ == "__main__":
     import sys
 
-    tr = regenerate() if "--regen" in sys.argv else build_tree()
+    if "--regen" in sys.argv:
+        from vcmi_mapgen.cli.settings import load_settings, open_install
+        from vcmi_mapgen.vcmi.formats.lod import lod
+
+        tr = regenerate(lod(open_install(load_settings()).data_dir))
+    else:
+        tr = build_tree()
     n_leaf = sum(1 for _ in iter_leaves(tr))
     print(f"ontology taxonomy ({'regenerated' if '--regen' in sys.argv else 'hardcoded'})")
     for cluster in CLUSTERS:

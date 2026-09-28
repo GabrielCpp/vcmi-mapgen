@@ -47,6 +47,8 @@ Everything is **learned from real maps** (`maps/`, 159 classic `.h3m` maps) and
   `~/.local/share/vcmi`, macOS `~/Library/Application Support/vcmi`, Windows
   `Documents/My Games/vcmi`); point the `VCMI_HOME` environment variable at the
   `vcmi` data directory if yours lives elsewhere.
+  A command that needs the install and finds none stops with a message
+  naming `VCMI_HOME`.
 
 ## Generate maps
 

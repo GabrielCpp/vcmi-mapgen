@@ -12,6 +12,7 @@ import vcmi_mapgen.renderers.sprites as RED
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers.overlays.base import MapOverlay
+from vcmi_mapgen.vcmi.formats.lod import LodIndex
 
 ROOT = project_root()
 
@@ -24,18 +25,22 @@ class PngRenderer:
 
     Usage::
 
-        renderer = PngRenderer(out_dir="out/render/pp")
+        renderer = PngRenderer(lod(install.data_dir), out_dir="out/render/pp")
         img = renderer.render(state, level=0)          # returns PIL Image
         path = renderer.save(state, "mymap.png")       # saves and returns path
 
         from vcmi_mapgen.renderers.overlays import ZoneOverlay, BlockingOverlay
-        renderer = PngRenderer(overlays=[ZoneOverlay(), BlockingOverlay()])
+        renderer = PngRenderer(index, overlays=[ZoneOverlay(), BlockingOverlay()])
     """
 
+    index: LodIndex
     out_dir: str
     _overlays: list[MapOverlay]
 
-    def __init__(self, out_dir: str | None = None, overlays: Iterable[MapOverlay] = ()) -> None:
+    def __init__(
+        self, index: LodIndex, out_dir: str | None = None, overlays: Iterable[MapOverlay] = ()
+    ) -> None:
+        self.index = index
         self.out_dir = out_dir or str(ROOT / "out" / "render" / "pp")
         self._overlays = list(overlays)
 
@@ -49,7 +54,7 @@ class PngRenderer:
         else:
             # renderers.sprites draws only l==0 objects; shift underground to l=0
             objs = [dataclasses.replace(o, level=0) for o in state.objs if o.level == level]
-        base = RED.render_map(surfs, objs, title=title)
+        base = RED.render_map(self.index, surfs, objs, title=title)
         if not self._overlays:
             return base
         img = base.convert("RGBA")

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.cli.steps import build_steps
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
@@ -21,9 +22,26 @@ from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.renderers import VmapRenderer
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
+from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 
 GOLDEN = project_root() / "data" / "golden.json"
 MAPS = (("s1_48", 1, 48, False), ("s3_72_sub", 3, 72, True))
+
+
+def _install() -> VcmiInstall | None:
+    try:
+        return load_settings().install()
+    except InstallNotFoundError:
+        return None
+
+
+INSTALL = _install()
+
+
+@pytest.fixture(autouse=True)
+def _needs_install() -> None:
+    if INSTALL is None:
+        pytest.skip("the golden hashes were recorded against a local VCMI install")
 
 
 def _generate(seed: int, size: int, subterrain: bool) -> MapState:

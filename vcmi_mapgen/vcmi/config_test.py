@@ -1,5 +1,4 @@
-"""Reliability test for kit.vcmi_config.resolve() — had zero coverage before this module was
-split out of vcmi_ids.py; adding a minimal one since the move already touches every caller.
+"""Reliability test for vcmi.config.VcmiConfig.resolve().
 
 Requires a local VCMI install (config/objects, config/creatures, ... on disk); skipped
 otherwise, same gating pattern as sprites_test.py's H3 sprite LOD check.
@@ -7,9 +6,23 @@ otherwise, same gating pattern as sprites_test.py's H3 sprite LOD check.
 
 import pytest
 
-from vcmi_mapgen.kit import vcmi_config as VC
+from vcmi_mapgen.cli.settings import load_settings
+from vcmi_mapgen.vcmi.config import VcmiConfig, load_config
+from vcmi_mapgen.vcmi.install import InstallNotFoundError
 
-pytestmark = pytest.mark.skipif(not VC.CLS2TYPE, reason="no local VCMI install config/ tree found")
+
+def _config() -> VcmiConfig:
+    try:
+        return load_config(load_settings().install())
+    except InstallNotFoundError:
+        return VcmiConfig()
+
+
+CONFIG = _config()
+
+pytestmark = pytest.mark.skipif(
+    not CONFIG.classes, reason="no local VCMI install config/ tree found"
+)
 
 # (objectClass, objectSubID) -> expected (type, subtype), captured from a real VCMI
 # install's config — covers an inline-subtype object, the creature/faction/artifact
@@ -28,8 +41,8 @@ KNOWN = {
 
 @pytest.mark.parametrize("pair,expected", sorted(KNOWN.items()))
 def test_resolve_known_pairs(pair: tuple[int, int], expected: tuple[str, str]) -> None:
-    assert VC.resolve(*pair) == expected
+    assert CONFIG.resolve(*pair) == expected
 
 
 def test_resolve_unknown_class_is_none() -> None:
-    assert VC.resolve(-1, 0) is None
+    assert CONFIG.resolve(-1, 0) is None

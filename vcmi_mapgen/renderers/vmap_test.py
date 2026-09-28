@@ -1,6 +1,5 @@
 """Reliability tests for renderers.vmap (VmapRenderer: .vmap export + playability overlay)."""
 
-import glob
 import os
 import zipfile
 from pathlib import Path
@@ -8,17 +7,27 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.step import place_open_zone
-from vcmi_mapgen.kit import paths as vcmi_paths
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer, parse_teams
 from vcmi_mapgen.vcmi.formats import json_value as jv
+from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 
-RANDOMMAPS_GLOB = os.path.join(vcmi_paths.vcmi_home(), "Maps", "RandomMaps", "*.vmap")
+
+def _install() -> VcmiInstall | None:
+    try:
+        return load_settings().install()
+    except InstallNotFoundError:
+        return None
+
+
+INSTALL = _install()
 needs_vcmi = pytest.mark.skipif(
-    not glob.glob(RANDOMMAPS_GLOB), reason="VCMI template .vmap not available"
+    INSTALL is None or not any((INSTALL.home / "Maps" / "RandomMaps").glob("*.vmap")),
+    reason="VCMI template .vmap not available",
 )
 
 
@@ -69,7 +78,9 @@ def test_vmap_export_roundtrip(tmp_path: Path) -> None:
     town = ON.gameplay_pool("grass", "TOWN")[0]
     objs = [_town(town, 8, 8)]
     state = MapState(size=max(len(cells), len(cells[0])), cells={0: cells}, objs=objs)
-    p = VmapRenderer(out_dir=str(tmp_path)).render(state, "test_pp_export.vmap", name="test")
+    p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
+        state, "test_pp_export.vmap", name="test"
+    )
     z = zipfile.ZipFile(p)
     surf = jv.as_list(_load(z, "surface_terrain.json"))
     vobjs = _objects(p)
@@ -129,7 +140,9 @@ def test_vmap_export_game_contracts(tmp_path: Path) -> None:
     grid = [[2] * 30 for _ in range(24)]
     cells = ZE.tile_terrain(grid, 30, 24)
     state = MapState(size=max(len(cells), len(cells[0])), cells={0: cells}, objs=objs)
-    p = VmapRenderer(out_dir=str(tmp_path)).render(state, "test_pp_contracts.vmap", name="test")
+    p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
+        state, "test_pp_contracts.vmap", name="test"
+    )
     vobjs = _objects(p)
     vtown = next(vo for vo in vobjs if vo.get("type") in ("town", "randomTown"))
     assert _vopts(vtown)["buildings"] == START_BUILDINGS
@@ -163,7 +176,7 @@ def test_playability_overlay(tmp_path: Path) -> None:
     state = MapState(
         size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
     )
-    p = VmapRenderer(out_dir=str(tmp_path)).render(
+    p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
         state, "test_pp_play.vmap", name="test", teams_spec="ffa"
     )
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))
@@ -205,7 +218,7 @@ def test_playability_overlay_alliance_grouping(tmp_path: Path) -> None:
     state = MapState(
         size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
     )
-    p = VmapRenderer(out_dir=str(tmp_path)).render(
+    p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
         state, "test_pp_play_2v2.vmap", name="test", teams_spec="2v2"
     )
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))
@@ -228,7 +241,7 @@ def test_playability_overlay_random_town_shows_random_in_lobby(tmp_path: Path) -
     state = MapState(
         size=max(len(cells), len(cells[0])), cells={0: cells}, objs=towns, player_towns=towns
     )
-    p = VmapRenderer(out_dir=str(tmp_path)).render(
+    p = VmapRenderer(out_dir=str(tmp_path), install=INSTALL).render(
         state, "test_pp_play_random.vmap", name="test", teams_spec="ffa"
     )
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))

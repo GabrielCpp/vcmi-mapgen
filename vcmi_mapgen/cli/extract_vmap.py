@@ -12,8 +12,8 @@ import os
 import re
 
 from vcmi_mapgen.core.model import Cell, PlacedObject
-from vcmi_mapgen.kit import vcmi_config as vcmi_ids
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.vcmi.config import VcmiConfig
 from vcmi_mapgen.vcmi.formats import h3m
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
@@ -35,7 +35,7 @@ def _blank_players() -> list[PlayerSlot]:
     ]
 
 
-def convert(h3m_path: str) -> tuple[VmapDocument, int, int]:
+def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
     m = h3m.parse_file(h3m_path)
     terrain = [
         [
@@ -61,7 +61,7 @@ def convert(h3m_path: str) -> tuple[VmapDocument, int, int]:
     objects: list[VmapObject] = []
     unresolved = 0
     for n, o in enumerate(m.objects, 1):
-        r = vcmi_ids.resolve(o.obj_class, o.obj_subclass)
+        r = config.resolve(o.obj_class, o.obj_subclass)
         if not r:
             unresolved += 1
         vtype, sub = r if r else (None, None)
@@ -117,7 +117,7 @@ def convert(h3m_path: str) -> tuple[VmapDocument, int, int]:
     )
 
 
-def extract_vmap() -> None:
+def extract_vmap(config: VcmiConfig) -> None:
     os.makedirs(OUT, exist_ok=True)
     maps = sorted(glob.glob(f"{ROOT}/maps/*.h3m"))
     ok = 0
@@ -125,7 +125,7 @@ def extract_vmap() -> None:
     total_unresolved = 0
     for p in maps:
         try:
-            doc, unresolved, n_obj = convert(p)
+            doc, unresolved, n_obj = convert(config, p)
         except Exception as e:
             print("PARSE FAIL", os.path.basename(p), e)
             continue

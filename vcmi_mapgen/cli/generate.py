@@ -26,6 +26,8 @@ from vcmi_mapgen.renderers.overlays import (
     TileTypeOverlay,
     ZoneOverlay,
 )
+from vcmi_mapgen.vcmi.formats.lod import lod
+from vcmi_mapgen.vcmi.install import VcmiInstall
 
 ROOT = project_root()
 ONTOLOGY = Ontology()
@@ -123,7 +125,7 @@ class GenerateOptions:
     stop_after: str | None
 
 
-def generate(opts: GenerateOptions) -> None:
+def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
     pipeline = Pipeline(ONTOLOGY, opts.size)
     for point_name, step in build_steps(
         opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain
@@ -153,7 +155,8 @@ def generate(opts: GenerateOptions) -> None:
     renderers = _parse_renderers(opts.renderers)
 
     if "png" in renderers:
-        png_renderer = PngRenderer()
+        index = lod(install.data_dir)
+        png_renderer = PngRenderer(index)
         png = os.path.join(str(ROOT), "out", "render", "pp", f"ppmap_s{opts.seed}.png")
         os.makedirs(os.path.dirname(png), exist_ok=True)
         png_renderer.render(map_state, level=0).save(png)
@@ -164,7 +167,7 @@ def generate(opts: GenerateOptions) -> None:
 
         overlays = parse_overlays(opts.overlays, loot_result.pockets)
         if overlays:
-            overlay_renderer = PngRenderer(overlays=overlays)
+            overlay_renderer = PngRenderer(index, overlays=overlays)
             ov_img = overlay_renderer.render(map_state, level=0)
             ov_png = os.path.join(
                 str(ROOT), "out", "render", "pp", f"ppmap_s{opts.seed}_overlays.png"
@@ -174,7 +177,7 @@ def generate(opts: GenerateOptions) -> None:
             print(f"  {ov_png}")
 
     if "vmap" in renderers:
-        vmap_renderer = VmapRenderer()
+        vmap_renderer = VmapRenderer(install=install)
         vmap = vmap_renderer.render(
             map_state,
             f"ppmap_s{opts.seed}.vmap",

@@ -8,6 +8,7 @@ Subcommands:
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
   extract-vmap    -> regenerate maps_vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
+  render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
 
 `generate` builds and runs a ``Pipeline`` (see ``core/pipeline.py``) from
 ``cli.steps.build_steps``; `render-ontology` stays outside that model entirely — it
@@ -22,6 +23,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import final
 
+from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.cli.corpus_match import corpus_match
 from vcmi_mapgen.cli.extract_vmap import extract_vmap
 from vcmi_mapgen.cli.generate import (
@@ -32,9 +34,14 @@ from vcmi_mapgen.cli.generate import (
     GenerateOptions,
     generate,
 )
+from vcmi_mapgen.cli.render_sprites import render_sprites
+from vcmi_mapgen.cli.settings import load_settings, open_install
 from vcmi_mapgen.cli.steps import GENERATE_STOP_POINTS
 from vcmi_mapgen.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.renderers.ontology_render import render_ontology
+from vcmi_mapgen.vcmi.config import load_config
+from vcmi_mapgen.vcmi.formats.lod import lod
+from vcmi_mapgen.vcmi.install import VcmiInstall
 
 
 @final
@@ -54,10 +61,19 @@ class Args(argparse.Namespace):
     stop_after: str | None = None
     only: list[str] | None = None
     seeds: Sequence[int] = ()
+    vmap: str | None = None
+    compare: str | None = None
+
+
+def _open_catalog() -> VcmiInstall:
+    install = open_install(load_settings())
+    ON.use_config(load_config(install))
+    return install
 
 
 def cmd_render_ontology(args: Args) -> None:
-    render_ontology(args.out)
+    install = _open_catalog()
+    render_ontology(lod(install.data_dir), args.out)
 
 
 def cmd_mine_stats(args: Args) -> None:
@@ -66,6 +82,7 @@ def cmd_mine_stats(args: Args) -> None:
 
 def cmd_generate(args: Args) -> None:
     generate(
+        _open_catalog(),
         GenerateOptions(
             seed=args.seed,
             size=args.size,
@@ -76,16 +93,24 @@ def cmd_generate(args: Args) -> None:
             overlays=args.overlays,
             renderers=args.renderers,
             stop_after=args.stop_after,
-        )
+        ),
     )
 
 
 def cmd_extract_vmap(_args: Args) -> None:
-    extract_vmap()
+    extract_vmap(load_config(open_install(load_settings())))
 
 
 def cmd_corpus_match(args: Args) -> None:
+    _ = _open_catalog()
     corpus_match(args.seeds, args.size, args.subterrain)
+
+
+def cmd_render_sprites(args: Args) -> None:
+    install = _open_catalog()
+    if args.vmap is None:
+        raise SystemExit("render-sprites needs a .vmap path")
+    render_sprites(install, args.vmap, args.compare, args.out)
 
 
 def main() -> None:
@@ -118,6 +143,14 @@ def main() -> None:
     _ = pcm.add_argument("--size", type=int, default=48)
     _ = pcm.add_argument("--subterrain", action="store_true")
     _ = pcm.set_defaults(func=cmd_corpus_match)
+
+    prs = sub.add_parser(
+        "render-sprites", help="render a .vmap with real H3 sprites to out/render/<name>_editor.png"
+    )
+    _ = prs.add_argument("vmap", nargs="?", default=None, help=".vmap path to render")
+    _ = prs.add_argument("--compare", default=None, help="corpus map name to render alongside")
+    _ = prs.add_argument("--out", default=None, help="output PNG path (default auto)")
+    _ = prs.set_defaults(func=cmd_render_sprites)
 
     pg = sub.add_parser(
         "generate", help="full map synthesized by the marked-point-process pipeline"

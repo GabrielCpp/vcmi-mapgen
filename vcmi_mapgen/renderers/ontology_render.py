@@ -17,6 +17,7 @@ from PIL import Image, ImageDraw
 from vcmi_mapgen import ontology as ON
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import sprites as RE
+from vcmi_mapgen.vcmi.formats.lod import LodIndex
 
 ROOT = project_root()
 
@@ -83,7 +84,7 @@ def _mask_overlay(full_sprite: Image.Image, grid: Sequence[str], tile: int) -> I
     return base
 
 
-def render_ontology(out: str | None = None) -> None:
+def render_ontology(index: LodIndex, out: str | None = None) -> None:
     """Render every leaf of the ontology tree to its full path on disk:
     out/ontology/<CLUSTER>/<PURPOSE>/<type>/<terrain>/<leaf>.png
     and, next to each, `<leaf>.mask.png` -- the same sprite with its passability mask overlaid
@@ -105,7 +106,7 @@ def render_ontology(out: str | None = None) -> None:
     per_cluster: collections.Counter[str] = collections.Counter()
     skipped = 0
     for cluster, purpose, typ, terrain, name, anim in ON.iter_leaves(tree):
-        groups = RE.get_def(anim)
+        groups = RE.get_def(index, anim)
         if not groups or not groups[0]:
             skipped += 1
             continue
@@ -126,7 +127,7 @@ def render_ontology(out: str | None = None) -> None:
         png = os.path.join(d, f"{leaf}.png")
         sprite.save(png)
         mpng = os.path.join(d, f"{leaf}.mask.png")  # same sprite with the passability mask overlaid
-        gridmask = ON.full_mask_of(anim) or ON.mask_of(anim)
+        gridmask = ON.full_mask_of(index, anim) or ON.mask_of(anim)
         _mask_overlay(full, gridmask, RE.TILE).save(mpng)
         per_cluster[cluster] += 1
         rows.append(

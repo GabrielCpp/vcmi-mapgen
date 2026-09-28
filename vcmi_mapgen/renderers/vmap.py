@@ -2,25 +2,25 @@
 
 from __future__ import annotations
 
-import glob
 import os
 from collections import defaultdict
 
 from vcmi_mapgen.core.model import JsonValue, MapState, PlacedObject
-from vcmi_mapgen.kit.paths import project_root, vcmi_home
+from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
+from vcmi_mapgen.vcmi.install import VcmiInstall
 
 ROOT = project_root()
 
 
-def _default_header() -> dict[str, JsonValue]:
+def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
     """A real RMG-produced .vmap header if a local VCMI install has one (richer fidelity
     -- rumors, difficulty, description, ... -- preserved via VmapDocument.extra), else
     the static template."""
-    rmg = glob.glob(os.path.join(vcmi_home(), "Maps", "RandomMaps", "*.vmap"))
+    rmg = list((install.home / "Maps" / "RandomMaps").glob("*.vmap")) if install else []
     if rmg:
-        return VM.read_header(rmg[0])
+        return VM.read_header(str(rmg[0]))
     tpl = ROOT / "data" / "vmap_header_template.json"
     return jv.as_object(jv.loads(tpl.read_text()))
 
@@ -35,9 +35,11 @@ class VmapRenderer:
     """
 
     out_dir: str
+    install: VcmiInstall | None
 
-    def __init__(self, out_dir: str | None = None) -> None:
+    def __init__(self, out_dir: str | None = None, install: VcmiInstall | None = None) -> None:
         self.out_dir = out_dir or str(ROOT / "out" / "vmap")
+        self.install = install
 
     def render(
         self, state: MapState, path: str, name: str = "pp-map", teams_spec: str = "ffa"
@@ -117,7 +119,7 @@ class VmapRenderer:
             two_level=len(terrain) > 1,
             terrain=terrain,
             objects=objects,
-            **VM.header_fields(_default_header()),
+            **VM.header_fields(_default_header(self.install)),
         )
         # Deterministic regardless of the header source's own key order (a real RMG
         # header's dict order isn't guaranteed alphabetical -- see AGENTS.md's

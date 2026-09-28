@@ -5,28 +5,23 @@ objects drawn back-to-front (painter's order).
 This replaces the dot/blob renders that hid structural problems.
 
 Usage:
-  uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap
-  uv run python -m vcmi_mapgen.renderers.sprites out/ZoneGraph-All_for_One-s0.vmap \\
+  uv run python -m vcmi_mapgen.cli render-sprites out/ZoneGraph-All_for_One-s0.vmap
+  uv run python -m vcmi_mapgen.cli render-sprites out/ZoneGraph-All_for_One-s0.vmap \\
       --compare "All for One"
     (side-by-side: generated left, real right re-rendered from the corpus .vmap)
 """
 
-import argparse
-import os
 from collections.abc import Sequence
+from functools import cache
 
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.defs import parse_def
-from vcmi_mapgen.vcmi.formats.lod import lod
+from vcmi_mapgen.vcmi.formats.lod import LodIndex
 from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument
-
-ROOT = project_root()
-
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
 TERR_DEF: dict[str, str] = {
@@ -52,27 +47,23 @@ SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
 }
 
 
-_def_cache: dict[str, list[list[Image.Image]] | None] = {}
+def get_def(index: LodIndex, name: str) -> list[list[Image.Image]] | None:
+    return _load_def(index, name.lower())
 
 
-def get_def(name: str) -> list[list[Image.Image]] | None:
-    key = name.lower()
-    if key in _def_cache:
-        return _def_cache[key]
-    data = lod().read(key)
+@cache
+def _load_def(index: LodIndex, key: str) -> list[list[Image.Image]] | None:
+    data = index.read(key)
     if data is None:
-        _def_cache[key] = None
         return None
     try:
-        groups: list[list[Image.Image]] | None = parse_def(data)
+        return parse_def(data)
     except Exception:
-        groups = None
-    _def_cache[key] = groups
-    return groups
+        return None
 
 
 # --------------------------------------------------------------------------- terrain tile decode
-def terr_tile_img(tile_str: str) -> Image.Image:
+def terr_tile_img(index: LodIndex, tile_str: str) -> Image.Image:
     """tile_str e.g. 'dt15_' -> 32x32 RGBA terrain tile image."""
     tc = tile_str[:2]
     rest = tile_str[2:]
@@ -89,7 +80,7 @@ def terr_tile_img(tile_str: str) -> Image.Image:
     def_name = TERR_DEF.get(tc)
     if def_name is None:
         return Image.new("RGBA", (TILE, TILE), (40, 40, 40, 255))
-    groups = get_def(def_name)
+    groups = get_def(index, def_name)
     if not groups or not groups[0]:
         return Image.new("RGBA", (TILE, TILE), (80, 40, 80, 255))
     frames = groups[0]
@@ -137,7 +128,7 @@ def read_real(name: str) -> tuple[list[list[str]], list[PlacedObject]]:
 
 
 def render_map(
-    surf: Sequence[Sequence[str]], objs: Sequence[PlacedObject], title: str = ""
+    index: LodIndex, surf: Sequence[Sequence[str]], objs: Sequence[PlacedObject], title: str = ""
 ) -> Image.Image:
     H, W = len(surf), len(surf[0])
     canvas = Image.new("RGB", (W * TILE, H * TILE), (0, 0, 0))
@@ -145,7 +136,7 @@ def render_map(
     # 1) terrain tiles
     for y in range(H):
         for x in range(W):
-            tile_img = terr_tile_img(surf[y][x])
+            tile_img = terr_tile_img(index, surf[y][x])
             canvas.paste(tile_img.convert("RGB"), (x * TILE, y * TILE))
 
     # 2) objects: painter's order = sort by y asc, then by x asc (back-to-front)
@@ -157,7 +148,7 @@ def render_map(
         anim = o.animation
         if not anim:
             continue
-        groups = get_def(anim)
+        groups = get_def(index, anim)
         if not groups or not groups[0]:
             miss += 1
             continue
@@ -175,46 +166,3 @@ def render_map(
     if title:
         ImageDraw.Draw(canvas).text((4, 4), title, fill=(255, 255, 255))
     return canvas
-
-
-class _Args(argparse.Namespace):
-    vmap: str = ""
-    compare: str | None = None
-    out: str | None = None
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    _ = ap.add_argument("vmap", help=".vmap path to render")
-    _ = ap.add_argument("--compare", default=None, help="corpus map name to render alongside")
-    _ = ap.add_argument("--out", default=None, help="output PNG path (default auto)")
-    args = ap.parse_args(namespace=_Args())
-
-    surf, objs = read_vmap(args.vmap)
-    gen_img = render_map(surf, objs, title=os.path.basename(args.vmap))
-
-    if args.compare:
-        rsurf, robjs = read_real(args.compare)
-        real_img = render_map(rsurf, robjs, title=f"REAL: {args.compare}")
-        gap = 8
-        canvas = Image.new(
-            "RGB",
-            (real_img.width + gen_img.width + gap, max(real_img.height, gen_img.height)),
-            (0, 0, 0),
-        )
-        canvas.paste(real_img, (0, 0))
-        canvas.paste(gen_img, (real_img.width + gap, 0))
-        out_img = canvas
-    else:
-        out_img = gen_img
-
-    out_path = args.out or os.path.join(
-        ROOT, "out", "render", os.path.basename(args.vmap).replace(".vmap", "_editor.png")
-    )
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    out_img.save(out_path)
-    print(f"wrote {out_path}  ({out_img.width}x{out_img.height})")
-
-
-if __name__ == "__main__":
-    main()
