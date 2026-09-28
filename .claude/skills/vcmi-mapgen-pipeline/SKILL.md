@@ -37,6 +37,10 @@ This skill covers how those pieces fit together. `vcmi-mapgen-maps` covers the d
   `map_state`. It passes `catalog` to every function that asks about an object. Every step must write onto it. Anything a later step needs goes out as a
   typed dataclass through `ctx.provide(...)`.
 
+Each step's published values live in its `result.py`. A step may import another step's
+`result` module, and nothing else from that step. `LootResult` sits in
+`core/steps/loot/result.py`:
+
 ```python
 @dataclass
 class LootResult:
@@ -59,7 +63,7 @@ class LootStep(PipelineStep):
         self._ctx.provide(LootResult(pockets=pockets_by_level))
 ```
 
-`grep -n "provide(" vcmi_mapgen/steps/*/step.py` lists every value currently published.
+`grep -n "provide(" vcmi_mapgen/core/steps/*/step.py` lists every value currently published.
 Never key the registry by string. There is no `ctx["name"]` channel.
 
 ## `run` reads, calls and writes
