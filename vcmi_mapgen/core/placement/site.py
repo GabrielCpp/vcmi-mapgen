@@ -26,11 +26,13 @@ from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
+    Guard,
     Identity,
-    JsonValue,
+    Payload,
     PlacedObject,
     Role,
     Tile,
+    Town,
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -46,88 +48,6 @@ from vcmi_mapgen.core.placement.intensity import Covariates, gate_dist, intensit
 from vcmi_mapgen.core.placement.place import web_dist
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.corpus.gameplay import load_gameplay
-
-# every base-game learnable spell (config/spells/{adventure,other,offensive,timed}.json,
-# indices 0-69) — a town's Mage Guild picks its taught spells from this pool, so omitting
-# it (as opposed to leaving it empty) is what VCMI reads as "no spells available". Creature
-# abilities (config/spells/ability.json, indices 70-81: stoneGaze, poison, ...) are not
-# learnable spells and are excluded, matching real VCMI RMG output.
-CORE_SPELLS: list[JsonValue] = [
-    "core:" + name
-    for name in (
-        "summonBoat",
-        "scuttleBoat",
-        "visions",
-        "viewEarth",
-        "disguise",
-        "viewAir",
-        "fly",
-        "waterWalk",
-        "dimensionDoor",
-        "townPortal",
-        "quicksand",
-        "landMine",
-        "forceField",
-        "fireWall",
-        "earthquake",
-        "dispel",
-        "cure",
-        "resurrection",
-        "animateDead",
-        "sacrifice",
-        "teleport",
-        "removeObstacle",
-        "clone",
-        "fireElemental",
-        "earthElemental",
-        "waterElemental",
-        "airElemental",
-        "magicArrow",
-        "iceBolt",
-        "lightningBolt",
-        "implosion",
-        "chainLightning",
-        "frostRing",
-        "fireball",
-        "inferno",
-        "meteorShower",
-        "deathRipple",
-        "destroyUndead",
-        "armageddon",
-        "titanBolt",
-        "shield",
-        "airShield",
-        "fireShield",
-        "protectAir",
-        "protectFire",
-        "protectWater",
-        "protectEarth",
-        "antiMagic",
-        "magicMirror",
-        "bless",
-        "curse",
-        "bloodlust",
-        "precision",
-        "weakness",
-        "stoneSkin",
-        "disruptingRay",
-        "prayer",
-        "mirth",
-        "sorrow",
-        "fortune",
-        "misfortune",
-        "haste",
-        "slow",
-        "slayer",
-        "frenzy",
-        "counterstrike",
-        "berserk",
-        "hypnotize",
-        "forgetfulness",
-        "blind",
-    )
-]
-
 
 # guard strength tracks the value guarded: mine guards by resource rarity. Every mine is
 # guarded (user-reported bug: unguarded mines), valuable mines scaling higher still. The
@@ -150,19 +70,14 @@ MINE_GUARD_LVL = {
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3
 MIN_WEIGHT = 1e-300
-TOWN_OPTIONS: dict[str, JsonValue] = {
-    "buildings": {"allOf": ["core:fort", "core:tavern", "core:dwellingLvl1", "core:dwellingLvl2"]},
-    "possibleSpells": CORE_SPELLS,
-}
-GUARD_OPTIONS: dict[str, JsonValue] = {"character": "hostile"}
 
 
 def back_score(
-    ident: Identity, anchor: Tile, unwalkable: AbstractSet[Tile], size: tuple[int, int]
+    fp: Footprint, anchor: Tile, unwalkable: AbstractSet[Tile], size: tuple[int, int]
 ) -> int:
     """Per sprite column, the topmost drawn tile scores 1 when it is unwalkable and 1 more
     when the tile above it is. Off-map counts as unwalkable. A 1-tile object scores 0."""
-    cells = [t for t, _role in ident.footprint.at(*anchor)]
+    cells = [t for t, _role in fp.at(*anchor)]
     if len(cells) < 2:
         return 0
     top: dict[int, int] = {}
@@ -176,8 +91,8 @@ def back_score(
     return sum(bad(x, y) + bad(x, y - 1) for x, y in top.items())
 
 
-def door_cells(ident: Identity, anchor: Tile) -> list[Tile]:
-    return [t for t, role in ident.footprint.at(*anchor) if role.interactive]
+def door_cells(fp: Footprint, anchor: Tile) -> list[Tile]:
+    return [t for t, role in fp.at(*anchor) if role.interactive]
 
 
 def walk_on_only(fp: Footprint) -> bool:
@@ -249,11 +164,11 @@ def es_key(rng: random.Random, weight: float) -> float:
     return math.log(1.0 - rng.random()) / max(weight, MIN_WEIGHT)
 
 
-def options_for(purpose: str) -> dict[str, JsonValue] | None:
+def payload_for(purpose: str) -> Payload | None:
     if purpose == Purpose.GUARD:
-        return dict(GUARD_OPTIONS)
+        return Guard()
     if purpose == Purpose.TOWN:
-        return dict(TOWN_OPTIONS)
+        return Town()
     return None
 
 
@@ -368,7 +283,7 @@ class ZoneSite:
         approach = fit[2]
         if approach not in self.reach or not lf.walkable(approach):
             return None
-        if not all(lf.walkable(t) for t in door_cells(ident, anchor)):
+        if not all(lf.walkable(t) for t in door_cells(ident.footprint, anchor)):
             return None
         if mine and not self._front_open(ident, fit):
             return None
@@ -399,7 +314,7 @@ class ZoneSite:
         )
 
     def back(self, ident: Identity, anchor: Tile) -> int:
-        return back_score(ident, anchor, self.lf.unwalkable, self.lf.size)
+        return back_score(ident.footprint, anchor, self.lf.unwalkable, self.lf.size)
 
     def set_reach(self, reach: set[Tile]) -> None:
         self.reach = reach
@@ -479,7 +394,7 @@ class ZoneSite:
         self, purpose: str, ident: Identity, anchor: Tile, fit: Fit
     ) -> PlacedObject | None:
         obj = PlacedObject.at(
-            ident, anchor, level=self.lf.level, purpose=purpose, options=options_for(purpose)
+            ident, anchor, level=self.lf.level, purpose=purpose, payload=payload_for(purpose)
         )
         if not self.lf.accepts(obj):
             return None
@@ -525,7 +440,7 @@ class ZoneSite:
             tile,
             level=self.lf.level,
             purpose=Purpose.GUARD,
-            options=options_for(Purpose.GUARD),
+            payload=Guard(),
         )
         self.lf.covers.add(guard)
         self.lf.occupied.add(tile)
@@ -534,7 +449,7 @@ class ZoneSite:
         return guard
 
     def _guard_mine(self, mine: PlacedObject, approach: Tile) -> None:
-        subtype = str(mine.subtype)
+        subtype = str(self.catalog.identity_of(mine.kind).subtype)
         lvl = MINE_GUARD_LVL.get(subtype, 3)
         if subtype not in ("sawmill", "orePit") and self.rng.random() < 0.25:
             lvl += 1

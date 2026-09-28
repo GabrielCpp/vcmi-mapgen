@@ -4,7 +4,7 @@ steps.treasure.fill loot-zone content restrictions."""
 import collections
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Scroll, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
@@ -91,17 +91,18 @@ def _blocker(x: int, y: int) -> PlacedObject:
         y=y,
         level=0,
         purpose="",
-        type=None,
-        subtype=None,
-        animation="",
+        kind="",
         footprint=Footprint.one(Role.BLOCKING),
     )
 
 
 def _spell_of(o: PlacedObject) -> str:
-    spell = (o.options or {}).get("spell")
-    assert isinstance(spell, str)
-    return spell
+    assert isinstance(o.payload, Scroll)
+    return o.payload.spell
+
+
+def _type(catalog: Catalog, o: PlacedObject) -> str:
+    return catalog.identity_of(o.kind).type or ""
 
 
 def _zone_records(
@@ -277,18 +278,19 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories(catalog: Catalo
     hero_structure_types_seen: list[str] = []
     for o in objs:
         purpose = o.purpose
-        typ = o.type
+        ident = catalog.identity_of(o.kind)
+        typ = ident.type or ""
         if typ in _ALLOWED_HERO_STRUCTURE_TYPES:
             hero_structure_types_seen.append(typ)
         elif purpose == Purpose.REWARD_PICKUP and typ != "artifact":
             if typ == "spellScroll":
                 # VCMI's spellScroll object has exactly one subtype ("object"); the
                 # spell itself lives in options.spell, never in subtype.
-                if o.subtype != "object" or _spell_of(o) not in _high_spells(catalog):
+                if ident.subtype != "object" or _spell_of(o) not in _high_spells(catalog):
                     violations.append(o)
             elif typ not in _ALLOWED_CHEST_TYPES | _ALLOWED_ART_TYPES:
                 violations.append(o)
-        elif purpose == Purpose.RESOURCE_PILE and o.subtype not in _ALLOWED_RESOURCE_SUBTYPES:
+        elif purpose == Purpose.RESOURCE_PILE and ident.subtype not in _ALLOWED_RESOURCE_SUBTYPES:
             violations.append(o)
     assert violations == []
     counts = collections.Counter(hero_structure_types_seen)
@@ -387,7 +389,7 @@ def test_loot_zone_fill_across_many_seeds_never_exceeds_two_per_hero_structure(
         )
         if n_placed != 1:
             continue
-        types = [o.type for o in objs if o.type in _ALLOWED_HERO_STRUCTURE_TYPES]
+        types = [t for t in (_type(catalog, o) for o in objs) if t in _ALLOWED_HERO_STRUCTURE_TYPES]
         counts = collections.Counter(types)
         assert all(n <= 2 for n in counts.values()), (
             f"seed {seed}: a hero structure was placed more than twice: {counts}"
@@ -413,8 +415,8 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
             continue
         by_type: collections.defaultdict[str, list[Tile]] = collections.defaultdict(list)
         for o in objs:
-            if o.type in _ALLOWED_HERO_STRUCTURE_TYPES:
-                by_type[o.type].append((o.x, o.y))
+            if (t := _type(catalog, o)) in _ALLOWED_HERO_STRUCTURE_TYPES:
+                by_type[t].append((o.x, o.y))
         for typ, positions in by_type.items():
             assert len(positions) <= 2, f"seed {seed}: {typ} placed {len(positions)} times"
             if len(positions) == 2:
@@ -454,7 +456,7 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
         )
         if n_placed != 1:
             continue
-        types = {o.type for o in objs if o.type in _ALLOWED_HERO_STRUCTURE_TYPES}
+        types = {t for t in (_type(catalog, o) for o in objs) if t in _ALLOWED_HERO_STRUCTURE_TYPES}
         counts.append(len(types))
     assert counts, "fixture assumption broke: no seed produced a loot zone"
     assert max(counts) == len(_ALLOWED_HERO_STRUCTURE_TYPES), (
@@ -479,7 +481,7 @@ def test_loot_zone_fill_pass2_uses_the_20_40_40_split(catalog: Catalog) -> None:
         for o in objs:
             if (o.x, o.y) not in ts0:
                 continue
-            typ = o.type
+            typ = _type(catalog, o)
             if typ in _ALLOWED_HERO_STRUCTURE_TYPES:
                 continue
             if typ in _ALLOWED_ART_TYPES:
@@ -508,7 +510,7 @@ def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll(
         objs, _n_placed, _zids = _place(
             catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
         )
-        scroll = next((o for o in objs if o.type == "spellScroll"), None)
+        scroll = next((o for o in objs if _type(catalog, o) == "spellScroll"), None)
         if scroll is not None:
             found = scroll
             break
@@ -530,11 +532,12 @@ def test_spell_scroll_objects_carry_the_spell_in_options_not_subtype(catalog: Ca
             catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
         )
         for o in objs:
-            if o.type != "spellScroll":
+            ident = catalog.identity_of(o.kind)
+            if ident.type != "spellScroll":
                 continue
             seen += 1
-            assert o.subtype == "object", (
-                f"seed {seed}: spellScroll subtype {o.subtype!r} must be "
+            assert ident.subtype == "object", (
+                f"seed {seed}: spellScroll subtype {ident.subtype!r} must be "
                 f"'object' -- the spell name belongs in options.spell"
             )
             spell = _spell_of(o)

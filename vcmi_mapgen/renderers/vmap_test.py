@@ -9,13 +9,13 @@ import pytest
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
 from vcmi_mapgen.core.model import JsonValue, MapState, PlacedObject
-from vcmi_mapgen.core.placement.site import CORE_SPELLS
 from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.kit import tiling as ZE
 from vcmi_mapgen.renderers.vmap import VmapRenderer
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
+from vcmi_mapgen.vcmi.options import CORE_SPELLS, options_of
 
 
 def _install() -> VcmiInstall | None:
@@ -45,8 +45,9 @@ def _template_mask(vo: dict[str, JsonValue]) -> list[str]:
 
 
 def _opts(o: PlacedObject) -> dict[str, JsonValue]:
-    assert o.options is not None
-    return o.options
+    opts = options_of(o.payload)
+    assert opts is not None
+    return opts
 
 
 def _vopts(vo: dict[str, JsonValue]) -> dict[str, JsonValue]:
@@ -87,7 +88,7 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
     guards = [o for o in objs if o.purpose == "GUARD"]
     assert all(_opts(o)["character"] == "hostile" for o in guards)
     # random dwellings in a town zone are marked with the town's coordinates ...
-    rdwell = [o for o in objs if (o.type or "").startswith("randomDwelling")]
+    rdwell = [o for o in objs if (ON.identity_of(o.kind).type or "").startswith("randomDwelling")]
     assert all(_opts(o)["sameAsTown"] == [town.x, town.y, 0] for o in rdwell)
     # ... and they survive the .vmap round trip, with sprite-extent masks
     grid = [[2] * 30 for _ in range(24)]

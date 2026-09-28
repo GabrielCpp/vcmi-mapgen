@@ -32,9 +32,7 @@ def load_map(path: str) -> MapState:
             y=o.y,
             level=o.level,
             purpose=ON.purpose_of_type(o.type) or Purpose.UNKNOWN,
-            type=o.type,
-            subtype=o.subtype,
-            animation=o.animation,
+            kind=o.animation,
             footprint=footprint_of(
                 ON.mask_of(o.animation) if ON.has_animation(o.animation) else o.mask
             ),

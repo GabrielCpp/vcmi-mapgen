@@ -1,8 +1,8 @@
 """Tests for the one reward builder and the payloads built on it."""
 
-import json
 import random
 
+from vcmi_mapgen.core.model import Reward
 from vcmi_mapgen.core.placement.rewards import (
     PANDORA_TIER,
     SEERHUT_TIER,
@@ -26,9 +26,5 @@ def test_seer_hut_tier_pays_above_the_pandora_tier() -> None:
 def test_payloads_share_one_rewardable_shape() -> None:
     pandora = pandora_reward(random.Random(1))
     quest = seerhut_quest(random.Random(1), "shieldOfTheDwarvenLords")
-    assert set(pandora) == {"guardMessage", "rewardable"}
-    assert set(quest) == {"quest", "rewardable"}
-    assert "core:shieldOfTheDwarvenLords" in json.dumps(quest["quest"])
-    p_rw, q_rw = pandora["rewardable"], quest["rewardable"]
-    assert isinstance(p_rw, dict) and isinstance(q_rw, dict)
-    assert set(p_rw) == set(q_rw)
+    assert quest.artifact == "shieldOfTheDwarvenLords"
+    assert isinstance(pandora, Reward) and isinstance(quest.reward, Reward)

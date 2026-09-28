@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Container, Iterable, Iterator
 
-from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
 
 
 def anchored_cells(fp: Footprint, x: int, y: int) -> Iterator[tuple[int, int, bool]]:
@@ -68,15 +68,13 @@ def front_tiles(fp: Footprint, x: int, y: int) -> set[Tile]:
     return front
 
 
-def footprint_cells(
-    ident: Identity, ax: int, ay: int
-) -> tuple[list[Tile], list[Tile], Tile | None]:
-    """(all_cells, blocking_cells, approach) of an identity anchored at (ax, ay); approach is
+def footprint_cells(fp: Footprint, ax: int, ay: int) -> tuple[list[Tile], list[Tile], Tile | None]:
+    """(all_cells, blocking_cells, approach) of a footprint anchored at (ax, ay); approach is
     the tile a hero stands on to visit: below an entrance, or a visit cell itself."""
     allc: list[Tile] = []
     blk: list[Tile] = []
     approach: Tile | None = None
-    for (tx, ty), role in ident.footprint.at(ax, ay):
+    for (tx, ty), role in fp.at(ax, ay):
         allc.append((tx, ty))
         if role.blocks:
             blk.append((tx, ty))

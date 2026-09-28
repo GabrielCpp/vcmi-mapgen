@@ -1,12 +1,11 @@
 """Tests for the seer hut quests."""
 
-import json
 import os
 
 import pytest
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Tile
+from vcmi_mapgen.core.model import Quest, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.steps.loot.quests import SeerHutContext, place_seer_hut_quests
@@ -41,5 +40,7 @@ def test_seer_hut_asks_for_the_artifact_placed_for_it(catalog: Catalog) -> None:
     arts = [o for o in objs if o.purpose == Purpose.REWARD_PICKUP]
     huts = [o for o in objs if o.purpose == Purpose.QUEST_GATE]
     assert len(arts) == 1 and len(huts) == 1
-    assert used == {arts[0].subtype}
-    assert f"core:{arts[0].subtype}" in json.dumps(huts[0].options)
+    art = catalog.identity_of(arts[0].kind).subtype
+    assert used == {art}
+    quest = huts[0].payload
+    assert isinstance(quest, Quest) and quest.artifact == art

@@ -17,13 +17,13 @@ class TerrainViolation:
 def footprint_violations(
     catalog: Catalog, grid: list[list[Cell]], obj: PlacedObject
 ) -> Iterator[TerrainViolation]:
-    if not obj.animation:
+    if not obj.kind:
         return
     for tx, ty, _blocking in anchored_cells(obj.footprint.solid(), obj.x, obj.y):
         if not (0 <= ty < len(grid) and 0 <= tx < len(grid[ty])):
             continue
         code = grid[ty][tx].t
-        if not catalog.allowed_on(obj.animation, code):
+        if not catalog.allowed_on(obj.kind, code):
             yield TerrainViolation(obj, (tx, ty), catalog.terrain_name(code) or str(code))
 
 
@@ -37,6 +37,6 @@ class TerrainGate:
         if grid is None:
             return []
         return [
-            f"{obj.animation} at {v.tile} on {v.terrain}"
+            f"{obj.kind} at {v.tile} on {v.terrain}"
             for v in footprint_violations(self._catalog, grid, obj)
         ]

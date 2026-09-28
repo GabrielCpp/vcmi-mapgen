@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from vcmi_mapgen.core.model import JsonValue, MapState
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.footprint import mask_rows
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import VcmiInstall
+from vcmi_mapgen.vcmi.options import options_of
 from vcmi_mapgen.vcmi.players import main_town
 
 ROOT = project_root()
+ALL_SIDES: tuple[str, ...] = ("+++", "+-+", "+++")
 
 
 def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
@@ -25,8 +28,10 @@ def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
 
 
 def build_document(state: MapState, name: str, install: VcmiInstall | None) -> VM.VmapDocument:
-    """A finished MapState -> a full, writable VmapDocument: builds each object's
-    VCMI-charset mask/visitableFrom, resolves `options["sameAsTown"]` markers
+    """A finished MapState -> a full, writable VmapDocument: derives each object's VCMI
+    type and subtype from its kind, turns its payload into VCMI options, builds its
+    VCMI-charset mask/visitableFrom (a borderGate opens from every side), resolves
+    `options["sameAsTown"]` markers
     ([x, y, l]) to the real town's instanceName, and gives every player slot a
     starting town in reading order (surface first) so the map opens playable even
     before `players.apply_playability` runs its own, player-order-aware wiring.
@@ -38,27 +43,29 @@ def build_document(state: MapState, name: str, install: VcmiInstall | None) -> V
     terrain = [[[VM.tile_string(c) for c in row] for row in lvl] for lvl in levels]
     height, width = len(terrain[0]), len(terrain[0][0]) if terrain[0] else 0
 
-    real_objs = [o for o in state.objs if o.type]
+    typed = [(o, OB.identity_of(o.kind)) for o in state.objs]
+    real = [(o, ident) for o, ident in typed if ident.type]
+    real_objs = [o for o, _ident in real]
     objects: list[VM.VmapObject] = []
-    for o in real_objs:
+    for o, ident in real:
         mask = VM.export_mask(o)
         vf = (
-            list(o.visitable_from)
-            if o.visitable_from
+            list(ALL_SIDES)
+            if ident.type == "borderGate"
             else VM.visitable_from(mask_rows(o.footprint))
         )
         objects.append(
             VM.VmapObject(
                 instance_name="",
-                type=o.type or "",
-                subtype=o.subtype,
+                type=ident.type or "",
+                subtype=ident.subtype,
                 level=o.level,
                 x=o.x,
                 y=o.y,
-                animation=o.animation,
+                animation=o.kind,
                 mask=mask,
                 visitable_from=vf,
-                options=dict(o.options) if o.options else None,
+                options=options_of(o.payload),
             )
         )
     for n, vo in enumerate(objects, 1):

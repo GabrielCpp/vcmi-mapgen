@@ -396,7 +396,6 @@ class GatedPlacer:
 
     def _commit_gate(self, gate_ident: Identity, g: Tile, cells: _Cells) -> bool:
         gate_obj = PlacedObject.at(gate_ident, g, purpose=Purpose.QUEST_GATE)
-        gate_obj.visitable_from = ("+++", "+-+", "+++")
         if not self.cover.try_claim(gate_obj, [(cx, cy) for cx, cy, _b in cells]):
             return False
         self.objs.append(gate_obj)

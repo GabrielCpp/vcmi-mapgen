@@ -95,13 +95,13 @@ class VcmiCatalog:
     def quest_givers(self, terrain: str | int) -> list[Identity]:
         return sorted(
             (h for h in DC.pool(Purpose.QUEST_GATE, terrain) if h.type == RO.QUEST_GIVER_TYPE),
-            key=lambda h: h.animation,
+            key=lambda h: h.kind,
         )
 
     def spell_scroll(self, spell: str) -> Identity:
         return Identity(
             type="spellScroll",
             subtype=spell,
-            animation=RO.SPELL_SCROLL,
+            kind=RO.SPELL_SCROLL,
             footprint=Footprint.one(Role.VISIT),
         )

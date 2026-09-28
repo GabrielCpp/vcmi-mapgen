@@ -83,21 +83,21 @@ def pool(
             for i in decor_pool(
                 terrain, blocking=blocking, max_cells=max_cells, exclude_types=exclude_types
             )
-            if idx.anim_category.get(i.animation) == object_class
+            if idx.anim_category.get(i.kind) == object_class
         ]
     return [
         i
         for i in gameplay_pool(terrain, object_class)
-        if (blocking is None or is_blocking(i.animation) == blocking)
-        and (max_cells is None or footprint_size(i.animation) <= max_cells)
-        and idx.anim_category.get(i.animation) not in set(exclude_types)
+        if (blocking is None or is_blocking(i.kind) == blocking)
+        and (max_cells is None or footprint_size(i.kind) <= max_cells)
+        and idx.anim_category.get(i.kind) not in set(exclude_types)
     ]
 
 
 def pick(object_class: str, terrain: str | int, rng: Random) -> Identity | None:
     """One identity of an object class allowed on a terrain, drawn uniformly with ``rng``.
     None when the class has nothing native to that terrain."""
-    candidates = sorted(pool(object_class, terrain), key=lambda i: i.animation)
+    candidates = sorted(pool(object_class, terrain), key=lambda i: i.kind)
     return rng.choice(candidates) if candidates else None
 
 

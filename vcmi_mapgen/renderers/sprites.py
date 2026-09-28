@@ -112,7 +112,7 @@ def render_map(
     for o in sorted_objs:
         if o.level != 0:
             continue
-        anim = o.animation
+        anim = o.kind
         if not anim:
             continue
         groups = get_def(index, anim)

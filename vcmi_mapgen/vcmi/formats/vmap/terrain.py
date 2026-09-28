@@ -104,5 +104,5 @@ def export_mask(o: PlacedObject) -> list[str]:
     instance mask; otherwise the instance mask translated to VCMI's charset (the editor
     table and a map instance legitimately disagree for a handful of corpus dwellings)."""
     inst = vcmi_mask(mask_rows(o.footprint))
-    vm = ON.vmap_mask_of(o.animation)
+    vm = ON.vmap_mask_of(o.kind)
     return list(vm) if vm and _trim_v(vm) == _trim_v(inst) else inst

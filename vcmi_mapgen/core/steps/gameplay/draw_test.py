@@ -5,7 +5,7 @@ import os
 import pytest
 
 from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
-from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import GAP
@@ -18,7 +18,7 @@ needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined
 
 def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
 
-    return footprint_cells(Identity(o.type, o.subtype, o.animation, o.footprint), o.x, o.y)
+    return footprint_cells(o.footprint, o.x, o.y)
 
 
 @needs_stats
@@ -43,7 +43,8 @@ def test_gameplay_layer_legal_and_deterministic(open_zone: OpenZonePlacer) -> No
             (Role.OVERLAY, Role.OVERLAY),
             (Role.OVERLAY, Role.VISIT),
         )
-        assert (g.type or "").startswith("randomMonster"), "guards are random monsters"
+        gtype = open_zone.catalog.identity_of(g.kind).type
+        assert (gtype or "").startswith("randomMonster"), "guards are random monsters"
     for s in (o for o in objs if o.purpose == Purpose.MINE_SEAL):
         assert (s.x, s.y) in ts and s.footprint == Footprint.one(Role.BLOCKING), (
             "a mine seal is a single blocking cell"
@@ -84,7 +85,8 @@ def test_forced_town_sits_on_zone_centroid(open_zone: OpenZonePlacer) -> None:
     t = towns[0]
     # player start towns are ALWAYS randomTown: VCMI resolves an owned random town to the
     # lobby faction pick — a concrete start town would override the player's choice
-    assert t.type == "randomTown", f"forced town must be randomTown, got {t.type}"
+    ttype = open_zone.catalog.identity_of(t.kind).type
+    assert ttype == "randomTown", f"forced town must be randomTown, got {ttype}"
     mh = t.footprint.height
     mw = t.footprint.width
     fx = t.x - (mw - 1) / 2.0  # footprint centre (bottom-right anchor)
@@ -105,14 +107,15 @@ def test_town_zone_gets_wood_and_ore_next_to_town(open_zone: OpenZonePlacer) -> 
         objs = open_zone(OpenZone(ts, "grass", player=True), seed).gobjs
         towns = [o for o in objs if o.purpose == Purpose.TOWN]
         assert towns, f"seed {seed}: forced town missing"
-        subs = {o.subtype for o in objs if o.purpose == Purpose.MINE}
+        sub_of = {id(o): open_zone.catalog.identity_of(o.kind).subtype for o in objs}
+        subs = {sub_of[id(o)] for o in objs if o.purpose == Purpose.MINE}
         assert {"sawmill", "orePit"} <= subs, f"seed {seed}: economy pair missing ({subs})"
         t = towns[0]
         for m in (
-            o for o in objs if o.purpose == Purpose.MINE and o.subtype in ("sawmill", "orePit")
+            o for o in objs if o.purpose == Purpose.MINE and sub_of[id(o)] in ("sawmill", "orePit")
         ):
             d = max(abs(m.x - t.x), abs(m.y - t.y))
-            assert d <= 12, f"seed {seed}: {m.subtype} is {d} tiles from the town"
+            assert d <= 12, f"seed {seed}: {sub_of[id(m)]} is {d} tiles from the town"
 
 
 @needs_stats
@@ -148,8 +151,9 @@ def test_mine_sprites_match_terrain(open_zone: OpenZonePlacer) -> None:
         for seed in range(1, 8):
             objs = open_zone(OpenZone(ts, terrain), seed).gobjs
             for m in (o for o in objs if o.purpose == Purpose.MINE):
-                w = mw.get(m.animation.lower(), 0)
+                w = mw.get(m.kind.lower(), 0)
                 assert w > 0, (
-                    f"{terrain}: mine variant {m.animation} "
-                    f"({m.subtype}) never used on {terrain} in the corpus"
+                    f"{terrain}: mine variant {m.kind} "
+                    f"({open_zone.catalog.identity_of(m.kind).subtype}) never used on "
+                    f"{terrain} in the corpus"
                 )

@@ -84,9 +84,7 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
                         y=o.y,
                         level=o.level,
                         purpose="",
-                        type=vtype,
-                        subtype=sub,
-                        animation=anim,
+                        kind=anim,
                         footprint=footprint_of(internal_mask),
                     )
                 ),

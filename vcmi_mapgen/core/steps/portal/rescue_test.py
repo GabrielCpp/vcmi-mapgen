@@ -6,6 +6,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
+    Guard,
     Identity,
     PlacedObject,
     Role,
@@ -112,8 +113,9 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
 
     n, objs, targets = run()
     assert n == 1, "the enclave must be rescued by exactly one portal pair"
-    mono = [o for o in objs if o.type == "monolithTwoWay"]
-    assert len(mono) == 2 and mono[0].subtype == mono[1].subtype, "a same-subtype two-way pair"
+    mono = [o for o in objs if catalog.identity_of(o.kind).type == "monolithTwoWay"]
+    subs = {catalog.identity_of(o.kind).subtype for o in mono}
+    assert len(mono) == 2 and len(subs) == 1, "a same-subtype two-way pair"
     far = [o for o in mono if (o.x, o.y) in inner]
     near = [o for o in mono if (o.x, o.y) in ts1]
     assert len(far) == 1 and len(near) == 1, "one end inside, one end in the host zone"
@@ -121,7 +123,7 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
     guards = [
         o for o in objs if o.purpose == Purpose.GUARD and max(abs(o.x - nx), abs(o.y - ny)) == 1
     ]
-    assert guards and guards[0].options == {"character": "hostile"}, (
+    assert guards and guards[0].payload == Guard(), (
         "a hostile guard must sit adjacent to the reachable-side end"
     )
     loot = [o for o in objs if o.cache]

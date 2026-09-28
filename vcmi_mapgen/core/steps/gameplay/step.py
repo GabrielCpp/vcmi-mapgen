@@ -51,7 +51,7 @@ def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> None:
                     + "could not fit its town"
                 )
             else:
-                print(f"  zone {site.zid}: no spot for TOWN {draw.town.animation}")
+                print(f"  zone {site.zid}: no spot for TOWN {draw.town.kind}")
 
 
 def place_mines(site: ZoneSite, draw: ZoneDraw, ledger: Ledger, placed_res: set[str]) -> None:
@@ -68,7 +68,7 @@ def place_mines(site: ZoneSite, draw: ZoneDraw, ledger: Ledger, placed_res: set[
         if site.place(Purpose.MINE, ident, centres) is not None:
             placed_res.add(res)
             continue
-        print(f"  zone {site.zid}: no spot for MINE {ident.animation}")
+        print(f"  zone {site.zid}: no spot for MINE {ident.kind}")
         if res in BASIC_MINE_RES and res not in placed_res:
             ledger.missing.add(res)
 
@@ -92,7 +92,7 @@ def _town_order(site: ZoneSite, ident: Identity) -> list[Tile]:
 
 
 def _footprint_size(ident: Identity) -> int:
-    return len(footprint_cells(ident, 0, 0)[0])
+    return len(footprint_cells(ident.footprint, 0, 0)[0])
 
 
 _TIE_ORDER = (None, Role.VISIT, Role.BLOCKING, Role.OVERLAY, Role.ENTRANCE)
@@ -105,7 +105,7 @@ def _shape_key(fp: Footprint) -> tuple[tuple[int, ...], ...]:
 def _smaller(site: ZoneSite, pool: Sequence[Identity], ident: Identity) -> list[Identity]:
     size = _footprint_size(ident)
     by_shape: dict[Footprint, list[Identity]] = {}
-    for cand in sorted(pool, key=lambda i: i.animation):
+    for cand in sorted(pool, key=lambda i: i.kind):
         if _footprint_size(cand) < size:
             by_shape.setdefault(cand.footprint, []).append(cand)
     shapes = sorted(
@@ -128,7 +128,7 @@ def place_attractions(site: ZoneSite, draw: ZoneDraw) -> None:
             continue
         smaller = _smaller(site, draw.pools.get(purpose, []), ident)
         if not any(site.place(purpose, alt, order) is not None for alt in smaller):
-            print(f"  zone {site.zid}: no spot for {purpose} {ident.animation}")
+            print(f"  zone {site.zid}: no spot for {purpose} {ident.kind}")
 
 
 @final
@@ -199,7 +199,7 @@ class GameplayStep(PipelineStep):
             self._place_shipyards(indexes[0], map_state, catalog)
         for (level, zid), draw in sorted(draws.items()):
             place_attractions(indexes[level].sites[zid], draw)
-        self._finish(indexes, map_state, gate)
+        self._finish(catalog, indexes, map_state, gate)
         if ledger.missing:
             print(f"  WARNING: mine coverage incomplete — missing {sorted(ledger.missing)}")
         self._ctx.provide(gates)
@@ -298,21 +298,26 @@ class GameplayStep(PipelineStep):
         print(f"  L0 seaport guarantee: {n} shipyard(s) added")
 
     def _finish(
-        self, indexes: dict[int, SiteIndex], map_state: MapState, gate: TerrainGate
+        self,
+        catalog: Catalog,
+        indexes: dict[int, SiteIndex],
+        map_state: MapState,
+        gate: TerrainGate,
     ) -> None:
         towns: dict[tuple[int, int], list[PlacedObject]] = {}
         for level, idx in sorted(indexes.items()):
             lw = self._workspace.levels[level]
             for zid, site in sorted(idx.sites.items()):
                 site.write_back()
-                tie_dwellings(site.zw.gobjs)
+                tie_dwellings(catalog, site.zw.gobjs)
                 self.objs.extend(site.objs)
                 zone_towns = [o for o in site.objs if o.purpose == Purpose.TOWN]
                 if zone_towns:
                     lw.town_of_zone[zid] = zone_towns[0]
                     towns[level, zid] = zone_towns
             blk, appr = ZPL.seaport_cells(
-                o for o in [*map_state.objs, *self.objs] if o.level == level
+                catalog,
+                [o for o in [*map_state.objs, *self.objs] if o.level == level],
             )
             lw.seaport_blk = frozenset(blk)
             lw.seaport_appr = frozenset(appr)

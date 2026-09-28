@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import Fit
 from vcmi_mapgen.core.placement.site import SiteIndex, ZoneSite, back_score, door_cells
@@ -27,10 +27,6 @@ class _Pending:
     reaches: tuple[tuple[ZoneSite, set[Tile]], ...]
 
 
-def _identity(obj: PlacedObject) -> Identity:
-    return Identity(obj.type, obj.subtype, obj.animation, obj.footprint)
-
-
 @final
 class _ShipyardHooks:
     def __init__(self, idx: SiteIndex) -> None:
@@ -41,14 +37,14 @@ class _ShipyardHooks:
         for site in idx.sites.values():
             self.banned |= site.zw.ent_bands | set(site.approaches) | site.cells
 
-    def _door_ok(self, ident: Identity, anchor: Tile, approach: Tile) -> ZoneSite | None:
+    def _door_ok(self, fp: Footprint, anchor: Tile, approach: Tile) -> ZoneSite | None:
         lf = self.lf
         owner = self.idx.site_at(approach)
         if owner is None or approach not in owner.reach or approach in lf.occupied:
             return None
         if not lf.walkable(approach) or approach in self.banned:
             return None
-        if not all(lf.walkable(t) for t in door_cells(ident, anchor)):
+        if not all(lf.walkable(t) for t in door_cells(fp, anchor)):
             return None
         return owner
 
@@ -62,11 +58,11 @@ class _ShipyardHooks:
         )
 
     def accept(self, obj: PlacedObject) -> bool:
-        ident, anchor = _identity(obj), (obj.x, obj.y)
-        allc, blk, approach = footprint_cells(ident, *anchor)
+        anchor = (obj.x, obj.y)
+        allc, blk, approach = footprint_cells(obj.footprint, *anchor)
         if approach is None or not self._cells_ok(allc, blk):
             return False
-        owner = self._door_ok(ident, anchor, approach)
+        owner = self._door_ok(obj.footprint, anchor, approach)
         if owner is None or not self.lf.accepts(obj):
             return False
         touched = {id(s): s for t in allc if (s := self.idx.site_at(t)) is not None}
@@ -81,7 +77,7 @@ class _ShipyardHooks:
         return True
 
     def score(self, ident: Identity, anchor: Tile) -> int:
-        return back_score(ident, anchor, self.lf.unwalkable, self.lf.size)
+        return back_score(ident.footprint, anchor, self.lf.unwalkable, self.lf.size)
 
     def placed(self, obj: PlacedObject) -> None:
         obj.level = self.lf.level

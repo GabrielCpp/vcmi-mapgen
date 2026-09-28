@@ -153,7 +153,7 @@ def _pick_art_zone(
                 for a in env.catalog.candidates(Purpose.REWARD_PICKUP, cand_art_zr.terrain)
                 if a.type == "artifact" and a.subtype not in env.used_artifacts
             ),
-            key=lambda a: a.animation,
+            key=lambda a: a.kind,
         )
         if not cand_pool_art:
             continue
@@ -184,9 +184,9 @@ def _place_hut(
     st_hut = load_gameplay()[hut_zr.terrain]
     hut_cands = sorted(hut_zr.reach - env.cover.claims)
     rng.shuffle(hut_cands)
-    options = seerhut_quest(rng, art_subtype)
+    quest = seerhut_quest(rng, art_subtype)
     target = PlaceTarget(
         env.catalog, env.objs, env.cover, hut_zr.reach, rng, st_hut, bounds=env.bounds
     )
-    spec = PlaceSpec(Purpose.QUEST_GATE, None, ident=hut_ident, options=options)
+    spec = PlaceSpec(Purpose.QUEST_GATE, None, ident=hut_ident, payload=quest)
     return any(place_one(target, spec, t[0], t[1]) for t in hut_cands)

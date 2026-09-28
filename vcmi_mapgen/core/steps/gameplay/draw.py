@@ -128,13 +128,13 @@ class ZoneDrawer:
             pool,
             lambda i: cast(
                 float,
-                (w.get(i.animation.lower(), 0) ** 0.5 + 0.3)
-                * (0.05 if i.animation.lower() in self.used_anims else 1.0),
+                (w.get(i.kind.lower(), 0) ** 0.5 + 0.3)
+                * (0.05 if i.kind.lower() in self.used_anims else 1.0),
             ),
             self.rng,
         )
         if ident is not None:
-            self.used_anims.add(ident.animation.lower())
+            self.used_anims.add(ident.kind.lower())
         return ident
 
     def _town(self) -> Identity | None:
@@ -154,7 +154,7 @@ class ZoneDrawer:
     def _resource(self, rest: Mapping[str, list[Identity]], mine_w: Mapping[str, int]) -> str:
         missing = self.ledger.missing & set(rest)
         keys = sorted(missing) if missing else sorted(rest)
-        rw = [sum(mine_w.get(i.animation.lower(), 0) for i in rest[k]) + 0.2 for k in keys]
+        rw = [sum(mine_w.get(i.kind.lower(), 0) for i in rest[k]) + 0.2 for k in keys]
         return self.rng.choices(keys, weights=rw, k=1)[0]
 
     def _mines(self, n: int) -> list[Identity]:

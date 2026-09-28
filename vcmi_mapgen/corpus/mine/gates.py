@@ -19,8 +19,7 @@ def _corpus_gates(fm: MapState) -> tuple[Tile, ...]:
         sorted(
             (o.x, o.y)
             for o in fm.objs
-            if o.level == 0
-            and (o.animation or "").lower().removesuffix(".def") == SUBTERRANEAN_GATE
+            if o.level == 0 and (o.kind or "").lower().removesuffix(".def") == SUBTERRANEAN_GATE
         )
     )
 

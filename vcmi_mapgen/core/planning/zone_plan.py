@@ -16,7 +16,7 @@ from vcmi_mapgen.core.grid.components import STEPS4
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.grid.segment import ZoneLabel
-from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspace
 from vcmi_mapgen.core.placement import footprint as FP
@@ -52,11 +52,11 @@ def _rim8(zones: Mapping[int, Zone]) -> set[Tile]:
     }
 
 
-def seaport_cells(objs: Iterable[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
+def seaport_cells(catalog: Catalog, objs: Iterable[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
     seaport_blk: set[Tile] = set()
     seaport_appr: set[Tile] = set()
     for so in objs:
-        if so.type == "shipyard":
+        if catalog.identity_of(so.kind).type == "shipyard":
             for scx, scy, sblk in FP.anchored_cells(so.footprint, so.x, so.y):
                 if sblk:
                     seaport_blk.add((scx, scy))
@@ -104,8 +104,7 @@ class _LandingCheck:
         return seen
 
     def accept(self, obj: PlacedObject) -> bool:
-        ident = Identity(obj.type, obj.subtype, obj.animation, obj.footprint)
-        _allc, blk, approach = footprint_cells(ident, obj.x, obj.y)
+        _allc, blk, approach = footprint_cells(obj.footprint, obj.x, obj.y)
         cut = set(blk)
         if approach is None or approach not in self.land or self._pocket(approach, cut):
             return False
@@ -138,7 +137,7 @@ def plan_landings(
         sea.seed,
         sea.catalog,
     )
-    _, appr = seaport_cells(landings)
+    _, appr = seaport_cells(sea.catalog, landings)
     lw.seaport_blk = frozenset(
         (x, y) for o in landings for x, y, _b in FP.anchored_cells(o.footprint, o.x, o.y)
     )
@@ -259,7 +258,7 @@ def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> To
     cx = sum(t[0] for t in zw.ts) / area + (ident.footprint.width - 1) / 2.0
     cy = sum(t[1] for t in zw.ts) / area + (ident.footprint.height - 1) / 2.0
     for anchor in sorted(zw.ts, key=lambda t: ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)):
-        allc, blk, approach = footprint_cells(ident, *anchor)
+        allc, blk, approach = footprint_cells(ident.footprint, *anchor)
         if approach is None:
             continue
         cells = frozenset([*allc, approach])
@@ -269,7 +268,7 @@ def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> To
             continue
         path = path_to_web(approach, zw.prot, zw.ts - zw.gblocked - set(blk))
         if path:
-            clear = frozenset([*blk, *door_cells(ident, anchor), approach])
+            clear = frozenset([*blk, *door_cells(ident.footprint, anchor), approach])
             return TownRoom(cells, clear, frozenset(blk), tuple(path))
     return None
 

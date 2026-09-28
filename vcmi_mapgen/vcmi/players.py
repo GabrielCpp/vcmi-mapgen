@@ -3,6 +3,7 @@
 from collections import defaultdict
 
 from vcmi_mapgen.core.model import JsonValue, PlacedObject
+from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.formats import vmap as VM
 
 
@@ -50,11 +51,12 @@ def apply_playability(
             pl.main_town = main_town(t)
             pl.can_play = "PlayerOrAI"
             pl.team = int(teams[i])
-            if t.type == "town":
+            ident = OB.identity_of(t.kind)
+            if ident.type == "town":
                 # concrete start town (spare-neutral top-up): the lobby must not offer
                 # factions the map cannot honour — restrict to the authored one, exactly
                 # like VCMI's own RMG maps do
-                pl.allowed_factions = {"anyOf": [f"core:{t.subtype}"]}
+                pl.allowed_factions = {"anyOf": [f"core:{ident.subtype}"]}
                 pl.random_faction = None
             else:
                 # randomTown start: any faction; VCMI resolves the OWNED random town to

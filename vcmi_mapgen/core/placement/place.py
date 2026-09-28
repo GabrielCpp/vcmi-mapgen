@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import (
     CoverIndex,
+    Guard,
     Identity,
-    JsonValue,
+    Payload,
     PlacedObject,
+    Scroll,
     Tile,
 )
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -59,7 +61,7 @@ class PlaceSpec:
     ident: Identity | None = None
     art_share: float = 0.45
     cache: bool = False
-    options: dict[str, JsonValue] | None = None
+    payload: Payload | None = None
     interactive_only: bool = False
     clear_of: Container[Tile] | None = None
 
@@ -94,21 +96,18 @@ def _guard_cells(
     return cells
 
 
-def _apply_options(o: PlacedObject, ident: Identity, spec: PlaceSpec, rng: random.Random) -> None:
-    if spec.purpose == Purpose.GUARD:  # absent => VCMI 'compliant' => every creature joins free
-        o.options = {"character": "hostile"}
-    if spec.options is not None:
-        o.options = spec.options
-    elif ident.type == "pandoraBox":  # absent => legal but permanently empty reward
-        o.options = pandora_reward(rng)
-    elif ident.type == "spellScroll":
-        # VCMI's spellScroll object has exactly one registered subtype ("object") --
-        # the spell itself is carried in options.spell, never in subtype (confirmed
-        # against lib/mapping/MapFormatJson.cpp's CGArtifact deserialization). ident's
-        # own "subtype" is where the spell name was stashed by the caller's identity
-        # pool, so move it across before overwriting it.
-        o.options = {"spell": ident.subtype}
-        o.subtype = "object"
+def _payload(ident: Identity, spec: PlaceSpec, rng: random.Random) -> Payload | None:
+    """A guard is hostile, a pandoraBox draws its reward, and a spell scroll carries the
+    spell its identity names as subtype. A payload on `spec` wins over all three."""
+    if spec.payload is not None:
+        return spec.payload
+    if spec.purpose == Purpose.GUARD:
+        return Guard()
+    if ident.type == "pandoraBox":
+        return pandora_reward(rng)
+    if ident.type == "spellScroll":
+        return Scroll(str(ident.subtype))
+    return None
 
 
 def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
@@ -141,7 +140,7 @@ def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
     o = PlacedObject.at(ident, (x, y), purpose=spec.purpose)
     if not target.cover.try_claim(o, cells):
         return False
-    _apply_options(o, ident, spec, rng)
+    o.payload = _payload(ident, spec, rng)
     if spec.cache:  # a guarded-pocket pickup, not open scatter — informational marker only,
         o.cache = True  # ignored by the vmap exporter, used by tests
     target.objs.append(o)

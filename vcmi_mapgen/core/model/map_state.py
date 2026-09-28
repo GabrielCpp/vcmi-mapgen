@@ -100,8 +100,8 @@ def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str 
     if culprit.purpose == Purpose.GUARD and victim.role is Role.APPROACH:
         return None
     return (
-        f"{culprit.animation} at {tile} covers the {victim.role.name.lower()} tile"
-        + f" of {victim.obj.animation}"
+        f"{culprit.kind} at {tile} covers the {victim.role.name.lower()} tile"
+        + f" of {victim.obj.kind}"
     )
 
 

@@ -19,6 +19,7 @@ from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import VmapRenderer
+from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
@@ -56,7 +57,8 @@ def _digest(state: MapState, out_dir: Path) -> str:
     doc = VM.read(path)
     objects = sorted(json.dumps(dataclasses.asdict(o), sort_keys=True) for o in doc.objects)
     gate_blk = {str(lvl): sorted(tiles) for lvl, tiles in sorted(state.gate_blk.items())}
-    towns = [[t.x, t.y, t.level, t.type, t.subtype] for t in state.player_towns]
+    idents = [(t, OB.identity_of(t.kind)) for t in state.player_towns]
+    towns = [[t.x, t.y, t.level, i.type, i.subtype] for t, i in idents]
     payload = json.dumps(
         {"terrain": doc.terrain, "objects": objects, "gate_blk": gate_blk, "towns": towns},
         sort_keys=True,

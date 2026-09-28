@@ -32,7 +32,7 @@ def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -
     footprint (`near` = existing cells inflated by GAP), no squatting on an earlier object's
     approach tile (`reserved`), own approach tile in-zone and standable. No cell and no
     approach may touch `avoid`, the ground a later object has claimed."""
-    allc, blk, approach = footprint_cells(ident, anchor[0], anchor[1])
+    allc, blk, approach = footprint_cells(ident.footprint, anchor[0], anchor[1])
     if approach is None:
         return None
     for cell in allc:

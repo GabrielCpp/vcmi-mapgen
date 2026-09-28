@@ -5,7 +5,8 @@ from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.model import Identity, PlacedObject
+from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.model import Dwelling, Identity, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 
 # the six basic resource mines every map must cover (gold is the deliberate exception:
@@ -27,10 +28,10 @@ def mine_variants(ids: list[Identity], mine_w: Mapping[str, int]) -> list[Identi
     (avmgogr0 grass vs avmgold0 dirt), so keep only the variants mapmakers actually
     use on THIS terrain (>= 20% of the top variant's corpus weight — drops the rare
     cross-terrain leakage that put dirt-apron mines on grass)."""
-    ws = {i.animation.lower(): mine_w.get(i.animation.lower(), 0) for i in ids}
+    ws = {i.kind.lower(): mine_w.get(i.kind.lower(), 0) for i in ids}
     top = max(ws.values(), default=0)
     if top > 0:
-        keep = [i for i in ids if ws[i.animation.lower()] >= 0.2 * top]
+        keep = [i for i in ids if ws[i.kind.lower()] >= 0.2 * top]
         return keep or ids
     return ids
 
@@ -49,7 +50,7 @@ def rest_mines(
     }
 
 
-def tie_dwellings(objs: Iterable[PlacedObject]) -> None:
+def tie_dwellings(catalog: Catalog, objs: Iterable[PlacedObject]) -> None:
     # tie the zone's RANDOM dwellings to its town: VCMI's `sameAsTown` link makes the
     # dwelling resolve to the town's (lobby-picked) faction at game start, so the creatures
     # around a random town are its own. Instance names are minted only at export, so the
@@ -58,7 +59,5 @@ def tie_dwellings(objs: Iterable[PlacedObject]) -> None:
     town = next((o for o in objs if o.purpose == Purpose.TOWN), None)
     if town is not None:
         for o in objs:
-            if (o.type or "").startswith("randomDwelling"):
-                if o.options is None:
-                    o.options = {}
-                o.options["sameAsTown"] = [town.x, town.y, town.level]
+            if (catalog.identity_of(o.kind).type or "").startswith("randomDwelling"):
+                o.payload = Dwelling((town.x, town.y, town.level))

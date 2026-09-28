@@ -283,7 +283,10 @@ class _SeaportPlanner:
 
         self.new_objs: list[PlacedObject] = []
         # Anchor positions of seaports already in objs (for 20-tile spacing constraint)
-        self.placed_anchors = [(o.x, o.y) for o in objs if o.type == "shipyard"]
+        self.placed_anchors = [(o.x, o.y) for o in objs if self._shipyard(o)]
+
+    def _shipyard(self, o: PlacedObject) -> bool:
+        return self.catalog.identity_of(o.kind).type == "shipyard"
 
     def _warn(self, msg: str) -> None:
         if not self.sea.quiet:
@@ -389,7 +392,7 @@ class _SeaportPlanner:
     def _has_seaport(self, ts_set: AbstractSet[Tile]) -> bool:
         """True if any existing or new seaport's dock row is in `ts_set`."""
         for o in self.objs + self.new_objs:
-            if o.type != "shipyard":
+            if not self._shipyard(o):
                 continue
             # seaport BXB row at y=o["y"]: cells o["x"]-2..o["x"]
             ax, ay = o.x, o.y

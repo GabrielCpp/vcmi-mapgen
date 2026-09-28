@@ -69,9 +69,7 @@ def audit_variety(catalog: Catalog, level: int = 0) -> list[AuditGap]:
                 seen[(p, anim)] = seen.get((p, anim), 0) + cnt
     pool_anims: dict[str, set[str]] = {}  # purpose -> anims reachable on ANY terrain incl water
     for p in {p for p, _a in seen}:
-        pool_anims[p] = {
-            i.animation.lower() for t in (*land, "water") for i in catalog.candidates(p, t)
-        }
+        pool_anims[p] = {i.kind.lower() for t in (*land, "water") for i in catalog.candidates(p, t)}
     gaps: list[AuditGap] = []
     for (p, raw_anim), cnt in sorted(seen.items(), key=lambda kv: (-kv[1], kv[0])):
         anim = TOWN_SPRITE_VARIANTS.get(raw_anim, raw_anim)

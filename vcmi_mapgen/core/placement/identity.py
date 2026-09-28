@@ -42,7 +42,7 @@ def pick_kind(
     animation order."""
     cands = sorted(
         (i for i in pool if "random" not in (i.type or "").lower()),
-        key=lambda i: i.animation,
+        key=lambda i: i.kind,
     )
     if not cands:
         return None
@@ -53,4 +53,4 @@ def pick_fixed_identity(
     pool: Iterable[Identity], purpose: str, st_t: TerrainStats, rng: random.Random
 ) -> Identity | None:
     w = st_t.anim_w.get(purpose, {})
-    return pick_kind(pool, lambda i: w.get(i.animation.lower(), 0) + 0.2, rng)
+    return pick_kind(pool, lambda i: w.get(i.kind.lower(), 0) + 0.2, rng)

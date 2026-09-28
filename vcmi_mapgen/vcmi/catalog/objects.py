@@ -211,7 +211,7 @@ def identity_of(animation: str) -> Identity:
     return Identity(
         type=r[0] if r else None,
         subtype=r[1] if r else None,
-        animation=animation,
+        kind=animation,
         footprint=footprint_of(mask_of(animation)),
     )
 

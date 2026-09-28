@@ -96,7 +96,7 @@ def test_playability_overlay(tmp_path: Path) -> None:
     # (a randomTown start would instead clear allowedFactions — free lobby pick)
     for pl in playable.values():
         af = pl.get("allowedFactions")
-        assert af == {"anyOf": [f"core:{towns[0].subtype}"]}, (
+        assert af == {"anyOf": [f"core:{ON.identity_of(towns[0].kind).subtype}"]}, (
             f"concrete start town must restrict allowedFactions, got {af}"
         )
     for pid, pl in _players(h).items():

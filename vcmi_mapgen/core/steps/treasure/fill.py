@@ -53,7 +53,7 @@ def solo_visit_pool(
     out: list[Identity] = []
     for purpose in _SOLO_VIS_PURPOSES:
         for ident in catalog.candidates(purpose, terrain):
-            anim = ident.animation.lower()
+            anim = ident.kind.lower()
             if anim in seen or ident.type in exclude_types:
                 continue
             if min_shrine_level is not None and 0 < shrine_spell_level(anim) < min_shrine_level:

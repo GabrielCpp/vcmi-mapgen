@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import CoverIndex, Guard, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced
@@ -68,9 +68,7 @@ class _GuardPlacer:
             if not guard_spaced(g, self._guards):
                 continue
             gident = self._catalog.guard(3 + (1 if self._rng.random() < 0.3 else 0))
-            guard = PlacedObject.at(
-                gident, g, level=0, purpose=Purpose.GUARD, options={"character": "hostile"}
-            )
+            guard = PlacedObject.at(gident, g, level=0, purpose=Purpose.GUARD, payload=Guard())
             if self._cover.try_add(guard):
                 self._guards.append(g)
                 return guard

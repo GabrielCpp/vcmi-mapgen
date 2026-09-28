@@ -41,7 +41,7 @@ def test_loot_zone_sealing_never_drops_a_subterranean_gate(catalog: Catalog) -> 
     state = _run_through_treasure(catalog, seed=7)
     gates_by_level: dict[int, list[tuple[int, int]]] = {0: [], 1: []}
     for o in state.objs:
-        if o.type == "subterraneanGate":
+        if catalog.identity_of(o.kind).type == "subterraneanGate":
             gates_by_level[o.level].append((o.x, o.y))
     assert gates_by_level[0], "fixture assumption broke: expected >= 1 gate pair on this seed"
     assert sorted(gates_by_level[0]) == sorted(gates_by_level[1]), (

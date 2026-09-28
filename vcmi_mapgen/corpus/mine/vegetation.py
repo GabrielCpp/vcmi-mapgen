@@ -80,7 +80,7 @@ def _anchors_of_zone(
             continue
         if o.purpose != Purpose.DECORATION:
             continue
-        anim = o.animation.lower().removesuffix(".def")
+        anim = o.kind.lower().removesuffix(".def")
         cat = catalog.decor_category(anim)
         if cat is None:
             continue

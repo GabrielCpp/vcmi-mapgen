@@ -5,10 +5,12 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import NamedTuple
 
+from vcmi_mapgen.core.model.payload import Payload
 from vcmi_mapgen.core.model.terrain import Terrain
 
 type JsonValue = str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None
 type Tile = tuple[int, int]
+type ObjectKind = str
 
 
 class Role(StrEnum):
@@ -68,7 +70,7 @@ class Entrance(NamedTuple):
 class Identity:
     type: str | None
     subtype: str | None
-    animation: str
+    kind: ObjectKind
     footprint: Footprint
 
 
@@ -78,12 +80,9 @@ class PlacedObject:
     y: int
     level: int
     purpose: str
-    type: str | None
-    subtype: str | None
-    animation: str
+    kind: ObjectKind
     footprint: Footprint
-    options: dict[str, JsonValue] | None = None
-    visitable_from: tuple[str, ...] | None = None
+    payload: Payload | None = None
     seal: bool = False
     cache: bool = False
     pocket_guard: bool = False
@@ -96,18 +95,16 @@ class PlacedObject:
         *,
         level: int = 0,
         purpose: str,
-        options: dict[str, JsonValue] | None = None,
+        payload: Payload | None = None,
     ) -> PlacedObject:
         return cls(
             x=tile[0],
             y=tile[1],
             level=level,
             purpose=purpose,
-            type=identity.type,
-            subtype=identity.subtype,
-            animation=identity.animation,
+            kind=identity.kind,
             footprint=identity.footprint,
-            options=options,
+            payload=payload,
         )
 
 

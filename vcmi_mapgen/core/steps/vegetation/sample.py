@@ -93,7 +93,7 @@ def build_model(catalog: Catalog, terrain: str) -> VegModel:
 
     by_cat: collections.defaultdict[str, list[Identity]] = collections.defaultdict(list)
     for ident in catalog.decor(terrain):
-        cat = catalog.decor_category(ident.animation)
+        cat = catalog.decor_category(ident.kind)
         if cat is not None:
             by_cat[cat].append(ident)
 
@@ -123,7 +123,7 @@ def build_model(catalog: Catalog, terrain: str) -> VegModel:
         w = st.anim_w.get(c, {})
         ids = by_cat[c]
         idents.append(ids)
-        iweights.append([w.get(i.animation.lower(), 0) + BASE_W for i in ids])
+        iweights.append([w.get(i.kind.lower(), 0) + BASE_W for i in ids])
         blk: list[list[Tile]] = []
         foot: list[list[Tile]] = []
         for i in ids:

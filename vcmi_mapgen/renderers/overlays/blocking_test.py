@@ -17,9 +17,7 @@ def _obj(x: int, y: int, purpose: str, mask: Mask, level: int = 0) -> PlacedObje
         y=y,
         level=level,
         purpose=purpose,
-        type=None,
-        subtype=None,
-        animation="",
+        kind="",
         footprint=footprint_of(mask),
     )
 

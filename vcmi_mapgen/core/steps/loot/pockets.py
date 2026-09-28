@@ -6,6 +6,7 @@ from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from itertools import pairwise
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.pockets import mouth_key
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Tile
@@ -59,6 +60,7 @@ def reachable(
 
 
 def home_mine_protect_pairs(
+    catalog: Catalog,
     existing_objs: Sequence[PlacedObject],
     zone_records: Sequence[ZoneRecord],
     home_zids: Collection[int],
@@ -84,7 +86,7 @@ def home_mine_protect_pairs(
         ts = ts_by_zid.get(zid)
         if ts is None:
             continue
-        pairs.extend(_home_zone_pairs(existing_objs, ts, global_true))
+        pairs.extend(_home_zone_pairs(catalog, existing_objs, ts, global_true))
     return pairs, base_blocked
 
 
@@ -113,7 +115,10 @@ def _base_blocked(existing_objs: Sequence[PlacedObject], mine_cells: set[Tile]) 
 
 
 def _home_zone_pairs(
-    existing_objs: Sequence[PlacedObject], ts: AbstractSet[Tile], global_true: Container[Tile]
+    catalog: Catalog,
+    existing_objs: Sequence[PlacedObject],
+    ts: AbstractSet[Tile],
+    global_true: Container[Tile],
 ) -> list[tuple[frozenset[Tile], frozenset[Tile]]]:
     pairs: list[tuple[frozenset[Tile], frozenset[Tile]]] = []
     town = next(
@@ -127,7 +132,9 @@ def _home_zone_pairs(
         return pairs
     for o in existing_objs:
         if not (
-            o.purpose == Purpose.MINE and o.subtype in ("sawmill", "orePit") and (o.x, o.y) in ts
+            o.purpose == Purpose.MINE
+            and catalog.identity_of(o.kind).subtype in ("sawmill", "orePit")
+            and (o.x, o.y) in ts
         ):
             continue
         mine_ap = _approach_tiles(o.footprint, o.x, o.y, global_true)

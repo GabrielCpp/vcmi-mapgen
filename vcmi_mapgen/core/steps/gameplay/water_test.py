@@ -260,9 +260,7 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row(catalog: Ca
         y=2,
         level=0,
         purpose=Purpose.STAT_PERMANENT,
-        type="arena",
-        subtype="object",
-        animation="",
+        kind="",
         footprint=footprint_of(("VVV", "BBB", "BXB")),
     )
     front = FP.front_tiles(arena.footprint, arena.x, arena.y)

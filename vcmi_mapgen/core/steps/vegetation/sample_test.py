@@ -42,7 +42,7 @@ def test_model_and_sampler_deterministic(catalog: Catalog) -> None:
     assert a1, "some vegetation sampled"
     # every mask comes from the catalog and coverage is sane
     for o in a1:
-        assert catalog.spec(o.animation) is not None
+        assert catalog.spec(o.kind) is not None
     assert 0.1 < len(b1) / len(ts) < 0.95
 
 

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, Entrance, Guard, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced
@@ -57,7 +57,7 @@ class _EntranceGuards:
     def _guard(self, gident: Identity, cands: Sequence[Tile], ts: frozenset[Tile]) -> None:
         for t in cands:
             guard = PlacedObject.at(
-                gident, t, level=self.level, purpose=Purpose.GUARD, options={"character": "hostile"}
+                gident, t, level=self.level, purpose=Purpose.GUARD, payload=Guard()
             )
             if self._stands(guard, ts):
                 self.out.append(guard)

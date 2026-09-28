@@ -140,5 +140,5 @@ def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
         step.run(catalog, map_state)
 
     assert map_state.objs
-    assert {o.animation for o in map_state.objs} <= {PILE.animation, "fake_random_resource"}
+    assert {o.kind for o in map_state.objs} <= {PILE.kind, "fake_random_resource"}
     assert ("candidates", Purpose.RESOURCE_PILE, "grass") in catalog.asked

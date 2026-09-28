@@ -90,7 +90,7 @@ def _accumulate_water(aw: _TerrainAcc, fm: MapState, level: int) -> None:
         p = Purpose(o.purpose)
         if p in ALL_PURPOSES:
             aw.counts[p] += 1
-            anim = o.animation.lower().removesuffix(".def")
+            anim = o.kind.lower().removesuffix(".def")
             if anim:
                 aw.anim_w[p][anim] += 1
 
@@ -102,7 +102,7 @@ def _zone_blocked(
     all_blocked: set[Tile] = set()
     for o in zone_objs:
         is_decor = o.purpose == Purpose.DECORATION
-        anim = o.animation.lower().removesuffix(".def")
+        anim = o.kind.lower().removesuffix(".def")
         for cx, cy, blk in FP.anchored_cells(catalog.identity_of(anim).footprint, o.x, o.y):
             if blk and (cx, cy) in ts:
                 all_blocked.add((cx, cy))
@@ -119,7 +119,7 @@ def _count_zone_obj(
         return
     t = (o.x, o.y)
     a.counts[p] += 1
-    anim = o.animation.lower().removesuffix(".def")
+    anim = o.kind.lower().removesuffix(".def")
     if anim:
         a.anim_w[p][anim] += 1
     a.e[p][min(cov.ed[t], EB - 1)] += 1

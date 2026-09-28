@@ -2,12 +2,13 @@
 
 import os
 import re
+from dataclasses import replace
 
 import pytest
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import label_zones
-from vcmi_mapgen.core.model import CoverIndex, Footprint, Identity, PlacedObject, Role, Tile, Zone
+from vcmi_mapgen.core.model import CoverIndex, Footprint, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
@@ -67,7 +68,10 @@ def test_pickup_layer_legal_and_deterministic(catalog: Catalog) -> None:
             assert (o.x, o.y) not in prot, "guards must not sit on the mandatory web"
             continue
         cells = legal_cells(
-            Identity(o.type, o.subtype, o.animation, o.footprint), (o.x, o.y), open_set, no_used
+            replace(catalog.identity_of(o.kind), footprint=o.footprint),
+            (o.x, o.y),
+            open_set,
+            no_used,
         )
         assert cells is not None, "footprint must lie on open tiles"
         assert used.isdisjoint(cells), "pickups must not overlap each other"
@@ -84,17 +88,13 @@ def _zone(ts: set[Tile]) -> Zone:
     )
 
 
-def _obj(
-    x: int, y: int, purpose: str, typ: str | None = None, subtype: str | None = None
-) -> PlacedObject:
+def _obj(x: int, y: int, purpose: str, kind: str) -> PlacedObject:
     return PlacedObject(
         x=x,
         y=y,
         level=0,
         purpose=purpose,
-        type=typ,
-        subtype=subtype,
-        animation="",
+        kind=kind,
         footprint=Footprint.one(Role.VISIT),
     )
 
@@ -115,7 +115,13 @@ def test_scatter_places_resource_piles(catalog: Catalog) -> None:
         piles += [o for o in objs if o.purpose == Purpose.RESOURCE_PILE]
     assert piles, "a 720-tile zone (>= LOOT_FLOOR_AREA) must yield resource piles"
     assert not any(o.cache for o in piles), "scatter piles are unguarded"
-    assert any(o.type == "resource" for o in piles), "fixed resource piles must appear"
+    assert any(catalog.identity_of(o.kind).type == "resource" for o in piles), (
+        "fixed resource piles must appear"
+    )
+
+
+def _type_of(catalog: Catalog, o: PlacedObject) -> str:
+    return catalog.identity_of(o.kind).type or ""
 
 
 def _field_with_room(
@@ -147,14 +153,16 @@ def test_pocket_guard_level_matches_artifact_tier_exactly(catalog: Catalog) -> N
     assert n_pockets == 1, "fixture assumption broke: expected exactly one pocket"
     guard = next(o for o in objs if o.purpose == Purpose.GUARD)
     art = next(
-        o for o in objs if o.purpose == Purpose.REWARD_PICKUP and "artifact" in str(o.type).lower()
+        o
+        for o in objs
+        if o.purpose == Purpose.REWARD_PICKUP and "artifact" in _type_of(catalog, o).lower()
     )
-    match = re.match(r"randomMonsterLevel(\d)", guard.type or "")
+    match = re.match(r"randomMonsterLevel(\d)", _type_of(catalog, guard))
     assert match is not None
     glvl = int(match.group(1))
-    want = catalog.random_artifact(CA.ART_TIER_BY_GUARD_LEVEL[glvl - 1]).animation
-    assert art.animation == want, (
-        f"guard is level {glvl} but artifact animation {art.animation!r} doesn't "
+    want = catalog.random_artifact(CA.ART_TIER_BY_GUARD_LEVEL[glvl - 1]).kind
+    assert art.kind == want, (
+        f"guard is level {glvl} but artifact animation {art.kind!r} doesn't "
         f"match that tier ({want!r})"
     )
 
@@ -227,8 +235,8 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine(catalog: 
     mouth_extra = {(7, 3)}
     ts = left | right | isthmus | room | mouth_extra
 
-    town = _obj(2, 2, Purpose.TOWN, "randomTown", "object")
-    mine = _obj(12, 2, Purpose.MINE, "mine", "sawmill")
+    town = _obj(2, 2, Purpose.TOWN, catalog.random_town().kind)
+    mine = _obj(12, 2, Purpose.MINE, catalog.mines_by_resource("grass")["sawmill"][0].kind)
     zr = ZoneRecord(
         zid=0,
         terrain="grass",
@@ -286,8 +294,8 @@ def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog) -> None
         for o in objs:
             if (
                 o.purpose == Purpose.REWARD_PICKUP
-                and "artifact" not in str(o.type).lower()
-                and o.type not in allowed
+                and "artifact" not in _type_of(catalog, o).lower()
+                and _type_of(catalog, o) not in allowed
             ):
                 violations.append(o)
     assert violations == []

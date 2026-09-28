@@ -81,7 +81,7 @@ def test_decode_coverage_over_corpus_sprites() -> None:
     header-declared size. Sprites genuinely absent from the LOD are reported, not
     failed (that is a data-availability issue, not a decoder fault)."""
     fm = load_corpus_map(TEST_MAP)
-    anims = sorted({o.animation for o in fm.objs if o.animation})
+    anims = sorted({o.kind for o in fm.objs if o.kind})
     assert anims, "no object animations found in the test map"
 
     absent: list[str] = []
@@ -116,8 +116,8 @@ def test_render_is_deterministic() -> None:
     """The same terrain + objects render to byte-identical pixels every time."""
     surf = [[f"gr{(x + y) % 4}_" for x in range(6)] for y in range(6)]
     objs = [
-        PlacedObject(4, 4, 0, "", "", None, "AVLpntr7", Footprint(0, 0, ())),
-        PlacedObject(2, 5, 0, "", "", None, "AVLman30", Footprint(0, 0, ())),
+        PlacedObject(4, 4, 0, "", "AVLpntr7", Footprint(0, 0, ())),
+        PlacedObject(2, 5, 0, "", "AVLman30", Footprint(0, 0, ())),
     ]
     a = RE.render_map(_index(), surf, objs)
     b = RE.render_map(_index(), surf, objs)

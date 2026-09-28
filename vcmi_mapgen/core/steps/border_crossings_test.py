@@ -2,7 +2,7 @@
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import label_zones
-from vcmi_mapgen.core.model import Tile, Zone
+from vcmi_mapgen.core.model import Guard, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.guards import guard_spaced
 from vcmi_mapgen.core.planning.entrances import plan_entrances
@@ -59,7 +59,7 @@ def test_border_plan_closes_or_guards(catalog: Catalog) -> None:
     )
     assert guard_tiles & web_pair, "the unsealable web crossing gets a back-path guard"
     assert n_open == 0
-    assert all(o.seal and o.options == {"character": "hostile"} for o in guards)
+    assert all(o.seal and o.payload == Guard() for o in guards)
     tiles = sorted(guard_tiles)
     assert all(guard_spaced(t, tiles[i + 1 :]) for i, t in enumerate(tiles))
 

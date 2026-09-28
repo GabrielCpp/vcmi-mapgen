@@ -16,7 +16,7 @@ from typing import final
 
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
-from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import Cell, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import COUNTED
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
@@ -69,9 +69,7 @@ def _field(grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]) -> _Fie
 def _back(o: PlacedObject, fld: _Field) -> int:
     own = {t for t, _role in o.footprint.at(o.x, o.y)} & fld.unwalkable
     fld.unwalkable.difference_update(own)
-    score = back_score(
-        Identity(o.type, o.subtype, o.animation, o.footprint), (o.x, o.y), fld.unwalkable, fld.size
-    )
+    score = back_score(o.footprint, (o.x, o.y), fld.unwalkable, fld.size)
     fld.unwalkable.update(own)
     return score
 

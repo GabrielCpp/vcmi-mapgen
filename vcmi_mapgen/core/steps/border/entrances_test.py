@@ -44,9 +44,7 @@ def _hostile(t: Tile) -> PlacedObject:
         y=t[1],
         level=0,
         purpose=Purpose.GUARD,
-        type="randomMonsterLevel1",
-        subtype="object",
-        animation="",
+        kind="",
         footprint=Footprint.one(Role.VISIT),
     )
 

@@ -71,7 +71,7 @@ class OpenZonePlacer:
         place_mines(site, draw, ledger, set())
         place_attractions(site, draw)
         site.write_back()
-        tie_dwellings(zw.gobjs)
+        tie_dwellings(self.catalog, zw.gobjs)
         return zw
 
 

@@ -27,7 +27,12 @@ def test_mine_ledger_covers_basics_and_rations_gold(open_zone: OpenZonePlacer) -
     for seed in range(1, 8):
         ledger = Ledger(missing=set(BASIC_MINE_RES), towns=1, gold=0)
         objs = open_zone(OpenZone(ts, "grass"), seed, ledger=ledger).gobjs
-        n_gold = sum(1 for o in objs if o.purpose == Purpose.MINE and o.subtype == "goldMine")
+        n_gold = sum(
+            1
+            for o in objs
+            if o.purpose == Purpose.MINE
+            and open_zone.catalog.identity_of(o.kind).subtype == "goldMine"
+        )
         assert n_gold <= ledger.gold <= max(0, ledger.towns - 1), (
             f"seed {seed}: gold {n_gold} exceeds quota (towns={ledger.towns})"
         )

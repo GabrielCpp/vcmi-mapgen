@@ -9,7 +9,7 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import centre_key
 from vcmi_mapgen.core.grid.reach import bfs8
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import CoverIndex, Guard, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
@@ -417,7 +417,7 @@ class _PortalRescue:
             gtile,
             level=lvl,
             purpose=Purpose.GUARD,
-            options={"character": "hostile"},
+            payload=Guard(),
         )
         far_appr = self._emit_end(lvl, ident, far_node, far_fit)
         _ = self._emit_end(lvl, ident, near_node, near_fit)

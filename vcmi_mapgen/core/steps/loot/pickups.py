@@ -189,7 +189,7 @@ class _PocketCachePass:
         # its own new pocket guards, so two pocket guards can't jointly seal a corridor
         # either even if neither would alone.
         protect_pairs, self.protect_blocked = home_mine_protect_pairs(
-            context.existing_objs, zone_records, context.home_zids, self.global_true
+            catalog, context.existing_objs, zone_records, context.home_zids, self.global_true
         )
         self.protect_pairs = [
             (src, dst)
