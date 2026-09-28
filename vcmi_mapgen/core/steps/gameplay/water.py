@@ -7,7 +7,6 @@ Also owns `pick_identity`/`legal_cells`, the low-level identity-pick/footprint-l
 exact same helpers) imports them from here rather than duplicating them.
 """
 
-import collections
 import random
 import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -16,6 +15,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.reach import reach
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
@@ -418,18 +418,8 @@ class _SeaportPlanner:
         for s in sorted(shore):
             if s in seen:
                 continue
-            cl: set[Tile] = set()
-            q = collections.deque([s])
-            seen.add(s)
-            cl.add(s)
-            while q:
-                cx, cy = q.popleft()
-                for dx, dy in DIRS8:
-                    nb = (cx + dx, cy + dy)
-                    if nb in shore and nb not in seen:
-                        seen.add(nb)
-                        cl.add(nb)
-                        q.append(nb)
+            cl = reach(shore, [s], DIRS8)
+            seen |= cl
             clusters.append(cl)
         return clusters
 

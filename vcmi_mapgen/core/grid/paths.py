@@ -1,9 +1,9 @@
 """Geodesic paths and farthest-point sampling inside a zone's tile set."""
 
-import collections
 from collections.abc import Collection, Container, Iterable
 
 from vcmi_mapgen.core.grid.geometry import NB4
+from vcmi_mapgen.core.grid.reach import walk
 from vcmi_mapgen.core.model import Tile
 
 SPACING = (
@@ -13,26 +13,7 @@ SPACING = (
 
 def geodesic_path(a: Tile, b: Tile, ts: Container[Tile]) -> list[Tile]:
     """Shortest 4-connected path a->b staying inside the zone `ts`; [] if unreachable."""
-    prev: dict[Tile, Tile | None] = {a: None}
-    q = collections.deque([a])
-    while q:
-        cur = q.popleft()
-        if cur == b:
-            break
-        x, y = cur
-        for dx, dy in NB4:
-            n = (x + dx, y + dy)
-            if n in ts and n not in prev:
-                prev[n] = cur
-                q.append(n)
-    if b not in prev:
-        return []
-    path: list[Tile] = []
-    cur: Tile | None = b
-    while cur is not None:
-        path.append(cur)
-        cur = prev[cur]
-    return path
+    return walk([a], {b}, ts, NB4)
 
 
 def farthest_points(

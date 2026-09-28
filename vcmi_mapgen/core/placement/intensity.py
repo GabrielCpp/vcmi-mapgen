@@ -1,13 +1,13 @@
 """Per-tile placement intensity over edge depth, gate distance and openness, fitted from the
 corpus covariate counts."""
 
-import collections
 import math
 import random
 from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
+from vcmi_mapgen.core.grid.reach import distances
 from vcmi_mapgen.core.model import (
     Tile,
 )
@@ -40,16 +40,7 @@ def open_bin(n_open_5x5: int) -> int:
 
 def gate_dist(ts: AbstractSet[Tile], gates: Iterable[Tile]) -> dict[Tile, int]:
     """4-connected BFS steps from the zone's rim gates (corpus + generated zones alike)."""
-    d = {g: 0 for g in gates if g in ts}
-    q = collections.deque(d)
-    while q:
-        x, y = q.popleft()
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            n = (x + dx, y + dy)
-            if n in ts and n not in d:
-                d[n] = d[(x, y)] + 1
-                q.append(n)
-    return d
+    return distances(ts, [g for g in gates if g in ts])
 
 
 def openness(open_set: AbstractSet[Tile]) -> dict[Tile, int]:

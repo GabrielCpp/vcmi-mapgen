@@ -21,8 +21,9 @@ from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.components import STEPS4, components
+from vcmi_mapgen.core.grid.components import components
 from vcmi_mapgen.core.grid.geometry import edge_dist
+from vcmi_mapgen.core.grid.reach import walk
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
@@ -102,43 +103,11 @@ def walk_on_only(fp: Footprint) -> bool:
 def path_to_web(start: Tile, web: AbstractSet[Tile], passable: AbstractSet[Tile]) -> list[Tile]:
     """The shortest 4-connected walk from ``start`` to the nearest web tile, both ends
     included, or an empty list when none exists."""
-    prev: dict[Tile, Tile | None] = {start: None}
-    q = collections.deque([start])
-    while q:
-        cur = q.popleft()
-        if cur in web:
-            path: list[Tile] = []
-            node: Tile | None = cur
-            while node is not None:
-                path.append(node)
-                node = prev[node]
-            return path
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            n = (cur[0] + dx, cur[1] + dy)
-            if n in passable and n not in prev:
-                prev[n] = cur
-                q.append(n)
-    return []
+    return walk([start], web, passable)
 
 
 def _walk(src: AbstractSet[Tile], dst: AbstractSet[Tile], passable: AbstractSet[Tile]) -> set[Tile]:
-    prev: dict[Tile, Tile | None] = dict.fromkeys(sorted(src))
-    q = collections.deque(prev)
-    while q:
-        cur = q.popleft()
-        if cur in dst:
-            path: set[Tile] = set()
-            node: Tile | None = cur
-            while node is not None:
-                path.add(node)
-                node = prev[node]
-            return path
-        for dx, dy in STEPS4:
-            n = (cur[0] + dx, cur[1] + dy)
-            if n in passable and n not in prev:
-                prev[n] = cur
-                q.append(n)
-    return set()
+    return set(walk(sorted(src), dst, passable))
 
 
 def mend(web: AbstractSet[Tile], cut: AbstractSet[Tile], passable: AbstractSet[Tile]) -> set[Tile]:

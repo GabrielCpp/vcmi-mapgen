@@ -4,6 +4,7 @@ import collections
 from collections.abc import Collection, Container
 
 from vcmi_mapgen.core.grid.geometry import NB4, NB8
+from vcmi_mapgen.core.grid.reach import distances
 from vcmi_mapgen.core.model import Tile
 
 POCKET_MAX_DIM = 10  # generous bounding-box cap; POCKET_MAX_TILES always binds
@@ -179,20 +180,7 @@ def pocket_depths(pocket: frozenset[Tile], mouth: frozenset[Tile]) -> dict[Tile,
     `find_pockets`' own (pocket, mouth) pair; kept here, next to the search that defines
     what a pocket even is, so nothing downstream has to re-derive pocket membership to
     get it -- a consumer renders/uses this dict, it never recomputes it."""
-    dist: dict[Tile, int] = {}
-    q: collections.deque[Tile] = collections.deque()
-    for gx, gy in mouth:
-        for dx, dy in NB8:
-            nb = (gx + dx, gy + dy)
-            if nb in pocket and nb not in dist:
-                dist[nb] = 0
-                q.append(nb)
-    while q:
-        t = q.popleft()
-        tx, ty = t
-        for dx, dy in NB8:
-            nb = (tx + dx, ty + dy)
-            if nb in pocket and nb not in dist:
-                dist[nb] = dist[t] + 1
-                q.append(nb)
-    return dist
+    sources = [
+        (gx + dx, gy + dy) for gx, gy in mouth for dx, dy in NB8 if (gx + dx, gy + dy) in pocket
+    ]
+    return distances(pocket, sources, NB8)

@@ -8,7 +8,7 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import centre_key
-from vcmi_mapgen.core.grid.reach import bfs8
+from vcmi_mapgen.core.grid.reach import STEPS8, reach
 from vcmi_mapgen.core.model import CoverIndex, Guard, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -49,13 +49,13 @@ def unreachable_targets(
     if not targets_in:
         return []
     root = targets_in[0]
-    seen = bfs8(open_set, root)
+    seen = reach(open_set, [root], STEPS8)
     bad = [t for t in targets_in if t not in seen]
     if not bad:
         return []
     through_veg = land - hard
-    reach = bfs8(through_veg, root)
-    return [t for t in bad if t in reach]
+    through = reach(through_veg, [root], STEPS8)
+    return [t for t in bad if t in through]
 
 
 PORTAL_MIN_AREA = 12  # smallest unreachable zone worth a portal rescue (mapeval's zone

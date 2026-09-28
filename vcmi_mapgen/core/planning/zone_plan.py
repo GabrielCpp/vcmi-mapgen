@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.components import STEPS4
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
+from vcmi_mapgen.core.grid.reach import STEPS4
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain

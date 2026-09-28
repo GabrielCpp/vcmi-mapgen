@@ -9,6 +9,7 @@ from itertools import pairwise
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.pockets import mouth_key
+from vcmi_mapgen.core.grid.reach import reach, walk
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
@@ -45,18 +46,7 @@ def reachable(
     stepping into `blocked`? `sources`/`targets` themselves are always allowed (they are
     the actual endpoints, not obstacles)."""
     avail = (passable - blocked) | sources | targets
-    frontier = collections.deque(t for t in sources if t in avail)
-    seen = set(frontier)
-    while frontier:
-        x, y = frontier.popleft()
-        if (x, y) in targets:
-            return True
-        for dx, dy in NB8:
-            nb = (x + dx, y + dy)
-            if nb in avail and nb not in seen:
-                seen.add(nb)
-                frontier.append(nb)
-    return bool(seen & targets)
+    return bool(walk([t for t in sources if t in avail], targets, avail, NB8))
 
 
 def home_mine_protect_pairs(
@@ -152,16 +142,7 @@ def reach8(open_set: Container[Tile], seed: Iterable[Tile]) -> set[Tile]:
     plain `open_set` membership alone would also accept ground that is open but totally
     disconnected from the web (an unreachable floating island), which is not placeable
     either."""
-    d = set(t for t in seed if t in open_set)
-    q = collections.deque(d)
-    while q:
-        x, y = q.popleft()
-        for dx, dy in NB8:
-            n = (x + dx, y + dy)
-            if n in open_set and n not in d:
-                d.add(n)
-                q.append(n)
-    return d
+    return reach(open_set, [t for t in seed if t in open_set], NB8)
 
 
 def dedupe_pockets(

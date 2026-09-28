@@ -13,6 +13,7 @@ from operator import itemgetter
 from typing import Self, final
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.reach import reach
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
@@ -72,15 +73,7 @@ def _entry_tile_has_stray_leak(
 
 
 def _reach8(seed_tiles: Iterable[Tile], avail: AbstractSet[Tile]) -> set[Tile]:
-    d = {t for t in seed_tiles if t in avail}
-    q = collections.deque(sorted(d))
-    while q:
-        cur = q.popleft()
-        for nb in _nbs(cur):
-            if nb in avail and nb not in d:
-                d.add(nb)
-                q.append(nb)
-    return d
+    return reach(avail, sorted({t for t in seed_tiles if t in avail}), _DIRS8)
 
 
 def _path_prev(

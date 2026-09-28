@@ -4,6 +4,7 @@ steps: neighbourhoods, edge distance, and the open-run-length statistic."""
 import collections
 from collections.abc import Collection
 
+from vcmi_mapgen.core.grid.reach import STEPS8, distances
 from vcmi_mapgen.core.model import Tile
 
 NB4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
@@ -14,21 +15,12 @@ EBINS = 6  # edge-distance bins (0..4, 5+)
 
 def edge_dist(ts: Collection[Tile]) -> dict[Tile, int]:
     """Chebyshev distance from each zone tile to the nearest NON-zone tile (the rim)."""
-    d: dict[Tile, int] = {}
-    q: collections.deque[Tile] = collections.deque()
-    for x, y in ts:
-        if any((x + dx, y + dy) not in ts for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
-            d[(x, y)] = 0
-            q.append((x, y))
-    while q:
-        x, y = q.popleft()
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                n = (x + dx, y + dy)
-                if n in ts and n not in d:
-                    d[n] = d[(x, y)] + 1
-                    q.append(n)
-    return d
+    rim = [
+        (x, y)
+        for x, y in ts
+        if any((x + dx, y + dy) not in ts for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+    ]
+    return distances(ts, rim, STEPS8)
 
 
 def run_lengths(ts: Collection[Tile], open_tiles: Collection[Tile]) -> collections.Counter[int]:

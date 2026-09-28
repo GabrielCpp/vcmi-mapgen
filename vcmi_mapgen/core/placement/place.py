@@ -1,12 +1,12 @@
 """``place_one``, the shared placement primitive, and the reachability BFS it places against."""
 
-import collections
 import random
 from collections.abc import Collection, Container, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.reach import distances
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Guard,
@@ -27,16 +27,7 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, int]:
     """4-connected BFS steps from the protected web through the open field. Tiles absent
     from the result are UNREACHABLE (sealed by vegetation) — nothing may be placed there."""
-    d = {t: 0 for t in prot if t in open_set}
-    q = collections.deque(d)
-    while q:
-        x, y = q.popleft()
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            n = (x + dx, y + dy)
-            if n in open_set and n not in d:
-                d[n] = d[(x, y)] + 1
-                q.append(n)
-    return d
+    return distances(open_set, [t for t in prot if t in open_set])
 
 
 def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Tile]:
