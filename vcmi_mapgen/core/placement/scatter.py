@@ -24,7 +24,6 @@ from vcmi_mapgen.core.placement.intensity import (
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one, web_dist
 from vcmi_mapgen.core.planning.entrances import zone_gate_bands
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 CAPS = {
     Purpose.RESOURCE_PILE: 16,
@@ -43,6 +42,7 @@ class ScatterZone:
     zone_label: ZoneLabel
     zid: int
     terrain: str
+    st: TerrainStats
     open_set: AbstractSet[Tile]
     prot: Collection[Tile]
     entrances: Sequence[Entrance] | None = None
@@ -87,7 +87,7 @@ def place_scatter(
     once for the WHOLE map after every zone's scatter is done (a genuine pocket must be
     judged against true global passability, not one zone's reach alone)."""
     ts = zone.ts
-    st = load_gameplay()[zone.terrain]
+    st = zone.st
     rng = random.Random(config.seed ^ (zone.zid * 92821) ^ 0x9C4)
     area = len(ts)
     dens = {p: st.counts.get(p, 0) / max(st.tiles, 1) for p in PICKUP_PURPOSES}

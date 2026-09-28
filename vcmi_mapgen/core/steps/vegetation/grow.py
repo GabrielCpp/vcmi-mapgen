@@ -9,6 +9,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, ZonePlan
+from vcmi_mapgen.core.priors.vegetation import VegetationStats
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone
 
@@ -34,13 +35,17 @@ class Grown:
     zones: Mapping[int, VegetatedZone]
 
 
-def vegetation_models(catalog: Catalog, plan: ZonePlan) -> dict[str, PP.VegModel]:
-    """One fitted model per terrain the plan holds, built in the order the zones name them."""
+def vegetation_models(
+    catalog: Catalog, stats: Mapping[str, VegetationStats], plan: ZonePlan
+) -> dict[str, PP.VegModel]:
+    """One fitted model per terrain the plan holds, built from that terrain's ``stats`` in
+    the order the zones name them."""
     models: dict[str, PP.VegModel] = {}
     for pl in plan.levels.values():
         for zone in pl.zones.values():
             if zone.terrain not in models:
-                models[zone.terrain] = PP.build_model(catalog, zone.terrain)
+                st = stats[zone.terrain]
+                models[zone.terrain] = PP.build_model(catalog, zone.terrain, st)
     return models
 
 

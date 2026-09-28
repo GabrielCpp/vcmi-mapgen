@@ -1,26 +1,13 @@
 """Reliability tests for the zone economy ledger."""
 
-import os
-
-import pytest
-
 from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger
-from vcmi_mapgen.corpus.gameplay import STATS_PATH
-from vcmi_mapgen.corpus.vegetation import PP_DIR
-
-HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
-needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
 
 
-@needs_stats
 def test_mine_ledger_covers_basics_and_rations_gold(open_zone: OpenZonePlacer) -> None:
     """The map-level ledger drives zones to cover all six basic resources and blocks gold
     mines until the map holds several towns."""
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(40) for y in range(30)}
     # gold is rationed to towns - 1 (a zone may roll a neutral town of its own, which
     # legitimately raises the quota — the INVARIANT is what must hold)

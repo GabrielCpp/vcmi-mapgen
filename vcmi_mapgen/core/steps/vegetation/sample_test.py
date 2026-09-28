@@ -1,9 +1,5 @@
 """Reliability tests for steps.vegetation.sample (marked-point-process vegetation sampler)."""
 
-import os
-
-import pytest
-
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import label_zones
@@ -11,8 +7,8 @@ from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.entrances import plan_entrances, zone_fronts, zone_gate_bands
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.vegetation import sample as PP
-from vcmi_mapgen.corpus.vegetation import PP_DIR
 
 
 def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
@@ -25,13 +21,8 @@ def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
     )
 
 
-HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
-needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
-
-
-@needs_stats
-def test_model_and_sampler_deterministic(catalog: Catalog) -> None:
-    model = PP.build_model(catalog, "grass")
+def test_model_and_sampler_deterministic(catalog: Catalog, priors: Priors) -> None:
+    model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
     assert model.cats, "grass model has categories"
     assert 0 < model.target < 1
     ts = {(x, y) for x in range(18) for y in range(14)}
@@ -46,10 +37,9 @@ def test_model_and_sampler_deterministic(catalog: Catalog) -> None:
     assert 0.1 < len(b1) / len(ts) < 0.95
 
 
-@needs_stats
-def test_protected_web_stays_open(catalog: Catalog) -> None:
+def test_protected_web_stays_open(catalog: Catalog, priors: Priors) -> None:
     """No blocking cell may land on the protected walkable web (the hard zero)."""
-    model = PP.build_model(catalog, "grass")
+    model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
     ts = {(x, y) for x in range(20) for y in range(16)}
     ref = PP.ZoneRef(ts, label_zones({1: _zone(ts, 9.5, 7.5)}), 1, (9.5, 7.5))
     objs, blocked, prot = PP.sample_zone(ref, model, seed=9)
@@ -61,7 +51,6 @@ def test_protected_web_stays_open(catalog: Catalog) -> None:
     assert not (blocked & prot)
 
 
-@needs_stats
 def test_protected_web_covers_gate_bands() -> None:
     ts1 = {(x, y) for x in range(14) for y in range(12)}
     ts2 = {(x, y) for x in range(14, 28) for y in range(12)}
@@ -73,8 +62,7 @@ def test_protected_web_covers_gate_bands() -> None:
         assert g.band <= prot, "every gate-band tile must be protected from vegetation"
 
 
-@needs_stats
-def test_border_bias_densifies_front(catalog: Catalog) -> None:
+def test_border_bias_densifies_front(catalog: Catalog, priors: Priors) -> None:
     """Zone isolation: with BOTH zones sampling under the `border=` bias, the aligned
     open crossings outside the planned entrance band shrink. Each single side is only a
     partial ridge (Geyer saturation caps clumping), so the border plan closes the rest."""
@@ -83,7 +71,7 @@ def test_border_bias_densifies_front(catalog: Catalog) -> None:
     zones = {1: _zone(ts1, 6.5, 5.5), 2: _zone(ts2, 20.5, 5.5, 2)}
     label = label_zones(zones)
     plan = plan_entrances(label)
-    model = PP.build_model(catalog, "grass")
+    model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
 
     def zone_pass(
         zid: int, ts: set[Tile], seed: int, border_bias: bool = True

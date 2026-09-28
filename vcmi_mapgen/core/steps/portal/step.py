@@ -10,6 +10,7 @@ from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile, Zon
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
 from vcmi_mapgen.core.steps.portal import rescue as RS
 from vcmi_mapgen.core.steps.portal.result import PortalResult
@@ -51,6 +52,7 @@ class PortalStep(PipelineStep):
     """Portal rescue: a zone the start cannot walk to gets a portal pair.
 
     Config:
+        priors      The corpus priors; the step reads the level-0 gameplay statistics.
         seed        RNG seed.
         size        Map side length in tiles (square).
 
@@ -61,7 +63,8 @@ class PortalStep(PipelineStep):
     ``PortalResult``.
     """
 
-    def __init__(self, seed: int = 3, size: int = 72) -> None:
+    def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
+        self.priors = priors
         self.seed = seed
         self.size = size
         self.objs: list[PlacedObject] = []
@@ -102,6 +105,7 @@ class PortalStep(PipelineStep):
             self._targets,
             self._zone_records,
             covers,
+            self.priors.gameplay[0],
         )
         start = _find_start(self._player_zids, self._segmentation.zones, self._town_of_zone)
         if start is not None:

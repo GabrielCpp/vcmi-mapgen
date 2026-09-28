@@ -1,5 +1,6 @@
 """Per-terrain gameplay statistics: densities, sprite weights and covariate counts."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 
@@ -16,3 +17,7 @@ class TerrainStats:
     tiles_o: list[int]
     border_open_frac: float
     guard_frac: dict[str, float]
+
+
+type GameplayStats = Mapping[str, TerrainStats]
+"""The gameplay statistics of one terrain level, keyed by terrain name."""

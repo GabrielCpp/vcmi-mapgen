@@ -11,7 +11,7 @@ from PIL import Image
 
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.terrain_gen.macro import MacroOptions, generate, report
-from vcmi_mapgen.corpus.macro import load_macro
+from vcmi_mapgen.corpus.priors import load_priors
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers.palette import TERRAIN_RGB
 from vcmi_mapgen.renderers.palette import TERRAIN_TILE_PX as _TILE
@@ -33,19 +33,15 @@ def main() -> None:
     _ = ap.add_argument("--water", type=float, default=None)
     _ = ap.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
     args = ap.parse_args(namespace=_Args())
-    st = load_macro(level=args.level)
+    priors = load_priors().terrain[args.level]
+    st = priors.macro
     barrier_name = "water" if args.level == 0 else "rock"
     median_area = st.areas[len(st.areas) // 2]
     median_frac = st.barrier_fracs[len(st.barrier_fracs) // 2]
     head = f"macro stats (level {args.level}): {len(st.areas)} corpus zones"
     tail = f"median area {median_area}, median {barrier_name} frac {median_frac:.2f}"
     print(f"{head}, {tail}")
-    grid = generate(
-        args.size,
-        args.size,
-        seed=args.seed,
-        options=MacroOptions(water=args.water, level=args.level),
-    )
+    grid = generate(args.size, args.seed, priors, MacroOptions(water=args.water, level=args.level))
     print("generated:", report(grid))
     img = Image.new("RGB", (args.size * _TILE, args.size * _TILE))
     for y, row in enumerate(grid):

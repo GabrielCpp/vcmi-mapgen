@@ -16,8 +16,7 @@ from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
-from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.corpus.gameplay import load_gameplay
+from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 
 _LOOT_ART_W: dict[ArtifactTier, int] = {"treasure": 5, "minor": 15, "major": 35, "relic": 45}
 FILL_EXCL_TYPES = frozenset({"fountainOfFortune", "idolOfFortune"})
@@ -265,11 +264,13 @@ def fill_loot_zone(
 @dataclass(frozen=True, slots=True)
 class LootLevel:
     """One level to fill: every zone record, the access footprint of each loot zone by zone
-    id, the objects already on the level and the tiles the level has claimed."""
+    id, the objects already on the level, the gameplay statistics per terrain and the tiles
+    the level has claimed."""
 
     zone_records: Sequence[ZoneRecord]
     footprints: Mapping[int, frozenset[Tile]]
     objs: Sequence[PlacedObject]
+    gameplay: GameplayStats
     claims: frozenset[Tile] = frozenset()
 
 
@@ -299,7 +300,7 @@ def fill_loot_zones(
         zone = FillZone(
             zid=zr.zid,
             terrain=zr.terrain,
-            st=load_gameplay()[zr.terrain],
+            st=level.gameplay[zr.terrain],
             reach=frozenset(zr.ts - blocked - footprint),
             rng=random.Random(seed ^ (zr.zid * 92821) ^ 0xA117),
             all_ts=all_ts,

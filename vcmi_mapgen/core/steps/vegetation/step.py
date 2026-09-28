@@ -12,6 +12,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning import zone_plan as ZPL
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.vegetation.grow import GrowLevel, grow_level, vegetation_models
@@ -54,6 +55,7 @@ class VegetationStep(PipelineStep):
     """Corpus-fitted Gibbs marked-point-process vegetation, per zone.
 
     Config:
+        priors   The corpus priors; the step reads the vegetation and gameplay statistics.
         seed     RNG seed.
         players  Number of player zones whose town spot stays clear of trees.
 
@@ -67,7 +69,8 @@ class VegetationStep(PipelineStep):
     the ``ZonePlan`` and ``VegetationResult``, which holds each zone's open and passable tiles.
     """
 
-    def __init__(self, seed: int = 3, players: int = 0) -> None:
+    def __init__(self, priors: Priors, seed: int = 3, players: int = 0) -> None:
+        self.priors: Priors = priors
         self.seed: int = seed
         self.players: int = players
         self.objs: list[PlacedObject] = []
@@ -87,7 +90,7 @@ class VegetationStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         plan = self._zone_plan(catalog, map_state)
-        models = vegetation_models(catalog, plan)
+        models = vegetation_models(catalog, self.priors.vegetation, plan)
         pre_taken = {lvl: _taken(map_state, lvl, pl) for lvl, pl in plan.levels.items()}
         grown = {
             level: grow_level(models, self._grow_level(level, pl, pre_taken[level]), self.seed)
@@ -112,7 +115,7 @@ class VegetationStep(PipelineStep):
         )
         return ZPL.plan_player_zones(
             catalog,
-            ZPL.plan_zones(catalog, terrain, self.seed),
+            ZPL.plan_zones(catalog, terrain, self.priors.gameplay, self.seed),
             self._segmentation.zones,
             self._terrain.tunnel_protect,
             self.players,

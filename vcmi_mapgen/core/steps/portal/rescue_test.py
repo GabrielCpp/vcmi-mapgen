@@ -17,6 +17,7 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.portal import rescue as RS
 
 GRASS, ROCK = 2, 9
@@ -101,6 +102,7 @@ def _world(objs: list[PlacedObject]) -> RS.PortalWorld:
         {0: [(2, 5), (10, 5)]},
         {0: []},
         {0: CoverIndex(objs)},
+        {},
     )
 
 
@@ -111,7 +113,7 @@ def test_check_reach_raises_on_a_cut_off_target() -> None:
         RS.check_reach(_world(veg_wall + picks))
 
 
-def test_portal_reward_zone(catalog: Catalog) -> None:
+def test_portal_reward_zone(catalog: Catalog, priors: Priors) -> None:
     """A rock-enclosed zone becomes a SPECIAL REWARD zone: a same-subtype two-way monolith
     pair bridges it (far end inside, near end in the reachable host zone with a hostile
     guard adjacent), cache-tagged loot fills it, and traverse counts it reachable."""
@@ -130,7 +132,14 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
         n = RS.rescue_unreachable_zones(
             catalog,
             RS.PortalWorld(
-                size, {0: grid}, {0: zones}, objs, targets, {0: []}, {0: CoverIndex(objs[0])}
+                size,
+                {0: grid},
+                {0: zones},
+                objs,
+                targets,
+                {0: []},
+                {0: CoverIndex(objs[0])},
+                priors.gameplay[0],
             ),
             start=(0, (5, 5)),
             gate_xy=no_gates,
@@ -167,7 +176,7 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
     )
 
 
-def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
+def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog, priors: Priors) -> None:
     """Artifacts (and pandora's box / chests) are pocket/loot-zone only now -- the
     portal-rescue reward hoard must be resource piles alone, never a REWARD_PICKUP
     (which used to draw random artifacts)."""
@@ -183,7 +192,14 @@ def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
     _ = RS.rescue_unreachable_zones(
         catalog,
         RS.PortalWorld(
-            size, {0: grid}, {0: zones}, objs, targets, {0: []}, {0: CoverIndex(objs[0])}
+            size,
+            {0: grid},
+            {0: zones},
+            objs,
+            targets,
+            {0: []},
+            {0: CoverIndex(objs[0])},
+            priors.gameplay[0],
         ),
         start=(0, (5, 5)),
         gate_xy=no_gates,

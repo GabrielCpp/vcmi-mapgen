@@ -6,6 +6,7 @@ import io
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import (
     GameplayStep,
     GatedStep,
@@ -15,30 +16,27 @@ from vcmi_mapgen.core.steps import (
 )
 
 
-def _run_through_treasure(
-    catalog: Catalog, seed: int, size: int = 48, players: int = 2, subterrain: bool = True
-) -> MapState:
+def _run_through_treasure(catalog: Catalog, priors: Priors, seed: int) -> MapState:
+    size, players = 48, 2
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         pipeline = Pipeline(catalog, size)
-        _ = pipeline.add_step(
-            TerrainStep(size=size, seed=seed, water_mode="normal", subterrain=subterrain)
-        )
-        _ = pipeline.add_step(VegetationStep(seed=seed, players=players))
-        _ = pipeline.add_step(
-            GameplayStep(seed=seed, players=players, size=size, subterrain=subterrain)
-        )
-        _ = pipeline.add_step(GatedStep(seed=seed, size=size))
-        _ = pipeline.add_step(TreasureStep(seed=seed, size=size))
+        _ = pipeline.add_step(TerrainStep(priors, size, seed, "normal", True))
+        _ = pipeline.add_step(VegetationStep(priors, seed, players))
+        _ = pipeline.add_step(GameplayStep(priors, seed, players, size, True))
+        _ = pipeline.add_step(GatedStep(priors, seed, size))
+        _ = pipeline.add_step(TreasureStep(priors, seed, size))
         map_state = pipeline.run()
     return map_state
 
 
-def test_loot_zone_sealing_never_drops_a_subterranean_gate(catalog: Catalog) -> None:
+def test_loot_zone_sealing_never_drops_a_subterranean_gate(
+    catalog: Catalog, priors: Priors
+) -> None:
     """seed=7/size=48/subterrain places a Subterranean Gate pair whose (17, 14) tile falls
     inside a zone GatedStep seals as a loot zone. GatedStep and TreasureStep only add
     objects, so the gate pair must survive on both levels at the same (x, y)."""
-    state = _run_through_treasure(catalog, seed=7)
+    state = _run_through_treasure(catalog, priors, seed=7)
     gates_by_level: dict[int, list[tuple[int, int]]] = {0: [], 1: []}
     for o in state.objs:
         if catalog.identity_of(o.kind).type == "subterraneanGate":

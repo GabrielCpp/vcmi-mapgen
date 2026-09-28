@@ -33,7 +33,7 @@ from vcmi_mapgen.core.placement.cells import legal_cells
 from vcmi_mapgen.core.placement.identity import (
     pick_fixed_identity,
 )
-from vcmi_mapgen.corpus.gameplay import load_gameplay
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
@@ -81,8 +81,8 @@ def _water_obj(
 
 def place_water(
     catalog: Catalog,
+    st: TerrainStats | None,
     ts: AbstractSet[Tile],
-    _zones: Mapping[int, Zone],
     zid: int,
     seed: int = 1,
 ) -> list[PlacedObject]:
@@ -91,8 +91,8 @@ def place_water(
     derelicts (banks), ocean bottles. No monster: a GUARD only ever gates a mine, a
     loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
     order) -- water bodies get none. Densities and animation mix come from the corpus
-    water pass; identities from the catalog's water pools."""
-    st = load_gameplay().get("water")
+    water pass in ``st``, which is None when the corpus has none; identities from the
+    catalog's water pools."""
     if not st or not st.tiles:
         return []
     rng = random.Random(seed ^ (zid * 55313) ^ 0x5EA)

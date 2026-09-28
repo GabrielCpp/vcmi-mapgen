@@ -10,6 +10,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
 from vcmi_mapgen.core.steps.scatter.piles import PileLevel, scatter_level
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
@@ -21,6 +22,7 @@ class ScatterStep(PipelineStep):
     a monster does not look guarded, and it never claims a tile an earlier step used.
 
     Config:
+        priors     The corpus priors; the step reads the level-0 gameplay statistics.
         seed       RNG seed.
         size       Map side length in tiles (square).
 
@@ -30,7 +32,8 @@ class ScatterStep(PipelineStep):
     Produces: appends the piles to ``map_state.objs``.
     """
 
-    def __init__(self, seed: int = 3, size: int = 72) -> None:
+    def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
+        self.priors: Priors = priors
         self.seed: int = seed
         self.size: int = size
         self.objs: list[PlacedObject] = []
@@ -57,6 +60,7 @@ class ScatterStep(PipelineStep):
                 self._gameplay.zones[level],
                 self._segmentation.zone_label[level],
                 self._zones.claims.get(level, frozenset()),
+                self.priors.gameplay[0],
             )
             piles = scatter_level(catalog, lv, by_level[level], self.seed, self.size)
             self.objs.extend(piles.objs)

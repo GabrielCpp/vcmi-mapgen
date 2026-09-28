@@ -4,8 +4,11 @@ The corpus priors as frozen values the steps read. `corpus/` loads and saves the
 
 ## Map
 
+- `bundle.py`: `Priors`, every prior one generation run reads, and `TerrainPriors`, one
+  level's macro statistics and Markov tables.
 - `gates.py`: `GateStats`, the Subterranean Gate counts and spacing per map width.
-- `gameplay.py`: `TerrainStats`, the gameplay statistics per terrain.
+- `gameplay.py`: `TerrainStats`, the gameplay statistics per terrain, and `GameplayStats`,
+  one level's statistics keyed by terrain.
 - `macro.py`: `MacroStats`, the corpus zone areas, terrain shares, terrain adjacency and barrier fractions.
 - `markov.py`: `MarkovTables`, the terrain Markov chains that texture zone borders.
 - `vegetation.py`: `VegetationStats`, the decoration statistics per terrain, and the pair

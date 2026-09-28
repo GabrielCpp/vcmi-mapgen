@@ -1,19 +1,11 @@
 """Reliability tests for the gameplay draw and placement of one open zone."""
 
-import os
-
-import pytest
-
 from vcmi_mapgen.conftest import OpenZone, OpenZonePlacer
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import GAP
-from vcmi_mapgen.corpus.gameplay import STATS_PATH, load_gameplay
-from vcmi_mapgen.corpus.vegetation import PP_DIR
-
-HAVE_STATS = os.path.exists(os.path.join(PP_DIR, "veg_grass.json"))
-needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
+from vcmi_mapgen.core.priors.bundle import Priors
 
 
 def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
@@ -21,11 +13,7 @@ def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
     return footprint_cells(o.footprint, o.x, o.y)
 
 
-@needs_stats
 def test_gameplay_layer_legal_and_deterministic(open_zone: OpenZonePlacer) -> None:
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     o1 = open_zone(OpenZone(ts, "grass"), 4)
     o2 = open_zone(OpenZone(ts, "grass"), 4)
@@ -73,12 +61,8 @@ def test_gameplay_layer_legal_and_deterministic(open_zone: OpenZonePlacer) -> No
             assert d > GAP, f"objects {i},{j} too close (cheb {d})"
 
 
-@needs_stats
 def test_forced_town_sits_on_zone_centroid(open_zone: OpenZonePlacer) -> None:
     """A designated player zone gets its town ON the centroid (footprint-centered)."""
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     objs = open_zone(OpenZone(ts, "grass", player=True), 4).objs
     towns = [o for o in objs if o.purpose == Purpose.TOWN]
@@ -97,12 +81,8 @@ def test_forced_town_sits_on_zone_centroid(open_zone: OpenZonePlacer) -> None:
     )
 
 
-@needs_stats
 def test_town_zone_gets_wood_and_ore_next_to_town(open_zone: OpenZonePlacer) -> None:
     """A zone with a town ALWAYS holds a sawmill + ore pit, anchored near the town."""
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
     for seed in (1, 4, 9):
         objs = open_zone(OpenZone(ts, "grass", player=True), seed).objs
@@ -119,13 +99,9 @@ def test_town_zone_gets_wood_and_ore_next_to_town(open_zone: OpenZonePlacer) -> 
             assert d <= 12, f"seed {seed}: {sub_of[id(m)]} is {d} tiles from the town"
 
 
-@needs_stats
 def test_banks_placed_on_land_and_legal(open_zone: OpenZonePlacer) -> None:
     """Creature banks (utopias, conservatories, crypts...) place on land like visitables:
     full footprint in-zone, approach standable, no extra approach guard."""
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(45) for y in range(40)}
     banks: list[PlacedObject] = []
     for seed in range(1, 12):
@@ -138,14 +114,10 @@ def test_banks_placed_on_land_and_legal(open_zone: OpenZonePlacer) -> None:
         assert approach is not None and all(c in ts for c in allc)
 
 
-@needs_stats
-def test_mine_sprites_match_terrain(open_zone: OpenZonePlacer) -> None:
+def test_mine_sprites_match_terrain(open_zone: OpenZonePlacer, priors: Priors) -> None:
     """Mine DEFs carry a baked-in terrain apron; placed mines must use variants the corpus
     actually uses on that terrain (no dirt-apron gold mine on grass)."""
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
-    st = load_gameplay()
+    st = priors.gameplay[0]
     ts = {(x, y) for x in range(40) for y in range(30)}
     for terrain in ("grass", "snow"):
         mw = st[terrain].anim_w[Purpose.MINE]

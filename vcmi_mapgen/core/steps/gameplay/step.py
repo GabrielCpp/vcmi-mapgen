@@ -18,6 +18,7 @@ from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteIndex, SiteZone, ZoneSite
 from vcmi_mapgen.core.planning import zone_plan as ZPL
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.draw import (
     TOWN_MIN_AREA,
     TOWN_SLOTS,
@@ -130,6 +131,8 @@ class GameplayStep(PipelineStep):
     """Place every gameplay object once vegetation has grown.
 
     Config:
+        priors      The corpus priors; the step reads the gameplay statistics and the gate
+                    estimator.
         seed        RNG seed.
         players     Number of player zones to designate (0 = neutral map).
         size        Map side length in tiles (square).
@@ -149,8 +152,14 @@ class GameplayStep(PipelineStep):
     """
 
     def __init__(
-        self, seed: int = 3, players: int = 0, size: int = 72, subterrain: bool = False
+        self,
+        priors: Priors,
+        seed: int = 3,
+        players: int = 0,
+        size: int = 72,
+        subterrain: bool = False,
     ) -> None:
+        self.priors = priors
         self.seed = seed
         self.players = players
         self.size = size
@@ -212,7 +221,8 @@ class GameplayStep(PipelineStep):
             idx.lf.avoid = frozenset[Tile]().union(*rooms) | (landings if level == 0 else NO_TILES)
         gates = GateResult()
         if self.subterrain and 0 in indexes and 1 in indexes:
-            gates = place_gate_pairs(catalog, indexes[0], indexes[1], map_state.size, self.seed)
+            pair = (indexes[0], indexes[1])
+            gates = place_gate_pairs(catalog, pair, self.priors.gates, map_state.size, self.seed)
         for level, idx in indexes.items():
             idx.lf.avoid = landings if level == 0 else NO_TILES
         map_state.gate_blk = gates.gate_blk
@@ -269,8 +279,9 @@ class GameplayStep(PipelineStep):
         vegetated = self._veg.zones[level]
         for zid, zone in sorted(self._plan.levels[level].zones.items()):
             v = vegetated[zid]
+            st = self.priors.gameplay[level][zone.terrain]
             site = SiteZone(
-                zone.terrain, zone.ts, zone.ent_bands, zone.prot, v.open_set, v.passable
+                zone.terrain, st, zone.ts, zone.ent_bands, zone.prot, v.open_set, v.passable
             )
             idx.sites[zid] = ZoneSite(catalog, zid, site, lf, self.seed)
             idx.zone_of.update(dict.fromkeys(zone.ts, zid))

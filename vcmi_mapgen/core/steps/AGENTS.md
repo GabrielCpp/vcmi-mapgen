@@ -56,6 +56,14 @@ lives in the step's package as a function over plain values, with its own test, 
 `vegetation/grow.py`, `scatter/piles.py` and `border/guard.py` do. A step that works level
 by level gets each level's objects from `MapState.objs_by_level`.
 
+## A step receives its priors in its constructor
+
+A step that reads corpus statistics takes `priors: Priors` (`core/priors/bundle.py`) as
+its first constructor argument and passes on only the fields each function reads. No
+module under `core/` loads a file from `data/pp`. `cli/steps.py` builds every step from
+the one `Priors` value `corpus.priors.load_priors` returns, and a test takes the session
+`priors` fixture from `vcmi_mapgen/conftest.py` or builds a small value of its own.
+
 ## A step learns about objects through its catalog
 
 `run(self, catalog: Catalog, map_state: MapState)` receives the one `Catalog`

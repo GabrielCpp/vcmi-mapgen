@@ -10,9 +10,10 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import build_zone_index
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
 from vcmi_mapgen.core.steps.gated.loot_zones import mark_loot_zones, walk_targets
-from vcmi_mapgen.core.steps.gated.placer import place_gated_zones
+from vcmi_mapgen.core.steps.gated.placer import GatedLevel, place_gated_zones
 from vcmi_mapgen.core.steps.gated.result import GatedResult
 
 
@@ -34,6 +35,7 @@ class GatedStep(PipelineStep):
     or a monolith pair with a guarded partner outside.
 
     Config:
+        priors      The corpus priors; the step reads the level-0 gameplay statistics.
         seed        RNG seed.
         size        Map side length in tiles (square).
 
@@ -44,7 +46,8 @@ class GatedStep(PipelineStep):
     and provides ``ZoneIndex`` and ``GatedResult``.
     """
 
-    def __init__(self, seed: int = 3, size: int = 72) -> None:
+    def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
+        self.priors = priors
         self.seed = seed
         self.size = size
         self.objs: list[PlacedObject] = []
@@ -66,8 +69,7 @@ class GatedStep(PipelineStep):
         for level, zone_records in index.zone_records.items():
             new, n, access, claims = place_gated_zones(
                 catalog,
-                zone_records,
-                by_level[level],
+                GatedLevel(zone_records, by_level[level], self.priors.gameplay[0]),
                 seed=self.seed,
                 bounds=(self.size, self.size),
             )

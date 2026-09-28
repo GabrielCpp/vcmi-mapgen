@@ -49,7 +49,6 @@ from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.entrances import Gate, zone_fronts, zone_gate_bands
 from vcmi_mapgen.core.priors import vegetation as PS
-from vcmi_mapgen.corpus.vegetation import load_vegetation
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)
@@ -86,9 +85,9 @@ class VegModel:
     runs: dict[str, float]
 
 
-def build_model(catalog: Catalog, terrain: str) -> VegModel:
-    """Fitted per-terrain sampling model: category list, intensities, theta kernel, ident pools."""
-    st = load_vegetation(terrain)
+def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegModel:
+    """Fitted per-terrain sampling model from the terrain's vegetation statistics ``st``:
+    category list, intensities, theta kernel, ident pools."""
     th = PS.theta_local(st, rint=RINT)
 
     by_cat: collections.defaultdict[str, list[Identity]] = collections.defaultdict(list)

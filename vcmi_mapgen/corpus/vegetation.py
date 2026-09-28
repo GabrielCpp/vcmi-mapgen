@@ -99,3 +99,8 @@ def save_vegetation(stats: Mapping[str, VegetationStats]) -> None:
 
 def load_vegetation(terrain: str) -> VegetationStats:
     return _stats_from_json(pp_cache.read(_stats_path(terrain)))
+
+
+def vegetation_terrains() -> list[str]:
+    """The terrain names that have saved vegetation statistics, sorted."""
+    return sorted(p.stem.removeprefix("veg_") for p in Path(PP_DIR).glob("veg_*.json"))

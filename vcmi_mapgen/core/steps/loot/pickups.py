@@ -17,7 +17,7 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
-from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.loot.pockets import (
     dedupe_pockets,
     guard_stand,
@@ -31,7 +31,6 @@ from vcmi_mapgen.core.steps.treasure.fill import (
     LOOT_CHEST_TYPES,
     solo_visit_pool,
 )
-from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier | None, ...] = (
     "treasure",
@@ -48,6 +47,7 @@ _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
 
 @dataclass(frozen=True, slots=True)
 class PocketContext:
+    gameplay: GameplayStats
     border_guards: Container[Tile] = ()
     precomputed_pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]] | None = None
     existing_objs: Sequence[PlacedObject] = ()
@@ -55,15 +55,12 @@ class PocketContext:
     cover: CoverIndex | None = None
 
 
-_DEFAULT_POCKET_CONTEXT = PocketContext()
-
-
 def place_pocket_caches(
     catalog: Catalog,
     zone_records: Sequence[ZoneRecord],
+    context: PocketContext,
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
-    context: PocketContext = _DEFAULT_POCKET_CONTEXT,
 ) -> tuple[list[PlacedObject], int, dict[Tile, float]]:
     """Guarded caches in genuine geometric pockets — found in ONE global, zone-independent
     pass over the WHOLE map's TRUE physical passability, run once after every zone's
@@ -165,6 +162,7 @@ class _PocketCachePass:
         self.seed = seed
         self.bounds = bounds
         self.border_guards = context.border_guards
+        self.gameplay = context.gameplay
         self.zone_of: dict[Tile, int] = {}
         self.terrain_of: dict[int, str] = {}
         self.global_open: set[Tile] = set()
@@ -387,7 +385,7 @@ class _PocketCachePass:
         ref = guard_tile if guard_tile is not None else ref_g
 
         terrain = self.terrain_of[pick.zid]
-        st = load_gameplay()[terrain]
+        st = self.gameplay[terrain]
         pool_res = self.catalog.candidates(Purpose.RESOURCE_PILE, terrain)
         pool_art = self.catalog.candidates(Purpose.REWARD_PICKUP, terrain)
         rng = random.Random(self.seed ^ (ref_g[0] * 92821) ^ (ref_g[1] * 131071) ^ 0x9C4)

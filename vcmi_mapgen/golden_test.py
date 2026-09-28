@@ -14,9 +14,10 @@ from pathlib import Path
 import pytest
 
 from vcmi_mapgen.cli.settings import load_settings
-from vcmi_mapgen.cli.steps import build_steps
+from vcmi_mapgen.cli.steps import StepConfig, build_steps
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import VmapRenderer
 from vcmi_mapgen.vcmi.catalog import objects as OB
@@ -26,7 +27,7 @@ from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import InstallNotFoundError, VcmiInstall
 
 GOLDEN = project_root() / "data" / "golden.json"
-MAPS = (("s1_48", 1, 48, False), ("s3_72_sub", 3, 72, True))
+MAPS = (("s1_48", StepConfig(1, 48)), ("s3_72_sub", StepConfig(3, 72, subterrain=True)))
 
 
 def _install() -> VcmiInstall | None:
@@ -45,9 +46,9 @@ def _needs_install() -> None:
         pytest.skip("the golden hashes were recorded against a local VCMI install")
 
 
-def _generate(seed: int, size: int, subterrain: bool) -> MapState:
-    pipeline = Pipeline(VcmiCatalog(), size)
-    for _name, step in build_steps(seed, size, 2, "normal", subterrain):
+def _generate(priors: Priors, config: StepConfig) -> MapState:
+    pipeline = Pipeline(VcmiCatalog(), config.size)
+    for _name, step in build_steps(priors, config):
         _ = pipeline.add_step(step)
     return pipeline.run()
 
@@ -74,11 +75,11 @@ def _recorded() -> dict[str, str]:
 
 
 @pytest.mark.golden
-@pytest.mark.parametrize(("key", "seed", "size", "subterrain"), MAPS)
+@pytest.mark.parametrize(("key", "config"), MAPS, ids=[key for key, _config in MAPS])
 def test_generated_map_matches_golden(
-    key: str, seed: int, size: int, subterrain: bool, tmp_path: Path
+    key: str, config: StepConfig, priors: Priors, tmp_path: Path
 ) -> None:
-    digest = _digest(_generate(seed, size, subterrain), tmp_path)
+    digest = _digest(_generate(priors, config), tmp_path)
     if os.environ.get("GOLDEN_UPDATE") == "1":
         recorded = _recorded()
         recorded[key] = digest

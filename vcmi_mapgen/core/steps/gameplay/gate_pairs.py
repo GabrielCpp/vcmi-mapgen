@@ -17,8 +17,8 @@ from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.guards import NO_TILES, Fit
 from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
+from vcmi_mapgen.core.priors.gates import GateStats
 from vcmi_mapgen.core.steps.gameplay.result import GateResult
-from vcmi_mapgen.corpus.gates import load_gate_stats
 
 GUARD_P = 0.65
 GUARD_SALT = 0x6A7F
@@ -90,10 +90,15 @@ class _GatePlacer:
 
 
 def place_gate_pairs(
-    catalog: Catalog, idx0: SiteIndex, idx1: SiteIndex, size: int, seed: int
+    catalog: Catalog,
+    indexes: tuple[SiteIndex, SiteIndex],
+    stats: GateStats,
+    size: int,
+    seed: int,
 ) -> GateResult:
+    idx0, idx1 = indexes
     placer = _GatePlacer(catalog, idx0, idx1, seed)
-    anchors = gate_anchors(_side(idx0), _side(idx1), size, seed, placer.place)
+    anchors = gate_anchors((_side(idx0), _side(idx1)), stats, size, seed, placer.place)
     print(f"  gates: {len(anchors)} Subterranean Gate pair(s) placed")
     return GateResult(
         gate_objs=placer.objs,
@@ -133,24 +138,24 @@ class Spread:
 
 
 def gate_anchors(
-    side0: GateSide,
-    side1: GateSide,
+    sides: tuple[GateSide, GateSide],
+    stats: GateStats,
     size: int,
     seed: int,
     place: Callable[[Tile, Spread], Tile | None],
 ) -> list[Tile]:
     """Walk the tiles land on both levels in a seeded order and let ``place`` put a gate
     pair near each one the spread admits. ``place`` returns the anchor it used, or None.
-    The count is drawn from corpus maps of the same width and is an upper bound. Each zone
+    The count is drawn from ``stats`` at the map width and is an upper bound. Each zone
     on either level hosts at most one gate, and no two gates sit closer than the corpus
     spacing floor."""
+    side0, side1 = sides
     rng = random.Random(seed ^ 0x6A7E)
     ts_both = side0.ts & side1.ts
     if not ts_both:
         return []
-    st = load_gate_stats()
-    target = st.draw_count(size, rng)
-    spread = Spread(side0, side1, st.min_gap(size))
+    target = stats.draw_count(size, rng)
+    spread = Spread(side0, side1, stats.min_gap(size))
     cands = sorted(ts_both)
     rng.shuffle(cands)
     out: list[Tile] = []

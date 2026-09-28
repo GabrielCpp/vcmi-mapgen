@@ -9,9 +9,12 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteZone, ZoneSite
+from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.steps.gameplay.draw import DrawSpec, ZoneDrawer
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger, tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.step import place_attractions, place_mines, place_town
+from vcmi_mapgen.corpus.priors import load_priors
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, load_config
@@ -33,6 +36,11 @@ def catalog(_bound_catalog: None) -> Catalog:
     return VcmiCatalog()
 
 
+@pytest.fixture(scope="session")
+def priors() -> Priors:
+    return load_priors()
+
+
 @dataclass(frozen=True, slots=True)
 class OpenZone:
     """One zone of open land to draw outside any pipeline: its tiles, its terrain, and
@@ -46,6 +54,7 @@ class OpenZone:
 @dataclass(frozen=True, slots=True)
 class OpenZonePlacer:
     catalog: Catalog
+    gameplay: GameplayStats
 
     def __call__(self, zone: OpenZone, seed: int, ledger: Ledger | None = None) -> PlacedZone:
         """Draw and place one zone of open land with no vegetation and a one-tile web at its
@@ -54,7 +63,8 @@ class OpenZonePlacer:
         w = max(x for x, _y in ts) + 1
         h = max(y for _x, y in ts) + 1
         tiles = frozenset(ts)
-        sz = SiteZone(terrain, tiles, frozenset(), frozenset({min(ts)}), tiles, tiles)
+        st = self.gameplay[terrain]
+        sz = SiteZone(terrain, st, tiles, frozenset(), frozenset({min(ts)}), tiles, tiles)
         lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [], lambda _o: True)
         site = ZoneSite(self.catalog, 1, sz, lf, seed)
         ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
@@ -68,5 +78,5 @@ class OpenZonePlacer:
 
 
 @pytest.fixture
-def open_zone(catalog: Catalog) -> OpenZonePlacer:
-    return OpenZonePlacer(catalog)
+def open_zone(catalog: Catalog, priors: Priors) -> OpenZonePlacer:
+    return OpenZonePlacer(catalog, priors.gameplay[0])

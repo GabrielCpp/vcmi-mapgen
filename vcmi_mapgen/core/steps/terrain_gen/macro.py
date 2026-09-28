@@ -5,7 +5,7 @@ decay geometrically — generated maps segment into many small fragments, while 
 handful of LARGE designed regions. This module plans the macro structure first:
 
   1. **mine**   — corpus macro statistics: zone-area distribution, per-terrain area shares,
-                  terrain adjacency mix, water fraction (cached in ``data/pp/macro_stats.json``).
+                  terrain adjacency mix, water fraction (handed in as ``MacroStats``).
   2. **plan**   — sample a water mask (low-frequency noise at the corpus water quantile), draw
                   zone target AREAS from the corpus distribution (scaled to fill the land),
                   spread seeds, and assign terrains by Metropolis on the seed k-NN graph with
@@ -32,9 +32,9 @@ from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.priors.bundle import TerrainPriors
 from vcmi_mapgen.core.priors.macro import MacroStats
 from vcmi_mapgen.core.steps.terrain_gen.texture import texture_boundaries
-from vcmi_mapgen.corpus.macro import load_macro
 
 MIN_ZONE_AREA = 40  # floor for sampled target areas
 JITTER = 1.4  # growth-cost noise amplitude (0 = pure Voronoi-like fronts)
@@ -331,13 +331,14 @@ class MacroOptions:
 
 
 def generate(
-    W: int,
-    H: int,
-    seed: int = 3,
+    size: int,
+    seed: int,
+    priors: TerrainPriors,
     options: MacroOptions | None = None,
     protect_out: set[Tile] | None = None,
 ) -> list[list[int]]:
-    """Macro terrain grid (H rows x W cols of terrain ids) for terrain level `level` (0 =
+    """Macro terrain grid (`size` rows x `size` cols of terrain ids) for terrain level
+    `level` (0 =
     surface, 1 = underground). `water` overrides the corpus-drawn barrier fraction (water on
     the surface, rock underground); `water_mode` picks the surface water STYLE: 'none' (pure
     land), 'normal' (corpus-drawn seas/lakes), 'islands' (dominant water + finer noise ->
@@ -350,12 +351,13 @@ def generate(
     reassign to a barrier code, or a thin corridor can be eroded back into rock after
     `generate()` already built it connected.
     Deterministic in `seed`."""
+    W = H = size
     opts = MacroOptions() if options is None else options
     water = opts.water
     water_mode = opts.water_mode
     level = opts.level
     rng = random.Random(seed)
-    st = load_macro(level=level)
+    st = priors.macro
     barrier = Terrain.WATER if level == 0 else Terrain.ROCK
     protect: set[Tile] = set()
     if level == 1:
@@ -388,7 +390,7 @@ def generate(
         for y in range(H)
     ]
     if opts.texture:
-        _ = texture_boundaries(grid, rng, level=level, protect=protect)
+        _ = texture_boundaries(grid, rng, priors.markov, protect=protect)
     if protect_out is not None:
         protect_out |= protect
     return grid

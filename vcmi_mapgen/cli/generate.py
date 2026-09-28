@@ -5,7 +5,7 @@ import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from vcmi_mapgen.cli.steps import build_steps
+from vcmi_mapgen.cli.steps import StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
@@ -15,6 +15,7 @@ from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
+from vcmi_mapgen.corpus.priors import load_priors
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.renderers import PngRenderer, VmapRenderer
 from vcmi_mapgen.renderers.overlays import (
@@ -133,9 +134,8 @@ class GenerateOptions:
 
 def generate(install: VcmiInstall, opts: GenerateOptions) -> None:
     pipeline = Pipeline(CATALOG, opts.size)
-    for point_name, step in build_steps(
-        opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain
-    ):
+    config = StepConfig(opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain)
+    for point_name, step in build_steps(load_priors(), config):
         _ = pipeline.add_step(step)
         if point_name == opts.stop_after:
             break

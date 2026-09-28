@@ -15,6 +15,7 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord, bare_record
+from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.steps.portal.reward_zone import RewardSite, place_reward_zone
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
@@ -83,6 +84,7 @@ class PortalWorld:
     targets_by_level: Mapping[int, list[Tile]]
     zone_records_by_level: Mapping[int, Sequence[ZoneRecord]]
     covers: Mapping[int, CoverIndex]
+    gameplay: GameplayStats
 
 
 def check_reach(world: PortalWorld) -> None:
@@ -394,7 +396,9 @@ class _PortalRescue:
             zr = bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
         self.cover_by[lvl].claim(far_fit[0])  # the monolith's own cells
         robjs = place_reward_zone(
-            self.catalog, RewardSite(zr, far_appr, self.cover_by[lvl], (W, H)), seed=self.seed
+            self.catalog,
+            RewardSite(zr, far_appr, self.cover_by[lvl], self.world.gameplay[zr.terrain], (W, H)),
+            seed=self.seed,
         )
         for o in robjs:
             o.level = lvl

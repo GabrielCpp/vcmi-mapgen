@@ -12,6 +12,7 @@ from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.border.result import BorderResult
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
 from vcmi_mapgen.core.steps.loot import pickups as PK
@@ -39,6 +40,7 @@ class LootStep(PipelineStep):
     pocket caches.
 
     Config:
+        priors      The corpus priors; the step reads the level-0 gameplay statistics.
         seed        RNG seed.
         size        Map side length in tiles (square).
 
@@ -48,7 +50,8 @@ class LootStep(PipelineStep):
     Produces: appends its objects to ``map_state.objs`` and provides ``LootResult``.
     """
 
-    def __init__(self, seed: int = 3, size: int = 72) -> None:
+    def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
+        self.priors = priors
         self.seed = seed
         self.size = size
         self.objs: list[PlacedObject] = []
@@ -93,6 +96,7 @@ class LootStep(PipelineStep):
             seed=seed,
             bounds=(size, size),
             context=QU.SeerHutContext(
+                self.priors.gameplay[0],
                 pocket_tiles=_pocket_tiles_pkt,
                 existing_objs=objs,
                 used_artifacts=seerhut_artifacts,
@@ -109,6 +113,7 @@ class LootStep(PipelineStep):
             seed=seed,
             bounds=(size, size),
             context=PK.PocketContext(
+                self.priors.gameplay[0],
                 border_guards=border_guards,
                 precomputed_pockets=_raw_pkt,
                 existing_objs=[*objs, *qobjs],

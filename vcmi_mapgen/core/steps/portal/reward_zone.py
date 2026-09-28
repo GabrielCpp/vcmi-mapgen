@@ -12,17 +12,18 @@ from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
-from vcmi_mapgen.corpus.gameplay import load_gameplay
+from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 
 @dataclass(frozen=True, slots=True)
 class RewardSite:
     """Where a reward hoard goes: the rescued zone's record, the portal's entry tile,
-    the map bounds and the level's cover index."""
+    the level's cover index, the zone terrain's gameplay statistics and the map bounds."""
 
     zr: ZoneRecord
     entry: Tile
     cover: CoverIndex
+    st: TerrainStats
     bounds: tuple[int, int] | None = None
 
 
@@ -39,7 +40,7 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
     later pocket-cache pass never double-stacks. Returns objs."""
     zr, entry, bounds, cover = site.zr, site.entry, site.bounds, site.cover
     terrain = zr.terrain
-    st = load_gameplay()[terrain]
+    st = site.st
     rng = random.Random(seed ^ (entry[0] * 92821) ^ (entry[1] * 131071) ^ 0x907A1)
     ts = zr.ts
     area = len(ts)

@@ -24,12 +24,11 @@ from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
 from vcmi_mapgen.core.planning.entrances import plan_entrances
 from vcmi_mapgen.core.planning.player_zones import select_player_zones
-from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation import sample as PP
-from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -231,12 +230,12 @@ def _water_bodies(grid: Sequence[Sequence[int]]) -> list[set[Tile]]:
 
 
 def populate_water(
-    catalog: Catalog, grid: Sequence[Sequence[int]], zones: Mapping[int, Zone], seed: int
+    catalog: Catalog, grid: Sequence[Sequence[int]], st: TerrainStats | None, seed: int
 ) -> list[PlacedObject]:
     objs: list[PlacedObject] = []
     for wi, comp in enumerate(_water_bodies(grid)):
         if len(comp) >= MIN_AREA:
-            wobjs = WT.place_water(catalog, comp, zones, 1000 + wi, seed=seed)
+            wobjs = WT.place_water(catalog, st, comp, 1000 + wi, seed=seed)
             objs.extend(wobjs)
             print(f"  sea  {wi:>3} water    {len(comp):>5} tiles: {len(wobjs):>3} sea objects")
     return objs
@@ -375,9 +374,12 @@ class PlanTerrain:
     tunnel_protect: frozenset[Tile]
 
 
-def plan_zones(catalog: Catalog, terrain: PlanTerrain, seed: int) -> dict[int, PlanLevel]:
-    """One ``PlanLevel`` per terrain level. The surface level also holds its planned sea
-    objects and the shipyard landings kept open for them."""
+def plan_zones(
+    catalog: Catalog, terrain: PlanTerrain, gameplay: Mapping[int, GameplayStats], seed: int
+) -> dict[int, PlanLevel]:
+    """One ``PlanLevel`` per terrain level, read against that level's ``gameplay``
+    statistics. The surface level also holds its planned sea objects and the shipyard
+    landings kept open for them."""
     levels: dict[int, PlanLevel] = {}
     for level in sorted(terrain.grids):
         zones = terrain.segmentation.zones[level]
@@ -387,12 +389,13 @@ def plan_zones(catalog: Catalog, terrain: PlanTerrain, seed: int) -> dict[int, P
                 zones,
                 terrain.segmentation.zone_label[level],
                 terrain.tunnel_protect if level == 1 else NO_TILES,
-                load_gameplay(level=level),
+                gameplay[level],
             )
         )
         pl = planner.level()
         if level == 0:
-            sea = tuple(populate_water(catalog, terrain.grids[level], zones, seed))
+            water = gameplay[0].get("water")
+            sea = tuple(populate_water(catalog, terrain.grids[level], water, seed))
             pl = plan_landings(pl, terrain.grids[level], zones, SeaPlan(sea, seed, catalog))
         levels[level] = pl
     return levels

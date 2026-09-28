@@ -11,6 +11,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.footprint import anchored_cells, interactive_cells
 from vcmi_mapgen.core.placement.guards import guard_spaced, guard_zoc
 from vcmi_mapgen.core.placement.rules import footprint_violations
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import (
     BorderStep,
     GameplayStep,
@@ -47,21 +48,32 @@ def _snapshot(state: MapState) -> Snapshot:
     )
 
 
-def pipeline_steps(seed: int = SEED) -> list[tuple[str, PipelineStep]]:
-    return [
-        (
-            "terrain_gen",
-            TerrainStep(size=SIZE, seed=seed, water_mode="normal", subterrain=True),
-        ),
-        ("vegetation", VegetationStep(seed=seed, players=PLAYERS)),
-        ("gameplay", GameplayStep(seed=seed, players=PLAYERS, size=SIZE, subterrain=True)),
-        ("gated", GatedStep(seed=seed, size=SIZE)),
-        ("treasure", TreasureStep(seed=seed, size=SIZE)),
-        ("border", BorderStep(seed=seed, size=SIZE)),
-        ("portal", PortalStep(seed=seed, size=SIZE)),
-        ("loot", LootStep(seed=seed, size=SIZE)),
-        ("scatter", ScatterStep(seed=seed, size=SIZE)),
+STEP_NAMES = (
+    "terrain_gen",
+    "vegetation",
+    "gameplay",
+    "gated",
+    "treasure",
+    "border",
+    "portal",
+    "loot",
+    "scatter",
+)
+
+
+def pipeline_steps(priors: Priors, seed: int = SEED) -> list[tuple[str, PipelineStep]]:
+    steps: list[PipelineStep] = [
+        TerrainStep(priors, SIZE, seed, "normal", True),
+        VegetationStep(priors, seed, PLAYERS),
+        GameplayStep(priors, seed, PLAYERS, SIZE, True),
+        GatedStep(priors, seed, SIZE),
+        TreasureStep(priors, seed, SIZE),
+        BorderStep(seed, SIZE),
+        PortalStep(priors, seed, SIZE),
+        LootStep(priors, seed, SIZE),
+        ScatterStep(priors, seed, SIZE),
     ]
+    return list(zip(STEP_NAMES, steps, strict=True))
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,12 +89,12 @@ class PipelineRun:
 
 
 @pytest.fixture(scope="module")
-def pipeline_run(catalog: Catalog) -> PipelineRun:
+def pipeline_run(catalog: Catalog, priors: Priors) -> PipelineRun:
     state = MapState(size=SIZE)
     ctx = ProviderRegistry()
     result: dict[str, tuple[Snapshot, Snapshot]] = {}
     with contextlib.redirect_stdout(io.StringIO()):
-        for name, step in pipeline_steps():
+        for name, step in pipeline_steps(priors):
             before = _snapshot(state)
             step.inject(ctx)
             step.run(catalog, state)
@@ -166,7 +178,7 @@ def test_scatter_piles_stay_out_of_every_guard_zone(pipeline_run: PipelineRun) -
                 assert cell not in zoc, f"pile at {cell} sits in a guard's zone of control"
 
 
-@pytest.mark.parametrize("name", [name for name, _step in pipeline_steps()])
+@pytest.mark.parametrize("name", STEP_NAMES)
 def test_every_step_keeps_the_objects_before_it(
     transitions: dict[str, tuple[Snapshot, Snapshot]], name: str
 ) -> None:

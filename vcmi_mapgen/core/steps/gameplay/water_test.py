@@ -1,6 +1,5 @@
 """Reliability tests for steps.gameplay.water (water-body population + seaport guarantee)."""
 
-import os
 import random
 import zlib
 from collections.abc import Iterable, Sequence
@@ -12,9 +11,9 @@ from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro as MT
-from vcmi_mapgen.corpus.gameplay import STATS_PATH
 from vcmi_mapgen.vcmi.footprint import footprint_of
 
 Grid = list[list[int]]
@@ -31,7 +30,7 @@ def _zone(tiles: Iterable[Tile], cx: float, cy: float, terrain_type: int = 2) ->
     )
 
 
-def _water_and_land_zone() -> tuple[int, int, Grid, dict[int, Zone]]:
+def _water_and_land_zone(priors: Priors) -> tuple[int, int, Grid, dict[int, Zone]]:
     """A real (small, texture-skipped for speed) generated grid with a big water body and
     a big bordering land zone — real terrain generation gives an organic, jagged coastline,
     which `_ensure_water_seaports`'s anchor search needs (a perfectly straight synthetic
@@ -39,7 +38,7 @@ def _water_and_land_zone() -> tuple[int, int, Grid, dict[int, Zone]]:
 
     WATER = 8
     opts = MT.MacroOptions(water_mode="islands", level=0, texture=False)
-    grid = MT.generate(40, 40, seed=2, options=opts)
+    grid = MT.generate(40, 2, priors.terrain[0], opts)
     H, W = len(grid), len(grid[0])
     water_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] == WATER}
     land_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] != WATER}
@@ -164,7 +163,7 @@ def _comps_of(tiles: Iterable[Tile], dirs: Sequence[Tile], universe: set[Tile]) 
 
 
 def _two_islands_one_split_thin(
-    seed: int = 2, size: int = 70, strip_w: int = 2
+    priors: Priors, seed: int = 2, size: int = 70, strip_w: int = 2
 ) -> tuple[int, int, Grid, dict[int, Zone], set[Tile]]:
     """Two separate islands (shores) bordering the SAME big sea, with the second
     island (`lmB`) split into thin (`strip_w`-wide) vertical zones -- each too narrow
@@ -177,7 +176,7 @@ def _two_islands_one_split_thin(
     DIRS8 = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
 
     opts = MT.MacroOptions(water_mode="islands", level=0, texture=False)
-    grid = MT.generate(size, size, seed=seed, options=opts)
+    grid = MT.generate(size, seed, priors.terrain[0], opts)
     H, W = len(grid), len(grid[0])
     water_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] == WATER}
     land_tiles = {(x, y) for y in range(H) for x in range(W) if grid[y][x] != WATER}
@@ -221,7 +220,7 @@ def _two_islands_one_split_thin(
 
 
 def test_seaport_placement_analyzes_the_whole_shore_not_one_zone_at_a_time(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """s10 diagnosis (2026-09): a shore split across several land zones (none wide
     enough alone to fit a shipyard's 3-tile-wide footprint) used to get ZERO seaports,
@@ -230,7 +229,7 @@ def test_seaport_placement_analyzes_the_whole_shore_not_one_zone_at_a_time(
     drawn from the whole shore's near-coastal expansion, spanning every zone it
     touches."""
 
-    W, H, grid, zones, lm_b = _two_islands_one_split_thin()
+    W, H, grid, zones, lm_b = _two_islands_one_split_thin(priors)
     objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     placed_in_lm_b = [o for o in objs if (o.x, o.y) in lm_b]
     assert placed_in_lm_b, "the second shore (split across many thin zones) got no seaport at all"
@@ -281,15 +280,15 @@ def test_seaport_spacing_is_30_tiles() -> None:
     )
 
 
-def test_ensure_water_seaports_places_at_least_one(catalog: Catalog) -> None:
+def test_ensure_water_seaports_places_at_least_one(catalog: Catalog, priors: Priors) -> None:
 
-    W, H, grid, zones = _water_and_land_zone()
+    W, H, grid, zones = _water_and_land_zone(priors)
     objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
     assert objs, "a land zone bordering a >= _WATER_BODY_MIN water body must get a seaport"
 
 
 def test_seaport_rng_seed_is_not_derived_from_builtin_hash(
-    catalog: Catalog, monkeypatch: pytest.MonkeyPatch
+    catalog: Catalog, priors: Priors, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """_try_place used to seed its RNG with `seed ^ hash(label) ^ 0x53A9`. Python salts
     str hash() per-process (PYTHONHASHSEED), so the SAME map seed could place seaports in
@@ -301,7 +300,7 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(
     the code actually feeds each, and cross-checks the two — robust to geometry, and it
     fails immediately if the code reverts to hash(label) (crc32 would simply never fire)."""
 
-    W, H, grid, zones = _water_and_land_zone()
+    W, H, grid, zones = _water_and_land_zone(priors)
 
     crc_calls: list[int] = []
     real_crc32 = zlib.crc32
@@ -337,19 +336,15 @@ def test_seaport_rng_seed_is_not_derived_from_builtin_hash(
     )
 
 
-def test_place_water_never_places_a_guard(catalog: Catalog) -> None:
+def test_place_water_never_places_a_guard(catalog: Catalog, priors: Priors) -> None:
     """Sea/water bodies get no monster of their own -- a GUARD only ever gates a mine, a
     loot-zone/portal-rescue access object, or a pocket mouth (user-mandated placement
     order: outside those three, no monster). Sampled across many seeds since GUARD is a
     probabilistic pick among WATER_PURPOSES, not a guaranteed-every-call roll."""
-
-    if not os.path.exists(STATS_PATH):
-        pytest.skip("gameplay stats not mined")
     ts = {(x, y) for x in range(30) for y in range(24)}
-    zones = {1: _zone(ts, 14.5, 11.5, 8)}
     objs: list[PlacedObject] = []
     for seed in range(1, 30):
-        objs += WT.place_water(catalog, ts, zones, 1, seed=seed)
+        objs += WT.place_water(catalog, priors.gameplay[0].get("water"), ts, 1, seed=seed)
     assert objs, "fixture assumption broke: expected some water objects across 30 seeds"
     assert not any(o.purpose == Purpose.GUARD for o in objs), (
         "place_water must never place a GUARD-purpose object"

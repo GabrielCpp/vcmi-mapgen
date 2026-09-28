@@ -47,7 +47,6 @@ from vcmi_mapgen.core.placement.guards import (
 from vcmi_mapgen.core.placement.intensity import Covariates, gate_dist, intensity_weights, openness
 from vcmi_mapgen.core.placement.place import web_dist
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.corpus.gameplay import load_gameplay
 
 # guard strength tracks the value guarded: mine guards by resource rarity. Every mine is
 # guarded (user-reported bug: unguarded mines), valuable mines scaling higher still. The
@@ -207,10 +206,12 @@ def _on_land(grid: Sequence[Sequence[int]], t: Tile) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class SiteZone:
-    """What one zone brings to placement: its terrain and tiles, the entrance bands, the
-    protected web, the open tiles left after vegetation and the tiles a hero can walk."""
+    """What one zone brings to placement: its terrain and that terrain's gameplay
+    statistics on the zone's level, its tiles, the entrance bands, the protected web, the open
+    tiles left after vegetation and the tiles a hero can walk."""
 
     terrain: str
+    st: TerrainStats
     ts: frozenset[Tile]
     ent_bands: frozenset[Tile]
     prot: frozenset[Tile]
@@ -247,7 +248,7 @@ class ZoneSite:
         self.lf = lf
         self.ts: AbstractSet[Tile] = zone.ts
         self.rng = random.Random(seed ^ (zid * 40503) ^ SITE_SALT)
-        self.st: TerrainStats = load_gameplay(level=lf.level)[zone.terrain]
+        self.st: TerrainStats = zone.st
         self.reserved: set[Tile] = set(zone.ent_bands)
         self.passable: set[Tile] = set(zone.passable)
         self.prot: set[Tile] = set(zone.prot)

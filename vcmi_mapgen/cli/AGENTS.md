@@ -13,6 +13,7 @@ arguments in `__main__.py` and calls one module per subcommand.
 - `macro_preview.py`: prints the macro statistics and renders one macro terrain grid to a PNG.
 - `render_sprites.py`: the `render-sprites` subcommand. It renders one `.vmap` with the real H3 sprites.
 - `settings.py`: `Settings`, the one place that reads `os.environ` and `sys.platform`, and `open_install`, which finds the VCMI install or exits naming `VCMI_HOME`.
-- `steps.py`: `build_steps`, the one step list, and the `--stop-after` names.
+- `steps.py`: `StepConfig`, what one generation asks for, and `build_steps`, the one step
+  list built from the priors and that config.
 - `veg_experiment.py`: the M1 experiment. It samples vegetation on a real corpus zone and
   compares the run lengths with the corpus.

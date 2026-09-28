@@ -9,7 +9,8 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
-from vcmi_mapgen.core.steps.gated.placer import find_entry_corridor, place_gated_zones
+from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.steps.gated.placer import GatedLevel, find_entry_corridor, place_gated_zones
 from vcmi_mapgen.core.steps.treasure.fill import (
     LOOT_HERO_STRUCTURE_MIN_SEP,
     LootLevel,
@@ -26,17 +27,15 @@ def _high_spells(catalog: Catalog) -> set[str]:
 
 def _place(
     catalog: Catalog,
-    zone_records: list[ZoneRecord],
-    objs_existing: list[PlacedObject],
+    gated: GatedLevel,
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
 ) -> tuple[list[PlacedObject], int, set[int]]:
     """GatedStep then TreasureStep on one level: the access objects, then the fill."""
-    objs, n_placed, access, claims = place_gated_zones(
-        catalog, zone_records, objs_existing, seed=seed, bounds=bounds
-    )
+    objs, n_placed, access, claims = place_gated_zones(catalog, gated, seed=seed, bounds=bounds)
     footprints = {zid: acc.footprint for zid, acc in access.items()}
-    level = LootLevel(zone_records, footprints, [*objs_existing, *objs], claims)
+    objs_all = [*gated.objs, *objs]
+    level = LootLevel(gated.zone_records, footprints, objs_all, gated.gameplay, claims)
     filled, _claims = fill_loot_zones(catalog, level, seed, bounds)
     return objs + filled, n_placed, set(access)
 
@@ -124,7 +123,9 @@ def _zone_records(
     return [zr0, zr1], objs_existing
 
 
-def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes(catalog: Catalog) -> None:
+def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes(
+    catalog: Catalog, priors: Priors
+) -> None:
     """s7-z4/s9-z3 diagnosis (2026-09): a loot zone must have NO 8-connected path from
     any of its own tiles to a tile outside it, except through the gate's/monolith's
     own interactive tile. Two real, distinct root causes produced leaks: (1) the
@@ -151,7 +152,10 @@ def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes(catalog: Catalog)
             for zr in zone_records:
                 all_ts |= zr.ts
             objs, n_placed, _zids = _place(
-                catalog, zone_records, objs_existing, seed=seed, bounds=bounds
+                catalog,
+                GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+                seed=seed,
+                bounds=bounds,
             )
             if n_placed != 1:
                 continue
@@ -170,7 +174,7 @@ def test_loot_zone_is_never_leaky_across_many_seeds_and_shapes(catalog: Catalog)
 
 
 def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_footprint(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """s9-z3 defect (2026-09): `_seal_all_passages` only ever protected the gate's/
     monolith's single INTERACTIVE cell from re-sealing, never its other footprint
@@ -199,7 +203,10 @@ def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_f
         for seed in range(1, 20):
             zone_records, objs_existing = make_fixture()
             objs, n_placed, _zids = _place(
-                catalog, zone_records, objs_existing, seed=seed, bounds=bounds
+                catalog,
+                GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+                seed=seed,
+                bounds=bounds,
             )
             if n_placed != 1:
                 continue
@@ -230,23 +237,29 @@ def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_f
     )
 
 
-def test_a_single_entrance_zone_qualifies_as_a_loot_zone(catalog: Catalog) -> None:
+def test_a_single_entrance_zone_qualifies_as_a_loot_zone(catalog: Catalog, priors: Priors) -> None:
     """Control: with no blocking object splitting the shared boundary, zone 0 has
     exactly one real passable gap into zone 1 and must be selected."""
     zone_records, objs_existing = _zone_records(blocked_at=None)
-    _objs, n_placed, zids = _place(catalog, zone_records, objs_existing, seed=1, bounds=_BOUNDS)
+    _objs, n_placed, zids = _place(
+        catalog, GatedLevel(zone_records, objs_existing, priors.gameplay[0]), seed=1, bounds=_BOUNDS
+    )
     assert n_placed == 1
     assert zids == {0}
 
 
-def test_a_vegetation_wall_splitting_the_border_disqualifies_the_zone(catalog: Catalog) -> None:
+def test_a_vegetation_wall_splitting_the_border_disqualifies_the_zone(
+    catalog: Catalog, priors: Priors
+) -> None:
     """A single blocking object in the middle of the shared boundary row splits it
     into two disjoint passable gaps -- the zone borders its neighbour through TWO
     separate openings, so it must NOT be treated as single-entrance, even though
     the raw zone-vs-zone terrain adjacency (ignoring the blocker) is still one
     contiguous run."""
     zone_records, objs_existing = _zone_records(blocked_at=(3, 6))
-    _objs, n_placed, zids = _place(catalog, zone_records, objs_existing, seed=1, bounds=_BOUNDS)
+    _objs, n_placed, zids = _place(
+        catalog, GatedLevel(zone_records, objs_existing, priors.gameplay[0]), seed=1, bounds=_BOUNDS
+    )
     assert n_placed == 0
     assert zids == set()
 
@@ -263,7 +276,9 @@ _ALLOWED_RESOURCE_SUBTYPES = {
 _ALLOWED_HERO_STRUCTURE_TYPES = {"learningStone", "gardenOfRevelation", "starAxis"}
 
 
-def test_loot_zone_fill_only_uses_the_allowed_content_categories(catalog: Catalog) -> None:
+def test_loot_zone_fill_only_uses_the_allowed_content_categories(
+    catalog: Catalog, priors: Priors
+) -> None:
     """A loot zone's dense fill is artifacts of level >= 3 (major/relic), chests
     (treasure chest / campfire / pandora's box / scholar / a fixed level 4-5 spell
     scroll), the 3 whitelisted hero-strengthening structures (at most TWO of each,
@@ -271,7 +286,9 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories(catalog: Catalo
     artifact, an unrestricted random artifact/resource, a random/unconfigured spell
     scroll, or an unrelated REWARD_PICKUP type (corpse, leanTo, wagon, ...)."""
     zone_records, objs_existing = _zone_records(blocked_at=None)
-    objs, n_placed, _zids = _place(catalog, zone_records, objs_existing, seed=1, bounds=_BOUNDS)
+    objs, n_placed, _zids = _place(
+        catalog, GatedLevel(zone_records, objs_existing, priors.gameplay[0]), seed=1, bounds=_BOUNDS
+    )
     assert n_placed == 1, "fixture must actually produce a loot zone to check content"
 
     violations: list[PlacedObject] = []
@@ -299,7 +316,7 @@ def test_loot_zone_fill_only_uses_the_allowed_content_categories(catalog: Catalo
     )
 
 
-def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog) -> None:
+def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog, priors: Priors) -> None:
     """Every tile of a sealed loot zone ends up occupied except the access object's own
     interactive cell -- an unfilled interior tile bordering water would let a boat-borne
     hero dock directly onto it, bypassing the gate/monolith entirely (user-mandated).
@@ -314,7 +331,10 @@ def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog) -> None:
     for seed in range(1, 8):
         zone_records, objs_existing = _zone_records(blocked_at=None)
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
         )
         if n_placed != 1:
             continue
@@ -339,7 +359,9 @@ def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog) -> None:
     assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
 
 
-def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(catalog: Catalog) -> None:
+def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(
+    catalog: Catalog, priors: Priors
+) -> None:
     """s7-z4 third occurrence (2026-09): the corridor connecting the gate to the rest
     of the zone's room (a narrow zone shape puts more than one tile between the
     entrance and the room -- see `_narrow_zone_records`) must ALSO get filled with
@@ -350,7 +372,10 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(catalog: Cata
     for seed in range(1, 30):
         zone_records, objs_existing = _narrow_zone_records()
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=(32, 14)
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=(32, 14),
         )
         if n_placed != 1:
             continue
@@ -376,7 +401,7 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(catalog: Cata
 
 
 def test_loot_zone_fill_across_many_seeds_never_exceeds_two_per_hero_structure(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """Stress the Pass-1 per-type cap across many seeds/zone sizes -- a single seed's
     small zone might never place enough structures to expose a triplicate-allowing
@@ -385,7 +410,10 @@ def test_loot_zone_fill_across_many_seeds_never_exceeds_two_per_hero_structure(
     for seed in range(1, 20):
         zone_records, objs_existing = _zone_records(blocked_at=None)
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
         )
         if n_placed != 1:
             continue
@@ -397,7 +425,7 @@ def test_loot_zone_fill_across_many_seeds_never_exceeds_two_per_hero_structure(
 
 
 def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_each_other(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """Pass 1 (user-mandated 2026-09): TWO instances of each of the 3 whitelisted
     hero-strengthening structures, separated from one another (never adjacent/
@@ -409,7 +437,10 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
     for seed in range(1, 20):
         zone_records, objs_existing = _rect_zone_records(5, 4)
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=(64, 64)
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=(64, 64),
         )
         if n_placed != 1:
             continue
@@ -442,7 +473,7 @@ def _rect_zone_records(w: int, h: int) -> tuple[list[ZoneRecord], list[PlacedObj
 
 
 def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_permitting(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """Pass 1 (user-mandated 2026-09): no throttle to a fraction of the zone -- every
     whitelisted type gets its (up to two) instances placed, tile availability
@@ -452,7 +483,10 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
     for seed in range(1, 20):
         zone_records, objs_existing = _rect_zone_records(5, 4)
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=(64, 64)
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=(64, 64),
         )
         if n_placed != 1:
             continue
@@ -465,7 +499,7 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
     )
 
 
-def test_loot_zone_fill_pass2_uses_the_20_40_40_split(catalog: Catalog) -> None:
+def test_loot_zone_fill_pass2_uses_the_20_40_40_split(catalog: Catalog, priors: Priors) -> None:
     """Pass 2 (user-mandated 2026-09): 20% major/relic artifact, 40% chest, 40% rare
     resource -- not the old 30/30/40 split. Statistical check over many seeds/tiles:
     the artifact share must sit near 20%, not 30%."""
@@ -473,7 +507,10 @@ def test_loot_zone_fill_pass2_uses_the_20_40_40_split(catalog: Catalog) -> None:
     for seed in range(1, 60):
         zone_records, objs_existing = _zone_records()
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
         )
         if n_placed != 1:
             continue
@@ -499,7 +536,7 @@ def test_loot_zone_fill_pass2_uses_the_20_40_40_split(catalog: Catalog) -> None:
 
 
 def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """The spell-scroll chest-tier option must actually fire (not just never violate
     the rule because it never gets picked) -- sampled across enough seeds/zone sizes
@@ -508,7 +545,10 @@ def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll(
     for seed in range(1, 40):
         zone_records, objs_existing = _zone_records(blocked_at=None)
         objs, _n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
         )
         scroll = next((o for o in objs if _type(catalog, o) == "spellScroll"), None)
         if scroll is not None:
@@ -518,7 +558,9 @@ def test_loot_zone_fill_eventually_places_a_fixed_level_4_or_5_spell_scroll(
     assert _spell_of(found) in _high_spells(catalog)
 
 
-def test_spell_scroll_objects_carry_the_spell_in_options_not_subtype(catalog: Catalog) -> None:
+def test_spell_scroll_objects_carry_the_spell_in_options_not_subtype(
+    catalog: Catalog, priors: Priors
+) -> None:
     """VCMI's spellScroll object type has exactly one registered subtype ("object");
     stashing the spell name in subtype instead (the s9 defect, 2026-09) makes VCMI
     fail to load the map with 'Unknown entity spellScroll::<name> found!' -- confirmed
@@ -529,7 +571,10 @@ def test_spell_scroll_objects_carry_the_spell_in_options_not_subtype(catalog: Ca
     for seed in range(1, 40):
         zone_records, objs_existing = _zone_records(blocked_at=None)
         objs, _n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=_BOUNDS
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
         )
         for o in objs:
             ident = catalog.identity_of(o.kind)
@@ -630,7 +675,7 @@ def test_entry_corridor_reaches_the_whole_room_not_just_the_first_doorway_tile()
 
 
 def test_a_narrow_loot_zones_access_object_always_has_a_usable_interior_doorway(
-    catalog: Catalog,
+    catalog: Catalog, priors: Priors
 ) -> None:
     """s7-z4 (2026-09): a narrow zone's interior can be entirely on the raw zone
     perimeter, which _seal_all_passages seals in full. Without a reserved doorway, the
@@ -641,7 +686,10 @@ def test_a_narrow_loot_zones_access_object_always_has_a_usable_interior_doorway(
     for seed in range(1, 30):
         zone_records, objs_existing = _narrow_zone_records()
         objs, n_placed, _zids = _place(
-            catalog, zone_records, objs_existing, seed=seed, bounds=(32, 14)
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=(32, 14),
         )
         if n_placed != 1:
             continue

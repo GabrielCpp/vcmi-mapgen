@@ -20,8 +20,7 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
-from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.corpus.gameplay import load_gameplay
+from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 
 LOOT_ZONE_MAX_TILES = 60
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -232,6 +231,16 @@ class _Sited:
     interactive: frozenset[Tile]
 
 
+@dataclass(frozen=True, slots=True)
+class GatedLevel:
+    """One level to seal: every zone record, the objects already on the level and the
+    gameplay statistics per terrain."""
+
+    zone_records: Sequence[ZoneRecord]
+    objs: Sequence[PlacedObject]
+    gameplay: GameplayStats
+
+
 @final
 class GatedPlacer:
     """Picks the loot zones of one level and builds the gate or monolith access of each."""
@@ -239,12 +248,13 @@ class GatedPlacer:
     def __init__(
         self,
         catalog: Catalog,
-        zone_records: Sequence[ZoneRecord],
-        objs_existing: Sequence[PlacedObject],
+        level: GatedLevel,
         seed: int,
         bounds: tuple[int, int] | None,
     ) -> None:
+        zone_records, objs_existing = level.zone_records, level.objs
         self.catalog = catalog
+        self.gameplay = level.gameplay
         self.zone_records = list(zone_records)
         self.objs_existing = list(objs_existing)
         self.seed = seed
@@ -310,7 +320,7 @@ class GatedPlacer:
         zone = _LootZone(
             zr.zid,
             zr.terrain,
-            load_gameplay()[zr.terrain],
+            self.gameplay[zr.terrain],
             zr.ts,
             rng,
             (self.ext_no_castle, self.ext_any),
@@ -572,7 +582,7 @@ class GatedPlacer:
             self.cover,
             ext_zr.reach,
             ext_rng,
-            load_gameplay()[ext_zr.terrain],
+            self.gameplay[ext_zr.terrain],
             bounds=self.bounds,
         )
         n0 = len(self.objs)
@@ -598,12 +608,11 @@ class GatedPlacer:
 
 def place_gated_zones(
     catalog: Catalog,
-    zone_records: Sequence[ZoneRecord],
-    objs_existing: Sequence[PlacedObject],
+    level: GatedLevel,
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
 ) -> tuple[list[PlacedObject], int, dict[int, LootAccess], frozenset[Tile]]:
     """Seal every eligible loot zone of one level behind a gate or a monolith pair. Returns
     the new objects, the number of access pairs, the access of each loot zone and the tiles
     the level has claimed."""
-    return GatedPlacer(catalog, zone_records, objs_existing, seed, bounds).run()
+    return GatedPlacer(catalog, level, seed, bounds).run()

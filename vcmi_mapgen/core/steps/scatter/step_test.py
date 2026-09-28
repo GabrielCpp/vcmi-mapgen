@@ -14,6 +14,7 @@ from vcmi_mapgen.core.pipeline import ProviderRegistry
 from vcmi_mapgen.core.placement.site import PlacedZone
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, PlanZone, ZonePlan
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import ScatterStep
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
@@ -115,7 +116,7 @@ class FakeCatalog:
         return frozenset()
 
 
-def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
+def test_scatter_step_places_only_what_the_fake_catalog_offers(priors: Priors) -> None:
     ts = frozenset((x, y) for x in range(30) for y in range(24))
     zone = Zone(
         terrain_type=Terrain.GRASS,
@@ -133,7 +134,7 @@ def test_scatter_step_places_only_what_the_fake_catalog_offers() -> None:
     ctx.provide(Segmentation({0: {1: zone}}, {0: label_zones({1: zone})}))
     map_state = MapState(size=30)
     catalog = FakeCatalog()
-    step = ScatterStep(seed=3, size=30)
+    step = ScatterStep(priors, 3, 30)
     step.inject(ctx)
     with contextlib.redirect_stdout(io.StringIO()):
         step.run(catalog, map_state)

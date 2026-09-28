@@ -10,6 +10,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
 from vcmi_mapgen.core.steps.terrain_gen.levels import level_protect, raw_levels, segment_levels
@@ -20,9 +21,9 @@ class TerrainStep(PipelineStep):
     """Generate macro terrain and despeckle it into the level's ``Terrain`` grid.
 
     Config:
+        priors      The corpus priors; the step reads each level's terrain priors.
         size        Map side length in tiles (square).
         seed        RNG seed.
-        water       Explicit water fraction override (None = corpus-drawn).
         water_mode  'none' | 'normal' | 'islands'
         subterrain  Whether to generate a second underground level.
 
@@ -32,15 +33,15 @@ class TerrainStep(PipelineStep):
 
     def __init__(
         self,
+        priors: Priors,
         size: int = 72,
         seed: int = 3,
-        water: float | None = None,
         water_mode: str = "normal",
         subterrain: bool = False,
     ) -> None:
+        self.priors: Priors = priors
         self.size: int = size
         self.seed: int = seed
-        self.water: float | None = water
         self.water_mode: str = water_mode
         self.subterrain: bool = subterrain
         self.terrain: dict[int, list[list[Terrain]]] = {}
@@ -54,9 +55,10 @@ class TerrainStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         raw = raw_levels(
+            self.priors.terrain,
             self.size,
             self.seed,
-            MTOPO.MacroOptions(water=self.water, water_mode=self.water_mode, level=0),
+            MTOPO.MacroOptions(water_mode=self.water_mode, level=0),
             self.subterrain,
         )
         thin = catalog.thin_terrains()

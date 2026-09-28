@@ -6,7 +6,7 @@ import random
 from collections.abc import Collection
 
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.corpus.markov import load_tables
+from vcmi_mapgen.core.priors.markov import MarkovTables
 
 BAND = 2  # boundary-texturing band half-width (tiles)
 
@@ -44,21 +44,19 @@ def border_band(grid: list[list[int]]) -> list[list[bool]]:
 def texture_boundaries(
     grid: list[list[int]],
     rng: random.Random,
+    tables: MarkovTables,
     sweeps: int = 3,
-    level: int = 0,
     protect: Collection[Tile] = (),
 ) -> list[list[int]]:
     """Isotropic Gibbs sweeps of the learned 4-neighbour terrain conditional, RESTRICTED to
     tiles within BAND (Chebyshev) of a terrain change; everything else is clamped, so the
     interiors keep their planned terrain and only the borders gain corpus transition texture.
-    `level` selects which terrain level's corpus transitions to learn from (0 or 1);
-    `markov.learn`/`learn4` already filter to maps that have that level. `protect`
+    `tables` are the corpus transitions of the grid's terrain level. `protect`
     cells (e.g. underground tunnel corridors, which are thin enough to sit entirely inside
     the band on both sides) are excluded from resampling so a rock-heavy corpus conditional
     can't erode a load-bearing connection back into barrier."""
     H = len(grid)
     W = len(grid[0])
-    tables = load_tables(level)
     M4 = tables.chain4
     M = tables.chain
     band = border_band(grid)

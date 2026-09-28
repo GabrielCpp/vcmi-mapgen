@@ -13,7 +13,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.placement.rewards import seerhut_quest
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
-from vcmi_mapgen.corpus.gameplay import load_gameplay
+from vcmi_mapgen.core.priors.gameplay import GameplayStats
 
 SEERHUT_ZONE_RATIO = 4  # ~1 seer-hut quest per 4 eligible zones -- zone_engine.py's own
 # corpus-replay convention for the same object
@@ -24,13 +24,11 @@ SEERHUT_MIN_REACH = 8  # a zone needs at least this many free reachable tiles to
 
 @dataclass(frozen=True, slots=True)
 class SeerHutContext:
+    gameplay: GameplayStats
     pocket_tiles: AbstractSet[Tile] | None = None
     existing_objs: Sequence[PlacedObject] = ()
     used_artifacts: set[str] | None = None
     cover: CoverIndex | None = None
-
-
-_DEFAULT_SEERHUT_CONTEXT = SeerHutContext()
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,14 +40,15 @@ class _QuestEnv:
     objs: list[PlacedObject]
     bounds: tuple[int, int] | None
     cover: CoverIndex
+    gameplay: GameplayStats
 
 
 def place_seer_hut_quests(
     catalog: Catalog,
     zone_records: Sequence[ZoneRecord],
+    context: SeerHutContext,
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
-    context: SeerHutContext = _DEFAULT_SEERHUT_CONTEXT,
 ) -> tuple[list[PlacedObject], int]:
     """One or more Seer Hut quests for the WHOLE level (VCMI RMG convention: a seer hut's
     mission gates on a single named artifact the hero must find and hand-carry to it). Each
@@ -82,7 +81,9 @@ def place_seer_hut_quests(
     placed = 0
     # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
     _ptiles_global = _quest_pocket_tiles(zone_records, context.pocket_tiles)
-    env = _QuestEnv(catalog, eligible, _ptiles_global, used_artifacts, objs, bounds, cover)
+    env = _QuestEnv(
+        catalog, eligible, _ptiles_global, used_artifacts, objs, bounds, cover, context.gameplay
+    )
 
     for i in range(n):
         idx_hut, idx_art = rng_pair.sample(range(len(eligible)), 2)
@@ -164,7 +165,7 @@ def _pick_art_zone(
 def _place_art(
     env: _QuestEnv, rng: random.Random, art_zr: ZoneRecord, art_ident: Identity
 ) -> Tile | None:
-    st_art = load_gameplay()[art_zr.terrain]
+    st_art = env.gameplay[art_zr.terrain]
     art_eligible = env.ptiles & (art_zr.reach - env.cover.claims)
     art_cands = sorted(art_eligible)
     rng.shuffle(art_cands)
@@ -181,7 +182,7 @@ def _place_art(
 def _place_hut(
     env: _QuestEnv, rng: random.Random, hut_zr: ZoneRecord, hut_ident: Identity, art_subtype: str
 ) -> bool:
-    st_hut = load_gameplay()[hut_zr.terrain]
+    st_hut = env.gameplay[hut_zr.terrain]
     hut_cands = sorted(hut_zr.reach - env.cover.claims)
     rng.shuffle(hut_cands)
     quest = seerhut_quest(rng, art_subtype)

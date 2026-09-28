@@ -10,6 +10,9 @@ Code here reads the corpus, loads and saves the priors, and compares the corpus 
 - `macro.py`: `load_macro` and `save_macro` over `data/pp/macro_stats.json` and its underground twin.
 - `markov.py`: `load_tables` and `save_tables` over `data/pp/markov_<level>.json`.
 - `tiler.py`: `load_tiler` and `save_tiler` over `data/pp/tiler.json`. The export and the PNG renderer load it. No step does.
-- `vegetation.py`: `load_vegetation` and `save_vegetation` over `data/pp/veg_<terrain>.json`.
+- `vegetation.py`: `load_vegetation` and `save_vegetation` over `data/pp/veg_<terrain>.json`,
+  and `vegetation_terrains`, the terrains that have a vegetation file.
+- `priors.py`: `load_priors`, which loads every prior above into one `Priors` value. The
+  CLI calls it once per run and hands the value to the step constructors.
 - `mine/`: the miners, one per prior.
 - `match.py`: the per-object entrance measures and the per-zone counts behind `cli corpus-match`.

@@ -5,11 +5,8 @@ import random
 from collections.abc import Callable
 from itertools import combinations
 
-import pytest
-
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.priors.gates import GateStats
-from vcmi_mapgen.core.steps.gameplay import gate_pairs as PG
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateSide, gate_anchors
 
 S = 40
@@ -23,8 +20,8 @@ def _side(zone_of: dict[Tile, int]) -> GateSide:
     return GateSide(frozenset(zone_of), set(), zone_of=zone_of)
 
 
-def _anchors(side0: GateSide, side1: GateSide, seed: int) -> list[Tile]:
-    return gate_anchors(side0, side1, S, seed, lambda c, _spread: c)
+def _anchors(sides: tuple[GateSide, GateSide], stats: GateStats, seed: int) -> list[Tile]:
+    return gate_anchors(sides, stats, S, seed, lambda c, _spread: c)
 
 
 def _open(label: Callable[[int, int], int]) -> dict[Tile, int]:
@@ -37,29 +34,29 @@ def test_draw_count_uses_nearest_corpus_width() -> None:
     assert st.draw_count(100, random.Random(0)) == 7
 
 
-def test_at_most_one_gate_per_zone_on_each_level(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_at_most_one_gate_per_zone_on_each_level() -> None:
     """Two surface zones cap the map at two gates even when the corpus asks for more."""
-    monkeypatch.setattr(PG, "load_gate_stats", lambda: _stats((6,), frac=0.0))
+    stats = _stats((6,), frac=0.0)
     side0 = _side(_open(lambda x, _y: int(x >= S // 2)))
     side1 = _side(_open(lambda x, y: x // 10 + 4 * (y // 10)))
     for seed in range(20):
-        anchors = _anchors(side0, side1, seed)
+        anchors = _anchors((side0, side1), stats, seed)
         assert len({side0.zone_of[a] for a in anchors}) == len(anchors) <= 2
         assert len({side1.zone_of[a] for a in anchors}) == len(anchors)
 
 
-def test_gates_keep_the_corpus_spacing_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gates_keep_the_corpus_spacing_floor() -> None:
     """With one zone per tile nothing but the spacing floor keeps gates apart."""
-    monkeypatch.setattr(PG, "load_gate_stats", lambda: _stats((6,), frac=0.25))
+    stats = _stats((6,), frac=0.25)
     zone_of = _open(lambda x, y: x * S + y)
     for seed in range(20):
-        anchors = _anchors(_side(zone_of), _side(zone_of), seed)
+        anchors = _anchors((_side(zone_of), _side(zone_of)), stats, seed)
         assert anchors
         assert all(math.dist(a, b) >= 0.25 * S for a, b in combinations(anchors, 2))
 
 
-def test_gate_count_never_exceeds_the_draw(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(PG, "load_gate_stats", lambda: _stats((1, 2), frac=0.0))
+def test_gate_count_never_exceeds_the_draw() -> None:
+    stats = _stats((1, 2), frac=0.0)
     zone_of = _open(lambda x, y: x * S + y)
     for seed in range(20):
-        assert 1 <= len(_anchors(_side(zone_of), _side(zone_of), seed)) <= 2
+        assert 1 <= len(_anchors((_side(zone_of), _side(zone_of)), stats, seed)) <= 2

@@ -15,12 +15,14 @@ from vcmi_mapgen.core.placement.guards import guard_zoc
 from vcmi_mapgen.core.placement.site import PlacedZone
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel
+from vcmi_mapgen.core.priors.gameplay import GameplayStats
 
 
 @dataclass(frozen=True, slots=True)
 class PileLevel:
     """What one level's scatter reads: its zone records, its plan, each zone after
-    placement, the zone label grid, and the tiles earlier steps claimed."""
+    placement, the zone label grid, the tiles earlier steps claimed, and the gameplay
+    statistics per terrain."""
 
     level: int
     records: Sequence[ZoneRecord]
@@ -28,6 +30,7 @@ class PileLevel:
     placed: Mapping[int, PlacedZone]
     label: ZoneLabel
     claims: frozenset[Tile]
+    gameplay: GameplayStats
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +65,7 @@ def scatter_level(
                 lv.label,
                 zr.zid,
                 zone.terrain,
+                lv.gameplay[zone.terrain],
                 pz.open_set - (zone.rim8 - zone.ent_bands),
                 pz.prot,
                 entrances=list(zone.entrances),
