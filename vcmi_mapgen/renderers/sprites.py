@@ -17,12 +17,8 @@ from functools import cache
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import PlacedObject
-from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.vcmi.footprint import footprint_of
-from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.defs import parse_def
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
-from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
 TERR_DEF: dict[str, str] = {
@@ -93,36 +89,6 @@ def terr_tile_img(index: LodIndex, tile_str: str) -> Image.Image:
     if flip_v:
         img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
     return img.convert("RGBA")
-
-
-# --------------------------------------------------------------------------- vmap reader
-def _adapt(doc: VmapDocument) -> tuple[list[list[str]], list[PlacedObject]]:
-    """A VmapDocument -> the (surf, objs) shape render_map needs (surface terrain +
-    each object's l/x/y/type/animation/mask)."""
-    surf = doc.terrain[0]
-    objs = [
-        PlacedObject(
-            x=o.x,
-            y=o.y,
-            level=o.level,
-            purpose="",
-            type=o.type,
-            subtype=None,
-            animation=o.animation,
-            footprint=footprint_of(o.mask),
-        )
-        for o in doc.objects
-    ]
-    return surf, objs
-
-
-def read_vmap(path: str) -> tuple[list[list[str]], list[PlacedObject]]:
-    return _adapt(VM.read(path))
-
-
-def read_real(name: str) -> tuple[list[list[str]], list[PlacedObject]]:
-    """Load the corpus map's own .vmap (full tile view/mirror data) + objects with animation."""
-    return _adapt(VM.read(OR.faithful_path(name)))
 
 
 # --------------------------------------------------------------------------- compositing

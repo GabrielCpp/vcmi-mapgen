@@ -15,11 +15,11 @@ from vcmi_mapgen.core.pipeline import (
     PlacementWorkspace,
     ProviderRegistry,
 )
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.zone_plan import plan_player_zones, plan_zones
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.validate import TerrainGate
 
 
@@ -40,7 +40,7 @@ def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> N
         (cx, cy)
         for o in map_state.objs
         if o.level == level
-        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y)
+        for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
     islands = open_islands(land, blocking, anchors)

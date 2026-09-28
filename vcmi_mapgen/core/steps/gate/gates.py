@@ -10,8 +10,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Identity, Role, Tile
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.model import Identity, MapState, Role, Tile
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.formats import json_value as jv
@@ -105,11 +104,11 @@ def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -
     return allc, blk, approach
 
 
-def _corpus_gates(fm: OR.FaithfulMap) -> tuple[Tile, ...]:
+def _corpus_gates(fm: MapState) -> tuple[Tile, ...]:
     return tuple(
         sorted(
             (o.x, o.y)
-            for o in fm.objects
+            for o in fm.objs
             if o.level == 0 and (o.animation or "").lower().removesuffix(".def") == GATE_ANIM
         )
     )
@@ -141,7 +140,7 @@ def save_gate_stats(st: GateStats) -> None:
     )
 
 
-def mine_gate_stats(maps: Iterable[OR.FaithfulMap]) -> GateStats:
+def mine_gate_stats(maps: Iterable[MapState]) -> GateStats:
     """Corpus SUBTERRANEAN_GATE estimator over distinct two-level corpus maps with at least
     one gate. Gate count does not track underground area in the corpus, so the count is a
     draw from same-width maps rather than a per-tile rate. The spacing floor is the
@@ -150,17 +149,17 @@ def mine_gate_stats(maps: Iterable[OR.FaithfulMap]) -> GateStats:
     gaps: list[float] = []
     seen: set[tuple[int, tuple[Tile, ...]]] = set()
     for fm in maps:
-        if len(fm.terrain) < 2:
+        if len(fm.cells) < 2:
             continue
-        if sum(1 for row in fm.terrain[1] for c in row if c.t != 9) < MIN_AREA_STATS:
+        if sum(1 for row in fm.cells[1] for c in row if c.t != 9) < MIN_AREA_STATS:
             continue
         gates = _corpus_gates(fm)
-        if not gates or (fm.width, gates) in seen:
+        if not gates or (fm.size, gates) in seen:
             continue
-        seen.add((fm.width, gates))
-        counts.setdefault(fm.width, []).append(len(gates))
+        seen.add((fm.size, gates))
+        counts.setdefault(fm.size, []).append(len(gates))
         if len(gates) >= 2:
-            gaps.append(min(math.dist(a, b) for a, b in combinations(gates, 2)) / fm.width)
+            gaps.append(min(math.dist(a, b) for a, b in combinations(gates, 2)) / fm.size)
     gaps.sort()
     frac = gaps[int(MIN_GAP_QUANTILE * (len(gaps) - 1))] if gaps else 0.0
     by_size = {w: sorted(ns) for w, ns in sorted(counts.items())}

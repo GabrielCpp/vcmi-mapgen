@@ -9,11 +9,11 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.placement import footprint as FP
 
 
 def blocking_cells(o: PlacedObject) -> list[Tile]:
-    return [(cx, cy) for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y) if blk]
+    return [(cx, cy) for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y) if blk]
 
 
 def zone_owner(

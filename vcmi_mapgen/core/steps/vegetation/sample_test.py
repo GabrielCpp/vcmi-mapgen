@@ -8,9 +8,9 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation import stats as PS
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import plan_entrances, zone_fronts, zone_gate_bands
 
 
@@ -54,7 +54,7 @@ def test_protected_web_stays_open(catalog: Catalog) -> None:
     objs, blocked, prot = PP.sample_zone(PP.ZoneRef(ts, zones, 1), model, seed=9)
     assert prot, "web exists"
     for o in objs:
-        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y):
+        for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y):
             if blk:
                 assert (cx, cy) not in prot
     assert not (blocked & prot)

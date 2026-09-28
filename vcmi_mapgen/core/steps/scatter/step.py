@@ -8,10 +8,10 @@ from typing import override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.placement import guard_zoc
 from vcmi_mapgen.core.steps.scatter import scatter as SC
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.validate import TerrainGate
 
 
@@ -53,7 +53,7 @@ class ScatterStep(PipelineStep):
             taken: set[Tile] = {
                 (cx, cy)
                 for o in level_objs
-                for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y)
+                for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y)
             }
             cover = CoverIndex(level_objs)
             zoc = guard_zoc(level_objs)

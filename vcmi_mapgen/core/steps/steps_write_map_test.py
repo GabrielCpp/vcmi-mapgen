@@ -8,6 +8,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.footprint import anchored_cells, interactive_cells
 from vcmi_mapgen.core.steps import (
     BorderStep,
     GameplayStep,
@@ -21,7 +22,6 @@ from vcmi_mapgen.core.steps import (
     VegetationStep,
 )
 from vcmi_mapgen.core.steps.placement import guard_spaced, guard_zoc
-from vcmi_mapgen.kit.objects import anchored_cells, interactive_cells
 from vcmi_mapgen.validate import footprint_violations
 
 SIZE = 48

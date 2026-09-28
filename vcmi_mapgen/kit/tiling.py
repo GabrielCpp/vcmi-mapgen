@@ -15,9 +15,8 @@ from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from vcmi_mapgen.core.model import Cell, JsonValue, Tile
+from vcmi_mapgen.core.model import Cell, JsonValue, MapState, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
@@ -66,7 +65,7 @@ def _neigh8(grid: list[list[int]], x: int, y: int, W: int, H: int) -> tuple[int,
     )
 
 
-def learn_terrain_tiler(maps: Iterable[OR.FaithfulMap]) -> Tiler:
+def learn_terrain_tiler(maps: Iterable[MapState]) -> Tiler:
     """(exact, four, clean) view/m tables learned from every corpus terrain tile."""
     exact: dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]] = (
         collections.defaultdict(collections.Counter)
@@ -78,7 +77,7 @@ def learn_terrain_tiler(maps: Iterable[OR.FaithfulMap]) -> Tiler:
         collections.Counter
     )  # t (all-same nbrs)-> (view,m)
     for fm in maps:
-        for g in fm.terrain:
+        for g in fm.cells.values():
             H = len(g)
             W = len(g[0])
             T = [[c.t for c in row] for row in g]

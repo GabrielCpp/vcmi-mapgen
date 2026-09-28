@@ -7,7 +7,7 @@ from typing import override
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.renderers.overlays._tiles import NB8
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
@@ -31,7 +31,7 @@ class GuardOverlay(MapOverlay):
             mask = o.footprint
             if not mask.cells:
                 continue
-            for ax, ay in OR.interactive_cells(mask, o.x, o.y):
+            for ax, ay in FP.interactive_cells(mask, o.x, o.y):
                 for dx, dy in [(0, 0), *NB8]:
                     tx, ty = ax + dx, ay + dy
                     if 0 <= tx < W and 0 <= ty < H:

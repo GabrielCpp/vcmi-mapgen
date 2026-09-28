@@ -21,9 +21,9 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
-from vcmi_mapgen.kit import objects as OR
 
 _LOOT_ART_W = {"avarnd1": 5, "avarnd2": 15, "avarnd3": 35, "avarnd4": 45}
 FILL_EXCL_ANIMS = frozenset({"avsfntn0", "avsidol0"})
@@ -300,10 +300,10 @@ def fill_loot_zones(
     blocked: set[Tile] = {
         (cx, cy)
         for o in level_objs
-        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y)
+        for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
-    interactive = {c for o in level_objs for c in OR.interactive_cells(o.footprint, o.x, o.y)}
+    interactive = {c for o in level_objs for c in FP.interactive_cells(o.footprint, o.x, o.y)}
     all_ts: set[Tile] = set()
     for zr in zone_records:
         all_ts |= zr.ts

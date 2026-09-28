@@ -32,10 +32,10 @@ import numpy as np
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Footprint, JsonValue, Role, Tile
+from vcmi_mapgen.core.model import Footprint, JsonValue, MapState, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.formats import json_value
@@ -179,15 +179,15 @@ def _footprint(catalog: Catalog, anim: str) -> Footprint:
 
 
 def _anchors_of_zone(
-    catalog: Catalog, fm: OR.FaithfulMap, ts: AbstractSet[Tile]
+    catalog: Catalog, fm: MapState, ts: AbstractSet[Tile]
 ) -> list[tuple[int, int, str, str]]:
     """[(x, y, cat_name, anim)] for DECORATION objects anchored inside the zone, excluded
     water-feature categories dropped. Category via the catalog (single source of truth)."""
     out: list[tuple[int, int, str, str]] = []
-    for o in fm.objects:
+    for o in fm.objs:
         if o.level != 0 or (o.x, o.y) not in ts:
             continue
-        if OR.purpose_of(o) != Purpose.DECORATION:
+        if o.purpose != Purpose.DECORATION:
             continue
         anim = o.animation.lower().removesuffix(".def")
         cat = catalog.decor_category(anim)
@@ -270,14 +270,14 @@ def _count_blocked(
 ) -> None:
     blocked: set[Tile] = set()
     for x, y, _c, anim in anchors:
-        for cx, cy, blk in OR.anchored_cells(_footprint(catalog, anim), x, y):
+        for cx, cy, blk in FP.anchored_cells(_footprint(catalog, anim), x, y):
             if blk and (cx, cy) in ts:
                 blocked.add((cx, cy))
     a.blocked += len(blocked)
     a.runs.update(run_lengths(ts, ts - blocked))
 
 
-def _accumulate_zone(catalog: Catalog, a: _Acc, fm: OR.FaithfulMap, ts: set[Tile]) -> None:
+def _accumulate_zone(catalog: Catalog, a: _Acc, fm: MapState, ts: set[Tile]) -> None:
     anchors = _anchors_of_zone(catalog, fm, ts)
     edist = edge_dist(ts)
 
@@ -308,10 +308,10 @@ def _accumulate_zone(catalog: Catalog, a: _Acc, fm: OR.FaithfulMap, ts: set[Tile
     _count_blocked(catalog, a, anchors, ts)
 
 
-def mine(catalog: Catalog, maps: Iterable[OR.FaithfulMap]) -> dict[str, VegStats]:
+def mine(catalog: Catalog, maps: Iterable[MapState]) -> dict[str, VegStats]:
     acc = {catalog.terrain_name(t): _Acc() for t in Terrain if t.is_land}
     for fm in maps:
-        zones, _zl, _ = segment_level(fm.terrain[0])
+        zones, _zl, _ = segment_level(fm.cells[0])
         for z in zones.values():
             terr = catalog.terrain_name(z.terrain_type)
             if terr not in acc or z.area < MIN_AREA:

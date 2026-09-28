@@ -19,12 +19,12 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import legal_cells
 from vcmi_mapgen.core.steps.loot import caches as CA
 from vcmi_mapgen.core.steps.scatter.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.core.steps.vegetation import stats as PS
-from vcmi_mapgen.kit import objects as OR
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
@@ -69,7 +69,7 @@ def test_pickup_layer_legal_and_deterministic(catalog: Catalog) -> None:
             # a guard's decorative sprite-bleed cells MAY overlap terrain or already-placed
             # cache pickups (the pocket it seals is packed by design); only its interactive
             # cell — the tile the monster actually stands on — must be free and unique
-            inter = OR.interactive_cells(o.footprint, o.x, o.y)
+            inter = FP.interactive_cells(o.footprint, o.x, o.y)
             assert inter and used.isdisjoint(inter), "guard stand-tile must be free"
             used.update(inter)
             assert (o.x, o.y) not in prot, "guards must not sit on the mandatory web"
@@ -275,7 +275,7 @@ def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_
     objs, _n_pockets, depth = CA.place_pocket_caches(catalog, [zr], seed=3, bounds=(20, 20))
     claimed: set[Tile] = set()
     for o in objs:
-        for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y):
+        for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y):
             claimed.add((cx, cy))
     unfilled = set(depth) - claimed
     assert not unfilled, f"pocket tiles marked magenta with nothing placed: {unfilled}"
@@ -320,7 +320,7 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine(catalog: 
         c
         for o in objs
         if o.purpose == Purpose.GUARD
-        for c in OR.interactive_cells(o.footprint, o.x, o.y)
+        for c in FP.interactive_cells(o.footprint, o.x, o.y)
     }
     open_tiles = ts - stands
     seen = {(0, 8)}

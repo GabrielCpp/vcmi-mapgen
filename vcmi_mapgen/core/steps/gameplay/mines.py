@@ -22,11 +22,11 @@ from pathlib import Path
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Identity, JsonValue, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gate.gates import MIN_AREA_STATS
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
@@ -341,26 +341,26 @@ class Covariates:
 @dataclass(frozen=True, slots=True)
 class _CorpusLevel:
     catalog: Catalog
-    fm: OR.FaithfulMap
+    fm: MapState
     level: int
     zones: Mapping[int, Zone]
     guards: AbstractSet[Tile]
 
 
-def _accumulate_water(aw: _TerrainAcc, fm: OR.FaithfulMap, level: int) -> None:
+def _accumulate_water(aw: _TerrainAcc, fm: MapState, level: int) -> None:
     wtiles = {
         (x, y)
-        for y, row in enumerate(fm.terrain[level])
+        for y, row in enumerate(fm.cells[level])
         for x, c in enumerate(row)
         if c.t == Terrain.WATER
     }
     if not wtiles:
         return
     aw.tiles += len(wtiles)
-    for o in fm.objects:
+    for o in fm.objs:
         if o.level != level or (o.x, o.y) not in wtiles:
             continue
-        p = OR.purpose_of(o)
+        p = Purpose(o.purpose)
         if p in ALL_PURPOSES:
             aw.counts[p] += 1
             anim = o.animation.lower().removesuffix(".def")
@@ -374,9 +374,9 @@ def _zone_blocked(
     veg_blocked: set[Tile] = set()
     all_blocked: set[Tile] = set()
     for o in zone_objs:
-        is_decor = OR.purpose_of(o) == Purpose.DECORATION
+        is_decor = o.purpose == Purpose.DECORATION
         anim = o.animation.lower().removesuffix(".def")
-        for cx, cy, blk in OR.anchored_cells(catalog.identity_of(anim).footprint, o.x, o.y):
+        for cx, cy, blk in FP.anchored_cells(catalog.identity_of(anim).footprint, o.x, o.y):
             if blk and (cx, cy) in ts:
                 all_blocked.add((cx, cy))
                 if is_decor:
@@ -387,7 +387,7 @@ def _zone_blocked(
 def _count_zone_obj(
     a: _TerrainAcc, o: PlacedObject, cov: Covariates, guards: AbstractSet[Tile]
 ) -> None:
-    p = OR.purpose_of(o)
+    p = Purpose(o.purpose)
     if p not in ALL_PURPOSES:
         return
     t = (o.x, o.y)
@@ -413,7 +413,7 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
     fronts = zone_fronts(ts, cl.zones, zid)
     front_union = set[Tile]().union(*fronts.values()) if fronts else set[Tile]()
     gd = gate_dist(ts, front_union or zone_gates(ts, cl.zones, zid))
-    zone_objs = [o for o in cl.fm.objects if o.level == cl.level and (o.x, o.y) in ts]
+    zone_objs = [o for o in cl.fm.objs if o.level == cl.level and (o.x, o.y) in ts]
     veg_blocked, all_blocked = _zone_blocked(cl.catalog, zone_objs, ts)
     a.border_tiles += len(front_union)
     a.border_open += sum(1 for t in front_union if t not in all_blocked)
@@ -429,12 +429,10 @@ def _accumulate_zone(a: _TerrainAcc, cl: _CorpusLevel, zid: int, z: Zone) -> Non
 
 
 def _accumulate_map(
-    catalog: Catalog, acc: dict[str, _TerrainAcc], fm: OR.FaithfulMap, level: int
+    catalog: Catalog, acc: dict[str, _TerrainAcc], fm: MapState, level: int
 ) -> None:
-    zones, _zl, _ = segment_level(fm.terrain[level])
-    guards = {
-        (o.x, o.y) for o in fm.objects if o.level == level and OR.purpose_of(o) == Purpose.GUARD
-    }
+    zones, _zl, _ = segment_level(fm.cells[level])
+    guards = {(o.x, o.y) for o in fm.objs if o.level == level and o.purpose == Purpose.GUARD}
     _accumulate_water(acc["water"], fm, level)
     cl = _CorpusLevel(catalog, fm, level, zones, guards)
     for zid, z in zones.items():
@@ -469,7 +467,7 @@ def land_names(catalog: Catalog) -> tuple[str, ...]:
 
 
 def mine_gameplay(
-    catalog: Catalog, level: int, maps: Iterable[OR.FaithfulMap]
+    catalog: Catalog, level: int, maps: Iterable[MapState]
 ) -> dict[str, TerrainStats]:
     """Corpus statistics for the FULL L3 intensity fit, per terrain, for terrain level `level`
     (0 = surface, 1 = underground):
@@ -491,7 +489,7 @@ def mine_gameplay(
     """
     acc = {t: _TerrainAcc() for t in (*land_names(catalog), "water")}
     for fm in maps:
-        if level >= len(fm.terrain):
+        if level >= len(fm.cells):
             continue
         _accumulate_map(catalog, acc, fm, level)
     return {t: _finish_stats(a) for t, a in acc.items()}

@@ -8,10 +8,10 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import guard_spaced
 from vcmi_mapgen.core.steps.vegetation.border_plan import blocking_cells, cross_pairs, zone_owner
-from vcmi_mapgen.kit import objects as OR
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,7 +59,7 @@ class _GuardPlacer:
         """First candidate whose sprite overlay is clear of decor; else the first."""
         rnd = rnd_monster(self._catalog, 3)
         for c in cands:
-            if OR.overlay_clear(rnd.footprint, c[0], c[1], self._decor_blk):
+            if FP.overlay_clear(rnd.footprint, c[0], c[1], self._decor_blk):
                 return c
         return cands[0]
 
@@ -131,7 +131,7 @@ def guard_crossings(
 
     existing_guards = {(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD}
 
-    decor_blk = OR.decor_blocking_cells(objs + new_objs)
+    decor_blk = FP.decor_blocking_cells(objs + new_objs)
     placer = _GuardPlacer(catalog, rng, objs, rules.hard_avoid, decor_blk)
 
     guard_tiles, unguarded = placer.guard_pairs(pairs, existing_guards, new_objs)

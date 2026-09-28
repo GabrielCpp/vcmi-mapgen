@@ -43,7 +43,7 @@ def _mask_overlay(full_sprite: Image.Image, grid: Sequence[str], tile: int) -> I
     tile.) Validated against art: pine `B` on the trunk, wood pile `A` on the logs, seer hut
     centred, town gate at the sprite centre. '.' grid cells are outside the footprint and not drawn.
     Cropped to the union of sprite content + footprint. (This sprite-canvas frame is distinct from
-    the map-placement bottom-RIGHT anchor in renderers.sprites/kit.objects -- do not
+    the map-placement bottom-RIGHT anchor in renderers.sprites/core.placement.footprint -- do not
     conflate them.)"""
     base = full_sprite.convert("RGBA")
     cols_t, rows_t = base.width // tile, base.height // tile

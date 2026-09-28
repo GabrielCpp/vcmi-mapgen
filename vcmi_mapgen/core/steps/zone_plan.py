@@ -18,6 +18,7 @@ from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspace
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import mines as MN
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
 from vcmi_mapgen.core.steps.gameplay import water as WT
@@ -25,7 +26,6 @@ from vcmi_mapgen.core.steps.gameplay.site import door_cells, path_to_web
 from vcmi_mapgen.core.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import plan_entrances
 
 NO_TILES: frozenset[Tile] = frozenset()
@@ -53,7 +53,7 @@ def seaport_cells(objs: Iterable[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
     seaport_appr: set[Tile] = set()
     for so in objs:
         if so.type == "shipyard":
-            for scx, scy, sblk in OR.anchored_cells(so.footprint, so.x, so.y):
+            for scx, scy, sblk in FP.anchored_cells(so.footprint, so.x, so.y):
                 if sblk:
                     seaport_blk.add((scx, scy))
             seaport_appr.add((so.x - 1, so.y + 1))
@@ -136,7 +136,7 @@ def plan_landings(
     )
     _, appr = seaport_cells(landings)
     lw.seaport_blk = frozenset(
-        (x, y) for o in landings for x, y, _b in OR.anchored_cells(o.footprint, o.x, o.y)
+        (x, y) for o in landings for x, y, _b in FP.anchored_cells(o.footprint, o.x, o.y)
     )
     lw.seaport_appr = frozenset(appr)
     _connect_landings(lw)

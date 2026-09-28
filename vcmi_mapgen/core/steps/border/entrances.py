@@ -8,10 +8,10 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import guard_spaced
 from vcmi_mapgen.core.steps.vegetation.border_plan import blocking_cells
-from vcmi_mapgen.kit import objects as OR
 
 ENTRANCE_GUARD_PROB = 0.85
 ENTRANCE_SALT = 0xE47
@@ -49,7 +49,7 @@ class _EntranceGuards:
         self.out: list[PlacedObject] = []
 
     def _stands(self, guard: PlacedObject, ts: frozenset[Tile]) -> bool:
-        cells = OR.interactive_cells(guard.footprint, guard.x, guard.y)
+        cells = FP.interactive_cells(guard.footprint, guard.x, guard.y)
         return (
             all(c in ts and c not in self.blocked and c not in self.field.avoid for c in cells)
             and guard_spaced((guard.x, guard.y), self.guards)

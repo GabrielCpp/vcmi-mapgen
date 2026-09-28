@@ -15,11 +15,11 @@ from typing import Self, final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import CellRules, legal_cells
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one
-from vcmi_mapgen.kit import objects as OR
 
 LOOT_ZONE_MAX_TILES = 60
 _LOOT_COLORS = [(f"avxbgt{i}0", f"avxkey{i}0") for i in range(8)]
@@ -137,7 +137,7 @@ def find_entry_corridor(
 
 def _blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
     return {
-        (cx, cy) for o in objs for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y) if blk
+        (cx, cy) for o in objs for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y) if blk
     }
 
 
@@ -279,13 +279,13 @@ class GatedPlacer:
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
         self.blocked = _blocking_cells(objs_existing)
         self.interactive_existing = {
-            c for o in objs_existing for c in OR.interactive_cells(o.footprint, o.x, o.y)
+            c for o in objs_existing for c in FP.interactive_cells(o.footprint, o.x, o.y)
         }
         self.purposeful = {
             (cx, cy)
             for o in objs_existing
             if o.purpose
-            for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y)
+            for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y)
         }
         self.zone_of = {t: zr for zr in zone_records for t in zr.ts}
         self.ext_no_castle: list[ZoneRecord] = []
@@ -447,10 +447,10 @@ class GatedPlacer:
 
     def _site_gate(self, zone: _LootZone, aim: _GateAim, gate_ident: Identity) -> _Sited | None:
         for g in sorted(zone.ts, key=lambda t: (aim.score(t), t)):
-            cells = list(OR.anchored_cells(gate_ident.footprint, *g))
+            cells = list(FP.anchored_cells(gate_ident.footprint, *g))
             if not self._in_bounds(cells):
                 continue
-            interactive = OR.interactive_cells(gate_ident.footprint, *g)
+            interactive = FP.interactive_cells(gate_ident.footprint, *g)
             if not all(c in zone.open_set for c in interactive):
                 continue
             if not self._gate_cells_fit(zone, cells):
@@ -510,13 +510,13 @@ class GatedPlacer:
             fp_coords = legal_cells(mono_ident, t, zone.reach, zone.used, rules)
             if fp_coords is None:
                 continue
-            mono_cells = list(OR.anchored_cells(mono_ident.footprint, *t))
+            mono_cells = list(FP.anchored_cells(mono_ident.footprint, *t))
             entry = _find_entry_tile(fp_coords, mono_cells, zone.ts)
             if entry is None or _entry_tile_has_stray_leak(
                 entry, mono_cells, zone.ts, self.all_ts, self.blocked
             ):
                 continue
-            interactive = frozenset(OR.interactive_cells(mono_ident.footprint, *t))
+            interactive = frozenset(FP.interactive_cells(mono_ident.footprint, *t))
             return t, _Sited(entry, mono_cells, interactive)
         return None
 
@@ -639,7 +639,7 @@ class GatedPlacer:
         self.n_placed += 1
         self.placed_ext_tiles.append(ext_t)
         gident = rnd_monster(self.catalog, 7)
-        for clear_of in (OR.decor_blocking_cells(self.objs), None):
+        for clear_of in (FP.decor_blocking_cells(self.objs), None):
             if _try_guard_ring(
                 ext_zr,
                 ext_t,

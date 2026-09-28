@@ -1,28 +1,16 @@
 import os
-from collections.abc import Callable
 from pathlib import Path
 
-import pytest
-
-from vcmi_mapgen.core.model import Footprint, PlacedObject, Role
+from vcmi_mapgen.core.model import Footprint, Role
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
+from vcmi_mapgen.vcmi.load import load_map
 
 
-def _fixed_path(path: str) -> Callable[[str], str]:
-    def faithful_path(_name: str) -> str:
-        return path
-
-    return faithful_path
-
-
-def test_load_faithful_prefers_ontology_mask_over_file_mask(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_map_prefers_ontology_mask_over_file_mask(tmp_path: Path) -> None:
     """A known animation (a town) must get the ontology's canonical mask, not whatever
     happened to be written in the file -- this is the mask-correctness fix: a real .vmap's
     template.mask can't distinguish 'X' (blocked entrance) from 'A' (walk-on), so it is
@@ -51,16 +39,12 @@ def test_load_faithful_prefers_ontology_mask_over_file_mask(
             )
         ],
     )
-    path = write(doc, os.path.join(tmp_path, "fixture.vmap"))
-    monkeypatch.setattr(OR, "faithful_path", _fixed_path(path))
-
-    fm = OR.load_faithful("fixture")
-    assert fm.objects[0].footprint == footprint_of(ontology_mask)
+    m = load_map(write(doc, os.path.join(tmp_path, "fixture.vmap")))
+    assert m.objs[0].footprint == footprint_of(ontology_mask)
+    assert m.objs[0].purpose == Purpose.TOWN
 
 
-def test_load_faithful_falls_back_to_file_mask_when_ontology_is_silent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_map_falls_back_to_file_mask_when_ontology_is_silent(tmp_path: Path) -> None:
     """Heroes' per-portrait animations aren't in objects.txt's ontology catalog at all --
     ON.mask_of would default to a conservative all-blocking ['B'], silently misclassifying
     every corpus hero as blocking. The file's own (unambiguous, no 'B' cell) mask must be
@@ -87,40 +71,5 @@ def test_load_faithful_falls_back_to_file_mask_when_ontology_is_silent(
             )
         ],
     )
-    path = write(doc, os.path.join(tmp_path, "fixture.vmap"))
-    monkeypatch.setattr(OR, "faithful_path", _fixed_path(path))
-
-    fm = OR.load_faithful("fixture")
-    assert fm.objects[0].footprint == Footprint.one(Role.VISIT)
-    assert not OR.is_blocking(fm.objects[0].footprint)
-
-
-def _placed(type_name: str | None) -> PlacedObject:
-    return PlacedObject(
-        x=0,
-        y=0,
-        level=0,
-        purpose="",
-        type=type_name,
-        subtype=None,
-        animation="",
-        footprint=Footprint(0, 0, ()),
-    )
-
-
-def test_purpose_of_reads_the_catalog() -> None:
-    assert OR.purpose_of(_placed("town")) == Purpose.TOWN
-    assert OR.purpose_of(_placed("mine")) == Purpose.MINE
-    assert OR.purpose_of(_placed("noSuchType")) == Purpose.UNKNOWN
-    assert OR.purpose_of(_placed(None)) == Purpose.UNKNOWN
-
-
-def test_all_map_names_is_independent_of_listdir_order(monkeypatch: pytest.MonkeyPatch) -> None:
-    real_listdir = os.listdir
-    names = OR.all_map_names()
-
-    def reversed_listdir(path: str) -> list[str]:
-        return list(reversed(real_listdir(path)))
-
-    monkeypatch.setattr(os, "listdir", reversed_listdir)
-    assert OR.all_map_names() == names
+    m = load_map(write(doc, os.path.join(tmp_path, "fixture.vmap")))
+    assert m.objs[0].footprint == Footprint.one(Role.VISIT)

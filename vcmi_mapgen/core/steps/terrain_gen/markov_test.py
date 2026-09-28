@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.core.model import Cell
+from vcmi_mapgen.core.model import Cell, MapState
 from vcmi_mapgen.core.steps.terrain_gen import markov as MT
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 
 type Table = collections.defaultdict[tuple[int, ...], collections.Counter[int]]
 
 
-def _faithful_map(grid: list[list[int]]) -> OR.FaithfulMap:
-    terrain = [[[Cell(t=t) for t in row] for row in grid]]
-    return OR.FaithfulMap("fixture", len(grid[0]), len(grid), False, terrain, [])
+def _corpus_map(grid: list[list[int]]) -> MapState:
+    m = MapState(size=len(grid))
+    m.cells[0] = [[Cell(t=t) for t in row] for row in grid]
+    return m
 
 
 def _order(table: Table) -> list[tuple[tuple[int, ...], list[tuple[int, int]]]]:
@@ -26,7 +26,7 @@ def test_tables_round_trip_keeps_counter_order(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     grid = [[3, 1, 3, 2], [1, 3, 2, 1], [2, 2, 1, 3], [3, 1, 1, 2]]
-    maps = [_faithful_map(grid), _faithful_map([row[::-1] for row in grid])]
+    maps = [_corpus_map(grid), _corpus_map([row[::-1] for row in grid])]
     tables = MT.MarkovTables(chain=MT.learn(0, maps), chain4=MT.learn4(0, maps))
     monkeypatch.setattr(pp_cache, "PP_DIR", tmp_path)
     MT.save_tables(0, tables)

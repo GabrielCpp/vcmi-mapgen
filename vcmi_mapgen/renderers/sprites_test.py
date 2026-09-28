@@ -17,10 +17,10 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-import vcmi_mapgen.kit.objects as OR
 import vcmi_mapgen.renderers.sprites as RE
 from vcmi_mapgen.cli.settings import load_settings
 from vcmi_mapgen.core.model import Footprint, PlacedObject
+from vcmi_mapgen.corpus.maps import load_corpus_map
 from vcmi_mapgen.vcmi.formats.lod import LOD_FILES, LodIndex, lod
 from vcmi_mapgen.vcmi.install import InstallNotFoundError
 
@@ -124,8 +124,8 @@ def test_decode_coverage_over_corpus_sprites() -> None:
     the test map must, when present in the LOD, decode to a non-empty frame of the
     header-declared size. Sprites genuinely absent from the LOD are reported, not
     failed (that is a data-availability issue, not a decoder fault)."""
-    fm = OR.load_faithful(TEST_MAP)
-    anims = sorted({o.animation for o in fm.objects if o.animation})
+    fm = load_corpus_map(TEST_MAP)
+    anims = sorted({o.animation for o in fm.objs if o.animation})
     assert anims, "no object animations found in the test map"
 
     absent: list[str] = []

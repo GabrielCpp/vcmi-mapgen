@@ -12,6 +12,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import (
     CellRules,
@@ -19,7 +20,6 @@ from vcmi_mapgen.core.steps.gameplay.water import (
     pick_fixed_identity,
     pick_random_identity,
 )
-from vcmi_mapgen.kit import objects as OR
 
 GUARD_SPACING = 2
 
@@ -138,7 +138,7 @@ def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
     for o in objs:
         if o.purpose != Purpose.GUARD or not o.footprint.cells:
             continue
-        for ix, iy in OR.interactive_cells(o.footprint, o.x, o.y):
+        for ix, iy in FP.interactive_cells(o.footprint, o.x, o.y):
             zoc.add((ix, iy))
             zoc.update((ix + dx, iy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
     return zoc
@@ -193,14 +193,14 @@ def _guard_cells(
     # mouth. Rejecting on `used` overlap silently dropped the guard from 31 of 39
     # earned pockets on a real 72x72 build (every nook north/west of its mouth),
     # leaving the treasure free -- the exact opposite of the cache grammar.
-    interactive = OR.interactive_cells(ident.footprint, x, y)
+    interactive = FP.interactive_cells(ident.footprint, x, y)
     if not interactive or not all(c in target.reach and c not in target.used for c in interactive):
         return None
-    if spec.clear_of is not None and not OR.overlay_clear(ident.footprint, x, y, spec.clear_of):
+    if spec.clear_of is not None and not FP.overlay_clear(ident.footprint, x, y, spec.clear_of):
         return None
     if spec.interactive_only:
         return interactive
-    cells = [(tx, ty) for tx, ty, _b in OR.anchored_cells(ident.footprint, x, y)]
+    cells = [(tx, ty) for tx, ty, _b in FP.anchored_cells(ident.footprint, x, y)]
     if target.bounds is not None:
         bw, bh = target.bounds
         cells = [(tx, ty) for tx, ty in cells if 0 <= tx < bw and 0 <= ty < bh]

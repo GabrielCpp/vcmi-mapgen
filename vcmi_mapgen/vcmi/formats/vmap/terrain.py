@@ -80,7 +80,7 @@ def vcmi_mask(mask: Sequence[str]) -> list[str]:
     blocked-visitable in H3), so both map onto it.
 
     NOTE this is LOSSY: a VCMI-charset mask can never be translated back into 'X' vs 'A'
-    -- see `vcmi.formats.vmap.reader`'s docstring and `kit/objects.py`'s SSOT note for why the
+    -- see `vcmi.formats.vmap.reader`'s docstring and `vcmi/load.py`'s docstring for why the
     engine-internal mask must always be re-derived from the ontology, never read back
     out of a .vmap's `template.mask`.
     """

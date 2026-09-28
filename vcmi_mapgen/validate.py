@@ -4,7 +4,7 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile
-from vcmi_mapgen.kit.objects import anchored_cells
+from vcmi_mapgen.core.placement.footprint import anchored_cells
 
 
 @dataclass(frozen=True, slots=True)

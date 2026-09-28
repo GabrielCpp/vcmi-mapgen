@@ -36,10 +36,9 @@ from PIL import Image
 
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import Cell, JsonValue, Tile
+from vcmi_mapgen.core.model import Cell, JsonValue, MapState, Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.terrain_gen import markov as MT
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
@@ -130,7 +129,7 @@ def _mine_adjacency(T: list[list[int]], W: int, H: int, adj: collections.Counter
                         adj[f"{min(a, b)}|{max(a, b)}"] += 1
 
 
-def mine_macro(level: int, maps: Iterable[OR.FaithfulMap]) -> MacroStats:
+def mine_macro(level: int, maps: Iterable[MapState]) -> MacroStats:
     """Corpus macro stats for terrain level `level` (0 = surface, 1 = underground). The
     underground table is mined independently from `fm["terrain"][1]` of two-level corpus
     maps — real underground zone areas/adjacency/barrier fraction are statistically distinct
@@ -143,9 +142,9 @@ def mine_macro(level: int, maps: Iterable[OR.FaithfulMap]) -> MacroStats:
     adj = collections.Counter[str]()  # "t1|t2" boundary-tile counts, t1 <= t2
     nzones: list[int] = []
     for fm in maps:
-        if level >= len(fm.terrain):
+        if level >= len(fm.cells):
             continue
-        lvl = fm.terrain[level]
+        lvl = fm.cells[level]
         H = len(lvl)
         W = len(lvl[0]) if H else 0
         T = [[c.t for c in row] for row in lvl]

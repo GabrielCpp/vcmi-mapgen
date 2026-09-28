@@ -26,7 +26,7 @@ class ZoneOverlay(MapOverlay):
     """Draw a flat per-zone colored fill, full coverage, one hue per zone.
 
     Reads ``state.zones[level]`` which must be populated by ``SegmentStep``.
-    If zones are absent (e.g. the state came from VmapReader) the overlay is
+    If zones are absent (e.g. the state came from vcmi.load.load_map) the overlay is
     a no-op.  Optionally renders zone-id text labels at each zone's centroid.
 
     ``fill`` and ``labels`` are independent so a caller can composite the fill

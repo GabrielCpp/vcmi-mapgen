@@ -19,9 +19,10 @@ from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import COUNTED
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay.mines import gate_dist
 from vcmi_mapgen.core.steps.gameplay.site import back_score
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.corpus.maps import all_map_names, load_corpus_map
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 
 MEASURES = ("depth", "gate", "open", "back")
@@ -48,7 +49,7 @@ class _Field:
 
 
 def _entrance(o: PlacedObject) -> Tile:
-    vis = OR.interactive_cells(o.footprint, o.x, o.y)
+    vis = FP.interactive_cells(o.footprint, o.x, o.y)
     return vis[0] if vis else (o.x, o.y)
 
 
@@ -123,10 +124,10 @@ def measure_level(
 
 def corpus_tally() -> Tally:
     tally = Tally()
-    for name in OR.all_map_names():
-        fm = OR.load_faithful(name)
-        for level, grid in enumerate(fm.terrain):
-            measure_level(tally, grid, [o for o in fm.objects if o.level == level])
+    for name in all_map_names():
+        m = load_corpus_map(name)
+        for level, grid in m.cells.items():
+            measure_level(tally, grid, [o for o in m.objs if o.level == level])
     return tally
 
 

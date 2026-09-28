@@ -45,8 +45,8 @@ from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.vegetation import stats as PS
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gate_bands
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
@@ -125,7 +125,7 @@ def build_model(catalog: Catalog, terrain: str) -> VegModel:
         blk: list[list[Tile]] = []
         foot: list[list[Tile]] = []
         for i in ids:
-            cells = [(cx, cy, b) for cx, cy, b in OR.anchored_cells(i.footprint, 0, 0)]
+            cells = [(cx, cy, b) for cx, cy, b in FP.anchored_cells(i.footprint, 0, 0)]
             blk.append([(cx, cy) for cx, cy, b in cells if b])
             foot.append([(cx, cy) for cx, cy, _b in cells])
         iblk.append(blk)

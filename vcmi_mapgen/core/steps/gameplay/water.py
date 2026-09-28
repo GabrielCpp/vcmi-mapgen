@@ -28,6 +28,7 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay.mines import (
     RND_ART,
     RND_RES,
@@ -35,7 +36,6 @@ from vcmi_mapgen.core.steps.gameplay.mines import (
     TerrainStats,
     load_gameplay,
 )
-from vcmi_mapgen.kit import objects as OR
 
 SEA_ZONE_MIN_AREA = 50  # minimum water-body size to require a seaport per shore
 ISLAND_MIN_AREA = 50  # minimum island-zone size to require a seaport
@@ -107,8 +107,8 @@ def legal_cells(
     where adjacent pickups' V-cells would otherwise falsely block each other — V cells are
     cosmetic in H3/VCMI and two objects sharing V-cell space is legal."""
     x, y = anchor
-    cells = [(tx, ty) for tx, ty, _b in OR.anchored_cells(ident.footprint, x, y)]
-    interactive = OR.interactive_cells(ident.footprint, x, y) or cells
+    cells = [(tx, ty) for tx, ty, _b in FP.anchored_cells(ident.footprint, x, y)]
+    interactive = FP.interactive_cells(ident.footprint, x, y) or cells
     check = interactive if rules.interactive_only else cells
     if rules.bounds is not None:
         bw, bh = rules.bounds
@@ -133,7 +133,7 @@ def _water_obj(
     if cells is None:
         return None
     solid = ident.footprint.solid()
-    if any((tx, ty) not in ts for tx, ty, _b in OR.anchored_cells(solid, t[0], t[1])):
+    if any((tx, ty) not in ts for tx, ty, _b in FP.anchored_cells(solid, t[0], t[1])):
         return None
     obj = PlacedObject.at(ident, t, purpose=purpose)
     if not cover.try_add(obj):
@@ -268,10 +268,10 @@ def _structure_fronts(objs: Iterable[PlacedObject]) -> tuple[set[Tile], list[set
         fp = o.footprint
         if not fp.cells:
             continue
-        for cx, cy, blk in OR.anchored_cells(fp, o.x, o.y):
+        for cx, cy, blk in FP.anchored_cells(fp, o.x, o.y):
             if blk:
                 structure_blk.add((cx, cy))
-        front = OR.front_tiles(fp, o.x, o.y)
+        front = FP.front_tiles(fp, o.x, o.y)
         if front:
             structure_fronts.append(front)
     return structure_blk, structure_fronts
@@ -410,7 +410,7 @@ class _SeaportPlanner:
         _, blk, _ = _seaport_footprint(ax, ay, ident.footprint)
         self.existing_blk.update(blk)
         self.structure_blk.update(blk)
-        front = OR.front_tiles(ident.footprint, ax, ay)
+        front = FP.front_tiles(ident.footprint, ax, ay)
         if front:
             self.structure_fronts.append(front)
         self.placed_anchors.append((ax, ay))

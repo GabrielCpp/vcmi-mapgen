@@ -11,10 +11,10 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay import water as WT
 from vcmi_mapgen.core.steps.terrain_gen import macro_topo as MT
-from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.vcmi.footprint import footprint_of
 
 Grid = list[list[int]]
@@ -265,12 +265,12 @@ def test_seaport_never_fully_blocks_an_existing_structures_front_row(catalog: Ca
         animation="",
         footprint=footprint_of(("VVV", "BBB", "BXB")),
     )
-    front = OR.front_tiles(arena.footprint, arena.x, arena.y)
+    front = FP.front_tiles(arena.footprint, arena.x, arena.y)
     assert front == {(1, 3), (2, 3), (3, 3)}, "fixture assumption broke: unexpected front tiles"
 
     objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [arena], seed=3, catalog=catalog)
     for o in objs:
-        blk = {(cx, cy) for cx, cy, b in OR.anchored_cells(o.footprint, o.x, o.y) if b}
+        blk = {(cx, cy) for cx, cy, b in FP.anchored_cells(o.footprint, o.x, o.y) if b}
         assert not front <= blk, (
             f"seaport at ({o.x}, {o.y}) consumes the arena's entire front row {front}"
         )

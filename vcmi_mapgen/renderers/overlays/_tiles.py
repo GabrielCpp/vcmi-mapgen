@@ -10,7 +10,7 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.vcmi.terrain import BY_PREFIX
 
 NB8: list[Tile] = [(dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy]
@@ -53,7 +53,7 @@ def passable_tiles(
         mask = o.footprint
         if not mask.cells:
             continue
-        for tx, ty, blk in OR.anchored_cells(mask, o.x, o.y):
+        for tx, ty, blk in FP.anchored_cells(mask, o.x, o.y):
             if blk:
                 blocked.add((tx, ty))
     return land - blocked
@@ -81,10 +81,10 @@ def classify_objects(
             continue
         ox, oy = o.x, o.y
         if purpose in STRUCTURE_PURPOSES or purpose == "WATER_TRANSPORT":
-            visit = set(OR.interactive_cells(mask, ox, oy))
+            visit = set(FP.interactive_cells(mask, ox, oy))
             body = {
                 (cx, cy)
-                for cx, cy, blk in OR.anchored_cells(mask, ox, oy)
+                for cx, cy, blk in FP.anchored_cells(mask, ox, oy)
                 if blk and (cx, cy) not in visit
             }
             if purpose != "WATER_TRANSPORT" and not body and len(visit) == 1:
@@ -93,7 +93,7 @@ def classify_objects(
                 struct_visit |= visit
                 struct_body |= body
         elif not purpose or purpose == "DECORATION":
-            for cx, cy, blk in OR.anchored_cells(mask, ox, oy):
+            for cx, cy, blk in FP.anchored_cells(mask, ox, oy):
                 if blk:
                     background.add((cx, cy))
     background -= struct_body | struct_visit | solo_visit

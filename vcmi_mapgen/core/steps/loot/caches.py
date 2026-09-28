@@ -24,6 +24,7 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.steps.gameplay.mines import TerrainStats, load_gameplay
 from vcmi_mapgen.core.steps.gate.gates import rnd_monster
 from vcmi_mapgen.core.steps.placement import (
@@ -41,7 +42,6 @@ from vcmi_mapgen.core.steps.treasure.fill import (
     LOOT_CHEST_TYPES,
     solo_visit_pool,
 )
-from vcmi_mapgen.kit import objects as OR
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
 # treasure(1-2) → minor(3) → major(4-5) → any/relic(6).
@@ -55,7 +55,7 @@ _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
 
 
 def _guard_stand(mask: Footprint, x: int, y: int) -> set[Tile]:
-    return set(OR.interactive_cells(mask, x, y))
+    return set(FP.interactive_cells(mask, x, y))
 
 
 def _approach_tiles(mask: Footprint, x: int, y: int, passable: Container[Tile]) -> set[Tile]:
@@ -64,7 +64,7 @@ def _approach_tiles(mask: Footprint, x: int, y: int, passable: Container[Tile]) 
     blocked-entrance 'X' interactive cell, which is clicked from an adjacent tile, never
     stood on itself)."""
     ap: set[Tile] = set()
-    for ix, iy in OR.interactive_cells(mask, x, y):
+    for ix, iy in FP.interactive_cells(mask, x, y):
         if (ix, iy) in passable:
             ap.add((ix, iy))
         for dx, dy in NB8:
@@ -134,7 +134,7 @@ def _mine_cells(existing_objs: Sequence[PlacedObject]) -> set[Tile]:
         if o.purpose == Purpose.MINE:
             mask = o.footprint
             if mask.cells:
-                mine_cells |= {(cx, cy) for cx, cy, _b in OR.anchored_cells(mask, o.x, o.y)}
+                mine_cells |= {(cx, cy) for cx, cy, _b in FP.anchored_cells(mask, o.x, o.y)}
     return mine_cells
 
 
@@ -464,7 +464,7 @@ class _PocketCachePass:
             if _reachable(self.global_true, self.protect_blocked, src, dst)
         ]
 
-        self.decor_blk = OR.decor_blocking_cells(context.existing_objs)
+        self.decor_blk = FP.decor_blocking_cells(context.existing_objs)
         precomputed = context.precomputed_pockets
         raw = precomputed if precomputed is not None else find_pockets(self.global_true)
         self.blobs = dedupe_pockets(raw, self.global_true)
@@ -594,7 +594,7 @@ class _PocketCachePass:
             return False
         if not all(
             c in self.global_place and c not in self.used
-            for c in OR.interactive_cells(guard_mask, cand_g[0], cand_g[1])
+            for c in FP.interactive_cells(guard_mask, cand_g[0], cand_g[1])
         ):
             return False
         if self.protect_pairs:
@@ -603,7 +603,7 @@ class _PocketCachePass:
                 _reachable(self.global_true, blocked, src, dst) for src, dst in self.protect_pairs
             ):
                 return False  # would seal a town off from its own starting mine
-        if any(c in self.decor_blk for c in OR.interactive_cells(guard_mask, cand_g[0], cand_g[1])):
+        if any(c in self.decor_blk for c in FP.interactive_cells(guard_mask, cand_g[0], cand_g[1])):
             return False
         return self.cover.accepts(PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD))
 
@@ -613,7 +613,7 @@ class _PocketCachePass:
 
     def _leaves_cache_spot(self, cand_g: Tile, cand_pocket: frozenset[Tile]) -> bool:
         guard_cells = {
-            (x, y) for x, y, _b in OR.anchored_cells(self.guard_mask, cand_g[0], cand_g[1])
+            (x, y) for x, y, _b in FP.anchored_cells(self.guard_mask, cand_g[0], cand_g[1])
         }
         with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD)])
         return any(
@@ -639,7 +639,7 @@ class _PocketCachePass:
                 if not (self._guard_fits(stand) and self._leaves_cache_spot(stand, cand_pocket)):
                     continue
                 pick = _PocketPick(stand, cand_pocket, cand_zid, cand_mouth_fs, cand_g)
-                if OR.overlay_clear(self.guard_mask, stand[0], stand[1], self.decor_blk):
+                if FP.overlay_clear(self.guard_mask, stand[0], stand[1], self.decor_blk):
                     return pick
                 if fallback is None:
                     fallback = pick
@@ -903,7 +903,7 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
         # no room for the hut => a dangling quest artifact nobody asked for; drop it
         # rather than leave an orphaned reference
         _ = env.objs.pop()
-        for cx, cy, _b in OR.anchored_cells(art_ident.footprint, art_xy[0], art_xy[1]):
+        for cx, cy, _b in FP.anchored_cells(art_ident.footprint, art_xy[0], art_xy[1]):
             art_zr.used.discard((cx, cy))
         return False
 

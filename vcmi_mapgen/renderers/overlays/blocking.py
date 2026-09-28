@@ -8,7 +8,7 @@ from typing import override
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import MapState, PlacedObject
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.renderers.overlays._tiles import classify_objects
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
@@ -31,7 +31,7 @@ class BlockingOverlay(MapOverlay):
     amber when present (subterranean gate ZoC).
 
     Works with both pipeline-generated states (full mask available) and states
-    produced by VmapReader.
+    produced by vcmi.load.load_map.
 
     Args:
         tiers: split the blocked-tile tint into three finer categories --
@@ -90,7 +90,7 @@ def _draw_flat(
         mask = o.footprint
         if not mask.cells:
             continue
-        for tx, ty, blocking in OR.anchored_cells(mask, o.x, o.y):
+        for tx, ty, blocking in FP.anchored_cells(mask, o.x, o.y):
             if blocking and 0 <= tx < W and 0 <= ty < H:
                 _fill_tile(draw, tx, ty, _COLOR)
 

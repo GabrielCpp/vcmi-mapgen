@@ -13,8 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from vcmi_mapgen.core.model import JsonValue
-from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.core.model import JsonValue, MapState
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
@@ -36,7 +35,7 @@ class MarkovModel4:
     vert: collections.defaultdict[tuple[int, int], collections.Counter[int]]
 
 
-def learn(level_index: int, maps: Iterable[OR.FaithfulMap]) -> MarkovModel:
+def learn(level_index: int, maps: Iterable[MapState]) -> MarkovModel:
     """counts for P(center | left, up, upleft) over real maps at the given level."""
     full: collections.defaultdict[tuple[int, int, int], collections.Counter[int]] = (
         collections.defaultdict(collections.Counter)
@@ -49,9 +48,9 @@ def learn(level_index: int, maps: Iterable[OR.FaithfulMap]) -> MarkovModel:
     )  # (l,)->center
     marg: collections.Counter[int] = collections.Counter()
     for m in maps:
-        if level_index >= len(m.terrain):
+        if level_index >= len(m.cells):
             continue
-        g = m.terrain[level_index]
+        g = m.cells[level_index]
         H = len(g)
         W = len(g[0])
         T = [[c.t for c in row] for row in g]
@@ -82,7 +81,7 @@ def sample(counter: collections.Counter[int], rnd: random.Random) -> int:
     return next(iter(counter))
 
 
-def learn4(level_index: int, maps: Iterable[OR.FaithfulMap]) -> MarkovModel4:
+def learn4(level_index: int, maps: Iterable[MapState]) -> MarkovModel4:
     """P(center | left,up,right,down) for isotropic Gibbs, with back-off tables."""
     full: collections.defaultdict[tuple[int, int, int, int], collections.Counter[int]] = (
         collections.defaultdict(collections.Counter)
@@ -94,9 +93,9 @@ def learn4(level_index: int, maps: Iterable[OR.FaithfulMap]) -> MarkovModel4:
         collections.defaultdict(collections.Counter)
     )  # (u,d)->c
     for m in maps:
-        if level_index >= len(m.terrain):
+        if level_index >= len(m.cells):
             continue
-        g = m.terrain[level_index]
+        g = m.cells[level_index]
         H = len(g)
         W = len(g[0])
         T = [[c.t for c in row] for row in g]
