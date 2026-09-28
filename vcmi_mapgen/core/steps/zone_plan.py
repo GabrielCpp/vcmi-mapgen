@@ -12,19 +12,21 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.components import STEPS4
+from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
+from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import LevelWorkspace, PlacementWorkspace, ZoneWorkspace
 from vcmi_mapgen.core.steps.gameplay import mines as MN
 from vcmi_mapgen.core.steps.gameplay import shipyards as SH
 from vcmi_mapgen.core.steps.gameplay import water as WT
-from vcmi_mapgen.core.steps.gameplay.site import STEPS4, door_cells, path_to_web
+from vcmi_mapgen.core.steps.gameplay.site import door_cells, path_to_web
 from vcmi_mapgen.core.steps.gate.gates import footprint_cells, inflate_gap
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.geometry import NB8, edge_dist
 from vcmi_mapgen.kit.terrain_lookup import TNAME
-from vcmi_mapgen.kit.topology import geodesic_path, plan_entrances
+from vcmi_mapgen.kit.topology import plan_entrances
 from vcmi_mapgen.ontology import Ontology
 
 NO_TILES: frozenset[Tile] = frozenset()

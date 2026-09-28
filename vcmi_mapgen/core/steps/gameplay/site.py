@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.components import STEPS4, components
+from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import ZoneWorkspace
 from vcmi_mapgen.core.steps.gameplay.mines import (
@@ -42,7 +44,6 @@ from vcmi_mapgen.core.steps.gate.gates import (
     rnd_monster,
 )
 from vcmi_mapgen.core.steps.placement import web_dist
-from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES
 
 SITE_SALT = 0xA77A
@@ -114,29 +115,6 @@ def path_to_web(start: Tile, web: AbstractSet[Tile], passable: AbstractSet[Tile]
                 prev[n] = cur
                 q.append(n)
     return []
-
-
-STEPS4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
-
-
-def components(tiles: AbstractSet[Tile]) -> dict[Tile, int]:
-    """Label each tile with its 4-connected component inside ``tiles``."""
-    label: dict[Tile, int] = {}
-    n = 0
-    for s in sorted(tiles):
-        if s in label:
-            continue
-        label[s] = n
-        q = collections.deque([s])
-        while q:
-            x, y = q.popleft()
-            for dx, dy in STEPS4:
-                t = (x + dx, y + dy)
-                if t in tiles and t not in label:
-                    label[t] = n
-                    q.append(t)
-        n += 1
-    return label
 
 
 def _walk(src: AbstractSet[Tile], dst: AbstractSet[Tile], passable: AbstractSet[Tile]) -> set[Tile]:

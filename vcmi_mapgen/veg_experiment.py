@@ -1,9 +1,9 @@
 import argparse
 
+from vcmi_mapgen.core.grid.geometry import run_lengths
+from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.steps.vegetation.sample import ZoneRef, build_model, sample_zone
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.geometry import run_lengths
-from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 
 

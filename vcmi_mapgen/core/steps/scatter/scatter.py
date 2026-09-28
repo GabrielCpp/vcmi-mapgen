@@ -10,10 +10,10 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.model import CoverIndex, Entrance, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.placement import PlaceSpec, PlaceTarget, place_one, web_dist
-from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.topology import zone_gate_bands
 
 CAPS = {"RESOURCE_PILE": 16, "REWARD_PICKUP": 8}  # base floors; caps scale (scatter only --

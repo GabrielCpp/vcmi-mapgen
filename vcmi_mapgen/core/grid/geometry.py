@@ -6,6 +6,7 @@ from collections.abc import Collection
 
 from vcmi_mapgen.core.model import Tile
 
+NB4 = [(1, 0), (-1, 0), (0, 1), (0, -1)]
 NB8 = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
 EBINS = 6  # edge-distance bins (0..4, 5+)

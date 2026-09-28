@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import override
 
+from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import MapState, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
-from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.ontology import Ontology
 
 

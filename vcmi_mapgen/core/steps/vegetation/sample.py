@@ -41,19 +41,14 @@ import numpy as np
 from numpy.typing import NDArray
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
+from vcmi_mapgen.core.grid.noise import value_noise
+from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.geometry import EBINS, edge_dist
-from vcmi_mapgen.kit.noise import value_noise
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES
-from vcmi_mapgen.kit.topology import (
-    SPACING,
-    farthest_points,
-    geodesic_path,
-    zone_fronts,
-    zone_gate_bands,
-)
+from vcmi_mapgen.kit.topology import zone_fronts, zone_gate_bands
 
 RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)

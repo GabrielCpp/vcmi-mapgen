@@ -5,8 +5,8 @@
 - `cli/`: the only entry point, with `generate`, `render-ontology`, `mine-stats`, `extract-vmap` and `corpus-match`. `cli/steps.py` holds the one step list.
 - `corpus/`: corpus statistics code. `match.py` tallies corpus zones against generated zones.
 - `mine_stats.py`: which corpus statistics exist and the one pass that rebuilds every `data/pp/` file.
-- `core/`: map generation: `model/` holds `MapState` and the plain data types, `pipeline.py` the engine and the `PlacementWorkspace`, and `steps/` one subpackage per step.
-- `kit/`: step-independent helpers: geometry, topology, segmentation, autotiling, the corpus loader, and VCMI config.
+- `core/`: map generation: `grid/` holds the pure grid algorithms, `model/` holds `MapState` and the plain data types, `pipeline.py` the engine and the `PlacementWorkspace`, and `steps/` one subpackage per step.
+- `kit/`: step-independent helpers: topology, autotiling and the corpus loader.
 - `ontology.py`: object identity, footprints, terrain coupling and decoration category. It is the single source of truth for objects.
 - `validate.py`: `TerrainGate`, the terrain placement rule.
 - `renderers/`: the PNG renderer with H3 sprites, the playable `.vmap` export, the debug overlays and the ontology catalog.

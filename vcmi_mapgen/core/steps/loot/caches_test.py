@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay import mines as PG
 from vcmi_mapgen.core.steps.gameplay.water import legal_cells
@@ -12,7 +13,6 @@ from vcmi_mapgen.core.steps.loot import caches as CA
 from vcmi_mapgen.core.steps.scatter.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.core.steps.vegetation import stats as PS
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.topology import find_pockets
 
 HAVE_STATS = os.path.exists(os.path.join(PS.PP_DIR, "veg_grass.json"))
 needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined")
@@ -111,7 +111,7 @@ def test_find_pockets_drawn_shapes() -> None:
     flanking walls do NOT protrude past its front (open diagonals on both sides) is no
     longer detectable: H3 diagonal movement gives it THREE independent entrances (front
     + both diagonals), and only 2 tiles can never block all three at once -- this is a
-    real, accepted narrowing from the previous model, not a bug (see kit.topology.
+    real, accepted narrowing from the previous model, not a bug (see core.grid.pockets.
     find_pockets' docstring). A nook whose flanking walls DO protrude (blocking the
     diagonals) still has only one real approach and remains detectable as a 2-tile
     doorway (entrance tile + the tile behind it, in the approach direction)."""

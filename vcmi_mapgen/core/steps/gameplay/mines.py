@@ -21,13 +21,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.geometry import edge_dist
+from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Identity, JsonValue, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.gate.gates import MIN_AREA_STATS
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.geometry import edge_dist
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.kit.terrain_lookup import TNAME
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 from vcmi_mapgen.vcmi.formats import json_value as jv

@@ -1,4 +1,5 @@
-"""Terrain-type flood-fill segmentation and per-tile static feature extraction.
+"""Terrain-type flood-fill segmentation, per-tile static features, and per-zone canonical
+coordinates.
 
 Segments a terrain level (2-D grid of `Cell`s) into contiguous
 natural zones — one zone per connected region of the same terrain code,
@@ -6,13 +7,8 @@ excluding water (8) and rock (9) which act as barriers.
 
 Public API
 ----------
-segment(terrain_level)
-    -> (zones: dict[int, Zone], zone_label: HxW list[list[int]])
-
-compute_static_features(terrain_level, zones, zone_label)
-    -> numpy array shape (H, W, DIM_STATIC=32)
-
-DIM_STATIC = 32  (exported constant)
+segment_level(terrain_level)
+    -> (zones, zone_label, canonical (depth, sweep) per zone tile)
 """
 
 from __future__ import annotations
@@ -54,7 +50,7 @@ def _bfs_within_zone(tiles_set: Collection[Tile], sources: Iterable[Tile]) -> di
     return dist
 
 
-def at(arr: npt.NDArray[np.float32], x: int, y: int) -> float:
+def _at(arr: npt.NDArray[np.float32], x: int, y: int) -> float:
     return float(arr.take(y * arr.shape[1] + x))
 
 
@@ -71,7 +67,7 @@ def _bfs_global(
             dq.append((x, y))
     while dq:
         x, y = dq.popleft()
-        nd = at(dist, x, y) + 1.0
+        nd = _at(dist, x, y) + 1.0
         for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
             nx, ny = x + dx, y + dy
             if 0 <= nx < W and 0 <= ny < H and dist[ny, nx] == INF and (nx, ny) not in walls:
@@ -199,7 +195,7 @@ def _compute_attrs(terrain_level: list[list[Cell]], zone_label: list[list[int]])
     return zones
 
 
-def segment(terrain_level: list[list[Cell]]) -> tuple[dict[int, Zone], list[list[int]]]:
+def _segment(terrain_level: list[list[Cell]]) -> tuple[dict[int, Zone], list[list[int]]]:
     """Flood-fill terrain_level by terrain type into natural zones.
 
     Parameters
@@ -251,7 +247,7 @@ def _local_openness(passable: npt.NDArray[np.bool_], H: int, W: int) -> npt.NDAr
     return openness_num / np.maximum(openness_den, 1.0)
 
 
-def compute_static_features(
+def _compute_static_features(
     terrain_level: list[list[Cell]], zones: Mapping[int, Zone], zone_label: list[list[int]]
 ) -> npt.NDArray[np.float32]:
     """Compute the 32-dim static feature vector for every tile.
@@ -339,7 +335,7 @@ def compute_static_features(
             feats[y, x, 21] = math.hypot(x - ccx, y - ccy) / diag
 
             # dist_water
-            dw = at(dist_water_arr, x, y)
+            dw = _at(dist_water_arr, x, y)
             feats[y, x, 22] = min(dw, H + W) / diag
 
             # dist_edge
@@ -350,7 +346,7 @@ def compute_static_features(
             feats[y, x, 24] = 1.0 if (x, y) in chokepoint_set else 0.0
 
             # local_openness
-            feats[y, x, 25] = at(openness_arr, x, y)
+            feats[y, x, 25] = _at(openness_arr, x, y)
 
             # zone_area_log
             feats[y, x, 26] = math.log(zone.area + 1) / log_max_area
@@ -363,3 +359,39 @@ def compute_static_features(
             feats[y, x, 29] = (y - ccy) / sq_area
 
     return feats
+
+
+def _canonical_coords(
+    zones: Mapping[int, Zone], depth_arr: npt.NDArray[np.float32]
+) -> dict[int, dict[Tile, tuple[float, float]]]:
+    """Per-zone shape-intrinsic (depth, sweep) for every tile.
+
+    depth = per-zone-renormalized BFS-to-boundary (0 edge .. 1 core); channel-20 is
+            already /sqrt(area), so we renormalize to the zone's own [min,max].
+    sweep = atan2(y-cy, x-cx) normalized to [0,1) (a cheap angular address).
+    """
+    out: dict[int, dict[Tile, tuple[float, float]]] = {}
+    for zid, z in zones.items():
+        tiles = z.tiles
+        vals = [_at(depth_arr, x, y) for (x, y) in tiles]
+        vmin, vmax = min(vals), max(vals)
+        rng = vmax - vmin
+        cx, cy = z.centroid
+        m: dict[Tile, tuple[float, float]] = {}
+        for x, y in tiles:
+            raw = _at(depth_arr, x, y)
+            depth = 0.5 if rng < 1e-9 else (raw - vmin) / rng
+            sweep = (math.atan2(y - cy, x - cx) + math.pi) / (2 * math.pi)
+            m[(x, y)] = (depth, sweep)
+        out[zid] = m
+    return out
+
+
+def segment_level(
+    lvl: list[list[Cell]],
+) -> tuple[dict[int, Zone], list[list[int]], dict[int, dict[Tile, tuple[float, float]]]]:
+    """segment + per-zone canonical coords for one terrain level."""
+    zones, zone_label = _segment(lvl)
+    feats = _compute_static_features(lvl, zones, zone_label)
+    canon = _canonical_coords(zones, feats[:, :, 20])
+    return zones, zone_label, canon

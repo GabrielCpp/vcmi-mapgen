@@ -11,6 +11,8 @@ from itertools import pairwise
 from typing import final
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.geometry import NB8
+from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Identity,
@@ -38,8 +40,6 @@ from vcmi_mapgen.core.steps.treasure.fill import (
     solo_visit_pool,
 )
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.geometry import NB8
-from vcmi_mapgen.kit.topology import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
 
 # Artifact tier (animation name from RND_ART) indexed by monster level 1-6:
 # treasure(1-2) → minor(3) → major(4-5) → any/relic(6).

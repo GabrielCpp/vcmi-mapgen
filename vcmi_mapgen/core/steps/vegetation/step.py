@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import override
 
+from vcmi_mapgen.core.grid.components import open_islands
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import (
@@ -16,7 +17,6 @@ from vcmi_mapgen.core.pipeline import (
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainGrids
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
-from vcmi_mapgen.core.steps.vegetation.islands import open_islands
 from vcmi_mapgen.core.steps.zone_plan import plan_player_zones, plan_zones
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.ontology import Ontology

@@ -14,13 +14,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import final
 
+from vcmi_mapgen.core.grid.geometry import edge_dist
+from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.steps.gameplay.draw import COUNTED
 from vcmi_mapgen.core.steps.gameplay.mines import gate_dist
 from vcmi_mapgen.core.steps.gameplay.site import back_score, mask_tiles
 from vcmi_mapgen.kit import objects as OR
-from vcmi_mapgen.kit.geometry import edge_dist
-from vcmi_mapgen.kit.terrain_segment import segment
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 
 MEASURES = ("depth", "gate", "open", "back")
@@ -106,7 +106,7 @@ def _measure_zone(
 def measure_level(
     tally: Tally, grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]
 ) -> None:
-    zones, label = segment([list(row) for row in grid])
+    zones, label, _ = segment_level([list(row) for row in grid])
     fld = _field(grid, objs)
     w, h = fld.size
     by_zone: collections.defaultdict[int, list[PlacedObject]] = collections.defaultdict(list)

@@ -34,15 +34,15 @@ from pathlib import Path
 
 from PIL import Image
 
+from vcmi_mapgen.core.grid.noise import value_noise
+from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import Cell, JsonValue, Tile
 from vcmi_mapgen.core.steps.terrain_gen import markov as MT
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.noise import value_noise
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.kit.render_palette import TERRAIN_RGB
 from vcmi_mapgen.kit.render_palette import TERRAIN_TILE_PX as _TILE
-from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.vcmi.formats import json_value
 
 ROOT = project_root()

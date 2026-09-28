@@ -26,9 +26,9 @@ recording when the shape is unchanged.
 ```
    real map (.h3m -> maps_json/<name>.json, faithful: terrain + exact-identity objects)
         │
-        ▼   ① SEGMENT   terrain_segment.segment(level, subdivide=False)
+        ▼   ① SEGMENT   core/grid/segment.py segment_level(level)
    same-terrain connected zones; water/rock are barriers (zone_label = -1);
-   compute_static_features[:,:,20] = interior depth (BFS distance-to-boundary)
+   static feature channel 20 = interior depth (BFS distance-to-boundary)
         │
         ▼   ② RECORD    zone_engine.extract_template(name)
    per zone:  bbox / centroid / mask_rel(sorted) / shape_hash / label
@@ -78,7 +78,7 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 | Stage | Module(s) |
 |---|---|
 | Faithful data pipeline | `vcmi/formats/h3m.py`, `vcmi_ids.py`, `h3m2vmap.py`, `extract_faithful.py` → `maps_json/` |
-| Segment | `terrain_segment.py` |
+| Segment | `core/grid/segment.py` |
 | Record / replay / stretch | `zone_engine.py` (the CLI), `obj_resolve.py`, `ontology.py` |
 | Emit | `faithful.py`, `vmapwrite.py` |
 | Render & inspect | `render_editor.py`, `render.py`, `render_editor_test.py` |

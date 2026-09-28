@@ -30,12 +30,12 @@ from pathlib import Path
 import numpy as np
 
 from vcmi_mapgen import ontology as ON
+from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist, run_lengths
+from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.model import JsonValue, Tile
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
-from vcmi_mapgen.kit.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.kit.paths import project_root
-from vcmi_mapgen.kit.segmentation import segment_level
 from vcmi_mapgen.kit.terrain_lookup import EXCLUDE_DECOR_TYPES, TNAME
 from vcmi_mapgen.vcmi.formats import json_value
 

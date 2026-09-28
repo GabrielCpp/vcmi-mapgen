@@ -6,12 +6,12 @@ import collections
 from dataclasses import dataclass, field
 from typing import final, override
 
+from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import MapState, PlacedObject, Pockets, Tile, ZoneRecord
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.steps.gameplay.step import TownsIndex
 from vcmi_mapgen.core.steps.loot import caches as CA
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
-from vcmi_mapgen.kit.topology import find_pockets
 from vcmi_mapgen.ontology import Ontology
 from vcmi_mapgen.validate import TerrainGate
 
