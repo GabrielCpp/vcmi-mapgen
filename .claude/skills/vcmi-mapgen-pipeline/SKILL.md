@@ -79,7 +79,7 @@ moved out yet. Move it to the step's package before adding to it.
 
 The `code-structure` skill's rules 1.7 and 1.8 cover the values those functions take. A
 value a step receives from the registry is read, not written. A function takes the fields
-it reads, not the whole workspace or zone map. `ZoneRecord.used` and `PlacementWorkspace`
+it reads, not the whole workspace or zone map. `ZoneIndex.claims` and `PlacementWorkspace`
 break the first rule today, because later steps write into them. Do not add another field
 of that kind.
 
