@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
 
@@ -54,7 +55,7 @@ def test_load_faithful_prefers_ontology_mask_over_file_mask(
     monkeypatch.setattr(OR, "faithful_path", _fixed_path(path))
 
     fm = OR.load_faithful("fixture")
-    assert fm.objects[0].mask == ontology_mask
+    assert fm.objects[0].footprint == footprint_of(ontology_mask)
 
 
 def test_load_faithful_falls_back_to_file_mask_when_ontology_is_silent(
@@ -90,13 +91,20 @@ def test_load_faithful_falls_back_to_file_mask_when_ontology_is_silent(
     monkeypatch.setattr(OR, "faithful_path", _fixed_path(path))
 
     fm = OR.load_faithful("fixture")
-    assert fm.objects[0].mask == ("A",)
-    assert not OR.is_blocking(fm.objects[0].mask)
+    assert fm.objects[0].footprint == Footprint.one(Role.VISIT)
+    assert not OR.is_blocking(fm.objects[0].footprint)
 
 
 def _placed(type_name: str | None) -> PlacedObject:
     return PlacedObject(
-        x=0, y=0, level=0, purpose="", type=type_name, subtype=None, animation="", mask=()
+        x=0,
+        y=0,
+        level=0,
+        purpose="",
+        type=type_name,
+        subtype=None,
+        animation="",
+        footprint=Footprint(0, 0, ()),
     )
 
 

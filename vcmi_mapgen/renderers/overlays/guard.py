@@ -28,10 +28,10 @@ class GuardOverlay(MapOverlay):
         for o in state.objs:
             if o.level != level or o.purpose != "GUARD":
                 continue
-            mask = o.mask
-            if not mask:
+            mask = o.footprint
+            if not mask.cells:
                 continue
-            for ax, ay in OR.mask_interactive_cells(mask, o.x, o.y):
+            for ax, ay in OR.interactive_cells(mask, o.x, o.y):
                 for dx, dy in [(0, 0), *NB8]:
                     tx, ty = ax + dx, ay + dy
                     if 0 <= tx < W and 0 <= ty < H:

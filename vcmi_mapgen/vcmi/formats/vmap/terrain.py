@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from vcmi_mapgen.core.model import Cell, PlacedObject
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.footprint import mask_rows
 from vcmi_mapgen.vcmi.terrain import BY_PREFIX, prefix_of
 
 RIVER = {1: "clrv", 2: "icyrv", 3: "mudrv", 4: "lavrv"}
@@ -102,6 +103,6 @@ def export_mask(o: PlacedObject) -> list[str]:
     internal mask truncates tall sprites in-game) when its footprint core agrees with the
     instance mask; otherwise the instance mask translated to VCMI's charset (the editor
     table and a map instance legitimately disagree for a handful of corpus dwellings)."""
-    inst = vcmi_mask(o.mask)
+    inst = vcmi_mask(mask_rows(o.footprint))
     vm = ON.vmap_mask_of(o.animation)
     return list(vm) if vm and _trim_v(vm) == _trim_v(inst) else inst

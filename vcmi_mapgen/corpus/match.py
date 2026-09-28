@@ -20,7 +20,7 @@ from vcmi_mapgen.core.model import Cell, Identity, MapState, PlacedObject, Tile,
 from vcmi_mapgen.core.model.purpose import COUNTED
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.mines import gate_dist
-from vcmi_mapgen.core.steps.gameplay.site import back_score, mask_tiles
+from vcmi_mapgen.core.steps.gameplay.site import back_score
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit.topology import zone_fronts, zone_gates
 
@@ -48,7 +48,7 @@ class _Field:
 
 
 def _entrance(o: PlacedObject) -> Tile:
-    vis = OR.mask_interactive_cells(o.mask, o.x, o.y)
+    vis = OR.interactive_cells(o.footprint, o.x, o.y)
     return vis[0] if vis else (o.x, o.y)
 
 
@@ -58,7 +58,7 @@ def _field(grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]) -> _Fie
     }
     veg: set[Tile] = set()
     for o in objs:
-        blk = [t for t, ch in mask_tiles(o.mask, (o.x, o.y)) if ch in ("B", "X")]
+        blk = [t for t, role in o.footprint.at(o.x, o.y) if role.blocks]
         unwalkable.update(blk)
         if o.purpose in VEGETATION:
             veg.update(blk)
@@ -66,10 +66,10 @@ def _field(grid: Sequence[Sequence[Cell]], objs: Sequence[PlacedObject]) -> _Fie
 
 
 def _back(o: PlacedObject, fld: _Field) -> int:
-    own = {t for t, _ch in mask_tiles(o.mask, (o.x, o.y))} & fld.unwalkable
+    own = {t for t, _role in o.footprint.at(o.x, o.y)} & fld.unwalkable
     fld.unwalkable.difference_update(own)
     score = back_score(
-        Identity(o.type, o.subtype, o.animation, o.mask), (o.x, o.y), fld.unwalkable, fld.size
+        Identity(o.type, o.subtype, o.animation, o.footprint), (o.x, o.y), fld.unwalkable, fld.size
     )
     fld.unwalkable.update(own)
     return score

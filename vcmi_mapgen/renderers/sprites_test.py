@@ -20,7 +20,7 @@ from PIL import Image
 import vcmi_mapgen.kit.objects as OR
 import vcmi_mapgen.renderers.sprites as RE
 from vcmi_mapgen.cli.settings import load_settings
-from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model import Footprint, PlacedObject
 from vcmi_mapgen.vcmi.formats.lod import LOD_FILES, LodIndex, lod
 from vcmi_mapgen.vcmi.install import InstallNotFoundError
 
@@ -160,8 +160,8 @@ def test_render_is_deterministic() -> None:
     """The same terrain + objects render to byte-identical pixels every time."""
     surf = [[f"gr{(x + y) % 4}_" for x in range(6)] for y in range(6)]
     objs = [
-        PlacedObject(4, 4, 0, "", "", None, "AVLpntr7", ()),
-        PlacedObject(2, 5, 0, "", "", None, "AVLman30", ()),
+        PlacedObject(4, 4, 0, "", "", None, "AVLpntr7", Footprint(0, 0, ())),
+        PlacedObject(2, 5, 0, "", "", None, "AVLman30", Footprint(0, 0, ())),
     ]
     a = RE.render_map(_index(), surf, objs)
     b = RE.render_map(_index(), surf, objs)

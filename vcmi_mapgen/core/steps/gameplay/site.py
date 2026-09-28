@@ -15,7 +15,7 @@ from __future__ import annotations
 import collections
 import math
 import random
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final
@@ -23,7 +23,15 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import STEPS4, components
 from vcmi_mapgen.core.grid.geometry import edge_dist
-from vcmi_mapgen.core.model import CoverIndex, Identity, JsonValue, PlacedObject, Tile
+from vcmi_mapgen.core.model import (
+    CoverIndex,
+    Footprint,
+    Identity,
+    JsonValue,
+    PlacedObject,
+    Role,
+    Tile,
+)
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import ZoneWorkspace
@@ -57,21 +65,12 @@ TOWN_OPTIONS: dict[str, JsonValue] = {
 GUARD_OPTIONS: dict[str, JsonValue] = {"character": "hostile"}
 
 
-def mask_tiles(mask: Sequence[str], anchor: Tile) -> Iterator[tuple[Tile, str]]:
-    hh = len(mask)
-    for r, row in enumerate(mask):
-        ww = len(row)
-        for c, ch in enumerate(row):
-            if ch != " ":
-                yield (anchor[0] - (ww - 1 - c), anchor[1] - (hh - 1 - r)), ch
-
-
 def back_score(
     ident: Identity, anchor: Tile, unwalkable: AbstractSet[Tile], size: tuple[int, int]
 ) -> int:
     """Per sprite column, the topmost drawn tile scores 1 when it is unwalkable and 1 more
     when the tile above it is. Off-map counts as unwalkable. A 1-tile object scores 0."""
-    cells = [t for t, _ch in mask_tiles(ident.mask, anchor)]
+    cells = [t for t, _role in ident.footprint.at(*anchor)]
     if len(cells) < 2:
         return 0
     top: dict[int, int] = {}
@@ -86,11 +85,11 @@ def back_score(
 
 
 def door_cells(ident: Identity, anchor: Tile) -> list[Tile]:
-    return [t for t, ch in mask_tiles(ident.mask, anchor) if ch in ("X", "A")]
+    return [t for t, role in ident.footprint.at(*anchor) if role.interactive]
 
 
-def walk_on_only(mask: Sequence[str]) -> bool:
-    return not any("X" in row for row in mask)
+def walk_on_only(fp: Footprint) -> bool:
+    return all(role is not Role.ENTRANCE for _dx, _dy, role in fp.cells)
 
 
 def path_to_web(start: Tile, web: AbstractSet[Tile], passable: AbstractSet[Tile]) -> list[Tile]:
@@ -199,8 +198,8 @@ class LevelField:
         occupied: set[Tile] = set()
         near: set[Tile] = set()
         for o in objs:
-            tiles = list(mask_tiles(o.mask, (o.x, o.y)))
-            unwalkable.update(t for t, ch in tiles if ch in ("B", "X"))
+            tiles = list(o.footprint.at(o.x, o.y))
+            unwalkable.update(t for t, role in tiles if role.blocks)
             if not o.purpose:
                 continue
             allc = [t for t, _ch in tiles]
@@ -287,7 +286,7 @@ class ZoneSite:
 
     @staticmethod
     def _guard_tile(ident: Identity, approach: Tile) -> Tile:
-        return (approach[0], approach[1] + 1) if walk_on_only(ident.mask) else approach
+        return (approach[0], approach[1] + 1) if walk_on_only(ident.footprint) else approach
 
     def guard_ok(self, tile: Tile) -> bool:
         probe = PlacedObject.at(self.guard_probe, tile, level=self.lf.level, purpose=Purpose.GUARD)
@@ -295,7 +294,9 @@ class ZoneSite:
 
     def _front_open(self, ident: Identity, fit: Fit) -> bool:
         appr = fit[2]
-        behind = [(appr[0], appr[1] + k) for k in range(1, 3 if walk_on_only(ident.mask) else 2)]
+        behind = [
+            (appr[0], appr[1] + k) for k in range(1, 3 if walk_on_only(ident.footprint) else 2)
+        ]
         return all(
             t in self.ts
             and t not in self.lf.occupied
@@ -351,8 +352,8 @@ class ZoneSite:
 
     def centroid_order(self, ident: Identity) -> list[Tile]:
         area = len(self.ts)
-        mh = len(ident.mask)
-        mw = max(len(r) for r in ident.mask)
+        mh = ident.footprint.height
+        mw = ident.footprint.width
         ccx = sum(t[0] for t in self.ts) / area + (mw - 1) / 2.0
         ccy = sum(t[1] for t in self.ts) / area + (mh - 1) / 2.0
         return self.nearest_order(ccx, ccy)
@@ -408,8 +409,8 @@ class ZoneSite:
         if obj.purpose == Purpose.MINE:
             start = self._mine_front(obj, approach)
         elif obj.purpose == Purpose.TOWN:
-            mh = len(obj.mask)
-            mw = max(len(r) for r in obj.mask)
+            mh = obj.footprint.height
+            mw = obj.footprint.width
             self.town_center = (obj.x - (mw - 1) / 2.0, obj.y - (mh - 1) / 2.0)
         self.link(start)
 
@@ -417,7 +418,7 @@ class ZoneSite:
         self.prot.update(path_to_web(start, self.prot, self.passable))
 
     def _mine_front(self, obj: PlacedObject, approach: Tile) -> Tile:
-        if walk_on_only(obj.mask):
+        if walk_on_only(obj.footprint):
             approach = (approach[0], approach[1] + 1)
             self.approaches.append(approach)
         tail = (approach[0], approach[1] + 1)

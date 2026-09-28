@@ -16,7 +16,16 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Role, Tile, Zone, footprint
+from vcmi_mapgen.core.model import (
+    CoverIndex,
+    Footprint,
+    Identity,
+    PlacedObject,
+    Role,
+    Tile,
+    Zone,
+    footprint,
+)
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay.mines import (
@@ -98,8 +107,8 @@ def legal_cells(
     where adjacent pickups' V-cells would otherwise falsely block each other — V cells are
     cosmetic in H3/VCMI and two objects sharing V-cell space is legal."""
     x, y = anchor
-    cells = [(tx, ty) for tx, ty, _b in OR.mask_cells(ident.mask, x, y)]
-    interactive = OR.mask_interactive_cells(ident.mask, x, y) or cells
+    cells = [(tx, ty) for tx, ty, _b in OR.anchored_cells(ident.footprint, x, y)]
+    interactive = OR.interactive_cells(ident.footprint, x, y) or cells
     check = interactive if rules.interactive_only else cells
     if rules.bounds is not None:
         bw, bh = rules.bounds
@@ -123,8 +132,8 @@ def _water_obj(
     cells = legal_cells(ident, t, ts, used)
     if cells is None:
         return None
-    solid = tuple(row.replace("V", " ") for row in ident.mask)
-    if any((tx, ty) not in ts for tx, ty, _b in OR.mask_cells(solid, t[0], t[1])):
+    solid = ident.footprint.solid()
+    if any((tx, ty) not in ts for tx, ty, _b in OR.anchored_cells(solid, t[0], t[1])):
         return None
     obj = PlacedObject.at(ident, t, purpose=purpose)
     if not cover.try_add(obj):
@@ -244,16 +253,9 @@ def _land_zone_of(zones: Mapping[int, Zone]) -> dict[Tile, int]:
 def _existing_blocking(objs: Iterable[PlacedObject]) -> set[Tile]:
     existing_blk: set[Tile] = set()
     for o in objs:
-        mask_rows = o.mask
-        ax, ay = o.x, o.y
-        hh = len(mask_rows)
-        for r, row in enumerate(mask_rows):
-            ww = len(row)
-            for ci, ch in enumerate(row):
-                if ch in ("B", "X", "A"):
-                    tx = ax - (ww - 1 - ci)
-                    ty = ay - (hh - 1 - r)
-                    existing_blk.add((tx, ty))
+        for tile, role in o.footprint.at(o.x, o.y):
+            if role is not Role.OVERLAY:
+                existing_blk.add(tile)
     return existing_blk
 
 
@@ -263,35 +265,30 @@ def _structure_fronts(objs: Iterable[PlacedObject]) -> tuple[set[Tile], list[set
     for o in objs:
         if o.purpose == Purpose.GUARD:
             continue
-        mask_rows = o.mask
-        if not mask_rows:
+        fp = o.footprint
+        if not fp.cells:
             continue
-        for cx, cy, blk in OR.mask_cells(mask_rows, o.x, o.y):
+        for cx, cy, blk in OR.anchored_cells(fp, o.x, o.y):
             if blk:
                 structure_blk.add((cx, cy))
-        front = OR.front_tiles(mask_rows, o.x, o.y)
+        front = OR.front_tiles(fp, o.x, o.y)
         if front:
             structure_fronts.append(front)
     return structure_blk, structure_fronts
 
 
 def _seaport_footprint(
-    ax: int, ay: int, mask: Sequence[str]
+    ax: int, ay: int, fp: Footprint
 ) -> tuple[list[Tile], list[Tile], Tile | None]:
     allc: list[Tile] = []
     blk: list[Tile] = []
     approach: Tile | None = None
-    hh = len(mask)
-    for r, row in enumerate(mask):
-        ww = len(row)
-        for ci, ch in enumerate(row):
-            tx = ax - (ww - 1 - ci)
-            ty = ay - (hh - 1 - r)
-            allc.append((tx, ty))
-            if ch in ("B", "X"):
-                blk.append((tx, ty))
-            if ch == "X":
-                approach = (tx, ty + 1)
+    for (tx, ty), role in fp.at(ax, ay):
+        allc.append((tx, ty))
+        if role.blocks:
+            blk.append((tx, ty))
+        if role is Role.ENTRANCE:
+            approach = (tx, ty + 1)
     return allc, blk, approach
 
 
@@ -383,7 +380,7 @@ class _SeaportPlanner:
     def _candidate_ok(
         self, ts_set: AbstractSet[Tile], ident: Identity, ax: int, ay: int, check_spacing: bool
     ) -> bool:
-        allc, blk, approach = _seaport_footprint(ax, ay, ident.mask)
+        allc, blk, approach = _seaport_footprint(ax, ay, ident.footprint)
         if any(c not in ts_set for c in allc):
             return False
         if approach not in ts_set:
@@ -410,10 +407,10 @@ class _SeaportPlanner:
         )
 
     def _do_place(self, ident: Identity, ax: int, ay: int) -> PlacedObject:
-        _, blk, _ = _seaport_footprint(ax, ay, ident.mask)
+        _, blk, _ = _seaport_footprint(ax, ay, ident.footprint)
         self.existing_blk.update(blk)
         self.structure_blk.update(blk)
-        front = OR.front_tiles(ident.mask, ax, ay)
+        front = OR.front_tiles(ident.footprint, ax, ay)
         if front:
             self.structure_fronts.append(front)
         self.placed_anchors.append((ax, ay))

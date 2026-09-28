@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable
 from typing import override
 
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import MapState, PlacedObject
+from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.renderers.overlays._tiles import classify_objects
 from vcmi_mapgen.renderers.overlays.base import TILE, MapOverlay
 
@@ -25,7 +26,7 @@ _STRUCT_VISIT_COLOR = (0, 120, 40, 220)
 class BlockingOverlay(MapOverlay):
     """Draw a red tint over every tile that is blocked by a placed object.
 
-    Uses the object's ``template.mask`` (the 'B'/'X' cells) anchored at the
+    Uses the object's blocking footprint cells anchored at the
     object's ``(x, y)`` position.  Also overlays ``state.gate_blk`` tiles in
     amber when present (subterranean gate ZoC).
 
@@ -86,22 +87,12 @@ def _draw_flat(
     for o in objs:
         if o.level != level:
             continue
-        mask = o.mask
-        if not mask:
+        mask = o.footprint
+        if not mask.cells:
             continue
-        for tx, ty, blocking in _iter_mask(mask, o.x, o.y):
+        for tx, ty, blocking in OR.anchored_cells(mask, o.x, o.y):
             if blocking and 0 <= tx < W and 0 <= ty < H:
                 _fill_tile(draw, tx, ty, _COLOR)
-
-
-def _iter_mask(mask: Sequence[str], x: int, y: int) -> Iterator[tuple[int, int, bool]]:
-    hh = len(mask)
-    for r, row in enumerate(mask):
-        ww = len(row)
-        for c, ch in enumerate(row):
-            if ch == " ":
-                continue
-            yield x - (ww - 1 - c), y - (hh - 1 - r), (ch in ("B", "X"))
 
 
 def _fill_tile(

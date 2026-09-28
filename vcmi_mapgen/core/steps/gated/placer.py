@@ -136,7 +136,9 @@ def find_entry_corridor(
 
 
 def _blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
-    return {(cx, cy) for o in objs for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y) if blk}
+    return {
+        (cx, cy) for o in objs for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y) if blk
+    }
 
 
 def _count_clusters(boundary: AbstractSet[Tile]) -> int:
@@ -277,13 +279,13 @@ class GatedPlacer:
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
         self.blocked = _blocking_cells(objs_existing)
         self.interactive_existing = {
-            c for o in objs_existing for c in OR.mask_interactive_cells(o.mask, o.x, o.y)
+            c for o in objs_existing for c in OR.interactive_cells(o.footprint, o.x, o.y)
         }
         self.purposeful = {
             (cx, cy)
             for o in objs_existing
             if o.purpose
-            for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y)
+            for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y)
         }
         self.zone_of = {t: zr for zr in zone_records for t in zr.ts}
         self.ext_no_castle: list[ZoneRecord] = []
@@ -445,10 +447,10 @@ class GatedPlacer:
 
     def _site_gate(self, zone: _LootZone, aim: _GateAim, gate_ident: Identity) -> _Sited | None:
         for g in sorted(zone.ts, key=lambda t: (aim.score(t), t)):
-            cells = list(OR.mask_cells(gate_ident.mask, *g))
+            cells = list(OR.anchored_cells(gate_ident.footprint, *g))
             if not self._in_bounds(cells):
                 continue
-            interactive = OR.mask_interactive_cells(gate_ident.mask, *g)
+            interactive = OR.interactive_cells(gate_ident.footprint, *g)
             if not all(c in zone.open_set for c in interactive):
                 continue
             if not self._gate_cells_fit(zone, cells):
@@ -508,13 +510,13 @@ class GatedPlacer:
             fp_coords = legal_cells(mono_ident, t, zone.reach, zone.used, rules)
             if fp_coords is None:
                 continue
-            mono_cells = list(OR.mask_cells(mono_ident.mask, *t))
+            mono_cells = list(OR.anchored_cells(mono_ident.footprint, *t))
             entry = _find_entry_tile(fp_coords, mono_cells, zone.ts)
             if entry is None or _entry_tile_has_stray_leak(
                 entry, mono_cells, zone.ts, self.all_ts, self.blocked
             ):
                 continue
-            interactive = frozenset(OR.mask_interactive_cells(mono_ident.mask, *t))
+            interactive = frozenset(OR.interactive_cells(mono_ident.footprint, *t))
             return t, _Sited(entry, mono_cells, interactive)
         return None
 

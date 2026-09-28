@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import Footprint, Identity, MapState, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import (
@@ -104,13 +104,22 @@ def _footprint_size(ident: Identity) -> int:
     return len(footprint_cells(ident, 0, 0)[0])
 
 
+_TIE_ORDER = (None, Role.VISIT, Role.BLOCKING, Role.OVERLAY, Role.ENTRANCE)
+
+
+def _shape_key(fp: Footprint) -> tuple[tuple[int, ...], ...]:
+    return tuple(tuple(_TIE_ORDER.index(role) for role in row) for row in fp.grid())
+
+
 def _smaller(site: ZoneSite, pool: Sequence[Identity], ident: Identity) -> list[Identity]:
     size = _footprint_size(ident)
-    by_mask: dict[tuple[str, ...], list[Identity]] = {}
+    by_shape: dict[Footprint, list[Identity]] = {}
     for cand in sorted(pool, key=lambda i: i.animation):
         if _footprint_size(cand) < size:
-            by_mask.setdefault(cand.mask, []).append(cand)
-    shapes = sorted(by_mask.values(), key=lambda ids: (-_footprint_size(ids[0]), ids[0].mask))
+            by_shape.setdefault(cand.footprint, []).append(cand)
+    shapes = sorted(
+        by_shape.values(), key=lambda ids: (-_footprint_size(ids[0]), _shape_key(ids[0].footprint))
+    )
     return [site.rng.choice(ids) for ids in shapes]
 
 

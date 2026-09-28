@@ -5,7 +5,7 @@ import os
 import pytest
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.gameplay import mines as PG
@@ -19,7 +19,7 @@ needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined
 
 def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
 
-    return footprint_cells(Identity(o.type, o.subtype, o.animation, o.mask), o.x, o.y)
+    return footprint_cells(Identity(o.type, o.subtype, o.animation, o.footprint), o.x, o.y)
 
 
 @needs_stats
@@ -40,10 +40,15 @@ def test_gameplay_layer_legal_and_deterministic(catalog: Catalog) -> None:
     for g in (o for o in objs if o.purpose == Purpose.GUARD):
         # monster masks are V-padded to the sprite's tile extent (ground truth from
         # Maps/RandomMaps: every creature mask is ['VV', 'VA']), not a bare single cell.
-        assert (g.x, g.y) in ts and g.mask == ("VV", "VA")
+        assert (g.x, g.y) in ts and g.footprint.grid() == (
+            (Role.OVERLAY, Role.OVERLAY),
+            (Role.OVERLAY, Role.VISIT),
+        )
         assert (g.type or "").startswith("randomMonster"), "guards are random monsters"
     for s in (o for o in objs if o.purpose == Purpose.MINE_SEAL):
-        assert (s.x, s.y) in ts and s.mask == ("B",), "a mine seal is a single blocking cell"
+        assert (s.x, s.y) in ts and s.footprint == Footprint.one(Role.BLOCKING), (
+            "a mine seal is a single blocking cell"
+        )
     # rigid rules: footprints in-zone, no overlap, approach tile free and in-zone
     seen: set[Tile] = set()
     for o in core:
@@ -117,8 +122,8 @@ def test_forced_town_sits_on_zone_centroid(catalog: Catalog) -> None:
     # player start towns are ALWAYS randomTown: VCMI resolves an owned random town to the
     # lobby faction pick — a concrete start town would override the player's choice
     assert t.type == "randomTown", f"forced town must be randomTown, got {t.type}"
-    mh = len(t.mask)
-    mw = max(len(r) for r in t.mask)
+    mh = t.footprint.height
+    mw = t.footprint.width
     fx = t.x - (mw - 1) / 2.0  # footprint centre (bottom-right anchor)
     fy = t.y - (mh - 1) / 2.0
     assert abs(fx - 14.5) <= 1.5 and abs(fy - 11.5) <= 1.5, (

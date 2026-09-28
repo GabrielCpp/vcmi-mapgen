@@ -15,9 +15,9 @@ from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.pockets import POCKET_MAX_TILES, find_pockets, mouth_key, pocket_depths
 from vcmi_mapgen.core.model import (
     CoverIndex,
+    Footprint,
     Identity,
     JsonValue,
-    Mask,
     PlacedObject,
     Tile,
     ZoneRecord,
@@ -54,17 +54,17 @@ ART_BY_LVL = ["avarnd1", "avarnd1", "avarnd2", "avarnd3", "avarnd3", "avarand"]
 _POCKET_SPACED_TYPES = frozenset({"magicWell", "warriorTomb"})
 
 
-def _guard_stand(mask: Mask, x: int, y: int) -> set[Tile]:
-    return set(OR.mask_interactive_cells(mask, x, y))
+def _guard_stand(mask: Footprint, x: int, y: int) -> set[Tile]:
+    return set(OR.interactive_cells(mask, x, y))
 
 
-def _approach_tiles(mask: Mask, x: int, y: int, passable: Container[Tile]) -> set[Tile]:
+def _approach_tiles(mask: Footprint, x: int, y: int, passable: Container[Tile]) -> set[Tile]:
     """Passable tiles a hero could stand on to visit this object -- its own interactive
     cell(s) when walk-on, plus every passable 8-neighbour of them (covers a
     blocked-entrance 'X' interactive cell, which is clicked from an adjacent tile, never
     stood on itself)."""
     ap: set[Tile] = set()
-    for ix, iy in OR.mask_interactive_cells(mask, x, y):
+    for ix, iy in OR.interactive_cells(mask, x, y):
         if (ix, iy) in passable:
             ap.add((ix, iy))
         for dx, dy in NB8:
@@ -132,9 +132,9 @@ def _mine_cells(existing_objs: Sequence[PlacedObject]) -> set[Tile]:
     mine_cells: set[Tile] = set()
     for o in existing_objs:
         if o.purpose == Purpose.MINE:
-            mask = o.mask
-            if mask:
-                mine_cells |= {(cx, cy) for cx, cy, _b in OR.mask_cells(mask, o.x, o.y)}
+            mask = o.footprint
+            if mask.cells:
+                mine_cells |= {(cx, cy) for cx, cy, _b in OR.anchored_cells(mask, o.x, o.y)}
     return mine_cells
 
 
@@ -146,8 +146,8 @@ def _base_blocked(existing_objs: Sequence[PlacedObject], mine_cells: set[Tile]) 
     base_blocked: set[Tile] = set()
     for o in existing_objs:
         if o.purpose == Purpose.GUARD and not _is_mine_guard(o, mine_cells):
-            mask = o.mask
-            if mask:
+            mask = o.footprint
+            if mask.cells:
                 base_blocked |= _guard_stand(mask, o.x, o.y)
     return base_blocked
 
@@ -162,7 +162,7 @@ def _home_zone_pairs(
     )
     if town is None:
         return pairs
-    town_ap = _approach_tiles(town.mask, town.x, town.y, global_true)
+    town_ap = _approach_tiles(town.footprint, town.x, town.y, global_true)
     if not town_ap:
         return pairs
     for o in existing_objs:
@@ -170,7 +170,7 @@ def _home_zone_pairs(
             o.purpose == Purpose.MINE and o.subtype in ("sawmill", "orePit") and (o.x, o.y) in ts
         ):
             continue
-        mine_ap = _approach_tiles(o.mask, o.x, o.y, global_true)
+        mine_ap = _approach_tiles(o.footprint, o.x, o.y, global_true)
         if mine_ap:
             pairs.append((frozenset(town_ap), frozenset(mine_ap)))
     return pairs
@@ -471,7 +471,7 @@ class _PocketCachePass:
         self.guard_ident = rnd_monster(
             catalog, 1
         )  # mask uniform across levels 1-7; used to pre-check fit
-        self.guard_mask = self.guard_ident.mask
+        self.guard_mask = self.guard_ident.footprint
         self.pickup_ident = catalog.identity_of(ART_BY_LVL[0])
         self.objs: list[PlacedObject] = []
         self.cover = CoverIndex(context.existing_objs)
@@ -594,7 +594,7 @@ class _PocketCachePass:
             return False
         if not all(
             c in self.global_place and c not in self.used
-            for c in OR.mask_interactive_cells(guard_mask, cand_g[0], cand_g[1])
+            for c in OR.interactive_cells(guard_mask, cand_g[0], cand_g[1])
         ):
             return False
         if self.protect_pairs:
@@ -603,9 +603,7 @@ class _PocketCachePass:
                 _reachable(self.global_true, blocked, src, dst) for src, dst in self.protect_pairs
             ):
                 return False  # would seal a town off from its own starting mine
-        if any(
-            c in self.decor_blk for c in OR.mask_interactive_cells(guard_mask, cand_g[0], cand_g[1])
-        ):
+        if any(c in self.decor_blk for c in OR.interactive_cells(guard_mask, cand_g[0], cand_g[1])):
             return False
         return self.cover.accepts(PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD))
 
@@ -614,7 +612,9 @@ class _PocketCachePass:
         return all(cover.accepts(probe) for cover in (self.cover, *covers))
 
     def _leaves_cache_spot(self, cand_g: Tile, cand_pocket: frozenset[Tile]) -> bool:
-        guard_cells = {(x, y) for x, y, _b in OR.mask_cells(self.guard_mask, cand_g[0], cand_g[1])}
+        guard_cells = {
+            (x, y) for x, y, _b in OR.anchored_cells(self.guard_mask, cand_g[0], cand_g[1])
+        }
         with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD)])
         return any(
             t not in self.used
@@ -903,7 +903,7 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
         # no room for the hut => a dangling quest artifact nobody asked for; drop it
         # rather than leave an orphaned reference
         _ = env.objs.pop()
-        for cx, cy, _b in OR.mask_cells(art_ident.mask, art_xy[0], art_xy[1]):
+        for cx, cy, _b in OR.anchored_cells(art_ident.footprint, art_xy[0], art_xy[1]):
             art_zr.used.discard((cx, cy))
         return False
 

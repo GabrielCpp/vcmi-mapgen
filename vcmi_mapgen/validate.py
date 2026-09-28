@@ -4,7 +4,7 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Cell, PlacedObject, Tile
-from vcmi_mapgen.kit.objects import mask_cells
+from vcmi_mapgen.kit.objects import anchored_cells
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,8 +19,7 @@ def footprint_violations(
 ) -> Iterator[TerrainViolation]:
     if not obj.animation:
         return
-    solid = tuple(row.replace("V", " ") for row in obj.mask)
-    for tx, ty, _blocking in mask_cells(solid, obj.x, obj.y):
+    for tx, ty, _blocking in anchored_cells(obj.footprint.solid(), obj.x, obj.y):
         if not (0 <= ty < len(grid) and 0 <= tx < len(grid[ty])):
             continue
         code = grid[ty][tx].t

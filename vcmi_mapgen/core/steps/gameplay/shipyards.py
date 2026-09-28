@@ -27,7 +27,7 @@ class _Pending:
 
 
 def _identity(obj: PlacedObject) -> Identity:
-    return Identity(obj.type, obj.subtype, obj.animation, obj.mask)
+    return Identity(obj.type, obj.subtype, obj.animation, obj.footprint)
 
 
 @final

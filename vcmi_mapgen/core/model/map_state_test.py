@@ -2,6 +2,7 @@ import pytest
 
 from vcmi_mapgen.core.model import BORDER, CoverIndex, MapState, PlacedObject, PlacementError, Role
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.vcmi.footprint import footprint_of
 
 
 class _NoRules:
@@ -18,7 +19,7 @@ def _obj(x: int, y: int, mask: tuple[str, ...], purpose: str = "") -> PlacedObje
         type=None,
         subtype=None,
         animation="thing",
-        mask=mask,
+        footprint=footprint_of(mask),
     )
 
 

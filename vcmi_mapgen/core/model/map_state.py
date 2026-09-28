@@ -4,19 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Protocol
 
-from vcmi_mapgen.core.model.objects import Cell, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model.objects import Cell, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
-
-
-class Role(StrEnum):
-    BLOCKING = "B"
-    ENTRANCE = "X"
-    VISIT = "A"
-    OVERLAY = "V"
-    APPROACH = "approach"
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,19 +65,13 @@ BORDER = TileView(
 
 
 def footprint(obj: PlacedObject) -> list[tuple[Tile, Role]]:
-    """Every tile an object covers, with its role. The anchor is the bottom-right cell of the
-    mask. An entrance ('X') also claims the tile below it as its approach."""
+    """Every tile an object covers, with its role. An entrance also claims the tile below it
+    as its approach."""
     out: list[tuple[Tile, Role]] = []
-    hh = len(obj.mask)
-    for r, row in enumerate(obj.mask):
-        ww = len(row)
-        for c, ch in enumerate(row):
-            if ch == " ":
-                continue
-            tile = (obj.x - (ww - 1 - c), obj.y - (hh - 1 - r))
-            out.append((tile, Role(ch)))
-            if ch == "X":
-                out.append(((tile[0], tile[1] + 1), Role.APPROACH))
+    for tile, role in obj.footprint.at(obj.x, obj.y):
+        out.append((tile, role))
+        if role is Role.ENTRANCE:
+            out.append(((tile[0], tile[1] + 1), Role.APPROACH))
     return out
 
 

@@ -40,7 +40,7 @@ def _check_islands(map_state: MapState, level: int, lvl_ws: LevelWorkspace) -> N
         (cx, cy)
         for o in map_state.objs
         if o.level == level
-        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y)
+        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
     islands = open_islands(land, blocking, anchors)

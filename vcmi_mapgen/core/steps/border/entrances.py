@@ -49,7 +49,7 @@ class _EntranceGuards:
         self.out: list[PlacedObject] = []
 
     def _stands(self, guard: PlacedObject, ts: frozenset[Tile]) -> bool:
-        cells = OR.mask_interactive_cells(guard.mask, guard.x, guard.y)
+        cells = OR.interactive_cells(guard.footprint, guard.x, guard.y)
         return (
             all(c in ts and c not in self.blocked and c not in self.field.avoid for c in cells)
             and guard_spaced((guard.x, guard.y), self.guards)

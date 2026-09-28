@@ -54,7 +54,7 @@ def test_protected_web_stays_open(catalog: Catalog) -> None:
     objs, blocked, prot = PP.sample_zone(PP.ZoneRef(ts, zones, 1), model, seed=9)
     assert prot, "web exists"
     for o in objs:
-        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
+        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y):
             if blk:
                 assert (cx, cy) not in prot
     assert not (blocked & prot)

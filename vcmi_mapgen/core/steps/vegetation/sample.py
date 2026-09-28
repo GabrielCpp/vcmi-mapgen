@@ -125,7 +125,7 @@ def build_model(catalog: Catalog, terrain: str) -> VegModel:
         blk: list[list[Tile]] = []
         foot: list[list[Tile]] = []
         for i in ids:
-            cells = [(cx, cy, b) for cx, cy, b in OR.mask_cells(i.mask, 0, 0)]
+            cells = [(cx, cy, b) for cx, cy, b in OR.anchored_cells(i.footprint, 0, 0)]
             blk.append([(cx, cy) for cx, cy, b in cells if b])
             foot.append([(cx, cy) for cx, cy, _b in cells])
         iblk.append(blk)

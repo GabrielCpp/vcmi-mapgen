@@ -6,7 +6,7 @@ import io
 from typing import final
 
 from vcmi_mapgen.core.catalog import ObjectSpec
-from vcmi_mapgen.core.model import Identity, MapState, Zone, ZoneRecord
+from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import (
@@ -18,7 +18,7 @@ from vcmi_mapgen.core.pipeline import (
 from vcmi_mapgen.core.steps import ScatterStep
 from vcmi_mapgen.core.steps.zone_index import ZoneIndex
 
-PILE = Identity("fakePile", "gold", "fake_pile", ("A",))
+PILE = Identity("fakePile", "gold", "fake_pile", Footprint.one(Role.VISIT))
 
 
 @final
@@ -32,7 +32,7 @@ class FakeCatalog:
 
     def identity_of(self, animation: str) -> Identity:
         self.asked.append(("identity_of", animation))
-        return Identity("fakeRandom", None, f"fake_{animation}", ("A",))
+        return Identity("fakeRandom", None, f"fake_{animation}", Footprint.one(Role.VISIT))
 
     def spec(self, kind: str) -> ObjectSpec | None:
         self.asked.append(("spec", kind))

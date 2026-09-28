@@ -11,18 +11,18 @@ depends on it. `vcmi.catalog.adapter.VcmiCatalog` is the production implementati
 from dataclasses import dataclass
 from typing import Protocol
 
-from vcmi_mapgen.core.model import Identity, Mask
+from vcmi_mapgen.core.model import Footprint, Identity
 from vcmi_mapgen.core.model.purpose import Purpose
 
 
 @dataclass(frozen=True, slots=True)
 class ObjectSpec:
     """What the catalog knows about one object kind: the purpose it is placed for, its
-    footprint mask and whether it blocks movement."""
+    footprint and whether it blocks movement."""
 
     kind: str
     purpose: Purpose | None
-    mask: Mask
+    footprint: Footprint
     blocking: bool
 
 

@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import cache
 
-from vcmi_mapgen.core.model import Identity, Mask
+from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.vcmi import terrain as vterrain
 from vcmi_mapgen.vcmi.catalog.tables import (
@@ -34,6 +34,7 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     vcmi_type_classes,
 )
 from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, VcmiConfig
+from vcmi_mapgen.vcmi.footprint import Mask, footprint_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +159,7 @@ def has_animation(animation: str) -> bool:
 
 
 def mask_of(animation: str) -> Mask:
-    """B/A/V footprint rows for an animation (`kit.objects.mask_cells` semantics: rows are
+    """B/A/V footprint rows for an animation (`vcmi.footprint.footprint_of` semantics: rows are
     stored LEFT-TO-RIGHT, sprite-aligned, so column 0 is the LEFTMOST tile and the anchor is
     the last column, `tx = ax - (ww - 1 - c)`; case-insensitive), V-padded to the sprite's full
     tile extent (see :func:`_decode_mask_full`) — the same extent AND column order `.vmap`
@@ -211,7 +212,7 @@ def identity_of(animation: str) -> Identity:
         type=r[0] if r else None,
         subtype=r[1] if r else None,
         animation=animation,
-        mask=mask_of(animation),
+        footprint=footprint_of(mask_of(animation)),
     )
 
 

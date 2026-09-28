@@ -376,7 +376,7 @@ def _zone_blocked(
     for o in zone_objs:
         is_decor = OR.purpose_of(o) == Purpose.DECORATION
         anim = o.animation.lower().removesuffix(".def")
-        for cx, cy, blk in OR.mask_cells(catalog.identity_of(anim).mask, o.x, o.y):
+        for cx, cy, blk in OR.anchored_cells(catalog.identity_of(anim).footprint, o.x, o.y):
             if blk and (cx, cy) in ts:
                 all_blocked.add((cx, cy))
                 if is_decor:

@@ -14,6 +14,7 @@ import re
 from vcmi_mapgen.core.model import Cell, PlacedObject
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.config import VcmiConfig
+from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import h3m
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
@@ -86,7 +87,7 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
                         type=vtype,
                         subtype=sub,
                         animation=anim,
-                        mask=tuple(internal_mask),
+                        footprint=footprint_of(internal_mask),
                     )
                 ),
                 visitable_from=visitable_from(internal_mask),

@@ -38,7 +38,7 @@ def _walk_and_hard_cells(objs: Sequence[PlacedObject]) -> tuple[set[Tile], set[T
     hard: set[Tile] = set()
     for o in objs:
         soft = o.purpose in (Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD)
-        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
+        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y):
             if blk and not soft:
                 (hard if o.purpose else walk).add((cx, cy))
     return walk, hard
@@ -210,7 +210,7 @@ def _level_state(objs: Sequence[PlacedObject], targets: Sequence[Tile]) -> _Leve
     game_cells: set[Tile] = set()
     veg_blk: set[Tile] = set()
     for o in objs:
-        cells = list(OR.mask_cells(o.mask, o.x, o.y))
+        cells = list(OR.anchored_cells(o.footprint, o.x, o.y))
         if not o.purpose:
             veg_blk.update((cx, cy) for cx, cy, b in cells if b)
         else:
@@ -391,7 +391,7 @@ class _PortalRescue:
                 and Terrain(grid[gy][gx]).is_land
                 and (gx, gy) not in st.occupied
                 and (gx, gy) not in own_cells
-                for gx, gy in OR.mask_interactive_cells(gident.mask, g[0], g[1])
+                for gx, gy in OR.interactive_cells(gident.footprint, g[0], g[1])
             ):
                 return g
         return None
@@ -503,7 +503,7 @@ class _PortalRescue:
         self.world.objs_by_level[lvl].extend(robjs)
         self.world.targets_by_level[lvl].extend((o.x, o.y) for o in robjs)
         st.occupied.update(
-            (cx2, cy2) for o in robjs for cx2, cy2, _b in OR.mask_cells(o.mask, o.x, o.y)
+            (cx2, cy2) for o in robjs for cx2, cy2, _b in OR.anchored_cells(o.footprint, o.x, o.y)
         )
         return len(robjs)
 

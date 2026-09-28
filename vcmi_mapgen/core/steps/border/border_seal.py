@@ -59,7 +59,7 @@ class _GuardPlacer:
         """First candidate whose sprite overlay is clear of decor; else the first."""
         rnd = rnd_monster(self._catalog, 3)
         for c in cands:
-            if OR.overlay_clear(rnd.mask, c[0], c[1], self._decor_blk):
+            if OR.overlay_clear(rnd.footprint, c[0], c[1], self._decor_blk):
                 return c
         return cands[0]
 

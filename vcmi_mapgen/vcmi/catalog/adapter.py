@@ -24,7 +24,9 @@ class VcmiCatalog:
         if not OB.has_animation(kind):
             return None
         ident = OB.identity_of(kind)
-        return ObjectSpec(kind, OB.purpose_of_type(ident.type), ident.mask, OB.is_blocking(kind))
+        return ObjectSpec(
+            kind, OB.purpose_of_type(ident.type), ident.footprint, OB.is_blocking(kind)
+        )
 
     def allowed_on(self, animation: str, terrain: str | int) -> bool:
         return OB.allowed_on(animation, terrain)

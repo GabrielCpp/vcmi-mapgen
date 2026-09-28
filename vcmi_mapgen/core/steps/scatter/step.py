@@ -51,7 +51,9 @@ class ScatterStep(PipelineStep):
         for level, zone_records in self._zones.zone_records.items():
             level_objs = by_level[level]
             taken: set[Tile] = {
-                (cx, cy) for o in level_objs for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y)
+                (cx, cy)
+                for o in level_objs
+                for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y)
             }
             cover = CoverIndex(level_objs)
             zoc = guard_zoc(level_objs)

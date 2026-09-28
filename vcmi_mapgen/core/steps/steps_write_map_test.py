@@ -21,7 +21,7 @@ from vcmi_mapgen.core.steps import (
     VegetationStep,
 )
 from vcmi_mapgen.core.steps.placement import guard_spaced, guard_zoc
-from vcmi_mapgen.kit.objects import mask_cells, mask_interactive_cells
+from vcmi_mapgen.kit.objects import anchored_cells, interactive_cells
 from vcmi_mapgen.validate import footprint_violations
 
 SIZE = 48
@@ -151,7 +151,7 @@ def test_no_guard_stands_on_a_mine_visit_tile(pipeline_run: PipelineRun) -> None
         (o.level, tile)
         for o in pipeline_run.state.objs
         if o.purpose == Purpose.MINE
-        for tile in mask_interactive_cells(o.mask, o.x, o.y)
+        for tile in interactive_cells(o.footprint, o.x, o.y)
     }
     guards = [
         o
@@ -168,7 +168,7 @@ def test_scatter_piles_stay_out_of_every_guard_zone(pipeline_run: PipelineRun) -
         piles = [o for o in level_objs if o.purpose == Purpose.RESOURCE_PILE and not o.cache]
         assert piles
         for o in piles:
-            for cell in mask_interactive_cells(o.mask, o.x, o.y):
+            for cell in interactive_cells(o.footprint, o.x, o.y):
                 assert cell not in zoc, f"pile at {cell} sits in a guard's zone of control"
 
 
@@ -193,7 +193,7 @@ def test_a_late_guard_keeps_its_distance_from_every_other_guard(
 def _touches(o: PlacedObject, blocking: set[tuple[int, Tile]]) -> bool:
     return any(
         (o.level, (x + dx, y + dy)) in blocking
-        for x, y, _b in mask_cells(o.mask, o.x, o.y)
+        for x, y, _b in anchored_cells(o.footprint, o.x, o.y)
         for dx in (-1, 0, 1)
         for dy in (-1, 0, 1)
     )
@@ -203,7 +203,7 @@ def test_gameplay_objects_sit_next_to_vegetation(pipeline_run: PipelineRun) -> N
     blocking = {
         (o.level, (x, y))
         for o in pipeline_run.added_by("vegetation")
-        for x, y, blk in mask_cells(o.mask, o.x, o.y)
+        for x, y, blk in anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
     placed = [o for o in pipeline_run.added_by("gameplay") if o.purpose != Purpose.GUARD]

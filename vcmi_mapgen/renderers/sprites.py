@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.kit import objects as OR
+from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.defs import parse_def
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
@@ -108,7 +109,7 @@ def _adapt(doc: VmapDocument) -> tuple[list[list[str]], list[PlacedObject]]:
             type=o.type,
             subtype=None,
             animation=o.animation,
-            mask=tuple(o.mask),
+            footprint=footprint_of(o.mask),
         )
         for o in doc.objects
     ]

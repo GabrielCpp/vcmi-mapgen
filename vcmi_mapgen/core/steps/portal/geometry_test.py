@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Identity, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.portal import geometry as GEO
@@ -49,11 +49,20 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
     size = 12
     grid = [[2] * size for _ in range(size)]
     veg_wall = [
-        _obj(Identity("pineTrees", "pineTrees", "avlpn0", ("B",)), (6, y), "") for y in range(size)
+        _obj(Identity("pineTrees", "pineTrees", "avlpn0", Footprint.one(Role.BLOCKING)), (6, y), "")
+        for y in range(size)
     ]
     picks = [
-        _obj(Identity("resource", "wood", "avtwood0", ("A",)), (2, 5), Purpose.RESOURCE_PILE),
-        _obj(Identity("resource", "ore", "avtore0", ("A",)), (10, 5), Purpose.RESOURCE_PILE),
+        _obj(
+            Identity("resource", "wood", "avtwood0", Footprint.one(Role.VISIT)),
+            (2, 5),
+            Purpose.RESOURCE_PILE,
+        ),
+        _obj(
+            Identity("resource", "ore", "avtore0", Footprint.one(Role.VISIT)),
+            (10, 5),
+            Purpose.RESOURCE_PILE,
+        ),
     ]
     targets = [(2, 5), (10, 5)]
     assert GEO.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
@@ -73,8 +82,8 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
     def run() -> tuple[int, list[PlacedObject], list[Tile]]:
         objs = {
             0: [
-                _obj(Identity("town", "s", "X", ("A",)), (5, 5), Purpose.TOWN),
-                _obj(Identity("mine", "s", "X", ("A",)), (31, 31), Purpose.MINE),
+                _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (5, 5), Purpose.TOWN),
+                _obj(Identity("mine", "s", "X", Footprint.one(Role.VISIT)), (31, 31), Purpose.MINE),
             ]
         }
         targets = {0: [(5, 6)]}
@@ -123,8 +132,8 @@ def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
     no_gates: set[Tile] = set()
     objs = {
         0: [
-            _obj(Identity("town", "s", "X", ("A",)), (5, 5), Purpose.TOWN),
-            _obj(Identity("mine", "s", "X", ("A",)), (31, 31), Purpose.MINE),
+            _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (5, 5), Purpose.TOWN),
+            _obj(Identity("mine", "s", "X", Footprint.one(Role.VISIT)), (31, 31), Purpose.MINE),
         ]
     }
     targets = {0: [(5, 6)]}

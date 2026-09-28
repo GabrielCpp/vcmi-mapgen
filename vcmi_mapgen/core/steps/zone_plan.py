@@ -53,7 +53,7 @@ def seaport_cells(objs: Iterable[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
     seaport_appr: set[Tile] = set()
     for so in objs:
         if so.type == "shipyard":
-            for scx, scy, sblk in OR.mask_cells(so.mask, so.x, so.y):
+            for scx, scy, sblk in OR.anchored_cells(so.footprint, so.x, so.y):
                 if sblk:
                     seaport_blk.add((scx, scy))
             seaport_appr.add((so.x - 1, so.y + 1))
@@ -100,7 +100,7 @@ class _LandingCheck:
         return seen
 
     def accept(self, obj: PlacedObject) -> bool:
-        ident = Identity(obj.type, obj.subtype, obj.animation, obj.mask)
+        ident = Identity(obj.type, obj.subtype, obj.animation, obj.footprint)
         _allc, blk, approach = footprint_cells(ident, obj.x, obj.y)
         cut = set(blk)
         if approach is None or approach not in self.land or self._pocket(approach, cut):
@@ -136,7 +136,7 @@ def plan_landings(
     )
     _, appr = seaport_cells(landings)
     lw.seaport_blk = frozenset(
-        (x, y) for o in landings for x, y, _b in OR.mask_cells(o.mask, o.x, o.y)
+        (x, y) for o in landings for x, y, _b in OR.anchored_cells(o.footprint, o.x, o.y)
     )
     lw.seaport_appr = frozenset(appr)
     _connect_landings(lw)
@@ -251,8 +251,8 @@ def town_room(catalog: Catalog, zw: ZoneWorkspace, off: AbstractSet[Tile]) -> To
     approach to the web."""
     ident = catalog.identity_of(MN.RND_TOWN)
     area = len(zw.ts)
-    cx = sum(t[0] for t in zw.ts) / area + (max(len(r) for r in ident.mask) - 1) / 2.0
-    cy = sum(t[1] for t in zw.ts) / area + (len(ident.mask) - 1) / 2.0
+    cx = sum(t[0] for t in zw.ts) / area + (ident.footprint.width - 1) / 2.0
+    cy = sum(t[1] for t in zw.ts) / area + (ident.footprint.height - 1) / 2.0
     for anchor in sorted(zw.ts, key=lambda t: ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)):
         allc, blk, approach = footprint_cells(ident, *anchor)
         if approach is None:

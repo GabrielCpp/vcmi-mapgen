@@ -13,7 +13,6 @@ import struct
 from collections.abc import Mapping
 from functools import cache
 
-from vcmi_mapgen.core.model import Mask
 from vcmi_mapgen.vcmi.catalog.objects import resolve
 from vcmi_mapgen.vcmi.catalog.tables import (
     COLOR_KEYED_NAMES,
@@ -25,13 +24,14 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     table_path,
 )
 from vcmi_mapgen.vcmi.config import VcmiConfig
+from vcmi_mapgen.vcmi.footprint import Mask
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
 from vcmi_mapgen.vcmi.terrain import name_of
 
 
 def _decode_mask(passability: str, triggers: str) -> Mask:
     """Decode the objects.txt passability(48)+triggers(48) bitfields into the B/A/V footprint
-    mask rows (`kit.objects.mask_cells` semantics: B=blocking, A=visitable anchor, V=visible
+    mask rows (`vcmi.footprint.footprint_of` semantics: B=blocking, A=visitable anchor, V=visible
     overlay). This reproduces `vcmi.formats.vmap.mask.build_mask_from_h3m` (the corpus mask source)
     bit-for-bit: the
     6x8 grid defaults to 'V', a cell is 'A' if its trigger bit is set else 'B' if its
@@ -160,9 +160,9 @@ def _decode_mask_full(passability: str, triggers: str, tile_dims: tuple[int, int
     as :func:`vmap_mask_of` — both in the same LEFT-TO-RIGHT column order as this function's
     output and the corpus's `vcmi.formats.vmap.mask.build_mask_from_h3m` masks (col 0 =
     leftmost tile, anchor is the last column: `tx = ax - (ww - 1 - c)`, see
-    `kit.objects.mask_cells`'s docstring); no column
+    `vcmi.footprint.footprint_of`'s docstring); no column
     reversal is needed anywhere in this decode chain — the v5.4 sawmill-guard-wrong-side bug
-    turned out to be in the CONSUMER (`mask_cells`/`_cells` treating col 0 as the anchor instead
+    turned out to be in the CONSUMER (`footprint_of`/`_cells` treating col 0 as the anchor instead
     of the leftmost tile), not in this decode chain."""
     grid = _decode_mask_grid(passability, triggers)  # 6 rows x 8 cols, '.' outside
     act = [(r, c) for r in range(6) for c in range(8) if grid[r][c] != "."]
@@ -236,7 +236,7 @@ def _template_terrains(allowed_mask: str, native_mask: str, coupled: bool) -> li
 def _derive_leaf_meta(index: LodIndex) -> dict[str, LeafMeta]:
     """{animation: {"cls", "sub", "mask"}} for every objects.txt template — the per-animation
     placement metadata the ontology exposes via :func:`identity_of` / :func:`mask_of`, windowed
-    to the sprite's full tile extent and already in `mask_cells`'s anchor convention
+    to the sprite's full tile extent and already in `footprint_of`'s anchor convention
     (:func:`_decode_mask_full`), so the same footprint serves gameplay placement AND (with X->A)
     `.vmap` export (:func:`vmap_mask_of`) with no reversal in between."""
     bits = {anim: (p1, p2) for anim, p1, p2 in _objects_txt_raw(index)}

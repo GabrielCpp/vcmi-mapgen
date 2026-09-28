@@ -10,7 +10,15 @@ from dataclasses import dataclass
 from typing import Self
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.core.model import (
+    CoverIndex,
+    Footprint,
+    Identity,
+    PlacedObject,
+    Role,
+    Tile,
+    ZoneRecord,
+)
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gameplay import mines as PG
@@ -56,8 +64,8 @@ def solo_visit_pool(
                 continue
             if min_shrine_level is not None and 0 < shrine_spell_level(anim) < min_shrine_level:
                 continue
-            n_visit = sum(ch in "AX" for row in ident.mask for ch in row)
-            n_body = sum(ch == "B" for row in ident.mask for ch in row)
+            n_visit = sum(r.interactive for _dx, _dy, r in ident.footprint.cells)
+            n_body = sum(r is Role.BLOCKING for _dx, _dy, r in ident.footprint.cells)
             if n_visit == 1 and n_body == 0:
                 seen.add(anim)
                 out.append(ident)
@@ -90,7 +98,12 @@ class _LootPools:
         pool_chest = [i for i in pool_art if i.type in kinds]
         chest_kind_pools = {kind: [i for i in pool_chest if i.type == kind] for kind in kinds}
         chest_kind_pools["spellScroll"] = [
-            Identity(type="spellScroll", subtype=n, animation="ava0001", mask=("A",))
+            Identity(
+                type="spellScroll",
+                subtype=n,
+                animation="ava0001",
+                footprint=Footprint.one(Role.VISIT),
+            )
             for lvl in _LOOT_SCROLL_LEVELS
             for n in catalog.spells(lvl)
         ]
@@ -285,9 +298,12 @@ def fill_loot_zones(
     zone_records, footprints, level_objs = level.zone_records, level.footprints, level.objs
     cover = CoverIndex(level_objs)
     blocked: set[Tile] = {
-        (cx, cy) for o in level_objs for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y) if blk
+        (cx, cy)
+        for o in level_objs
+        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y)
+        if blk
     }
-    interactive = {c for o in level_objs for c in OR.mask_interactive_cells(o.mask, o.x, o.y)}
+    interactive = {c for o in level_objs for c in OR.interactive_cells(o.footprint, o.x, o.y)}
     all_ts: set[Tile] = set()
     for zr in zone_records:
         all_ts |= zr.ts

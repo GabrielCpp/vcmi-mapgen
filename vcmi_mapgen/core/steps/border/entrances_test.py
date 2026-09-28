@@ -1,7 +1,7 @@
 """Reliability tests for the entrance guards BorderStep places."""
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entrances
@@ -46,7 +46,7 @@ def _hostile(t: Tile) -> PlacedObject:
         type="randomMonsterLevel1",
         subtype="object",
         animation="",
-        mask=("A",),
+        footprint=Footprint.one(Role.VISIT),
     )
 
 

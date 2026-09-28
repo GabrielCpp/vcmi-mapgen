@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Identity, Tile
+from vcmi_mapgen.core.model import Identity, Role, Tile
 from vcmi_mapgen.kit import objects as OR
 from vcmi_mapgen.kit import pp_cache
 from vcmi_mapgen.kit.paths import project_root
@@ -64,25 +64,18 @@ def footprint_cells(
     ident: Identity, ax: int, ay: int
 ) -> tuple[list[Tile], list[Tile], Tile | None]:
     """(all_cells, blocking_cells, approach) of an identity anchored at (ax, ay); approach is
-    the tile a hero stands on to visit ('X' = enter from below; 'A' = the tile itself)."""
+    the tile a hero stands on to visit: below an entrance, or a visit cell itself."""
     allc: list[Tile] = []
     blk: list[Tile] = []
     approach: Tile | None = None
-    rows = ident.mask
-    hh = len(rows)
-    for r, row in enumerate(rows):
-        ww = len(row)
-        for ci, ch in enumerate(row):
-            if ch == " ":
-                continue
-            tx, ty = ax - (ww - 1 - ci), ay - (hh - 1 - r)
-            allc.append((tx, ty))
-            if ch in ("B", "X"):
-                blk.append((tx, ty))
-            if ch == "X":
-                approach = (tx, ty + 1)
-            elif ch == "A" and approach is None:
-                approach = (tx, ty)
+    for (tx, ty), role in ident.footprint.at(ax, ay):
+        allc.append((tx, ty))
+        if role.blocks:
+            blk.append((tx, ty))
+        if role is Role.ENTRANCE:
+            approach = (tx, ty + 1)
+        elif role is Role.VISIT and approach is None:
+            approach = (tx, ty)
     return allc, blk, approach
 
 

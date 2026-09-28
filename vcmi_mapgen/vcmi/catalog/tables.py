@@ -27,7 +27,7 @@ a {colour: animation} dict for colour-keyed quest objects (leaf name == colour).
 ``data/ontology/leaf_meta.json`` holds per-animation placement metadata (footprint mask +
 class/subclass) so the catalog is self-sufficient for tile placement and `.vmap` writing, with
 no corpus needed. It maps each lowercase animation DEF to ``[class, subclass, [row, ...]]``;
-the rows are B/A/V strings (kit.objects.mask_cells semantics) decoded from the objects.txt
+the rows are B/A/V strings (vcmi.footprint.footprint_of semantics) decoded from the objects.txt
 passability/triggers bitfields. :func:`leaf_meta` loads it once, lazily.
 ``LEAF_TERRAINS`` pins the terrain nodes of animations whose objects.txt terrain masks
 misplace them, such as the three magic wells that objects.txt allows on every terrain.
@@ -40,8 +40,8 @@ from functools import cache
 from pathlib import Path
 from typing import cast
 
-from vcmi_mapgen.core.model import Mask
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.vcmi.footprint import Mask
 
 type Taxonomy = dict[str, dict[str, dict[str, dict[str, list[str] | dict[str, str]]]]]
 

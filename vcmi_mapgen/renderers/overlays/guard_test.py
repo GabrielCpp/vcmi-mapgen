@@ -1,7 +1,8 @@
 from PIL import Image
 
-from vcmi_mapgen.core.model import Cell, MapState, Mask, PlacedObject, Tile
+from vcmi_mapgen.core.model import Cell, MapState, PlacedObject, Tile
 from vcmi_mapgen.renderers.overlays.guard import GuardOverlay
+from vcmi_mapgen.vcmi.footprint import Mask, footprint_of
 
 TILE = 32
 
@@ -19,7 +20,7 @@ def _obj(x: int, y: int, purpose: str, mask: Mask, level: int = 0) -> PlacedObje
         type=None,
         subtype=None,
         animation="",
-        mask=mask,
+        footprint=footprint_of(mask),
     )
 
 

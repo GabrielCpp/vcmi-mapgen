@@ -5,6 +5,7 @@ from __future__ import annotations
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.vmap.terrain import decode_tile_string
 
@@ -37,7 +38,9 @@ class VmapReader:
                 type=o.type,
                 subtype=o.subtype,
                 animation=o.animation,
-                mask=ON.mask_of(o.animation) if ON.has_animation(o.animation) else tuple(o.mask),
+                footprint=footprint_of(
+                    ON.mask_of(o.animation) if ON.has_animation(o.animation) else o.mask
+                ),
             )
             for o in doc.objects
         ]

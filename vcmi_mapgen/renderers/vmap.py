@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from vcmi_mapgen.core.model import JsonValue, MapState, PlacedObject
 from vcmi_mapgen.kit.paths import project_root
+from vcmi_mapgen.vcmi.footprint import mask_rows
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import VcmiInstall
@@ -74,7 +75,11 @@ class VmapRenderer:
         objects: list[VM.VmapObject] = []
         for o in real_objs:
             mask = VM.export_mask(o)
-            vf = list(o.visitable_from) if o.visitable_from else VM.visitable_from(o.mask)
+            vf = (
+                list(o.visitable_from)
+                if o.visitable_from
+                else VM.visitable_from(mask_rows(o.footprint))
+            )
             objects.append(
                 VM.VmapObject(
                     instance_name="",

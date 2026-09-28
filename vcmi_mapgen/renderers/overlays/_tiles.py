@@ -50,10 +50,10 @@ def passable_tiles(
     for o in objs:
         if o.level != level:
             continue
-        mask = o.mask
-        if not mask:
+        mask = o.footprint
+        if not mask.cells:
             continue
-        for tx, ty, blk in OR.mask_cells(mask, o.x, o.y):
+        for tx, ty, blk in OR.anchored_cells(mask, o.x, o.y):
             if blk:
                 blocked.add((tx, ty))
     return land - blocked
@@ -76,15 +76,15 @@ def classify_objects(
         if o.level != level:
             continue
         purpose = o.purpose
-        mask = o.mask
-        if not mask:
+        mask = o.footprint
+        if not mask.cells:
             continue
         ox, oy = o.x, o.y
         if purpose in STRUCTURE_PURPOSES or purpose == "WATER_TRANSPORT":
-            visit = set(OR.mask_interactive_cells(mask, ox, oy))
+            visit = set(OR.interactive_cells(mask, ox, oy))
             body = {
                 (cx, cy)
-                for cx, cy, blk in OR.mask_cells(mask, ox, oy)
+                for cx, cy, blk in OR.anchored_cells(mask, ox, oy)
                 if blk and (cx, cy) not in visit
             }
             if purpose != "WATER_TRANSPORT" and not body and len(visit) == 1:
@@ -93,7 +93,7 @@ def classify_objects(
                 struct_visit |= visit
                 struct_body |= body
         elif not purpose or purpose == "DECORATION":
-            for cx, cy, blk in OR.mask_cells(mask, ox, oy):
+            for cx, cy, blk in OR.anchored_cells(mask, ox, oy):
                 if blk:
                     background.add((cx, cy))
     background -= struct_body | struct_visit | solo_visit

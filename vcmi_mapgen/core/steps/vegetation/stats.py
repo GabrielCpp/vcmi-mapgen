@@ -32,7 +32,7 @@ import numpy as np
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist, run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
-from vcmi_mapgen.core.model import JsonValue, Mask, Tile
+from vcmi_mapgen.core.model import Footprint, JsonValue, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.kit import objects as OR
@@ -173,9 +173,9 @@ def _stats_to_json(st: VegStats) -> dict[str, object]:
     }
 
 
-def _mask(catalog: Catalog, anim: str) -> Mask:
+def _footprint(catalog: Catalog, anim: str) -> Footprint:
     spec = catalog.spec(anim)
-    return spec.mask if spec is not None else ("B",)
+    return spec.footprint if spec is not None else Footprint.one(Role.BLOCKING)
 
 
 def _anchors_of_zone(
@@ -270,7 +270,7 @@ def _count_blocked(
 ) -> None:
     blocked: set[Tile] = set()
     for x, y, _c, anim in anchors:
-        for cx, cy, blk in OR.mask_cells(_mask(catalog, anim), x, y):
+        for cx, cy, blk in OR.anchored_cells(_footprint(catalog, anim), x, y):
             if blk and (cx, cy) in ts:
                 blocked.add((cx, cy))
     a.blocked += len(blocked)
@@ -347,7 +347,7 @@ def _finalize(catalog: Catalog, terr: str, a: _Acc) -> VegStats:
     mean_blk = {
         cat: (
             sum(
-                sum(1 for row in _mask(catalog, an) for ch in row if ch in "BX") * c
+                sum(r.blocks for _dx, _dy, r in _footprint(catalog, an).cells) * c
                 for an, c in cnt.items()
             )
             / max(sum(cnt.values()), 1)

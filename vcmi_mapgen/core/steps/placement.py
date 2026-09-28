@@ -136,9 +136,9 @@ def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
     neighbours. A hero stepping on one of them fights the guard."""
     zoc: set[Tile] = set()
     for o in objs:
-        if o.purpose != Purpose.GUARD or not o.mask:
+        if o.purpose != Purpose.GUARD or not o.footprint.cells:
             continue
-        for ix, iy in OR.mask_interactive_cells(o.mask, o.x, o.y):
+        for ix, iy in OR.interactive_cells(o.footprint, o.x, o.y):
             zoc.add((ix, iy))
             zoc.update((ix + dx, iy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
     return zoc
@@ -193,14 +193,14 @@ def _guard_cells(
     # mouth. Rejecting on `used` overlap silently dropped the guard from 31 of 39
     # earned pockets on a real 72x72 build (every nook north/west of its mouth),
     # leaving the treasure free -- the exact opposite of the cache grammar.
-    interactive = OR.mask_interactive_cells(ident.mask, x, y)
+    interactive = OR.interactive_cells(ident.footprint, x, y)
     if not interactive or not all(c in target.reach and c not in target.used for c in interactive):
         return None
-    if spec.clear_of is not None and not OR.overlay_clear(ident.mask, x, y, spec.clear_of):
+    if spec.clear_of is not None and not OR.overlay_clear(ident.footprint, x, y, spec.clear_of):
         return None
     if spec.interactive_only:
         return interactive
-    cells = [(tx, ty) for tx, ty, _b in OR.mask_cells(ident.mask, x, y)]
+    cells = [(tx, ty) for tx, ty, _b in OR.anchored_cells(ident.footprint, x, y)]
     if target.bounds is not None:
         bw, bh = target.bounds
         cells = [(tx, ty) for tx, ty in cells if 0 <= tx < bw and 0 <= ty < bh]

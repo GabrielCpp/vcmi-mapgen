@@ -20,13 +20,14 @@ from __future__ import annotations
 
 import os
 from collections import Counter
-from collections.abc import Container, Iterable, Iterator, Sequence
+from collections.abc import Container, Iterable, Iterator
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.model import Cell, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model import Cell, Footprint, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.kit.paths import project_root
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.vmap.terrain import decode_tile_string
 
@@ -60,7 +61,7 @@ def load_faithful(name: str) -> FaithfulMap:
     `FaithfulMap` shape the rest of the engine expects. Each object's `mask` is re-derived
     from the ontology by animation (`vcmi.catalog.objects.mask_of`), NOT read from the file's
     `template.mask` -- see the module docstring and `vcmi.formats.vmap.terrain.vcmi_mask` for why
-    that field is lossy for the 'X' vs 'A' distinction `is_blocking`/`mask_cells` depend on.
+    that field is lossy for the 'X' vs 'A' distinction `footprint_of`/`is_blocking` depend on.
     Objects the ontology has no data for at all (heroes -- their per-portrait animations
     aren't in objects.txt's catalog) fall back to the file's own mask instead of the
     ontology accessor's conservative all-blocking default; a hero's 1-tile mask has no
@@ -77,7 +78,9 @@ def load_faithful(name: str) -> FaithfulMap:
             type=o.type,
             subtype=o.subtype,
             animation=o.animation,
-            mask=ON.mask_of(o.animation) if ON.has_animation(o.animation) else tuple(o.mask),
+            footprint=footprint_of(
+                ON.mask_of(o.animation) if ON.has_animation(o.animation) else o.mask
+            ),
         )
         for o in doc.objects
     ]
@@ -118,50 +121,28 @@ def purpose_of(obj: PlacedObject) -> Purpose:
 
 def exact_identity(obj: PlacedObject) -> Identity:
     """The exact {type, subtype, animation, mask} of a corpus object."""
-    return Identity(type=obj.type, subtype=obj.subtype, animation=obj.animation, mask=obj.mask)
+    return Identity(
+        type=obj.type, subtype=obj.subtype, animation=obj.animation, footprint=obj.footprint
+    )
 
 
-def is_blocking(mask: Sequence[str]) -> bool:
-    """True if the object's footprint blocks movement (mask has a 'B' or 'X' cell — 'X' is a
-    blocked-and-visitable building action tile)."""
-    return any(ch in "BX" for row in mask for ch in row)
+def is_blocking(fp: Footprint) -> bool:
+    """True if the footprint has a cell that blocks movement."""
+    return any(role.blocks for _dx, _dy, role in fp.cells)
 
 
-def mask_cells(mask: Sequence[str], x: int, y: int) -> Iterator[tuple[int, int, bool]]:
-    """Tiles a mask covers when anchored at (x, y).
-
-    Convention: anchor (x, y) is the BOTTOM-RIGHT tile of the footprint. Mask rows are stored
-    LEFT-TO-RIGHT, sprite-aligned (matching `vcmi.formats.vmap.mask.build_mask_from_h3m` and
-    `vcmi.catalog.regen._decode_mask`),
-    so column 0 is the LEFTMOST tile and the anchor is the LAST column of each row ->
-    `tx = x - (ww - 1 - c)` where `ww = len(row)`. (Verified pixel-for-pixel against real sprite
-    art: a sawmill's ramp/visit tile and a pine clump's trunks land on the correct side only with
-    this formula -- the plain `x - c` mirrors every asymmetric footprint horizontally.)
-    'B' = blocking, 'X' = blocking + visitable, 'A' = passable + visitable, 'V' = passable
-    overlay, ' ' = empty. Yields (tx, ty, blocking_bool) per non-empty cell.
-    """
-    hh = len(mask)
-    for r, row in enumerate(mask):
-        ww = len(row)
-        for c, ch in enumerate(row):
-            if ch == " ":
-                continue
-            yield x - (ww - 1 - c), y - (hh - 1 - r), (ch in ("B", "X"))
+def anchored_cells(fp: Footprint, x: int, y: int) -> Iterator[tuple[int, int, bool]]:
+    """(tx, ty, blocking) for every cell of `fp` anchored at (x, y)."""
+    for (tx, ty), role in fp.at(x, y):
+        yield tx, ty, role.blocks
 
 
-def mask_interactive_cells(mask: Sequence[str], x: int, y: int) -> list[Tile]:
-    """The subset of `mask_cells` a hero must actually step on to trigger this object --
-    visitable ('A') or blocking+visitable ('X') -- as opposed to pure passable overlay
-    ('V') or solid-but-inert ('B'). A guard's other footprint cells are cosmetic canopy;
-    only this cell needs to be free & reachable for the object to functionally gate a tile."""
-    hh = len(mask)
-    out: list[Tile] = []
-    for r, row in enumerate(mask):
-        ww = len(row)
-        for c, ch in enumerate(row):
-            if ch in ("A", "X"):
-                out.append((x - (ww - 1 - c), y - (hh - 1 - r)))
-    return out
+def interactive_cells(fp: Footprint, x: int, y: int) -> list[Tile]:
+    """The cells a hero must step on to trigger this object: its entrance and visit cells,
+    as opposed to overlay or solid-but-inert body cells. A guard's other footprint cells are
+    cosmetic canopy. Only this cell needs to be free and reachable for the object to gate a
+    tile."""
+    return [t for t, role in fp.at(x, y) if role.interactive]
 
 
 def decor_blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
@@ -170,20 +151,21 @@ def decor_blocking_cells(objs: Iterable[PlacedObject]) -> set[Tile]:
         (cx, cy)
         for o in objs
         if not o.purpose
-        for cx, cy, blk in mask_cells(o.mask, o.x, o.y)
+        for cx, cy, blk in anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
 
 
-def overlay_clear(mask: Sequence[str], x: int, y: int, blocked: Container[Tile]) -> bool:
-    """True if none of the mask's non-interactive cells (sprite overlay) sit on `blocked`."""
-    inter = set(mask_interactive_cells(mask, x, y))
+def overlay_clear(fp: Footprint, x: int, y: int, blocked: Container[Tile]) -> bool:
+    """True if none of the footprint's non-interactive cells (sprite overlay) sit on
+    `blocked`."""
+    inter = set(interactive_cells(fp, x, y))
     return not any(
-        (tx, ty) in blocked for tx, ty, _b in mask_cells(mask, x, y) if (tx, ty) not in inter
+        (tx, ty) in blocked for tx, ty, _b in anchored_cells(fp, x, y) if (tx, ty) not in inter
     )
 
 
-def front_tiles(mask: Sequence[str], x: int, y: int) -> set[Tile]:
+def front_tiles(fp: Footprint, x: int, y: int) -> set[Tile]:
     """The row of tiles directly in front of (one step past) this object's own
     footprint, on the side its interactive cell sits on. Every multi-row mask in this
     ontology places its interactive ('A'/'X') cell in the mask's LAST row (verified
@@ -199,11 +181,11 @@ def front_tiles(mask: Sequence[str], x: int, y: int) -> set[Tile]:
     object, or a guard's cosmetic sprite bleed) -- neither has a meaningful 'front'
     distinct from its own body, so both are naturally exempt from needing one kept
     open."""
-    if len(mask) < 2:
+    if fp.height < 2:
         return set()
-    footprint = {(tx, ty) for tx, ty, _b in mask_cells(mask, x, y)}
+    footprint = {(tx, ty) for tx, ty, _b in anchored_cells(fp, x, y)}
     front: set[Tile] = set()
-    for ix, iy in mask_interactive_cells(mask, x, y):
+    for ix, iy in interactive_cells(fp, x, y):
         for dx in (-1, 0, 1):
             t = (ix + dx, iy + 1)
             if t not in footprint:
@@ -218,4 +200,4 @@ if __name__ == "__main__":
     pc = Counter(purpose_of(o) for o in m.objects)
     print("All for One purposes:", dict(pc.most_common()))
     o = m.objects[0]
-    print("exact identity sample:", exact_identity(o), "blocking=", is_blocking(o.mask))
+    print("exact identity sample:", exact_identity(o), "blocking=", is_blocking(o.footprint))

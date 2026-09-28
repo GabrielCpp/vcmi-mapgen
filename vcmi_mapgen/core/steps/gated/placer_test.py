@@ -4,7 +4,7 @@ steps.treasure.fill loot-zone content restrictions."""
 import collections
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import PlacedObject, Tile, ZoneRecord
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile, ZoneRecord
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.steps.gated.placer import find_entry_corridor, place_gated_zones
@@ -53,13 +53,13 @@ def _find_leaks(
     neighbouring zones)."""
     blocked: set[Tile] = set()
     for o in objs:
-        if not o.mask:
+        if not o.footprint:
             continue
-        for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
+        for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y):
             if blk:
                 blocked.add((cx, cy))
-    interactive = set(OR.mask_interactive_cells(access.mask, access.x, access.y))
-    footprint = {(cx, cy) for cx, cy, _b in OR.mask_cells(access.mask, access.x, access.y)}
+    interactive = set(OR.interactive_cells(access.footprint, access.x, access.y))
+    footprint = {(cx, cy) for cx, cy, _b in OR.anchored_cells(access.footprint, access.x, access.y)}
     walkable = all_ts - blocked - interactive
     seen = {t for t in all_ts - ts0 if t in walkable}
     q = collections.deque(sorted(seen))
@@ -87,7 +87,14 @@ def _record(zid: int, ts: set[Tile]) -> ZoneRecord:
 
 def _blocker(x: int, y: int) -> PlacedObject:
     return PlacedObject(
-        x=x, y=y, level=0, purpose="", type=None, subtype=None, animation="", mask=("B",)
+        x=x,
+        y=y,
+        level=0,
+        purpose="",
+        type=None,
+        subtype=None,
+        animation="",
+        footprint=Footprint.one(Role.BLOCKING),
     )
 
 
@@ -205,11 +212,11 @@ def test_seal_all_passages_never_stacks_blocking_decor_onto_the_access_objects_f
             for o in objs:
                 if o is access:
                     continue
-                for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
+                for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y):
                     if blk:
                         blocked_by[(cx, cy)] = o
             access_cells = {
-                (cx, cy) for cx, cy, _b in OR.mask_cells(access.mask, access.x, access.y)
+                (cx, cy) for cx, cy, _b in OR.anchored_cells(access.footprint, access.x, access.y)
             }
             for cell in access_cells:
                 culprit = blocked_by.get(cell)
@@ -314,16 +321,16 @@ def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog) -> None:
         access_interactive: set[Tile] = set()
         for o in objs:
             if (o.x, o.y) not in ts0 and not any(
-                (cx, cy) in ts0 for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y)
+                (cx, cy) in ts0 for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y)
             ):
                 continue
-            for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y):
+            for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y):
                 if (cx, cy) in ts0:
                     claimed.add((cx, cy))
             if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT):
-                access_interactive |= set(OR.mask_interactive_cells(o.mask, o.x, o.y)) & ts0
+                access_interactive |= set(OR.interactive_cells(o.footprint, o.x, o.y)) & ts0
                 access_interactive |= {
-                    (cx, cy + 1) for cx, cy in OR.mask_interactive_cells(o.mask, o.x, o.y)
+                    (cx, cy + 1) for cx, cy in OR.interactive_cells(o.footprint, o.x, o.y)
                 } & ts0
         gap = ts0 - claimed - access_interactive
         assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
@@ -350,16 +357,16 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(catalog: Cata
         access_interactive: set[Tile] = set()
         for o in objs:
             if (o.x, o.y) not in ts0 and not any(
-                (cx, cy) in ts0 for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y)
+                (cx, cy) in ts0 for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y)
             ):
                 continue
-            for cx, cy, _b in OR.mask_cells(o.mask, o.x, o.y):
+            for cx, cy, _b in OR.anchored_cells(o.footprint, o.x, o.y):
                 if (cx, cy) in ts0:
                     claimed.add((cx, cy))
             if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT):
-                access_interactive |= set(OR.mask_interactive_cells(o.mask, o.x, o.y)) & ts0
+                access_interactive |= set(OR.interactive_cells(o.footprint, o.x, o.y)) & ts0
                 access_interactive |= {
-                    (cx, cy + 1) for cx, cy in OR.mask_interactive_cells(o.mask, o.x, o.y)
+                    (cx, cy + 1) for cx, cy in OR.interactive_cells(o.footprint, o.x, o.y)
                 } & ts0
         gap = ts0 - claimed - access_interactive
         assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
@@ -638,10 +645,10 @@ def test_a_narrow_loot_zones_access_object_always_has_a_usable_interior_doorway(
         access = next(o for o in objs if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT))
         seen_gate = seen_gate or access.purpose == Purpose.QUEST_GATE
         seen_mono = seen_mono or access.purpose == Purpose.TRANSPORT
-        interactive = OR.mask_interactive_cells(access.mask, access.x, access.y)
+        interactive = OR.interactive_cells(access.footprint, access.x, access.y)
         blocked: set[Tile] = set()
         for o in objs:
-            for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y):
+            for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y):
                 if blk:
                     blocked.add((cx, cy))
         ts0 = zone_records[0].ts

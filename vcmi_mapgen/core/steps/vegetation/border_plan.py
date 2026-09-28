@@ -13,7 +13,7 @@ from vcmi_mapgen.kit import objects as OR
 
 
 def blocking_cells(o: PlacedObject) -> list[Tile]:
-    return [(cx, cy) for cx, cy, blk in OR.mask_cells(o.mask, o.x, o.y) if blk]
+    return [(cx, cy) for cx, cy, blk in OR.anchored_cells(o.footprint, o.x, o.y) if blk]
 
 
 def zone_owner(
