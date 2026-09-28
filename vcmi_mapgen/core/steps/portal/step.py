@@ -125,8 +125,6 @@ class PortalStep(PipelineStep):
                     f"PortalStep: L{level} has {len(cut)} target(s) cut off on foot, first {cut[0]}"
                 )
 
-        for o in objs_by_level.get(1, []):
-            o.level = 1
         before = {id(o) for o in map_state.objs}
         self.objs = [
             o for lvl in sorted(objs_by_level) for o in objs_by_level[lvl] if id(o) not in before

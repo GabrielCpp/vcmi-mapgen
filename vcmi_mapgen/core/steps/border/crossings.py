@@ -37,13 +37,14 @@ class _GuardPlacer:
         rng: random.Random,
         objs: list[PlacedObject],
         hard_avoid: Container[Tile],
-        decor_blk: Container[Tile],
+        level: int,
     ) -> None:
         self._catalog = catalog
         self._rng = rng
         self._hard_avoid = hard_avoid
+        self._level = level
         self._cover = CoverIndex(objs)
-        self._decor_blk = decor_blk
+        self._decor_blk = FP.decor_blocking_cells(objs)
         self._guards = [(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD]
 
     @staticmethod
@@ -68,7 +69,9 @@ class _GuardPlacer:
             if not guard_spaced(g, self._guards):
                 continue
             gident = self._catalog.guard(3 + (1 if self._rng.random() < 0.3 else 0))
-            guard = PlacedObject.at(gident, g, level=0, purpose=Purpose.GUARD, payload=Guard())
+            guard = PlacedObject.at(
+                gident, g, level=self._level, purpose=Purpose.GUARD, payload=Guard()
+            )
             if self._cover.try_add(guard):
                 self._guards.append(g)
                 return guard
@@ -126,8 +129,7 @@ def guard_crossings(
 
     existing_guards = {(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD}
 
-    decor_blk = FP.decor_blocking_cells(objs + new_objs)
-    placer = _GuardPlacer(catalog, rng, objs, rules.hard_avoid, decor_blk)
+    placer = _GuardPlacer(catalog, rng, objs, rules.hard_avoid, terrain.level)
 
     guard_tiles, unguarded = placer.guard_pairs(pairs, existing_guards, new_objs)
 

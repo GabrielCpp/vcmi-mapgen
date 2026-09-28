@@ -116,9 +116,6 @@ class BorderStep(PipelineStep):
                 objs_by_level[level],
                 self.seed,
             )
-            if level == 1:
-                for o in new_objs:
-                    o.level = 1
             objs_by_level[level].extend(new_objs)
             self.objs.extend(new_objs)
             guard_tiles |= {(o.x, o.y) for o in ent_objs}

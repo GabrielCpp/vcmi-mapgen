@@ -132,7 +132,13 @@ class VegetationStep(PipelineStep):
                 # as a ~2-thick ridge.
                 border = frozenset(zw.rim8 - zw.ent_bands - forbid)
                 zobjs, blocked, _ = PP.sample_zone(
-                    PP.ZoneRef(ts, self._segmentation.zone_label[level], zid, zones[zid].centroid),
+                    PP.ZoneRef(
+                        ts,
+                        self._segmentation.zone_label[level],
+                        zid,
+                        zones[zid].centroid,
+                        level,
+                    ),
                     model,
                     seed=self.seed,
                     opts=PP.SampleOptions(
@@ -142,9 +148,6 @@ class VegetationStep(PipelineStep):
                         impassable=zw.gblocked | zw.town_blk,
                     ),
                 )
-                if level == 1:  # sample_zone always tags l=0; retag the underground level
-                    for o in zobjs:
-                        o.level = 1
                 new_objs.extend(zobjs)
 
                 open_set = (
@@ -199,9 +202,6 @@ class VegetationStep(PipelineStep):
         )
         if not sealers:
             return
-        if level == 1:
-            for o in sealers:
-                o.level = 1
         self.objs.extend(sealers)
         map_state.add_objs(sealers, TerrainGate(catalog))
         for zw in lvl_ws.zones.values():

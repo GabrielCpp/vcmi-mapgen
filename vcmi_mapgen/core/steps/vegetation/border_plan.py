@@ -137,7 +137,7 @@ def seal_borders(
         if not pool or not joined:
             sealer.dead.add(pick)
             continue
-        decor = PlacedObject.at(rng.choice(pool), pick, level=0, purpose="")
+        decor = PlacedObject.at(rng.choice(pool), pick, level=level, purpose="")
         if not cover.try_add(decor):
             sealer.dead.add(pick)
             continue

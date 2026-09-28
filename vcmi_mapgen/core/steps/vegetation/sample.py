@@ -170,6 +170,7 @@ class ZoneRef:
     zone_label: ZoneLabel
     zid: int
     centroid: tuple[float, float]
+    level: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,7 +291,7 @@ def sample_zone(
     opts: SampleOptions = _DEFAULT_SAMPLE,
 ) -> tuple[list[PlacedObject], set[Tile], AbstractSet[Tile]]:
     """Birth/death MH over decoration configurations in one zone. Returns
-    (objects, blocked_set, prot) with objects = list[PlacedObject] on level 0.
+    (objects, blocked_set, prot) with objects = list[PlacedObject] on the zone's level.
     `forbid` tiles (gameplay footprints + approach tiles) admit NO vegetation at all —
     neither an anchor nor any footprint cell (decor must not bury gameplay, per the repo rule).
     `border` tiles carry a +BORDER_W log-intensity bonus — the zone-isolation lever: the
@@ -321,6 +322,7 @@ class _ZoneSampler:
         self, zone: ZoneRef, model: VegModel, rng: random.Random, opts: SampleOptions
     ) -> None:
         ts = zone.ts
+        self.level = zone.level
         self.model = model
         self.rng = rng
         self.forbid = opts.forbid
@@ -645,7 +647,7 @@ class _ZoneSampler:
         out: list[PlacedObject] = []
         for x, y, c, ii in sorted(self.objs, key=lambda o: (o[1], o[0])):
             ident = self.model.idents[c][ii]
-            out.append(PlacedObject.at(ident, (x, y), level=0, purpose=""))
+            out.append(PlacedObject.at(ident, (x, y), level=self.level, purpose=""))
         nz_y, nz_x = self.blkcnt.nonzero()
         ys_nz = cast(list[int], nz_y.tolist())
         xs_nz = cast(list[int], nz_x.tolist())
