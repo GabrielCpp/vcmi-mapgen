@@ -61,8 +61,11 @@ metadata:
 
 ## Segmentation
 
-- `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`. It
-  is the module's one public entry, and `SegmentStep` calls it.
+- `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`.
+  `SegmentStep` calls it and provides `Segmentation(zones, zone_label)`.
+- `zone_label` is a `ZoneLabel` grid read `[y][x]`. The entrance and gate geometry in
+  `core/planning/entrances.py` reads it. `label_zones(zones)` rebuilds one from
+  hand-built zones in tests.
 - The segmentation is a 4-connected flood fill by terrain type. Water and rock are
   barriers (`Terrain.is_barrier`), with `zone_label` set to -1.
 - Each zone tile's canonical coordinates are `(depth, sweep)`. Depth comes from the BFS
