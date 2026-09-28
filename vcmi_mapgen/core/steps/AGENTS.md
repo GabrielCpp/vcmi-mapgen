@@ -60,8 +60,8 @@ small fake catalog, as `scatter/step_test.py` does.
 
 A step appends its own objects with `map_state.add_objs(new, rules)`. It never removes,
 moves or replaces an object an earlier step placed. Plan into a scratch list and commit only what fits: pre-check
-each object with `CoverIndex.try_add` and the terrain gate, and try the next candidate
-when one is refused. Only `VegetationStep` may raise, when it walls off a pocket.
+each object with `CoverIndex.try_claim` and the terrain gate, and try the next candidate
+when one is refused. A group that fails part way rolls the cover back to its `mark()`. Only `VegetationStep` may raise, when it walls off a pocket.
 
 The step that places a guarded object also places its monster. No guard stands within
 Chebyshev 2 of another (`core.steps.placement.guard_spaced`), so no later pass deletes

@@ -295,6 +295,7 @@ class PocketContext:
     precomputed_pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]] | None = None
     existing_objs: Sequence[PlacedObject] = ()
     home_zids: Collection[int] = ()
+    cover: CoverIndex | None = None
 
 
 _DEFAULT_POCKET_CONTEXT = PocketContext()
@@ -310,12 +311,12 @@ def place_pocket_caches(
     """Guarded caches in genuine geometric pockets — found in ONE global, zone-independent
     pass over the WHOLE map's TRUE physical passability, run once after every zone's
     terrain, vegetation and scatter is finalized. `zone_records` is a list of
-    {"zid", "terrain", "ts", "open_set", "passable", "reach", "used"}: `open_set` is that
+    {"zid", "terrain", "ts", "open_set", "passable", "reach"}: `open_set` is that
     zone's PLACEMENT-ELIGIBLE tiles (terrain minus vegetation-blocked/gameplay-occupied/
     approach cells — nothing new may stack there); `passable` is that zone's TRUE physical
     passability (terrain minus only the tiles that are actually impassable — approach tiles
     and non-blocking occupied footprint cells stay in it, since a hero can walk over them
-    even though nothing new can be placed there); `reach`/`used` as returned by
+    even though nothing new can be placed there); `reach` as returned by
     `place_scatter` (a 4-connected BFS subset of `open_set` reachable from the zone's
     protected web).
 
@@ -424,7 +425,9 @@ class _PocketCachePass:
         self.global_open: set[Tile] = set()
         self.global_true: set[Tile] = set()
         self.global_reach: set[Tile] = set()
-        self.used: set[Tile] = set()
+        self.cover = (
+            context.cover if context.cover is not None else CoverIndex(context.existing_objs)
+        )
         self.pocket_depth_by_tile: dict[Tile, float] = {}
         self._sep_sq = (bounds[0] / 5.0) ** 2 if bounds else 0.0
         self._spaced: dict[
@@ -460,7 +463,6 @@ class _PocketCachePass:
         self.guard_mask = self.guard_ident.footprint
         self.pickup_ident = catalog.identity_of(ART_BY_LVL[0])
         self.objs: list[PlacedObject] = []
-        self.cover = CoverIndex(context.existing_objs)
         self.guards: list[Tile] = [
             (o.x, o.y) for o in context.existing_objs if o.purpose == Purpose.GUARD
         ]
@@ -470,7 +472,6 @@ class _PocketCachePass:
         for t in zr.ts:
             self.zone_of[t] = zid
         self.terrain_of[zid] = zr.terrain
-        self.used |= zr.used  # always claim used cells — no double-stacking
         if zr.loot_zone:
             # Include in geometry (global_true) so external tiles adjacent to the loot
             # zone see passable neighbours and don't form false pockets against its wall.
@@ -479,7 +480,7 @@ class _PocketCachePass:
             return
         self.global_open |= zr.open_set
         self.global_true |= zr.passable
-        self.global_reach |= zr.reach - zr.used
+        self.global_reach |= zr.reach - self.cover.claims
 
     def _spaced_ok(self, typ: str | None, tx: int, ty: int) -> bool:
         """True if (tx, ty) is far enough from all prior same-type instances."""
@@ -499,14 +500,7 @@ class _PocketCachePass:
 
     def _target(self, reach: AbstractSet[Tile], draw: _PocketDraw) -> PlaceTarget:
         return PlaceTarget(
-            self.catalog,
-            self.objs,
-            self.used,
-            reach,
-            draw.rng,
-            draw.st,
-            bounds=self.bounds,
-            cover=self.cover,
+            self.catalog, self.objs, self.cover, reach, draw.rng, draw.st, bounds=self.bounds
         )
 
     def _pick_spaced(
@@ -576,10 +570,10 @@ class _PocketCachePass:
 
     def _guard_fits(self, cand_g: Tile) -> bool:
         guard_mask = self.guard_mask
-        if cand_g in self.used or not guard_spaced(cand_g, self.guards):
+        if cand_g in self.cover.claims or not guard_spaced(cand_g, self.guards):
             return False
         if not all(
-            c in self.global_place and c not in self.used
+            c in self.global_place and c not in self.cover.claims
             for c in FP.interactive_cells(guard_mask, cand_g[0], cand_g[1])
         ):
             return False
@@ -603,7 +597,7 @@ class _PocketCachePass:
         }
         with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD)])
         return any(
-            t not in self.used
+            t not in self.cover.claims
             and t in self.global_place
             and t not in guard_cells
             and self._pickup_fits(t, with_guard)
@@ -663,7 +657,7 @@ class _PocketCachePass:
         # painted magenta by the depth-recording below -- "not all magenta tiles are
         # filled"). Select against global_place, the same set every placement call
         # below actually uses, so a selected cache_spot always CAN receive an object.
-        cache_spots = [t for t in pocket if t not in self.used and t in self.global_place]
+        cache_spots = [t for t in pocket if t not in self.cover.claims and t in self.global_place]
         if not cache_spots:
             return
 
@@ -696,7 +690,7 @@ class _PocketCachePass:
         if guard_tile is not None and not self._place_guard(guard_tile, lvl, draw):
             return
 
-        avail = [t for t in cache_spots if t not in self.used and self._pickup_fits(t)]
+        avail = [t for t in cache_spots if t not in self.cover.claims and self._pickup_fits(t)]
         avail.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
         if not avail:
             return
@@ -756,7 +750,7 @@ class _PocketCachePass:
         # placements -- is not a real fillable part of this pocket; painting it magenta
         # would repeat the same "empty tile with nothing underneath" bug one tile at a
         # time instead of one whole pocket at a time.
-        fillable = set(cache_spots) | (pocket & self.used)
+        fillable = set(cache_spots) | (pocket & self.cover.claims)
         depths = pocket_depths(pocket, pick.mouth)
         max_d = max(depths.values()) if depths else 0
         for t, d in depths.items():
@@ -777,6 +771,7 @@ class SeerHutContext:
     pocket_tiles: AbstractSet[Tile] | None = None
     existing_objs: Sequence[PlacedObject] = ()
     used_artifacts: set[str] | None = None
+    cover: CoverIndex | None = None
 
 
 _DEFAULT_SEERHUT_CONTEXT = SeerHutContext()
@@ -810,23 +805,23 @@ def place_seer_hut_quests(
     Runs once per level, after every zone's own gameplay/vegetation/scatter is finalized and
     the map-level G2/island repair has run (so both placements land on truly reachable
     ground), and BEFORE the pocket-cache pass claims the remaining nooks -- `zone_records`'
-    `open_set`/`reach`/`used` are shared with that pass, so tiles this function spends are
+    `open_set`/`reach` and the cover are shared with that pass, so tiles this function spends are
     already excluded when pockets are judged.
 
     `context.used_artifacts`, when passed, is a set MUTATED in place and shared across every level's
     call for the same map (see `pp_map.build`) -- a named artifact is a map-unique relic in
     vanilla H3, so one quest's target must never double as another level's target too.
 
-    `zone_records` is a list of {"zid", "terrain", "ts", "open_set", "passable", "reach",
-    "used"} (see `pp_map._run_level`/`place_pocket_caches`). Returns (objs, n_quests)."""
-    eligible = [zr for zr in zone_records if len(zr.reach - zr.used) >= SEERHUT_MIN_REACH]
+    `zone_records` is a list of {"zid", "terrain", "ts", "open_set", "passable", "reach"}
+    (see `pp_map._run_level`/`place_pocket_caches`). Returns (objs, n_quests)."""
+    cover = context.cover if context.cover is not None else CoverIndex(context.existing_objs)
+    eligible = [zr for zr in zone_records if len(zr.reach - cover.claims) >= SEERHUT_MIN_REACH]
     if len(eligible) < 2:
         return [], 0
     n = min(MAX_SEER_HUTS, max(1, len(eligible) // SEERHUT_ZONE_RATIO))
 
     rng_pair = random.Random(seed ^ 0xEE47)
     objs: list[PlacedObject] = []
-    cover = CoverIndex(context.existing_objs)
     used_artifacts = context.used_artifacts if context.used_artifacts is not None else set[str]()
     placed = 0
     # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
@@ -881,16 +876,15 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     if art_zr is None or art_ident is None or art_ident.subtype is None:
         return False  # no eligible art zone with a ≥3-tile pocket
 
-    art_xy = _place_art(env, rng, art_zr, art_ident)
-    if art_xy is None:
+    mark = env.cover.mark()
+    if _place_art(env, rng, art_zr, art_ident) is None:
         return False
 
     if not _place_hut(env, rng, hut_zr, hut_ident, art_ident.subtype):
         # no room for the hut => a dangling quest artifact nobody asked for; drop it
         # rather than leave an orphaned reference
         _ = env.objs.pop()
-        for cx, cy, _b in FP.anchored_cells(art_ident.footprint, art_xy[0], art_xy[1]):
-            art_zr.used.discard((cx, cy))
+        env.cover.rollback(mark)
         return False
 
     env.used_artifacts.add(art_ident.subtype)
@@ -901,7 +895,7 @@ def _pick_art_zone(
     env: _QuestEnv, rng: random.Random, art_zr_order: Sequence[ZoneRecord]
 ) -> tuple[ZoneRecord, Identity] | tuple[None, None]:
     for cand_art_zr in art_zr_order:
-        art_eligible = env.ptiles & (cand_art_zr.reach - cand_art_zr.used)
+        art_eligible = env.ptiles & (cand_art_zr.reach - env.cover.claims)
         if not art_eligible:
             continue
         cand_pool_art = sorted(
@@ -922,18 +916,11 @@ def _place_art(
     env: _QuestEnv, rng: random.Random, art_zr: ZoneRecord, art_ident: Identity
 ) -> Tile | None:
     st_art = load_gameplay()[art_zr.terrain]
-    art_eligible = env.ptiles & (art_zr.reach - art_zr.used)
+    art_eligible = env.ptiles & (art_zr.reach - env.cover.claims)
     art_cands = sorted(art_eligible)
     rng.shuffle(art_cands)
     target = PlaceTarget(
-        env.catalog,
-        env.objs,
-        art_zr.used,
-        art_zr.reach,
-        rng,
-        st_art,
-        bounds=env.bounds,
-        cover=env.cover,
+        env.catalog, env.objs, env.cover, art_zr.reach, rng, st_art, bounds=env.bounds
     )
     spec = PlaceSpec(Purpose.REWARD_PICKUP, None, ident=art_ident)
     for t in art_cands:
@@ -946,18 +933,11 @@ def _place_hut(
     env: _QuestEnv, rng: random.Random, hut_zr: ZoneRecord, hut_ident: Identity, art_subtype: str
 ) -> bool:
     st_hut = load_gameplay()[hut_zr.terrain]
-    hut_cands = sorted(hut_zr.reach - hut_zr.used)
+    hut_cands = sorted(hut_zr.reach - env.cover.claims)
     rng.shuffle(hut_cands)
     options = _seerhut_quest(rng, art_subtype)
     target = PlaceTarget(
-        env.catalog,
-        env.objs,
-        hut_zr.used,
-        hut_zr.reach,
-        rng,
-        st_hut,
-        bounds=env.bounds,
-        cover=env.cover,
+        env.catalog, env.objs, env.cover, hut_zr.reach, rng, st_hut, bounds=env.bounds
     )
     spec = PlaceSpec(Purpose.QUEST_GATE, None, ident=hut_ident, options=options)
     return any(place_one(target, spec, t[0], t[1]) for t in hut_cands)

@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
@@ -48,7 +48,7 @@ class PortalStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
 
-    inject(ctx): ``ZoneIndex`` (targets/zone_records, mutated in place), ``TerrainGrids``,
+    inject(ctx): ``ZoneIndex`` (targets and claims, mutated in place), ``TerrainGrids``,
     ``Segmentation``,
     ``TownsIndex`` (player_zids), the shared ``PlacementWorkspace``; ``GateResult``
     defaults to empty when GameplayStep has not run.
@@ -65,6 +65,7 @@ class PortalStep(PipelineStep):
         self._ctx = ProviderRegistry()
         self._targets: dict[int, list[Tile]] = {}
         self._zone_records: dict[int, list[ZoneRecord]] = {}
+        self._claims: dict[int, frozenset[Tile]] = {}
         self._grids: dict[int, list[list[int]]] = {}
         self._segmentation = Segmentation({}, {})
         self._workspace = PlacementWorkspace()
@@ -77,6 +78,7 @@ class PortalStep(PipelineStep):
         zones = ctx.require(ZoneIndex)
         self._targets = zones.targets
         self._zone_records = zones.zone_records
+        self._claims = zones.claims
         self._grids = ctx.require(TerrainGrids).grids
         self._segmentation = ctx.require(Segmentation)
         self._workspace = ctx.require(PlacementWorkspace)
@@ -93,6 +95,9 @@ class PortalStep(PipelineStep):
 
         gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
         start = _find_start(self._player_zids, self._segmentation.zones, self._workspace)
+        covers = {
+            lvl: CoverIndex(objs, self._claims.get(lvl, ())) for lvl, objs in objs_by_level.items()
+        }
         if start is not None:
             n_portals = GEO.rescue_unreachable_zones(
                 catalog,
@@ -103,6 +108,7 @@ class PortalStep(PipelineStep):
                     objs_by_level,
                     self._targets,
                     self._zone_records,
+                    covers,
                 ),
                 start,
                 gate_xy,
@@ -110,6 +116,8 @@ class PortalStep(PipelineStep):
             )
             if n_portals:
                 self.log.append(f"PortalStep: {n_portals} portal rescue(s) added")
+        for lvl, cover in covers.items():
+            self._claims[lvl] = frozenset(cover.claims)
 
         for level in sorted(grids):
             cut = GEO.unreachable_targets(

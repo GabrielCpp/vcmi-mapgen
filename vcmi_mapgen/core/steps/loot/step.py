@@ -7,7 +7,7 @@ from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import Pockets, find_pockets
-from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
@@ -52,6 +52,7 @@ class LootStep(PipelineStep):
         self._ctx = ProviderRegistry()
         self._targets: dict[int, list[Tile]] = {}
         self._zone_records: dict[int, list[ZoneRecord]] = {}
+        self._claims: dict[int, frozenset[Tile]] = {}
         self._player_zids: list[tuple[int, int]] = []
         self._workspace = PlacementWorkspace()
 
@@ -61,6 +62,7 @@ class LootStep(PipelineStep):
         zones = ctx.require(ZoneIndex)
         self._targets = zones.targets
         self._zone_records = zones.zone_records
+        self._claims = zones.claims
         self._player_zids = ctx.require(TownsIndex).player_zids
         self._workspace = ctx.require(PlacementWorkspace)
 
@@ -79,6 +81,7 @@ class LootStep(PipelineStep):
         zone_records = self._zone_records[level]
         border_guards = self._workspace.levels[level].guard_tiles
         _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(zone_records)
+        cover = CoverIndex(objs, self._claims.get(level, ()))
         qobjs, n_quests = CA.place_seer_hut_quests(
             catalog,
             zone_records,
@@ -88,6 +91,7 @@ class LootStep(PipelineStep):
                 pocket_tiles=_pocket_tiles_pkt,
                 existing_objs=objs,
                 used_artifacts=seerhut_artifacts,
+                cover=cover,
             ),
         )
         targets.extend((o.x, o.y) for o in qobjs)
@@ -104,9 +108,11 @@ class LootStep(PipelineStep):
                 precomputed_pockets=_raw_pkt,
                 existing_objs=[*objs, *qobjs],
                 home_zids=home_zids,
+                cover=cover,
             ),
         )
         targets.extend((o.x, o.y) for o in cobjs)
+        self._claims[level] = frozenset(cover.claims)
         ck = collections.Counter(o.purpose for o in cobjs)
         print(
             f"  L{level} pockets: {n_pockets} found, cache res={ck.get('RESOURCE_PILE', 0)} "

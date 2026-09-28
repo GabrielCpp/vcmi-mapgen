@@ -54,7 +54,6 @@ class ScatterConfig:
     bounds: tuple[int, int] | None = None
     cover: CoverIndex | None = None
     reach_in: set[Tile] | None = None
-    used_in: set[Tile] | None = None
     avoid: AbstractSet[Tile] = _NO_AVOID
 
 
@@ -77,13 +76,12 @@ def _scatter_gate_dist(zone: ScatterZone, st: TerrainStats) -> dict[Tile, int]:
 
 def place_scatter(
     catalog: Catalog, zone: ScatterZone, config: ScatterConfig = _DEFAULT_SCATTER_CONFIG
-) -> tuple[list[PlacedObject], set[Tile], set[Tile]]:
+) -> tuple[list[PlacedObject], set[Tile]]:
     """Unguarded scatter loot for one zone (resources/artifacts lying in the open along
     routes — user-mandated to always be free, never guarded, since it can just be walked
-    around). Returns (objs, used, reach): `used` and `reach` (this zone's own BFS-reachable
-    open tiles) are handed to `place_pocket_caches` so the global pocket pass knows which
-    tiles this zone already spent on scatter and can treat the rest as this zone's share of
-    the whole map's reachable field.
+    around). Returns (objs, reach): `reach` (this zone's own BFS-reachable open tiles) is
+    handed to `place_pocket_caches`, which treats it as this zone's share of the whole map's
+    reachable field. The tiles scatter spends are claimed in `config.cover`.
 
     Guarded pocket caches are NOT placed here — see `place_pocket_caches`, which must run
     once for the WHOLE map after every zone's scatter is done (a genuine pocket must be
@@ -109,10 +107,8 @@ def place_scatter(
     pool_res = catalog.candidates(Purpose.RESOURCE_PILE, zone.terrain)
 
     objs: list[PlacedObject] = []
-    used: set[Tile] = set() if config.used_in is None else config.used_in
-    target = PlaceTarget(
-        catalog, objs, used, reach, rng, st, bounds=config.bounds, cover=config.cover
-    )
+    cover = config.cover if config.cover is not None else CoverIndex()
+    target = PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=config.bounds)
 
     # Open-field scatter is resource piles only — artifacts are reserved for pockets
     # and loot zones where a guard or gate makes them genuinely earned.
@@ -129,7 +125,7 @@ def place_scatter(
         for t in rng.choices(cands, weights=weights, k=60 * n):
             if len(placed) >= n:
                 break
-            if t in used or t in config.avoid:
+            if t in cover.claims or t in config.avoid:
                 continue
             if any(max(abs(t[0] - q[0]), abs(t[1] - q[1])) < min_sep for q in placed):
                 continue
@@ -137,4 +133,4 @@ def place_scatter(
                 placed.append(t)
 
     scatter(Purpose.RESOURCE_PILE, pool_res, n_res, min_sep=3)
-    return objs, used, reach
+    return objs, reach

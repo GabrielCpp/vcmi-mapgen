@@ -18,21 +18,22 @@ class ZoneRecord:
     open_set: set[Tile]
     passable: set[Tile]
     reach: set[Tile] = field(default_factory=set)
-    used: set[Tile] = field(default_factory=set)
     loot_zone: bool = False
 
 
 @dataclass
 class ZoneIndex:
     """Per-level walk targets and zone records. GatedStep builds it once, and every later
-    step mutates that same instance in place."""
+    step mutates that same instance in place. ``claims`` holds each level's claimed tiles,
+    which a step loads into its cover index and writes back when it is done."""
 
     targets: dict[int, list[Tile]] = field(default_factory=dict)
     zone_records: dict[int, list[ZoneRecord]] = field(default_factory=dict)
+    claims: dict[int, frozenset[Tile]] = field(default_factory=dict)
 
 
 def bare_record(zid: int, terrain: str, ts: frozenset[Tile], free: set[Tile]) -> ZoneRecord:
-    """The record of a zone the level pass skipped: its free tiles, nothing reached or used."""
+    """The record of a zone the level pass skipped: its free tiles, nothing reached."""
     return ZoneRecord(
         zid=zid,
         terrain=terrain,
@@ -40,7 +41,6 @@ def bare_record(zid: int, terrain: str, ts: frozenset[Tile], free: set[Tile]) ->
         open_set=free,
         passable=free,
         reach=set(),
-        used=set(),
     )
 
 
@@ -59,7 +59,6 @@ def _level_records(lvl_ws: LevelWorkspace, targets: list[Tile]) -> list[ZoneReco
                 open_set=set(zw.open_set),
                 passable=set(zw.passable),
                 reach=reach,
-                used=set(),
             )
         )
     return zone_records

@@ -32,12 +32,12 @@ def _place(
     bounds: tuple[int, int] | None = None,
 ) -> tuple[list[PlacedObject], int, set[int]]:
     """GatedStep then TreasureStep on one level: the access objects, then the fill."""
-    objs, n_placed, access = place_gated_zones(
+    objs, n_placed, access, claims = place_gated_zones(
         catalog, zone_records, objs_existing, seed=seed, bounds=bounds
     )
     footprints = {zid: acc.footprint for zid, acc in access.items()}
-    level = LootLevel(zone_records, footprints, [*objs_existing, *objs])
-    filled = fill_loot_zones(catalog, level, seed, bounds)
+    level = LootLevel(zone_records, footprints, [*objs_existing, *objs], claims)
+    filled, _claims = fill_loot_zones(catalog, level, seed, bounds)
     return objs + filled, n_placed, set(access)
 
 
@@ -82,7 +82,6 @@ def _record(zid: int, ts: set[Tile]) -> ZoneRecord:
         open_set=set(ts),
         passable=set(ts),
         reach=set(ts),
-        used=set(),
     )
 
 

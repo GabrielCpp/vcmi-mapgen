@@ -113,14 +113,13 @@ class _LootPools:
 
 @dataclass(frozen=True, slots=True)
 class FillZone:
-    """One sealed loot zone to fill: its walkable interior, the tiles already taken, and the
-    gate or monolith footprint that must stay clear of decoration."""
+    """One sealed loot zone to fill: its walkable interior and the gate or monolith footprint
+    that must stay clear of decoration."""
 
     zid: int
     terrain: str
     st: TerrainStats
     reach: frozenset[Tile]
-    used: set[Tile]
     rng: random.Random
     all_ts: AbstractSet[Tile]
     footprint: AbstractSet[Tile]
@@ -144,7 +143,7 @@ def _fill_background(
 
 
 def _fill_hero_structures(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
-    free = sorted(zone.reach - zone.used)
+    free = sorted(zone.reach - target.cover.claims)
     zone.rng.shuffle(free)
     for struct_type in sorted(_LOOT_HERO_STRUCTURE_TYPES):
         candidates = [i for i in pools.pool_vis if i.type == struct_type]
@@ -161,7 +160,7 @@ def _fill_hero_structures(zone: FillZone, pools: _LootPools, target: PlaceTarget
         for t in free:
             if len(placed) >= _LOOT_HERO_STRUCTURE_COUNT:
                 break
-            if t in zone.used or _too_close(t, placed):
+            if t in target.cover.claims or _too_close(t, placed):
                 continue
             if place_one(target, spec, *t):
                 placed.append(t)
@@ -203,7 +202,7 @@ def _roll_spec(
 
 def _fill_rolls(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
     chest_kinds = [k for k, p in pools.chest_kind_pools.items() if p]
-    for t in sorted(zone.reach - zone.used):
+    for t in sorted(zone.reach - target.cover.claims):
         spec = _roll_spec(target.catalog, zone.rng, pools, chest_kinds)
         if spec is not None:
             _ = place_one(target, spec, *t)
@@ -216,9 +215,8 @@ def _fill_decor(
     if not pool:
         return False
     o = PlacedObject.at(zone.rng.choice(pool), t, purpose="")
-    if not cover.try_add(o):
+    if not cover.try_claim(o, [t]):
         return False
-    zone.used.add(t)
     objs_out.append(o)
     return True
 
@@ -245,8 +243,8 @@ def _fill_tile(
 def _fill_remaining(
     zone: FillZone, pools: _LootPools, target: PlaceTarget, cover: CoverIndex
 ) -> None:
-    for t in sorted(zone.reach - zone.used):
-        if t in zone.used:
+    for t in sorted(zone.reach - cover.claims):
+        if t in cover.claims:
             continue
         if not _fill_tile(zone, pools, target, t, cover):
             print(
@@ -265,9 +263,7 @@ def fill_loot_zone(
     """Fill one sealed loot zone: passable background decor, hero structures, rolled loot,
     then a resource or a blocking decoration on every tile still free."""
     pools = _LootPools.of(catalog, zone.terrain)
-    target = PlaceTarget(
-        catalog, objs_out, zone.used, zone.reach, zone.rng, zone.st, bounds=bounds, cover=cover
-    )
+    target = PlaceTarget(catalog, objs_out, cover, zone.reach, zone.rng, zone.st, bounds=bounds)
     _fill_background(catalog, zone, objs_out, cover)
     _fill_hero_structures(zone, pools, target)
     _fill_rolls(zone, pools, target)
@@ -277,20 +273,21 @@ def fill_loot_zone(
 @dataclass(frozen=True, slots=True)
 class LootLevel:
     """One level to fill: every zone record, the access footprint of each loot zone by zone
-    id, and the objects already on the level."""
+    id, the objects already on the level and the tiles the level has claimed."""
 
     zone_records: Sequence[ZoneRecord]
     footprints: Mapping[int, frozenset[Tile]]
     objs: Sequence[PlacedObject]
+    claims: frozenset[Tile] = frozenset()
 
 
 def fill_loot_zones(
     catalog: Catalog, level: LootLevel, seed: int, bounds: tuple[int, int] | None
-) -> list[PlacedObject]:
-    """Fill every loot zone of one level. Every record's ``used`` grows by the tiles the fill
-    claimed."""
+) -> tuple[list[PlacedObject], frozenset[Tile]]:
+    """Fill every loot zone of one level. Returns the new objects and the level's claims,
+    grown by the tiles the fill claimed."""
     zone_records, footprints, level_objs = level.zone_records, level.footprints, level.objs
-    cover = CoverIndex(level_objs)
+    cover = CoverIndex(level_objs, level.claims)
     blocked: set[Tile] = {
         (cx, cy)
         for o in level_objs
@@ -306,17 +303,15 @@ def fill_loot_zones(
         footprint = footprints.get(zr.zid)
         if footprint is None:
             continue
-        used = set(zr.ts & blocked) | (zr.ts & interactive) | footprint
+        cover.claim((zr.ts & blocked) | (zr.ts & interactive) | footprint)
         zone = FillZone(
             zid=zr.zid,
             terrain=zr.terrain,
             st=load_gameplay()[zr.terrain],
             reach=frozenset(zr.ts - blocked - footprint),
-            used=used,
             rng=random.Random(seed ^ (zr.zid * 92821) ^ 0xA117),
             all_ts=all_ts,
             footprint=footprint,
         )
         fill_loot_zone(catalog, zone, new, cover, bounds)
-        zr.used |= used
-    return new
+    return new, frozenset(cover.claims)

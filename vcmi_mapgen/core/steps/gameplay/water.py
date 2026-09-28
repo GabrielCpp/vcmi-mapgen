@@ -54,20 +54,19 @@ def _water_obj(
     ident: Identity,
     t: Tile,
     purpose: str,
-    field: tuple[AbstractSet[Tile], set[Tile]],
+    ts: AbstractSet[Tile],
     cover: CoverIndex,
-) -> tuple[PlacedObject, list[Tile]] | None:
-    ts, used = field
-    cells = legal_cells(ident, t, ts, used)
+) -> PlacedObject | None:
+    cells = legal_cells(ident, t, ts, cover.claims)
     if cells is None:
         return None
     solid = ident.footprint.solid()
     if any((tx, ty) not in ts for tx, ty, _b in FP.anchored_cells(solid, t[0], t[1])):
         return None
     obj = PlacedObject.at(ident, t, purpose=purpose)
-    if not cover.try_add(obj):
+    if not cover.try_claim(obj, cells):
         return None
-    return obj, cells
+    return obj
 
 
 def place_water(
@@ -89,7 +88,6 @@ def place_water(
     rng = random.Random(seed ^ (zid * 55313) ^ 0x5EA)
     area = len(ts)
     objs: list[PlacedObject] = []
-    used: set[Tile] = set()
     cover = CoverIndex()
     for p in WATER_PURPOSES:
         x = st.counts.get(p, 0) / st.tiles * area
@@ -107,11 +105,9 @@ def place_water(
             ident = pick_fixed_identity(pool, p, st, rng)
             if ident is None:
                 break
-            placed_obj = _water_obj(ident, t, p, (ts, used), cover)
-            if placed_obj is None:
+            obj = _water_obj(ident, t, p, ts, cover)
+            if obj is None:
                 continue
-            obj, cells = placed_obj
-            used.update(cells)
             objs.append(obj)
             placed.append(t)
     return objs

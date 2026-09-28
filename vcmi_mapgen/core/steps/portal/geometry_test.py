@@ -3,7 +3,15 @@
 from dataclasses import replace
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile, Zone
+from vcmi_mapgen.core.model import (
+    CoverIndex,
+    Footprint,
+    Identity,
+    PlacedObject,
+    Role,
+    Tile,
+    Zone,
+)
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.steps.portal import geometry as GEO
@@ -89,7 +97,9 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
         targets = {0: [(5, 6)]}
         n = GEO.rescue_unreachable_zones(
             catalog,
-            GEO.PortalWorld(size, {0: grid}, {0: zones}, objs, targets, {0: []}),
+            GEO.PortalWorld(
+                size, {0: grid}, {0: zones}, objs, targets, {0: []}, {0: CoverIndex(objs[0])}
+            ),
             start=(0, (5, 5)),
             gate_xy=no_gates,
             seed=3,
@@ -139,7 +149,9 @@ def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
     targets = {0: [(5, 6)]}
     _ = GEO.rescue_unreachable_zones(
         catalog,
-        GEO.PortalWorld(size, {0: grid}, {0: zones}, objs, targets, {0: []}),
+        GEO.PortalWorld(
+            size, {0: grid}, {0: zones}, objs, targets, {0: []}, {0: CoverIndex(objs[0])}
+        ),
         start=(0, (5, 5)),
         gate_xy=no_gates,
         seed=3,

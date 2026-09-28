@@ -61,7 +61,7 @@ class GatedStep(PipelineStep):
                 by_level[o.level].append(o)
         result = GatedResult()
         for level, zone_records in index.zone_records.items():
-            new, n, access = place_gated_zones(
+            new, n, access, claims = place_gated_zones(
                 catalog,
                 zone_records,
                 by_level[level],
@@ -79,6 +79,7 @@ class GatedStep(PipelineStep):
             targets.extend((o.x, o.y) for o in new if o.purpose)
             targets[:] = [t for t in targets if t not in interior]
             result.access[level] = access
+            index.claims[level] = claims
             self.objs.extend(new)
             _report_loot(level, n, set(access))
         map_state.add_objs(self.objs, TerrainGate(catalog))

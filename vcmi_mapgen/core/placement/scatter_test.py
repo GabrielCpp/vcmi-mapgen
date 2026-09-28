@@ -25,11 +25,10 @@ def test_place_scatter_handles_a_zone_with_no_reachable_open_tile(catalog: Catal
             tiles_set=frozenset(ts),
         )
     }
-    objs, used, reach = SC.place_scatter(
+    objs, reach = SC.place_scatter(
         catalog,
         SC.ScatterZone(ts, label_zones(zones), 1, "grass", open_set=set(), prot=set()),
         SC.ScatterConfig(seed=3, bounds=(30, 24)),
     )
     assert objs == []
-    assert used == set()
     assert reach == set()

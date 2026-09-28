@@ -22,7 +22,7 @@ class TreasureStep(PipelineStep):
         seed        RNG seed.
         size        Map side length in tiles (square).
 
-    inject(ctx): ``ZoneIndex`` (zone records, ``used`` mutated in place), ``GatedResult``.
+    inject(ctx): ``ZoneIndex`` (zone records, and the level claims it writes back), ``GatedResult``.
 
     Produces: appends the treasure to ``map_state.objs``.
     """
@@ -53,5 +53,9 @@ class TreasureStep(PipelineStep):
         self, catalog: Catalog, level: int, level_objs: list[PlacedObject]
     ) -> list[PlacedObject]:
         footprints = {zid: acc.footprint for zid, acc in self._gated.access[level].items()}
-        loot = LootLevel(self._zones.zone_records[level], footprints, level_objs)
-        return fill_loot_zones(catalog, loot, self.seed, (self.size, self.size))
+        claims = self._zones.claims.get(level, frozenset())
+        loot = LootLevel(self._zones.zone_records[level], footprints, level_objs, claims)
+        new, self._zones.claims[level] = fill_loot_zones(
+            catalog, loot, self.seed, (self.size, self.size)
+        )
+        return new

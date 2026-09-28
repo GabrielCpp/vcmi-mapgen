@@ -115,11 +115,15 @@ def test_cover_index_accepts_a_guard_on_an_approach_tile() -> None:
     assert index.try_add(guard)
 
 
-def test_cover_index_reset_forgets_removed_objects() -> None:
+def test_cover_index_rollback_forgets_objects_and_claims_since_the_mark() -> None:
     mine = _obj(2, 2, ("A",), purpose=Purpose.MINE)
     canopy = _obj(3, 3, ("VV", "VV"))
-    index = CoverIndex([mine])
-    index.reset([])
+    index = CoverIndex(claims=[(0, 0)])
+    m = index.mark()
+    assert index.try_claim(mine, [(2, 2), (0, 0)])
+    assert not index.try_add(canopy)
+    index.rollback(m)
+    assert index.claims == {(0, 0)}
     assert index.try_add(canopy)
 
 

@@ -13,7 +13,9 @@ already on the map. They never search or score. Every placement step writes its 
 through `add_objs(new, rules)`, which refuses an object that covers another object's
 visit, entrance or approach tile, or that `rules` rejects. A guard may stand on an
 approach tile, and any overlay may sit over a resource pile or reward pickup. A placer never relies on that refusal. It asks a
-`CoverIndex` before each placement and skips the spot.
+`CoverIndex` before each placement and skips the spot. The same `CoverIndex` owns the
+cells placements have claimed: `claim(cells)` adds them, `mark()` records a point, and
+`rollback(mark)` forgets every object and claim since that point.
 
 ## Map
 

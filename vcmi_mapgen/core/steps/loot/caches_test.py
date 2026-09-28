@@ -24,7 +24,8 @@ needs_stats = pytest.mark.skipif(not HAVE_STATS, reason="data/pp stats not mined
 
 
 def _pickups(catalog: Catalog, zone: ScatterZone, seed: int) -> list[PlacedObject]:
-    sobjs, sused, reach = place_scatter(catalog, zone, ScatterConfig(seed=seed, cover=CoverIndex()))
+    cover = CoverIndex()
+    sobjs, reach = place_scatter(catalog, zone, ScatterConfig(seed=seed, cover=cover))
     record = ZoneRecord(
         zid=1,
         terrain="grass",
@@ -32,10 +33,9 @@ def _pickups(catalog: Catalog, zone: ScatterZone, seed: int) -> list[PlacedObjec
         open_set=set(zone.open_set),
         passable=set(zone.open_set),
         reach=reach,
-        used=sused,
     )
     cobjs, _n, _depths = CA.place_pocket_caches(
-        catalog, [record], seed=seed, context=CA.PocketContext(existing_objs=sobjs)
+        catalog, [record], seed=seed, context=CA.PocketContext(existing_objs=sobjs, cover=cover)
     )
     return sobjs + cobjs
 
@@ -237,14 +237,19 @@ def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_fil
     claimed by an earlier pass, so `cache_spots` ends up empty; or no guard fits). A
     pocket that fails one of those gates got zero objects placed on it, yet every one
     of its tiles was still recorded as pocket depth -- painted magenta with nothing
-    underneath. Fixture: pre-claim every room tile as already `used` (simulating an
+    underneath. Fixture: pre-claim every room tile as already claimed (simulating an
     earlier pass having spent it), so the accepted-candidate gates find no cache spots
     left and the whole pocket must be dropped, both from `objs` and from `depth`."""
 
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
     zr = _field_with_room(room, {(5, 4), (6, 4)})
-    zr.used |= room
-    objs, _n_pockets, depth = CA.place_pocket_caches(catalog, [zr], seed=3, bounds=(20, 20))
+    objs, _n_pockets, depth = CA.place_pocket_caches(
+        catalog,
+        [zr],
+        seed=3,
+        bounds=(20, 20),
+        context=CA.PocketContext(cover=CoverIndex(claims=room)),
+    )
     assert not any(o.purpose == Purpose.GUARD for o in objs)
     assert not depth, f"pocket tiles marked magenta with nothing placed: {sorted(depth)}"
 

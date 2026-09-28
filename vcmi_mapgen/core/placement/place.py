@@ -45,12 +45,11 @@ def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Ti
 class PlaceTarget:
     catalog: Catalog
     objs: list[PlacedObject]
-    used: set[Tile]
+    cover: CoverIndex
     reach: AbstractSet[Tile]
     rng: random.Random
     st: TerrainStats
     bounds: tuple[int, int] | None = None
-    cover: CoverIndex | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,11 +75,13 @@ def _guard_cells(
     # to be free & reachable; the rest may fall outside `reach`, overlap terrain, or
     # overlap another object's cells -- V cells are pure non-blocking sprite extent,
     # and the pocket the guard seals is BY DESIGN packed with caches up/left of the
-    # mouth. Rejecting on `used` overlap silently dropped the guard from 31 of 39
+    # mouth. Rejecting on claimed overlap silently dropped the guard from 31 of 39
     # earned pockets on a real 72x72 build (every nook north/west of its mouth),
     # leaving the treasure free -- the exact opposite of the cache grammar.
     interactive = FP.interactive_cells(ident.footprint, x, y)
-    if not interactive or not all(c in target.reach and c not in target.used for c in interactive):
+    if not interactive or not all(
+        c in target.reach and c not in target.cover.claims for c in interactive
+    ):
         return None
     if spec.clear_of is not None and not FP.overlay_clear(ident.footprint, x, y, spec.clear_of):
         return None
@@ -112,8 +113,8 @@ def _apply_options(o: PlacedObject, ident: Identity, spec: PlaceSpec, rng: rando
 
 def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
     """Shared placement primitive for both scatter and pocket caches: resolve an identity,
-    check its footprint against `reach`/`used`, and if legal append the obj and claim its
-    cells. Returns whether it landed.
+    check its footprint against `reach` and the cover's claims, and if legal append the obj
+    and claim its cells. Returns whether it landed.
 
     interactive_only: passed to legal_cells — only the A-cell is checked/claimed so adjacent
     pickups' V-cells never block each other (use for dense fill passes)."""
@@ -132,15 +133,14 @@ def place_one(target: PlaceTarget, spec: PlaceSpec, x: int, y: int) -> bool:
             ident,
             (x, y),
             target.reach,
-            target.used,
+            target.cover.claims,
             CellRules(bounds=target.bounds, interactive_only=spec.interactive_only),
         )
     if cells is None:
         return False
     o = PlacedObject.at(ident, (x, y), purpose=spec.purpose)
-    if target.cover is not None and not target.cover.try_add(o):
+    if not target.cover.try_claim(o, cells):
         return False
-    target.used.update(cells)
     _apply_options(o, ident, spec, rng)
     if spec.cache:  # a guarded-pocket pickup, not open scatter — informational marker only,
         o.cache = True  # ignored by the vmap exporter, used by tests

@@ -92,8 +92,8 @@ class RewardSite:
 
     zr: ZoneRecord
     entry: Tile
+    cover: CoverIndex
     bounds: tuple[int, int] | None = None
-    cover: CoverIndex | None = None
 
 
 def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list[PlacedObject]:
@@ -105,14 +105,13 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
     pocket/loot-zone only now (a portal-rescued zone is neither), so those slots are
     additional resource piles instead; same total item count, same guard mechanic. Works
     both for fully-populated zones (extra richness) and for bare sub-MIN_AREA slivers the
-    level pass skipped (their only content). Claims its cells in `zr.used` so the later
-    pocket-cache pass never double-stacks. Returns objs."""
+    level pass skipped (their only content). Claims its cells in the cover index so the
+    later pocket-cache pass never double-stacks. Returns objs."""
     zr, entry, bounds, cover = site.zr, site.entry, site.bounds, site.cover
     terrain = zr.terrain
     st = load_gameplay()[terrain]
     rng = random.Random(seed ^ (entry[0] * 92821) ^ (entry[1] * 131071) ^ 0x907A1)
     ts = zr.ts
-    used = zr.used
     area = len(ts)
 
     # reach: what the portal's entry tile actually opens up (4-connected within passable)
@@ -125,13 +124,13 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
     objs: list[PlacedObject] = []
     val = 0
 
-    spots = sorted(reach - used)
+    spots = sorted(reach - cover.claims)
     rng.shuffle(spots)
     for t in spots:
         if n_res <= 0:
             break
         if place_one(
-            PlaceTarget(catalog, objs, used, reach, rng, st, bounds=bounds, cover=cover),
+            PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
             PlaceSpec(Purpose.RESOURCE_PILE, pool_res, cache=True),
             t[0],
             t[1],
@@ -146,9 +145,9 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
         cy = sum(y for _, y in ts) / area
         lvl = 1 + (val >= 4) + (val >= 7) + (val >= 10) + (val >= 13) + 1
         gident = rnd_monster(catalog, lvl)
-        for t in sorted(reach - used, key=partial(_centre_key, cx=cx, cy=cy)):
+        for t in sorted(reach - cover.claims, key=partial(_centre_key, cx=cx, cy=cy)):
             if place_one(
-                PlaceTarget(catalog, objs, used, reach, rng, st, bounds=bounds, cover=cover),
+                PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
                 PlaceSpec(Purpose.GUARD, None, ident=gident),
                 t[0],
                 t[1],
@@ -191,6 +190,7 @@ class PortalWorld:
     objs_by_level: Mapping[int, list[PlacedObject]]
     targets_by_level: Mapping[int, list[Tile]]
     zone_records_by_level: Mapping[int, Sequence[ZoneRecord]]
+    covers: Mapping[int, CoverIndex]
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,7 +284,7 @@ def rescue_unreachable_zones(
     portal approaches and rewards land in `targets`, so `fill_open_islands` sees the zone's
     open component as target-holding and leaves it alone (previously it was blindly filled
     with decoration), and `traverse`'s monolith-network links count it reachable. Mutates
-    `objs_by_level`/`targets_by_level`/zone records in place; returns the pair count."""
+    `objs_by_level`/`targets_by_level`/`covers` in place; returns the pair count."""
 
     reached = _terrain_reach(world.grids, gate_xy, start)
     cands = _candidates(catalog, world, reached)
@@ -348,9 +348,7 @@ class _PortalRescue:
             for lvl, objs in world.objs_by_level.items()
         }
 
-        self.cover_by: dict[int, CoverIndex] = {
-            lvl: CoverIndex(objs) for lvl, objs in world.objs_by_level.items()
-        }
+        self.cover_by = world.covers
 
     def _emit_end(self, lvl: int, ident: Identity, node: Tile, fit: Fit) -> Tile:
         allc, _blk, approach = fit
@@ -487,9 +485,9 @@ class _PortalRescue:
         if zr is None:  # zone skipped by the level pass (bare
             free = set(zone.ts) - st.occupied  # terrain): synth a minimal record
             zr = bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
-        zr.used.update(far_fit[0])  # the monolith's own cells
+        self.cover_by[lvl].claim(far_fit[0])  # the monolith's own cells
         robjs = place_reward_zone(
-            self.catalog, RewardSite(zr, far_appr, (W, H), self.cover_by[lvl]), seed=self.seed
+            self.catalog, RewardSite(zr, far_appr, self.cover_by[lvl], (W, H)), seed=self.seed
         )
         for o in robjs:
             o.level = lvl

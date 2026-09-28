@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -117,23 +118,47 @@ def covering_problems(obj: PlacedObject, index: dict[tuple[int, Tile], list[Cove
 
 
 class CoverIndex:
-    """The tiles of one level that objects cover, kept up to date as a placer adds objects.
-    ``conflicts`` answers both ways: ``obj`` covering another object's interactive tile, and
-    another object covering an interactive tile of ``obj``."""
+    """The tiles of one level that objects cover, and the tiles placers have claimed, kept up
+    to date as a placer adds objects. ``conflicts`` answers both ways: ``obj`` covering another
+    object's interactive tile, and another object covering an interactive tile of ``obj``.
+    ``mark`` and ``rollback`` undo every object added and every tile claimed since the mark."""
 
-    def __init__(self, objs: Iterable[PlacedObject] = ()) -> None:
+    def __init__(self, objs: Iterable[PlacedObject] = (), claims: Iterable[Tile] = ()) -> None:
         self._at: dict[Tile, list[Cover]] = {}
+        self._claimed: set[Tile] = set(claims)
+        self._log: list[PlacedObject | frozenset[Tile]] = []
         for obj in objs:
             self.add(obj)
+
+    @property
+    def claims(self) -> AbstractSet[Tile]:
+        return self._claimed
 
     def add(self, obj: PlacedObject) -> None:
         for tile, role in footprint(obj):
             self._at.setdefault(tile, []).append(Cover(obj, role))
+        self._log.append(obj)
 
-    def reset(self, objs: Iterable[PlacedObject]) -> None:
-        self._at.clear()
-        for obj in objs:
-            self.add(obj)
+    def claim(self, cells: Iterable[Tile]) -> None:
+        fresh = frozenset(cells) - self._claimed
+        self._claimed |= fresh
+        self._log.append(fresh)
+
+    def mark(self) -> int:
+        return len(self._log)
+
+    def rollback(self, mark: int) -> None:
+        while len(self._log) > mark:
+            entry = self._log.pop()
+            if isinstance(entry, frozenset):
+                self._claimed -= entry
+                continue
+            for tile, _role in footprint(entry):
+                kept = [c for c in self._at[tile] if c.obj is not entry]
+                if kept:
+                    self._at[tile] = kept
+                else:
+                    del self._at[tile]
 
     def conflicts(self, obj: PlacedObject) -> list[str]:
         problems: list[str] = []
@@ -156,6 +181,12 @@ class CoverIndex:
         if self.conflicts(obj):
             return False
         self.add(obj)
+        return True
+
+    def try_claim(self, obj: PlacedObject, cells: Iterable[Tile]) -> bool:
+        if not self.try_add(obj):
+            return False
+        self.claim(cells)
         return True
 
 

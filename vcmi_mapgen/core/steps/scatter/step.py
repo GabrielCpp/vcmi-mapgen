@@ -6,7 +6,7 @@ import collections
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement import scatter as SC
@@ -54,20 +54,19 @@ class ScatterStep(PipelineStep):
 
         for level, zone_records in self._zones.zone_records.items():
             level_objs = by_level[level]
-            taken: set[Tile] = {
+            taken = {
                 (cx, cy)
                 for o in level_objs
                 for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y)
             }
-            cover = CoverIndex(level_objs)
+            cover = CoverIndex(level_objs, self._zones.claims.get(level, frozenset()) | taken)
             zoc = guard_zoc(level_objs)
             lvl_ws = self._workspace.levels[level]
             for zr in zone_records:
                 if zr.loot_zone:
                     continue
                 zw = lvl_ws.zones[zr.zid]
-                used = set(zr.used) | taken
-                piles, _u, _r = SC.place_scatter(
+                piles, _r = SC.place_scatter(
                     catalog,
                     SC.ScatterZone(
                         zw.ts,
@@ -83,13 +82,11 @@ class ScatterStep(PipelineStep):
                         bounds=(self.size, self.size),
                         cover=cover,
                         reach_in=set(zr.reach),
-                        used_in=used,
                         avoid=zoc,
                     ),
                 )
                 for o in piles:
                     o.level = level
-                taken |= used
                 level_objs.extend(piles)
                 self.objs.extend(piles)
                 pk = collections.Counter(o.purpose for o in piles)
