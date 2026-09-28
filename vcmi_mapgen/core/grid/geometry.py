@@ -55,3 +55,7 @@ def run_lengths(ts: Collection[Tile], open_tiles: Collection[Tile]) -> collectio
                     h[run] += 1
                 run = 0
     return h
+
+
+def centre_key(t: Tile, cx: float, cy: float) -> tuple[float, Tile]:
+    return ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)

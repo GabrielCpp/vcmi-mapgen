@@ -1,4 +1,4 @@
-"""Reliability tests for steps.portal.geometry (target reachability, portal rescue)."""
+"""Reliability tests for core.steps.portal.rescue (target reachability, portal rescue)."""
 
 from dataclasses import replace
 
@@ -14,7 +14,7 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.steps.portal import geometry as GEO
+from vcmi_mapgen.core.steps.portal import rescue as RS
 
 GRASS, ROCK = 2, 9
 
@@ -73,10 +73,10 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
         ),
     ]
     targets = [(2, 5), (10, 5)]
-    assert GEO.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
-    assert GEO.unreachable_targets(size, grid, picks, targets) == []
+    assert RS.unreachable_targets(size, grid, veg_wall + picks, targets) == [(10, 5)]
+    assert RS.unreachable_targets(size, grid, picks, targets) == []
     hard_wall = [replace(o, purpose=Purpose.DWELLING) for o in veg_wall]
-    assert GEO.unreachable_targets(size, grid, hard_wall + picks, targets) == []
+    assert RS.unreachable_targets(size, grid, hard_wall + picks, targets) == []
 
 
 def test_portal_reward_zone(catalog: Catalog) -> None:
@@ -95,9 +95,9 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
             ]
         }
         targets = {0: [(5, 6)]}
-        n = GEO.rescue_unreachable_zones(
+        n = RS.rescue_unreachable_zones(
             catalog,
-            GEO.PortalWorld(
+            RS.PortalWorld(
                 size, {0: grid}, {0: zones}, objs, targets, {0: []}, {0: CoverIndex(objs[0])}
             ),
             start=(0, (5, 5)),
@@ -129,7 +129,7 @@ def test_portal_reward_zone(catalog: Catalog) -> None:
     n2, objs2, _ = run()
     assert n2 == n and objs2 == objs
 
-    assert GEO.unreachable_targets(size, grid, objs, [(5, 6), (nx, ny)]) == [], (
+    assert RS.unreachable_targets(size, grid, objs, [(5, 6), (nx, ny)]) == [], (
         "the reachable-side portal end must be walkable from the start"
     )
 
@@ -147,9 +147,9 @@ def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog) -> None:
         ]
     }
     targets = {0: [(5, 6)]}
-    _ = GEO.rescue_unreachable_zones(
+    _ = RS.rescue_unreachable_zones(
         catalog,
-        GEO.PortalWorld(
+        RS.PortalWorld(
             size, {0: grid}, {0: zones}, objs, targets, {0: []}, {0: CoverIndex(objs[0])}
         ),
         start=(0, (5, 5)),

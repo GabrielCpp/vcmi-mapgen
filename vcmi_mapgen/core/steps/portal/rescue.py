@@ -1,37 +1,23 @@
 """Portal rescue of unreachable zones and the target reachability check."""
 
 import collections
-import random
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.geometry import centre_key
+from vcmi_mapgen.core.grid.reach import bfs8
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits, rnd_monster
-from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord, bare_record
-from vcmi_mapgen.corpus.gameplay import load_gameplay
+from vcmi_mapgen.core.steps.portal.reward_zone import RewardSite, place_reward_zone
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
-
-
-def _bfs8(open_set: Container[Tile], root: Tile) -> set[Tile]:
-    seen = {root}
-    queue = collections.deque([root])
-    while queue:
-        x, y = queue.popleft()
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                n = (x + dx, y + dy)
-                if n in open_set and n not in seen:
-                    seen.add(n)
-                    queue.append(n)
-    return seen
 
 
 def _walk_and_hard_cells(objs: Sequence[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
@@ -63,97 +49,13 @@ def unreachable_targets(
     if not targets_in:
         return []
     root = targets_in[0]
-    seen = _bfs8(open_set, root)
+    seen = bfs8(open_set, root)
     bad = [t for t in targets_in if t not in seen]
     if not bad:
         return []
     through_veg = land - hard
-    reach = _bfs8(through_veg, root)
+    reach = bfs8(through_veg, root)
     return [t for t in bad if t in reach]
-
-
-def _entry_reach(passable: Container[Tile], entry: Tile) -> set[Tile]:
-    reach: set[Tile] = {entry} if entry in passable else set()
-    q = [entry]
-    while q:
-        x, y = q.pop()
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            n = (x + dx, y + dy)
-            if n in passable and n not in reach:
-                reach.add(n)
-                q.append(n)
-    return reach
-
-
-@dataclass(frozen=True, slots=True)
-class RewardSite:
-    """Where a reward hoard goes: the rescued zone's record, the portal's entry tile,
-    the map bounds and the level's cover index."""
-
-    zr: ZoneRecord
-    entry: Tile
-    cover: CoverIndex
-    bounds: tuple[int, int] | None = None
-
-
-def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list[PlacedObject]:
-    """SPECIAL REWARD upgrade for a zone rescued by a guarded two-way monolith (pp_map's
-    unreachable-zone pass): the pocket-cache grammar scaled to the whole zone — dense
-    resource piles (all `cache`-tagged) reachable from the portal's `entry` tile, plus one
-    interior guard whose strength tracks the accumulated value (the cache ladder + 1).
-    Resources only — an artifact pickup used to be part of this hoard, but artifacts are
-    pocket/loot-zone only now (a portal-rescued zone is neither), so those slots are
-    additional resource piles instead; same total item count, same guard mechanic. Works
-    both for fully-populated zones (extra richness) and for bare sub-MIN_AREA slivers the
-    level pass skipped (their only content). Claims its cells in the cover index so the
-    later pocket-cache pass never double-stacks. Returns objs."""
-    zr, entry, bounds, cover = site.zr, site.entry, site.bounds, site.cover
-    terrain = zr.terrain
-    st = load_gameplay()[terrain]
-    rng = random.Random(seed ^ (entry[0] * 92821) ^ (entry[1] * 131071) ^ 0x907A1)
-    ts = zr.ts
-    area = len(ts)
-
-    # reach: what the portal's entry tile actually opens up (4-connected within passable)
-    reach = _entry_reach(zr.passable, entry)
-    if not reach:
-        return []
-
-    n_res = max(4, area // 10) + max(2, area // 25)
-    pool_res = catalog.candidates(Purpose.RESOURCE_PILE, terrain)
-    objs: list[PlacedObject] = []
-    val = 0
-
-    spots = sorted(reach - cover.claims)
-    rng.shuffle(spots)
-    for t in spots:
-        if n_res <= 0:
-            break
-        if place_one(
-            PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
-            PlaceSpec(Purpose.RESOURCE_PILE, pool_res, cache=True),
-            t[0],
-            t[1],
-        ):
-            n_res -= 1
-            val += 2
-
-    if objs:
-        # one interior guard near the zone's own centre: the portal guard gates entry, this
-        # one gates the hoard itself — cache ladder (pp_pickup pocket convention) + 1
-        cx = sum(x for x, _ in ts) / area
-        cy = sum(y for _, y in ts) / area
-        lvl = 1 + (val >= 4) + (val >= 7) + (val >= 10) + (val >= 13) + 1
-        gident = rnd_monster(catalog, lvl)
-        for t in sorted(reach - cover.claims, key=partial(_centre_key, cx=cx, cy=cy)):
-            if place_one(
-                PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
-                PlaceSpec(Purpose.GUARD, None, ident=gident),
-                t[0],
-                t[1],
-            ):
-                break
-    return objs
 
 
 PORTAL_MIN_AREA = 12  # smallest unreachable zone worth a portal rescue (mapeval's zone
@@ -172,10 +74,6 @@ class _LevelState:
     occupied: set[Tile]
     near: set[Tile]
     reserved: set[Tile]
-
-
-def _centre_key(t: Tile, cx: float, cy: float) -> tuple[float, Tile]:
-    return ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t)
 
 
 def _outskirts_key(t: Tile, towns: Sequence[Tile]) -> tuple[float, Tile]:
@@ -420,7 +318,7 @@ class _PortalRescue:
 
     def _far_end(self, zone: _Enclave, ident: Identity) -> tuple[Tile, Fit] | None:
         st = self.state[zone.lvl]
-        for t in sorted(zone.ts, key=partial(_centre_key, cx=zone.cx, cy=zone.cy)):
+        for t in sorted(zone.ts, key=partial(centre_key, cx=zone.cx, cy=zone.cy)):
             fit = fits(ident, t, zone.ts, Clearance(st.occupied, st.near, st.reserved))
             if fit and self.cover_by[zone.lvl].accepts(_portal_end(zone.lvl, ident, t)):
                 return t, fit
@@ -451,7 +349,7 @@ class _PortalRescue:
         if tl:  # outskirts: value sits outward
             order = sorted(hts, key=partial(_outskirts_key, towns=tl))
         else:
-            order = sorted(hts, key=partial(_centre_key, cx=zone.cx, cy=zone.cy))
+            order = sorted(hts, key=partial(centre_key, cx=zone.cx, cy=zone.cy))
 
         for t in order:
             fit = fits(ident, t, hts, Clearance(st.occupied, st.near, st.reserved))

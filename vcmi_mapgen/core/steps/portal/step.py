@@ -11,7 +11,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep, PlacementWorkspace, Provider
 from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.steps.gameplay.result import GateResult, TownsIndex
-from vcmi_mapgen.core.steps.portal import geometry as GEO
+from vcmi_mapgen.core.steps.portal import rescue as RS
 from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 
@@ -99,9 +99,9 @@ class PortalStep(PipelineStep):
             lvl: CoverIndex(objs, self._claims.get(lvl, ())) for lvl, objs in objs_by_level.items()
         }
         if start is not None:
-            n_portals = GEO.rescue_unreachable_zones(
+            n_portals = RS.rescue_unreachable_zones(
                 catalog,
-                GEO.PortalWorld(
+                RS.PortalWorld(
                     self.size,
                     grids,
                     self._segmentation.zones,
@@ -120,7 +120,7 @@ class PortalStep(PipelineStep):
             self._claims[lvl] = frozenset(cover.claims)
 
         for level in sorted(grids):
-            cut = GEO.unreachable_targets(
+            cut = RS.unreachable_targets(
                 self.size, grids[level], objs_by_level[level], self._targets[level]
             )
             if cut:
