@@ -74,6 +74,7 @@ uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --subterrain --stop-after vegetation
 uv run python -m vcmi_mapgen.cli render-ontology
 uv run python -m vcmi_mapgen.cli regen-ontology
+uv run python -m vcmi_mapgen.cli audit
 uv run python -m vcmi_mapgen.extract_vmap
 uv run python -m vcmi_mapgen.corpus_match --seeds 1 2 3 --size 48
 make check
@@ -84,14 +85,16 @@ through `VCMI_HOME`. The rendering tests skip when those files are absent.
 
 ## Rules
 
-- **`vcmi/catalog/` is the single source of truth for objects.** Object identity,
-  footprint mask, terrain coupling and decoration category come from
-  `data/ontology/taxonomy.json` and `data/ontology/leaf_meta.json`.
-  `python -m vcmi_mapgen.cli regen-ontology` re-derives them from the editor table
-  `objects.txt`. Use the accessors in `vcmi.catalog.objects`: `identity_of`, `mask_of`,
-  `is_blocking`, `terrains_of`. Use the ones in `vcmi.catalog.decor`: `decor_pool`,
-  `veg_categories`, `category_of`, `decode_identity`, `category_terrain_matrix`. When the pipeline needs something the
-  ontology lacks, extend the ontology. The corpus may inform spatial statistics such as
+- **`Catalog` (`core/catalog.py`) is the only way the core learns about objects.**
+  A step receives one `Catalog` in `run` and passes it first to every function that asks
+  about an object: `identity_of`, `spec`, `allowed_on`, `candidates`, `decor`,
+  `decor_category`, `decor_categories`, `mines_by_resource`, `spells`, `terrain_name`.
+  No module under `core/` imports `vcmi.catalog`. `vcmi/catalog/` is the production source,
+  `VcmiCatalog` in `adapter.py`. Its identity, footprint mask, terrain coupling and
+  decoration category come from `data/ontology/taxonomy.json` and
+  `data/ontology/leaf_meta.json`. `python -m vcmi_mapgen.cli regen-ontology` re-derives
+  them from the editor table `objects.txt`. When the pipeline needs something the
+  catalog lacks, add a `Catalog` method and extend the ontology behind it. The corpus may inform spatial statistics such as
   density, openness and frequency weights. It never decides object identity, mask or
   category.
 - Generated artifacts live in `out/`. Do not copy them into the VCMI `Maps/` folder.

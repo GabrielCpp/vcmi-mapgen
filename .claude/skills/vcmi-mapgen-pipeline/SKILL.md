@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-pipeline
-description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(ontology, map_state)), the shared PlacementWorkspace, the additive add_objs rule, --stop-after, and the two cli.py subcommands. Load before adding, changing or reordering a step, or touching pipeline.py or cli.py."
+description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(catalog, map_state)), the shared PlacementWorkspace, the additive add_objs rule, --stop-after, and the two cli.py subcommands. Load before adding, changing or reordering a step, or touching pipeline.py or cli.py."
 metadata:
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen-pipeline/SKILL.md
@@ -33,8 +33,8 @@ This skill covers how those pieces fit together. `vcmi-mapgen-maps` covers the d
   needs out of the registry and stores them on itself. `ctx.require(T)` raises
   `MissingProviderError` when no earlier step provided `T`. `ctx.get(T, T())` is for a
   producer that may not be in the pipeline. The base implementation is a no-op.
-- **`run(self, ontology: Ontology, map_state: MapState) -> None`.** The step writes onto
-  `map_state`. Every step must write onto it. Anything a later step needs goes out as a
+- **`run(self, catalog: Catalog, map_state: MapState) -> None`.** The step writes onto
+  `map_state`. It passes `catalog` to every function that asks about an object. Every step must write onto it. Anything a later step needs goes out as a
   typed dataclass through `ctx.provide(...)`.
 
 ```python
@@ -53,9 +53,9 @@ class LootStep(PipelineStep):
         self._zones = ctx.require(ZoneIndex)
         self._workspace = ctx.require(PlacementWorkspace)
 
-    def run(self, ontology: Ontology, map_state: MapState) -> None:
+    def run(self, catalog: Catalog, map_state: MapState) -> None:
         ...
-        map_state.add_objs(self.objs, TerrainGate(ontology))
+        map_state.add_objs(self.objs, TerrainGate(catalog))
         self._ctx.provide(LootResult(pockets=pockets_by_level))
 ```
 
@@ -81,7 +81,7 @@ of that kind.
 
 ## `Pipeline` sequences, it does not resolve
 
-`Pipeline(ontology, size)` creates the `MapState` and one `ProviderRegistry`. `add_step`
+`Pipeline(catalog, size)` creates the `MapState` and one `ProviderRegistry`. `add_step`
 appends a step, and `run()` calls `inject` then `run` on each step in the order it was
 added. The registry changes how a value crosses between steps. It does not make the
 pipeline a dependency graph, so a step never runs earlier because its inputs are ready.
@@ -106,7 +106,7 @@ and `GatedStep` reads the empty frozenset default. That gives a wrong map, not a
 ## Every placement step is additive
 
 A step appends its objects with `map_state.add_objs(new, rules)`, where `rules` is a
-`PlacementRules` such as `TerrainGate(ontology)`. It never removes or moves an object
+`PlacementRules` such as `TerrainGate(catalog)`. It never removes or moves an object
 an earlier step placed. It checks each candidate with a `CoverIndex` and the terrain
 rules first, and it treats a refusal as "try the next candidate". Only `VegetationStep` may raise, when it walls off a pocket.
 `steps/AGENTS.md` has the full rule, including guard spacing.
