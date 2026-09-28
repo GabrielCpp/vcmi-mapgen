@@ -32,9 +32,12 @@ metadata:
 - A visitable object's template needs `visitableFrom`, the 3x3 approach grid, or the
   editor warns "no visitable directions". `kit.vmap.terrain.visitable_from` derives it
   from the mask, and `renderers/vmap.py` sets it on every exported object.
-- Footprints: `kit.objects.mask_cells(mask, x, y)` expands a mask anchored at its
-  bottom-right cell. `'B'` is blocking, `'A'` and `'V'` are visitable or overlay, and
-  `' '` is empty. `models.footprint(obj)` gives each covered tile with its `Role`.
+- Footprints: the core never sees a mask string. `core.model.Footprint` holds an object's
+  cells as offsets from its bottom-right anchor, each with a `Role`: blocking, entrance,
+  visit or overlay. `vcmi.footprint.footprint_of(rows)` decodes the `'B'`, `'X'`, `'A'`
+  and `'V'` charset into one, and `mask_rows(fp)` encodes it back for export. Only
+  `vcmi/` holds that charset. `kit.objects.anchored_cells(fp, x, y)` expands a footprint
+  at a position, and `core.model.footprint(obj)` gives each covered tile with its `Role`.
 
 ## Terrain
 
