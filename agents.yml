@@ -14,5 +14,6 @@ localInstructions:
     includeReadme: none
   - skill: vcmi-mapgen-maps # loaded when working under vcmi_mapgen/ (formats, engine, rendering)
     paths: ["vcmi_mapgen"]
+    includeReadme: none
 workflow:
   branch: main

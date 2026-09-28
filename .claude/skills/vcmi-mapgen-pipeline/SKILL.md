@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-pipeline
-description: "VCMI map-generator pipeline & step architecture — the PipelineStep contract (constructor + inject() + parameterless run()), the render-only MapState, PlacementWorkspace's separate shared-state channel, PipelineBuilder's hand-wired DI, and cli.py's fixed-preset-vs-configurable subcommand split. Load when adding/changing a step, wiring a new cli.py subcommand, or touching pipeline.py/pipeline_builder.py."
+description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(ontology, map_state)), the shared PlacementWorkspace, the additive add_objs rule, --stop-after, and the two cli.py subcommands. Load before adding, changing or reordering a step, or touching pipeline.py or cli.py."
 metadata:
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen-pipeline/SKILL.md
@@ -9,122 +9,109 @@ metadata:
   tags: [python, backend, standards, architecture]
 ---
 
-# VCMI map-generator — pipeline & step architecture
+# VCMI map-generator: pipeline and step wiring
 
-Two otherwise-unrelated pipelines — the procedural generator (`terrain_gen -> tile ->
-segment -> gate? -> towns -> vegetation -> gameplay -> gated -> treasure -> border -> portal -> loot -> scatter`) and the identity-rebuild
-engine (`extract_template -> rebuild_map/deform_warp -> verify? -> fm_document`) — share
-one step contract and one hand-wired builder. Read `vcmi-mapgen-maps` for what each step
-domain-wise implements; this skill is about how they're wired together.
+The generator is one procedural pipeline. `cli.py` builds it in `_generate_steps`, and
+that list is the source of truth for which steps run and in what order. At the time of
+writing it runs `terrain -> segment -> vegetation -> gameplay -> gated -> treasure ->
+border -> portal -> loot -> scatter`.
+
+Two hand-written files hold the rest of the contract. Read them before changing a step:
+
+- `vcmi_mapgen/steps/AGENTS.md`: what a step must do, the additive rule, and how a step
+  publishes a value for a later one.
+- `vcmi_mapgen/models/AGENTS.md`: which data belongs on `MapState` and which belongs in
+  the registry.
+
+This skill covers how those pieces fit together. `vcmi-mapgen-maps` covers the domain.
 
 ## The step contract (`pipeline.PipelineStep`)
 
-A step owns its data as **instance properties**, never a shared mutable object passed
-into `run()`:
-
-- **Constructor** — compile-time-known config only (seed, size, subterrain flag, a map
-  name, `identity: bool`, ...). Whatever the CLI/builder already knows before any step runs.
-- **`inject(self, **kwargs)`** — values an *earlier* step produced. The keyword parameter
-  names ARE the step's declared manifest of what it needs (typed, named — not a generic
-  dict). Override the base no-op with exactly the named kwargs you need; don't accept `**kwargs`
-  loosely.
-- **`run(self) -> None`** — takes nothing, computes the step's own output properties from
-  what the constructor and `inject()` gave it.
+- **Constructor.** Config known before any step runs: seed, size, player count, the
+  subterrain flag. Never a value another step produced.
+- **`inject(self, ctx: ProviderRegistry) -> None`.** The step pulls the typed values it
+  needs out of the registry and stores them on itself. `ctx.require(T)` raises
+  `MissingProviderError` when no earlier step provided `T`. `ctx.get(T, T())` is for a
+  producer that may not be in the pipeline. The base implementation is a no-op.
+- **`run(self, ontology: Ontology, map_state: MapState) -> None`.** The step writes onto
+  `map_state`. Every step must write onto it. Anything a later step needs goes out as a
+  typed dataclass through `ctx.provide(...)`.
 
 ```python
-class TileStep(PipelineStep):
-    def __init__(self, size: int = 72) -> None:
+@dataclass
+class LootResult:
+    pockets: Pockets = field(default_factory=dict)
+
+
+class LootStep(PipelineStep):
+    def __init__(self, seed: int = 3, size: int = 72) -> None:
+        self.seed = seed
         self.size = size
-        self.cells: dict = {}          # output property
-        self._input_grids: dict = {}   # set by inject()
 
-    def inject(self, *, grids: dict, tunnel_protect) -> None:
-        self._input_grids = grids
-        self._tunnel_protect = frozenset(tunnel_protect)
+    def inject(self, ctx: ProviderRegistry) -> None:
+        self._ctx = ctx
+        self._zones = ctx.require(ZoneIndex)
+        self._workspace = ctx.require(PlacementWorkspace)
 
-    def run(self) -> None:
-        ...  # self.cells = ...
+    def run(self, ontology: Ontology, map_state: MapState) -> None:
+        ...
+        map_state.add_objs(self.objs, TerrainGate(ontology))
+        self._ctx.provide(LootResult(pockets=pockets_by_level))
 ```
 
-Never reintroduce `run(state, ontology)` or any shared object threaded through every
-step — that was the pre-refactor `zone_engine.py`/`VcmiMapGenPipeline` shape and is
-exactly what this contract replaced.
+`grep -n "provide(" vcmi_mapgen/steps/*/step.py` lists every value currently published.
+Never key the registry by string. There is no `ctx["name"]` channel.
 
-## MapState is render-only, not a working-state bag
+## `Pipeline` sequences, it does not resolve
 
-`pipeline.MapState` holds exactly what `renderers/png.py`'s `PngRenderer`,
-`renderers/overlays/*`'s `MapOverlay`, and `renderers/vmap.py`'s `VmapRenderer` read —
-`size / surfs / cells / zones / gate_blk / objs / player_towns` — nothing else. No step
-holds or mutates a `MapState`; `PipelineBuilder` assembles one explicitly, by name, from
-specific finished steps' properties, purely for the render phase. **Adding a new step
-must never require adding a field to `MapState`** — if a step's output needs to reach a
-renderer, that's a sign it belongs in the existing fields (`objs`, `zones`, ...), not a
-reason to widen the schema.
+`Pipeline(ontology, size)` creates the `MapState` and one `ProviderRegistry`. `add_step`
+appends a step, and `run()` calls `inject` then `run` on each step in the order it was
+added. The registry changes how a value crosses between steps. It does not make the
+pipeline a dependency graph, so a step never runs earlier because its inputs are ready.
+Order matters for `MapState` writes, for workspace mutation and for RNG determinism.
 
-## `PlacementWorkspace` is a separate, deliberate exception
+## `PlacementWorkspace`: the one shared mutable object
 
-`TownsStep`/`VegetationStep`/`GameplayStep`/`GatedStep`/`BorderStep`/`PortalStep`/`LootStep` share a `PlacementWorkspace`
-(constructor-injected by reference, holding `LevelWorkspace`/`ZoneWorkspace` per level/zone)
-that they mutate in place across those steps — `TownsStep` populates
-`zw.occupied/gobjs/prot/...` and plans each zone's attractions (`zw.planned`), `VegetationStep`
-grows around those plans and fills `zw.open_set/blocked/passable`, `GameplayStep` emits the
-planned attractions, `GatedStep` builds the `ZoneIndex` zone records (`reach/used`) that `TreasureStep`
-and the later steps share. This is **not** the `inject()` channel and not
-`MapState` — it's a third, narrower pattern for exactly this one tightly-coupled step
-family. Don't generalize it to other steps and don't route its data through `inject()`
-instead; it already IS the injected dependency (passed once, at construction).
+The placement steps collaborate through one `PlacementWorkspace` in `pipeline.py`. It
+holds a `LevelWorkspace` per level and a `ZoneWorkspace` per zone. The first step that
+demands it creates it with `ctx.get_or_create(PlacementWorkspace, PlacementWorkspace)`.
+Every later placement step mutates that same instance in place. The field comments in
+`ZoneWorkspace` and `LevelWorkspace` name the step that sets each field.
 
-Every step is **additive**: it appends its own objects with `map_state.add_objs(new, gate)`
-and never removes or moves an earlier one. A step pre-checks each object against a
-`CoverIndex` and the terrain gate, so a refused object is a candidate it skips, never a
-crash. The step that places a guarded object also places its monster, and no guard may
-stand within Chebyshev 2 of another (`steps.placement.guard_spaced`), so no later pass
-has to delete duplicate guards. Only `VegetationStep` may raise, when it walls off a pocket.
+Do not add a second object like this. A new cross-step value is a typed dataclass on the
+registry. A new field on `ZoneWorkspace` is justified only when an existing placement
+step must read what an earlier placement step decided.
 
-This coupling is why `--stop-after` (below) is a prefix cut and not an arbitrary
-skip-list: `GatedStep` reads `zw.open_set` assuming `VegetationStep` already populated
-it. Skip `vegetation` and `GatedStep` sees the `ZoneWorkspace` dataclass defaults
-(empty frozensets) instead of a real gap — a silent wrong-answer, not an error.
+This coupling is why `--stop-after` is a prefix cut and never a skip-list. `GatedStep`
+reads `zw.open_set` on the assumption that `VegetationStep` filled it. Skip vegetation
+and `GatedStep` reads the empty frozenset default. That gives a wrong map, not an error.
 
-## `PipelineBuilder` — hand-wired DI, no framework
+## Every placement step is additive
 
-`pipeline_builder.PipelineBuilder` has one method per subcommand family. Each method is a
-straight-line function: construct a step, `run()` it, read back whichever of its
-properties a later step needs, call that step's `inject()`, `run()` it, repeat. No
-registry, no reflection, no generic "shared dict" — every wire is written out by hand and
-readable top to bottom.
+A step appends its objects with `map_state.add_objs(new, rules)`, where `rules` is a
+`PlacementRules` such as `TerrainGate(ontology)`. It never removes or moves an object
+an earlier step placed. It checks each candidate with a `CoverIndex` and the terrain
+rules first, and it treats a refusal as "try the next candidate". Only `VegetationStep` may raise, when it walls off a pocket.
+`steps/AGENTS.md` has the full rule, including guard spacing.
 
-- `run_generate(...)` — the procedural pipeline. Accepts `stop_after` (one of
-  `GENERATE_STOP_POINTS`), a **prefix cut**: run steps up to and including the named one,
-  return early. This is the only skip mechanism that exists, and it exists only here —
-  see the `PlacementWorkspace` note above for why an interior skip-list isn't safe.
-- `run_identity_rebuild(...)` / `run_deform_rebuild(...)` — the identity-rebuild pipeline.
-  Fixed sequences; not CLI-configurable at all.
+## `cli.py` has two subcommands
 
-## `cli.py`'s fixed-preset vs. configurable split
+- `generate` builds the pipeline. It is the only subcommand that takes `--overlays`,
+  `--renderers` and `--stop-after`. Keep that configurability on `generate` alone.
+- `render-ontology` renders the object catalog through `renderers/ontology_render.py`.
+  It builds no pipeline and never touches a generated map.
 
-Every subcommand except `generate` (`extract` / `inspect` / `features` / `rebuild` /
-`run`) is a **fixed** `PipelineBuilder`-assembled preset — same behavior every time, no
-flags select steps/overlays/renderers. Only `generate` takes `--overlays` / `--renderers`
-/ `--stop-after`. Don't add step-skipping or overlay/renderer selection to any other
-subcommand — that configurability was a deliberate, scoped decision for `generate` alone,
-not a pattern to extend.
+After `pipeline.run()`, `cmd_generate` reads results back from `pipeline.ctx` by type,
+for example `pipeline.ctx.get(LootResult, LootResult())`.
 
-`VerifyStep` is never skippable once a preset includes it (`rebuild --verify`, `run`
-always verifies) — there is no flag that can omit it from a preset that has it, protecting
-the bit-exact identity guarantee (see `vcmi-mapgen-maps`).
+## Adding a step
 
-`render-ontology` stays outside this entire model — it renders the object taxonomy
-itself (`renderers/ontology_render.py`), never touches a generated/rebuilt map, and
-`cli.py` calls it directly with no `PipelineBuilder` involvement.
-
-## Adding a new step
-
-1. New subpackage `steps/<name>/` — `step.py` with the class, an **empty**
-   `__init__.py` (the convention here: subpackage `__init__.py`s are empty; the
-   *top-level* `steps/__init__.py` does all the re-exporting).
-2. Register it in `steps/__init__.py`'s explicit import + `__all__` list — steps are not
+1. Create `steps/<name>/` with `step.py` and an empty `__init__.py`. Every subpackage
+   `__init__.py` is empty. The top-level `steps/__init__.py` does the re-exporting.
+2. Add the class to the imports and `__all__` in `steps/__init__.py`. Steps are not
    auto-discovered.
-3. Wire it into whichever `PipelineBuilder` method needs it, by hand.
-4. If its output must reach a renderer, thread it through `MapState`'s *existing* fields;
-   don't add a new one (see above).
+3. Add its name to `GENERATE_STOP_POINTS` and its construction to `_generate_steps` in
+   `cli.py`, in both cases at its position in the run order.
+4. Publish anything a later step needs as a typed dataclass defined next to the step.
+   Do not add a field to `MapState` so that a renderer can read it. The test in
+   `models/AGENTS.md` decides that.

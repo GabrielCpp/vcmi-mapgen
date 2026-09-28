@@ -103,3 +103,47 @@ A stateless normalizer, an accumulator over plain values, a set of pure conversi
 functions. Wrapping them in an object with no fields adds a construction step, an injection
 decision, and a lifetime question, and buys nothing. This is the failure mode "model things as
 classes" produces when its stop condition is left unwritten.
+
+## 1.5 A model stores what defines it, not what someone computed from it
+
+**Statement.** A core data model holds the facts that make it what it is. An analysis derived from
+those facts is a separate value, owned by the code that computes it and handed to whoever reads it.
+
+**Trigger.** Any of these shapes fires the rule:
+
+- A field on the model that exactly one stage writes, where that stage computes it from the
+  model's other fields.
+- A cache inside the model that indexes that derived field and invalidates itself by checking
+  whether the field changed, for example `if self._key != id(self.zones)`.
+- A model docstring that justifies a field by the reader who wants it rather than by what the model
+  is.
+
+**Fix.** Remove the field. The producing stage returns the analysis as its own typed value, and each
+consumer receives that value explicitly. When a view needs model facts and the analysis together,
+it takes both.
+
+A grid that also carries its segmentation has two sources of truth. The terrain can change after
+segmentation ran, and nothing tells the stored zones they are stale. Every reader of the model now
+depends on the segmentation stage, including readers that only wanted tiles.
+
+**Counter-case.** A derived value the model maintains itself on every write, such as a count kept
+beside a list. The model owns that invariant and cannot drift from it.
+
+## 1.6 One thing, one model
+
+**Statement.** Each domain entity has one model in the program. Another representation of it, such
+as a file format or a corpus loader's record, is converted into that model at the edge. Code past
+the edge queries the one model.
+
+**Trigger.** A function that takes a second representation of an entity the project already
+models, and rebuilds an answer the main model already gives. A hand-built boolean grid of blocked
+tiles next to a map model that already answers "is this tile blocked" is the common form.
+
+**Fix.** Convert the second representation with the project's reader, or write that reader. Then
+call the main model's query. Delete the rebuilt one.
+
+Two models of one thing disagree the first time either changes. The rebuilt query also repeats
+every decision the main model makes, such as which footprint cells block, so a fix in one never
+reaches the other.
+
+**Counter-case.** The reader or writer for that representation. Converting is its whole job.

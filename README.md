@@ -68,46 +68,14 @@ uv run python -m vcmi_mapgen.cli generate \
     --seed 5 --size 108 --players 4 --teams 2v2
 ```
 
-## Layout
+## Map
 
-```
-vcmi_mapgen/        the Python package (generator + renderer + data pipeline)
-  cli.py              the CLI: generate / render-ontology, a thin layer over pipeline.py
-  pipeline.py         MapState (render-only) / PipelineStep / Pipeline / ProviderRegistry /
-                      PlacementWorkspace
-  steps/              one subpackage per step — each a folder with its own step.py +
-                      private logic modules + *_test.py:
-    terrain_gen/        macro zone layout + corpus-learned autotiling (capacity-constrained
-                        growth, water, borders, despeckle + H3-correct transition views)
-    segment/            same-terrain flood-fill zone segmentation
-    gate/               Subterranean Gate pairs (--subterrain)
-    towns/              towns, mines and their guards (corpus densities) + water bodies
-    vegetation/         corpus-fitted Gibbs marked point process (trees, rocks, lakes)
-    gameplay/           dwellings, banks and visitables, placed next to vegetation
-    gated/              loot-zone access: Border Gate + Keymaster or a monolith pair, sealed
-    treasure/           the treasure inside each sealed loot zone
-    border/             guards on zone entrances and on every crossing vegetation left open
-    portal/             rescue portals for any target still unreachable
-    loot/               seer-hut quests and guarded pocket caches
-    scatter/            free resource piles along the routes
-  renderers/          PngRenderer (H3 sprites) / VmapRenderer (playable .vmap export) /
-                      ontology_render.py (render-ontology catalog dump)
-  readers/            VmapReader (read back a generated/authored .vmap)
-  terrain_segment.py  same-terrain flood-fill segmentation + interior-depth features
-  ontology.py         object identity, footprints, terrain coupling (single source of truth)
-  obj_resolve.py      faithful-map loader, footprint mask expansion
-  faithful.py         faithful map dict -> editor-valid .vmap
-  render_editor.py    editor-quality 32px H3 sprite rendering (decodes DEF fmt 0/1/2/3)
-  h3m.py, vcmi_ids.py, h3m2vmap.py, extract_faithful.py   .h3m -> faithful JSON pipeline
-  vmapwrite.py, traverse.py                                .vmap writer + reachability
-  vcmi_paths.py       locates the VCMI data dir per-OS (override: VCMI_HOME)
-maps/               the .h3m corpus (159 real maps) — source data
-maps_json/          faithful JSON per map (the engine's input; regenerable from maps/)
-data/               corpus-derived priors and fitted statistics
-docs/               specs, architecture, and the VCMI H3M format reference notes
-vcmi-h3m-format-reference/   verbatim VCMI C++ sources documenting the .h3m format
-out/                transient outputs (renders, .vmaps) — gitignored
-```
+- `vcmi_mapgen/`: the Python package. It generates, renders and reads maps, and extracts the corpus.
+- `vcmi-h3m-format-reference/`: verbatim VCMI C++ sources that document the `.h3m` format.
+- `maps/`: the `.h3m` corpus of 159 real maps, the source data.
+- `maps_vmap/`: one `.vmap` per corpus map, the generator's input, regenerable from `maps/`.
+- `data/`: corpus-derived priors and fitted statistics.
+- `docs/`: specs, architecture and the VCMI H3M format reference notes.
 
 ## Tests
 
