@@ -19,7 +19,8 @@ Samples a zone's decoration configuration from the Gibbs marked point process fi
     by the learned r=0 potential, and a birth whose blocking cells all sit under STACK_CAP
     objects already is refused, so the coverage offset cannot pile hidden sprites,
   - hard zeros only where the game needs them: a blocking cell off-zone or on the PROTECTED
-    walkable web (spanning backbone + gates, kept constructive per spec §5),
+    walkable web (spanning backbone + gates, kept constructive per spec §5). A blocking cell
+    past the map edge is legal, as in the corpus, and counts toward nothing,
   - budget: the realized blocking-union coverage is steered to the corpus `veg_blocked_frac`
     by a global log-offset alpha, corrected on a Boolean-model (coverage-exponent) schedule.
 
@@ -208,6 +209,8 @@ class _ZoneSampler:
     ) -> None:
         ts = zone.ts
         self.level = zone.level
+        self.map_h = len(zone.zone_label)
+        self.map_w = len(zone.zone_label[0])
         self.model = model
         self.rng = rng
         self.forbid = opts.forbid
@@ -325,6 +328,8 @@ class _ZoneSampler:
         cells: list[Tile] = []
         for dx, dy in model.iblk[c][ii]:
             bx, by = x + dx, y + dy
+            if not self._on_map(bx, by):
+                continue
             lx, ly = bx - x0, by - y0
             if (
                 not (0 <= lx < W and 0 <= ly < H)
@@ -337,6 +342,14 @@ class _ZoneSampler:
         if any((x + dx, y + dy) in forbid for dx, dy in model.ifoot[c][ii]):
             return None
         return cells
+
+    def _on_map(self, x: int, y: int) -> bool:
+        return 0 <= x < self.map_w and 0 <= y < self.map_h
+
+    def _map_blocking(self, c: int, ii: int, x: int, y: int) -> list[Tile]:
+        return [
+            (x + dx, y + dy) for dx, dy in self.model.iblk[c][ii] if self._on_map(x + dx, y + dy)
+        ]
 
     def frees_connected(self, cells: list[Tile]) -> bool:
         """Whether every tile freed by removing `cells` reaches the protected web through open
@@ -509,9 +522,7 @@ class _ZoneSampler:
         x, y, c, ii = self.objs[j]
         lam_star = self._lam_star(c, x, y, True)
         acc = (n * _f(self.qc, c)) / max(lam_star * self.Nt, 1e-300)
-        if rng.random() < acc and self.frees_connected(
-            [(x + dx, y + dy) for dx, dy in self.model.iblk[c][ii]]
-        ):
+        if rng.random() < acc and self.frees_connected(self._map_blocking(c, ii, x, y)):
             self._remove(j)
 
     def _remove(self, j: int) -> None:
@@ -521,8 +532,8 @@ class _ZoneSampler:
         _ = objs.pop()
         self.ncat[c] -= 1
         self.C[c, y - y0 + RINT, x - x0 + RINT] -= 1
-        for dx, dy in self.model.iblk[c][ii]:
-            bx, by = x + dx - x0, y + dy - y0
+        for tx, ty in self._map_blocking(c, ii, x, y):
+            bx, by = tx - x0, ty - y0
             blkcnt[by, bx] -= 1
             if blkcnt[by, bx] == 0:
                 self.nblocked -= 1
