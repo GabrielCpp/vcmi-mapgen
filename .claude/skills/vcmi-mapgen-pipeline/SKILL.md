@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-pipeline
-description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(catalog, map_state)), the frozen placement results, the additive add_objs rule, --stop-after, and the two cli.py subcommands. Load before adding, changing or reordering a step, or touching pipeline.py or cli.py."
+description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(catalog, map_state)), the frozen placement results, the additive add_objs rule, --stop-after, and the generate subcommand. Load before adding, changing or reordering a step, or touching core/pipeline.py or cli/."
 metadata:
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen-pipeline/SKILL.md
@@ -11,21 +11,21 @@ metadata:
 
 # VCMI map-generator: pipeline and step wiring
 
-The generator is one procedural pipeline. `cli.py` builds it in `_generate_steps`, and
+The generator is one procedural pipeline. `cli/steps.py` builds it in `build_steps`, and
 that list is the source of truth for which steps run and in what order. At the time of
 writing it runs `terrain -> vegetation -> gameplay -> gated -> treasure ->
 border -> portal -> loot -> scatter`.
 
 Two hand-written files hold the rest of the contract. Read them before changing a step:
 
-- `vcmi_mapgen/steps/AGENTS.md`: what a step must do, the additive rule, and how a step
+- `vcmi_mapgen/core/steps/AGENTS.md`: what a step must do, the additive rule, and how a step
   publishes a value for a later one.
-- `vcmi_mapgen/models/AGENTS.md`: which data belongs on `MapState` and which belongs in
+- `vcmi_mapgen/core/model/AGENTS.md`: which data belongs on `MapState` and which belongs in
   the registry.
 
 This skill covers how those pieces fit together. `vcmi-mapgen-maps` covers the domain.
 
-## The step contract (`pipeline.PipelineStep`)
+## The step contract (`core.pipeline.PipelineStep`)
 
 - **Constructor.** Config known before any step runs: seed, size, player count, the
   subterrain flag. Never a value another step produced.
@@ -113,28 +113,30 @@ A step appends its objects with `map_state.add_objs(new, rules)`, where `rules` 
 `PlacementRules` such as `TerrainGate(catalog)`. It never removes or moves an object
 an earlier step placed. It checks each candidate with a `CoverIndex` and the terrain
 rules first, and it treats a refusal as "try the next candidate". Only `VegetationStep` may raise, when it walls off a pocket.
-`steps/AGENTS.md` has the full rule, including guard spacing.
+`core/steps/AGENTS.md` has the full rule, including guard spacing.
 
-## `cli.py` has two subcommands
+## Only `generate` builds the pipeline
 
-- `generate` builds the pipeline. It is the only subcommand that takes `--overlays`,
-  `--renderers` and `--stop-after`. Keep that configurability on `generate` alone.
-- `render-ontology` renders the object catalog through `renderers/ontology_render.py`.
-  It builds no pipeline and never touches a generated map.
+`cli/__main__.py` lists every subcommand in its docstring. `generate` is the only one that
+builds the pipeline, and the only one that takes `--overlays`, `--renderers` and
+`--stop-after`. Keep that configurability on `generate` alone. `render-ontology` renders
+the object catalog through `renderers/ontology_render.py`. It builds no pipeline and never
+touches a generated map.
 
-After `pipeline.run()`, `cmd_generate` reads results back from `pipeline.ctx` by type,
+After `pipeline.run()`, `cli/generate.py` reads results back from `pipeline.ctx` by type,
 for example `pipeline.ctx.get(LootResult, LootResult())`.
 
 ## Adding a step
 
-1. Create `steps/<name>/` with `step.py` and an empty `__init__.py`. Every subpackage
-   `__init__.py` is empty. The top-level `steps/__init__.py` does the re-exporting.
-2. Add the class to the imports and `__all__` in `steps/__init__.py`. Steps are not
+1. Create `core/steps/<name>/` with `step.py`, `result.py` when it publishes a value, and
+   an empty `__init__.py`. Every subpackage `__init__.py` is empty. The top-level
+   `core/steps/__init__.py` does the re-exporting.
+2. Add the class to the imports and `__all__` in `core/steps/__init__.py`. Steps are not
    auto-discovered.
 3. Add its name to `GENERATE_STOP_POINTS` and its construction to `build_steps` in
    `cli/steps.py`, in both cases at its position in the run order. A step that reads
    corpus statistics takes `priors: Priors` first. `build_steps` passes it the one value
    the CLI loaded with `corpus.priors.load_priors`, and no step loads a file itself.
-4. Publish anything a later step needs as a typed dataclass defined next to the step.
+4. Publish anything a later step needs as a typed dataclass in the step's `result.py`.
    Do not add a field to `MapState` so that a renderer can read it. The test in
-   `models/AGENTS.md` decides that.
+   `core/model/AGENTS.md` decides that.

@@ -4,23 +4,23 @@
 
 - `.h3m` is a real map, a gzip binary. `h3m.parse_file` parses it into an `H3Map` with
   terrain tiles and objects. It handles RoE, AB and SoD only.
-- `.vmap` is the editor format, a zip of relaxed JSON. `kit/vmap/reader.py` and
-  `kit/vmap/writer.py` read and write it through a full `VmapDocument` model. The model
+- `.vmap` is the editor format, a zip of relaxed JSON. `vcmi/formats/vmap/reader.py` and
+  `vcmi/formats/vmap/writer.py` read and write it through a full `VmapDocument` model. The model
   covers header players, teams, victory, defeat, every object, and terrain as VCMI tile
   strings. Its `extra` catch-all lets an unmodelled key round-trip losslessly.
 - **The corpus** is `maps_vmap/<name>.vmap`, loaded by `corpus.maps.load_corpus_map`
   as a `MapState`, the same type a generated map is.
-  `python -m vcmi_mapgen.extract_vmap` regenerates it from `maps/`.
+  `python -m vcmi_mapgen.cli extract-vmap` regenerates it from `maps/`.
 - The internal mask charset tells `'X'` (blocked entrance) apart from `'A'` (walk-on).
   VCMI's own charset cannot, so `vcmi.load.load_map` never reads that distinction back from a
   `.vmap`. It re-derives the mask from `vcmi.catalog.objects.mask_of(animation)` instead.
-  `kit.vmap.terrain.vcmi_mask` has the details. The file's own mask is the fallback only
+  `vcmi.formats.vmap.terrain.vcmi_mask` has the details. The file's own mask is the fallback only
   when the ontology has no data for that animation, which is the case for heroes.
-- Object identity comes from VCMI's own config: `kit.vcmi_config.resolve(obj_class,
+- Object identity comes from VCMI's own config: `vcmi.config.VcmiConfig.resolve(obj_class,
   obj_subid)` returns `(type, subtype)`. Never guess a subtype. The C++ format sources
   are in `vcmi-h3m-format-reference/`.
 - A visitable object's template needs `visitableFrom`, the 3x3 approach grid, or the
-  editor warns "no visitable directions". `kit.vmap.terrain.visitable_from` derives it
+  editor warns "no visitable directions". `vcmi.formats.vmap.terrain.visitable_from` derives it
   from the mask, and `vcmi/export.py` sets it on every exported object.
 - Footprints: the core never sees a mask string. `core.model.Footprint` holds an object's
   cells as offsets from its bottom-right anchor, each with a `Role`: blocking, entrance,
@@ -44,14 +44,15 @@
   its members and filter by its groups `VISIT_PURPOSES` and `COUNTED`, never against a bare
   string such as `"GUARD"`.
 - `vcmi.catalog.objects.purpose_of_type(type)` answers the purpose of a VCMI object type
-  through its class id in `data/ontology/vcmi_types.json`. `regen-ontology` rewrites that
+  through its class id in `vcmi/catalog/data/vcmi_types.json`. `regen-ontology` rewrites that
   table from VCMI's config.
 - `core.model.resource.Resource` names the eight resources.
 
 ## Segmentation
 
 - `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`.
-  `TerrainStep` calls it and provides `Segmentation(zones, zone_label)`.
+  `TerrainStep` calls it through `terrain_gen/levels.py` and provides
+  `Segmentation(zones, zone_label)` from `terrain_gen/result.py`.
 - `zone_label` is a `ZoneLabel` grid read `[y][x]`. The entrance and gate geometry in
   `core/planning/entrances.py` reads it. `label_zones(zones)` rebuilds one from
   hand-built zones in tests.
