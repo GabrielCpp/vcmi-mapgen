@@ -4,7 +4,7 @@ agents:
 skills:
   - projects/vcmi-mapgen/*
   - process/target-architecture
-  - python/python-dead-code
+  - stacks/python/python-dead-code
 packs:
   - general
   - python
