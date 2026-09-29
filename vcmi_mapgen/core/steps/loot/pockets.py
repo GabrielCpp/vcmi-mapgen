@@ -7,7 +7,7 @@ from collections.abc import Set as AbstractSet
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.reach import reach, walk
-from vcmi_mapgen.core.model import Footprint, PlacedObject, Tile
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
@@ -31,6 +31,21 @@ def _approach_tiles(mask: Footprint, x: int, y: int, passable: Container[Tile]) 
             if nb in passable:
                 ap.add(nb)
     return ap
+
+
+def access_tiles(objs: Iterable[PlacedObject]) -> frozenset[Tile]:
+    return frozenset(
+        ap
+        for o in objs
+        if o.purpose != Purpose.GUARD
+        and (ap := FP.footprint_cells(o.footprint, o.x, o.y)[2]) is not None
+    )
+
+
+def occupied_tiles(objs: Iterable[PlacedObject]) -> frozenset[Tile]:
+    return frozenset(
+        t for o in objs for t, role in o.footprint.at(o.x, o.y) if role is not Role.OVERLAY
+    )
 
 
 def reachable(
@@ -140,16 +155,3 @@ def reach8(open_set: Container[Tile], seed: Iterable[Tile]) -> set[Tile]:
     disconnected from the web (an unreachable floating island), which is not placeable
     either."""
     return reach(open_set, [t for t in seed if t in open_set], NB8)
-
-
-def guard_stands(g: Tile, pocket: frozenset[Tile], mouth: frozenset[Tile]) -> list[Tile]:
-    xs = [t[0] for t in mouth]
-    ys = [t[1] for t in mouth]
-    ring = [
-        (x, y)
-        for x in range(max(xs) - 1, min(xs) + 2)
-        for y in range(max(ys) - 1, min(ys) + 2)
-        if (x, y) not in pocket and (x, y) not in mouth
-    ]
-    ring.sort(key=lambda t: (min(abs(t[0] - m[0]) + abs(t[1] - m[1]) for m in mouth), t))
-    return [g, *sorted(mouth - {g}), *ring]

@@ -475,11 +475,14 @@ class ZoneSite:
 
     def placed(self) -> PlacedZone:
         cells = frozenset(self.cells)
+        solid = frozenset(
+            t for o in self.objs for t, role in o.footprint.at(o.x, o.y) if role is not Role.OVERLAY
+        )
         return PlacedZone(
             tuple(self.objs),
             cells,
             tuple(self.approaches),
-            self.zone.open_set - cells - frozenset(self.approaches),
+            self.zone.open_set - solid - frozenset(self.approaches),
             self.zone.passable - self.blk - self.stranded,
             frozenset(self.prot),
         )

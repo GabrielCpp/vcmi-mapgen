@@ -11,7 +11,8 @@ registry.
   and `centre_key`, the nearest-to-a-point sort key.
 - `noise.py`: the seeded value-noise field.
 - `paths.py`: `geodesic_path` inside a tile set, `farthest_points` sampling and the backbone `SPACING`.
-- `pockets.py`: pocket detection, each pocket's mouth, each pocket tile's depth from its mouth, `dedupe_pockets`, and the `Pockets` type.
+- `pocket_masks.py`: `parse_masks`, which reads the drawn pocket shapes of `data/pockets.txt` into every distinct rotation and mirror.
+- `pockets.py`: `find_pockets`, which slides those masks over the walkable tiles with the map edge read as wall, each pocket tile's depth from its guard, `dedupe_pockets`, and the `Pockets` type.
 - `reach.py`: the one BFS family over tile sets: `distances`, `reach` and `walk`, with
   `STEPS4` and `STEPS8`, and `entry_reach` from one entry tile. A search with its own stop
   rule, or one over a label grid or a numpy array, keeps its own loop.

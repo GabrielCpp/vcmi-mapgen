@@ -24,7 +24,7 @@ def generate(priors: Priors, seed: int, size: int, subterrain: bool) -> MapState
 def corpus_match(settings: Settings, seeds: Sequence[int], size: int, subterrain: bool) -> None:
     maps_dir = settings.maps_dir
     corpus = corpus_tally(load_corpus_map(maps_dir, name) for name in all_map_names(maps_dir))
-    priors = load_priors(settings.pp_dir)
+    priors = load_priors(settings.pp_dir, settings.pockets_file)
     gen = generated_tally(generate(priors, seed, size, subterrain) for seed in seeds)
     for line in (*measure_report(corpus, gen), "", *bucket_report(corpus, gen)):
         print(line)

@@ -32,7 +32,7 @@ def main() -> None:
     _ = ap.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
     args = ap.parse_args(namespace=_Args())
     settings = load_settings()
-    priors = load_priors(settings.pp_dir).terrain[args.level]
+    priors = load_priors(settings.pp_dir, settings.pockets_file).terrain[args.level]
     st = priors.macro
     barrier_name = "water" if args.level == 0 else "rock"
     median_area = st.areas[len(st.areas) // 2]

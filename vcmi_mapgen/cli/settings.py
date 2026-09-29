@@ -33,6 +33,10 @@ class Settings:
         return self.root / "data" / "pp"
 
     @property
+    def pockets_file(self) -> Path:
+        return self.root / "data" / "pockets.txt"
+
+    @property
     def maps_dir(self) -> Path:
         """The corpus maps as ``.vmap``, ``data/corpus/vmap/``."""
         return self.root / "data" / "corpus" / "vmap"

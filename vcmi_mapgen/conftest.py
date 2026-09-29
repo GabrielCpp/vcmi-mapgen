@@ -93,7 +93,7 @@ def catalog(_bound_catalog: None) -> Catalog:
 
 @pytest.fixture(scope="session")
 def priors() -> Priors:
-    return load_priors(SETTINGS.pp_dir)
+    return load_priors(SETTINGS.pp_dir, SETTINGS.pockets_file)
 
 
 @dataclass(frozen=True, slots=True)

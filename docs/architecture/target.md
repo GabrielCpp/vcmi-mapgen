@@ -260,6 +260,7 @@ statistics family, named after the family: `macro.py`, `markov.py`,
 | `reach.py` | `steps/portal/geometry.py` (s) | The one BFS family: 4- and 8-connected reach, walk-and-hard cells. `s21` routes the copies here. |
 | `paths.py` | `kit/topology.py` (s) | `geodesic_path`, `farthest_points`. |
 | `pockets.py` | `kit/topology.py` (s), `models/pockets.py` (m) | `find_pockets`, `pocket_depths`, `mouth_key`, and the pocket type aliases. |
+| `pocket_masks.py` | new | `parse_masks`, which reads the pocket shapes drawn in `data/pockets.txt` into `core/priors` `PocketMask` values. |
 
 ### `core/placement/`: placing one object legally
 

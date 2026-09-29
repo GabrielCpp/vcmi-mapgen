@@ -135,7 +135,9 @@ class GenerateOptions:
 def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
     pipeline = Pipeline(CATALOG, opts.size)
     config = StepConfig(opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain)
-    for point_name, step in build_steps(load_priors(settings.pp_dir), config):
+    for point_name, step in build_steps(
+        load_priors(settings.pp_dir, settings.pockets_file), config
+    ):
         _ = pipeline.add_step(step)
         if point_name == opts.stop_after:
             break

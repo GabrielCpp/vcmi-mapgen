@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import collections
+from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import replace
 from typing import final, override
 
@@ -13,20 +15,25 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.priors.pocket_masks import PocketMask
 from vcmi_mapgen.core.steps.border.result import BorderResult
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
 from vcmi_mapgen.core.steps.loot import pickups as PK
 from vcmi_mapgen.core.steps.loot import quests as QU
+from vcmi_mapgen.core.steps.loot.pockets import access_tiles, occupied_tiles
 from vcmi_mapgen.core.steps.loot.result import LootResult
 
 
 def _precompute_pockets(
     zone_records: list[ZoneRecord],
+    masks: Sequence[PocketMask],
+    access: AbstractSet[Tile],
+    occupied: AbstractSet[Tile],
 ) -> tuple[dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]], set[Tile]]:
     _global_true_pkt: set[Tile] = set()
     for _zr_pkt in zone_records:
         _global_true_pkt |= _zr_pkt.passable
-    _raw_pkt = find_pockets(_global_true_pkt)
+    _raw_pkt = find_pockets(_global_true_pkt, masks, access, occupied)
     _pocket_tiles_pkt: set[Tile] = set()
     for _g_pkt, (_pt_pkt, _mf_pkt) in _raw_pkt.items():
         if len(_pt_pkt) >= 3:
@@ -88,7 +95,9 @@ class LootStep(PipelineStep):
         zone_records = [
             replace(zr, open_set=zr.open_set - border_guards) for zr in self._zone_records[level]
         ]
-        _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(zone_records)
+        _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(
+            zone_records, self.priors.pocket_masks, access_tiles(objs), occupied_tiles(objs)
+        )
         cover = CoverIndex(objs, self._claims.get(level, ()))
         qobjs, n_quests = QU.place_seer_hut_quests(
             catalog,
@@ -115,7 +124,7 @@ class LootStep(PipelineStep):
             context=PK.PocketContext(
                 self.priors.gameplay[0],
                 border_guards=border_guards,
-                precomputed_pockets=_raw_pkt,
+                pockets=_raw_pkt,
                 existing_objs=[*objs, *qobjs],
                 home_zids=home_zids,
                 cover=cover,

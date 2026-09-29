@@ -10,12 +10,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
-from vcmi_mapgen.core.grid.pockets import (
-    POCKET_MAX_TILES,
-    dedupe_pockets,
-    find_pockets,
-    pocket_depths,
-)
+from vcmi_mapgen.core.grid.pockets import dedupe_pockets, pocket_depths
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
@@ -26,7 +21,6 @@ from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.loot.pockets import (
     guard_stand,
-    guard_stands,
     home_mine_protect_pairs,
     reach8,
     reachable,
@@ -45,8 +39,8 @@ ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier, ...] = (
 @dataclass(frozen=True, slots=True)
 class PocketContext:
     gameplay: GameplayStats
+    pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]]
     border_guards: Container[Tile] = ()
-    precomputed_pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]] | None = None
     existing_objs: Sequence[PlacedObject] = ()
     home_zids: Collection[int] = ()
     cover: CoverIndex | None = None
@@ -95,7 +89,7 @@ def place_pocket_caches(
 
     Second fix, same day, superseded above but kept for the diagonal-neck rationale ("add the
     open block tile layer" — `reach` alone is still the wrong universe for pocket GEOMETRY):
-    `_web_dist` is a 4-connected BFS, but `find_pockets`/`_bounded_fill` probe neighbours with
+    `_web_dist` is a 4-connected BFS, but pocket detection probes neighbours with
     `NB8` (H3 heroes move diagonally). A pocket whose only neck is a diagonal squeeze — or
     whose interior simply isn't 4-connected back to the web — never enters `reach` at all, so
     `find_pockets` silently skips it, neither detecting it as a pocket nor as open ground,
@@ -194,9 +188,7 @@ class _PocketCachePass:
         ]
 
         self.decor_blk = FP.decor_blocking_cells(context.existing_objs)
-        precomputed = context.precomputed_pockets
-        raw = precomputed if precomputed is not None else find_pockets(self.global_true)
-        self.blobs = dedupe_pockets(raw, self.global_true)
+        self.blobs = dedupe_pockets(context.pockets, self.global_true)
         self.guard_ident = catalog.guard(1)  # mask uniform across levels 1-7; used to pre-check fit
         self.guard_mask = self.guard_ident.footprint
         self.pickup_ident = catalog.random_artifact(ART_TIER_BY_GUARD_LEVEL[0])
@@ -330,14 +322,11 @@ class _PocketCachePass:
         return all(cover.accepts(probe) for cover in (self.cover, *covers))
 
     def _leaves_cache_spot(self, cand_g: Tile, cand_pocket: frozenset[Tile]) -> bool:
-        guard_cells = {
-            (x, y) for x, y, _b in FP.anchored_cells(self.guard_mask, cand_g[0], cand_g[1])
-        }
         with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD)])
         return any(
             t not in self.cover.claims
             and t in self.global_place
-            and t not in guard_cells
+            and t != cand_g
             and self._pickup_fits(t, with_guard)
             for t in cand_pocket
         )
@@ -346,31 +335,18 @@ class _PocketCachePass:
         self, candidates: Sequence[tuple[Tile, frozenset[Tile], frozenset[Tile]]]
     ) -> _PocketPick | None:
         first: _PocketPick | None = None
-        fallback: _PocketPick | None = None
         for cand_g, cand_pocket, cand_mouth_fs in candidates:
             cand_zid = self._zone_for(cand_g, cand_mouth_fs)
             if cand_zid is None:
                 continue
             if first is None:
                 first = _PocketPick(None, cand_pocket, cand_zid, cand_mouth_fs, cand_g)
-            for stand in guard_stands(cand_g, cand_pocket, cand_mouth_fs):
-                if not (self._guard_fits(stand) and self._leaves_cache_spot(stand, cand_pocket)):
-                    continue
-                pick = _PocketPick(stand, cand_pocket, cand_zid, cand_mouth_fs, cand_g)
-                if FP.overlay_clear(self.guard_mask, stand[0], stand[1], self.decor_blk):
-                    return pick
-                if fallback is None:
-                    fallback = pick
-        return fallback if fallback is not None else first
+            if self._guard_fits(cand_g) and self._leaves_cache_spot(cand_g, cand_pocket):
+                return _PocketPick(cand_g, cand_pocket, cand_zid, cand_mouth_fs, cand_g)
+        return first
 
     def _fill_pocket(self, pick: _PocketPick) -> None:
         guard_tile, pocket, ref_g = pick.guard_tile, pick.pocket, pick.ref_g
-
-        # Size gate: this is already find_pockets' own cap (POCKET_MAX_TILES) on the
-        # upper end -- redundant in practice, but explicit here since it's this
-        # function's actual contract with the fill logic below.
-        if not (1 <= len(pocket) <= POCKET_MAX_TILES):
-            return
 
         # Every pocket requires a guard — skip if none could be placed, unless the
         # pocket mouth is already sealed by a border guard (which isn't in global_place;
@@ -439,9 +415,6 @@ class _PocketCachePass:
         art_spot = avail[-1:]  # deepest tile gets the artifact
         fill_spots = avail[:-1]
 
-        # Use global_place so fill and artifact never stack on top of gameplay objects.
-        self._pocket_fill(fill_spots, draw, reach=self.global_place)
-
         # Artifact at the deepest tile — tier matches guard level. Falls back to a
         # plain resource pile if the tiered identity doesn't land (mirrors
         # `_pocket_fill`'s own per-tile fallback): the tile was already selected via
@@ -449,6 +422,9 @@ class _PocketCachePass:
         # empty under the tile it was recorded as pocket depth for.
         if art_spot:
             self._place_artifact(art_spot[0], self.catalog.random_artifact(tier), draw)
+
+        # Use global_place so fill and artifact never stack on top of gameplay objects.
+        self._pocket_fill(fill_spots, draw, reach=self.global_place)
 
     def _place_guard(self, guard_tile: Tile, lvl: int, draw: _PocketDraw) -> bool:
         gident = self.catalog.guard(lvl)

@@ -7,7 +7,6 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog, Trait
-from vcmi_mapgen.core.grid.pockets import find_pockets
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
@@ -25,7 +24,7 @@ SEERHUT_MIN_REACH = 8  # a zone needs at least this many free reachable tiles to
 @dataclass(frozen=True, slots=True)
 class SeerHutContext:
     gameplay: GameplayStats
-    pocket_tiles: AbstractSet[Tile] | None = None
+    pocket_tiles: AbstractSet[Tile]
     existing_objs: Sequence[PlacedObject] = ()
     used_artifacts: set[str] | None = None
     cover: CoverIndex | None = None
@@ -80,7 +79,7 @@ def place_seer_hut_quests(
     used_artifacts = context.used_artifacts if context.used_artifacts is not None else set[str]()
     placed = 0
     # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
-    _ptiles_global = _quest_pocket_tiles(zone_records, context.pocket_tiles)
+    _ptiles_global = context.pocket_tiles
     env = _QuestEnv(
         catalog, eligible, _ptiles_global, used_artifacts, objs, bounds, cover, context.gameplay
     )
@@ -91,20 +90,6 @@ def place_seer_hut_quests(
         if _place_quest(env, rng, idx_hut, idx_art):
             placed += 1
     return objs, placed
-
-
-def _quest_pocket_tiles(
-    zone_records: Sequence[ZoneRecord], pocket_tiles: AbstractSet[Tile] | None
-) -> AbstractSet[Tile]:
-    if pocket_tiles is not None:
-        return pocket_tiles
-    passable_all = set[Tile]().union(*(zr.passable for zr in zone_records))
-    raw_p = find_pockets(passable_all)
-    _ptiles_acc: set[Tile] = set()
-    for _g, (pt, _mf) in raw_p.items():
-        if len(pt) >= 3:
-            _ptiles_acc |= set(pt)
-    return _ptiles_acc
 
 
 def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int) -> bool:
