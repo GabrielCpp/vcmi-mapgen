@@ -24,8 +24,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 
 - Run everything through uv as a module: `uv run python -m vcmi_mapgen.<module> [...]`.
   Never `pip install`, and never assume a system interpreter.
-- `make check` is the gate: ruff check, ruff format, basedpyright in `all` mode, and
-  pytest. The pre-commit hook and CI both run it.
+- `make check` is the gate: `make lint` (ruff check, ruff format, basedpyright in
+  `all` mode) then `make test` (pytest). CI runs `make check`. The pre-commit hook runs
+  only `make lint`, so run `make test` yourself before committing a behavior change.
 - `make sweep` runs the slow whole-pipeline seed sweep.
 - Determinism: every random draw comes from a seeded `random.Random`. Never introduce
   unseeded randomness or time.

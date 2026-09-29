@@ -1,10 +1,10 @@
 ---
-name: vcmi-mapgen-target-architecture
+name: vcmi-mapgen-process-target-architecture
 description: "Settle a repository's target architecture before refactoring it, then turn it into a migration plan a workflow can execute. Produces two files: docs/architecture/target.md, the human contract (target tree, core models and the facts they own, sources of truth, allowed dependency edges, behaviour oracle), and docs/architecture/plan.json, the machine contract (a fate for every source file and ordered slices with touches, depends_on and done_when). Ships a validator that checks every file has a fate and that slices able to run in parallel touch disjoint files. Nothing moves until the operator sets status to approved. Load before a repo-wide refactor or restructuring, when asked what the architecture should be, or before running a refactor workflow."
 metadata:
   generated_by: farrier
-  source: library/skills/target-architecture/SKILL.md
-  resolve: "farrier source .claude/skills/vcmi-mapgen-target-architecture/SKILL.md"
+  source: library/skills/process/target-architecture/SKILL.md
+  resolve: "farrier source .claude/skills/vcmi-mapgen-process-target-architecture/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [architecture, refactoring, planning]
 ---
@@ -17,7 +17,7 @@ up" without a target cleans toward its own taste, which differs per session. Thi
 fixes the destination first, gets the operator to sign it, and then cuts the route into
 slices small enough that each one ends green.
 
-Load `codebase-map`, `dead-code` and `code-structure` with this skill. The inventory uses
+Load `codebase-map`, `python-dead-code` and `code-structure` with this skill. The inventory uses
 all three.
 
 ## Outputs
@@ -46,7 +46,7 @@ Work in this order. Each phase writes its section of `target.md` before the next
 
 - **Map.** Read every `## Map` section. Where a directory has none, write one line per
   file from reading it. A file whose line needs "and" holds two concerns.
-- **Dead code.** Run the `dead-code` procedure to its classify step. Dead modules get the
+- **Dead code.** Run the `python-dead-code` procedure to its classify step. Dead modules get the
   fate `delete` and go in the first slice. Do not design around code nobody runs.
 - **Rule hits.** Walk the `code-structure` trigger table over the tree. Record each hit as
   `path:line rule-number one-line`. The operator's own complaints go in verbatim, and
@@ -162,7 +162,7 @@ merged.
       "goal": "Delete modules no entry point reaches, with their tests and doc mentions",
       "touches": ["pkg/kit/reachability.py", "pkg/steps/portal/geometry_test.py", "AGENTS.md"],
       "depends_on": ["s00-oracle"],
-      "done_when": ["python3 <dead-code>/scripts/py_unreachable.py --check"],
+      "done_when": ["python3 <python-dead-code>/scripts/py_unreachable.py --check"],
       "rules": ["2.10"]
     }
   ]

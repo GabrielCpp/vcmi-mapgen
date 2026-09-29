@@ -32,12 +32,16 @@ Before section 5 you may read:
   measurements about it. A domain fact stays true whatever the system looks like.
 
 Before section 5 you may not read anything that describes the **existing solution**. That
-covers source files and tests. It also covers any doc, plan, spec, architecture note,
-`AGENTS.md` section or memory that names modules, classes, functions, files or pipeline
-stages, or explains how the current system works. When a document mixes the two, take its
-domain facts and record each design decision it states as a claim (below). Instructions
+covers source files and tests. It also covers any doc whose purpose is the current system:
+architecture notes, plans, roadmaps, as-built specs, `AGENTS.md` module lists and memories
+about the design. Judge a document by its purpose, not by whether a module name appears in
+it. A reference about the domain, such as a file format or the game's rules, may be read
+even when it names a module in passing: take the facts and ignore the names. The one
+solution document you may read early is the input itself, handled as below. Instructions
 already in your context count too: do not name a part or a concept after something they
-list.
+list. A word the problem or the domain uses is fair even when that context uses it too.
+You cannot unsee what loaded on its own. Disclose it at the top of the note and go on.
+Do not restart. Any design decision it carried becomes a claim in section 1b.
 
 If you saw the solution before this skill loaded, say so at the top of the note. Then check
 each part and concept against the test "would I have named this without having seen the
@@ -46,9 +50,11 @@ solution?"
 ### When the input is a solution
 
 An as-built spec, a design doc or a request like "rebuild X" hands you someone's answer.
-Extract the problem from it: who it serves, what they get, the guarantees, and the measures
-of done. That extraction is section 1. Then list each design decision the document takes
-as a **claim** in section 1b: an order of stages, an algorithm, a data structure, a rule.
+Go through it once and sort each statement into one of three kinds: a domain fact, a
+requirement, or a design decision. The facts and requirements become section 1: who it
+serves, what they get, the guarantees, and the measures of done. Then list each design
+decision the document takes as a **claim** in section 1b: an order of stages, an
+algorithm, a data structure, a rule.
 The design does not inherit a claim. Section 4 either re-derives it from a force or rejects
 it, and section 5 checks it against the existing system.
 
@@ -67,7 +73,9 @@ another home. It has these sections, in this order.
 
 ### 1b. Claims
 
-Only when the input is a solution. One line per claim, numbered, in the document's words.
+When the input is a solution, or when design decisions reached you through context that
+loaded on its own. One line per claim, numbered, in the source's words, with the source
+named.
 
 ### 2. Parts and concepts
 
@@ -77,7 +85,8 @@ Work in levels. Finish level 1 before you write level 2.
 responsibility a domain expert would recognise without seeing any code. For a compiler, the
 parts are reading the source, checking its meaning and emitting the target. For each part,
 state what it owns, what it never knows, and what it hands to which other part. Then write
-the flow between the parts in a few lines.
+the flow between the parts in a few lines. A part is a responsibility, not a stage. When a
+part acts at more than one moment, the flow names each moment.
 
 Test the split before going on:
 
@@ -95,17 +104,19 @@ Test the split before going on:
   stay out.
 - A concept is a noun from the domain. `Manager`, `Helper`, `Utils`, `Handler` and
   `Processor` are not concepts. They are the absence of one.
-- Each concept belongs to one part. A concept two parts need is either a shared value type
-  or a sign the level 1 split is wrong. Say which.
+- Each concept belongs to one part. A concept two parts need is one of three things: a
+  shared value type, a read-only reference every part consults such as a catalog, or a
+  sign the level 1 split is wrong. Say which.
 - A part with more than 7 concepts is two parts. Go back to level 1.
 - Stop breaking down when a concept holds one responsibility. Go to a level 3 only inside a
   concept that still needs "and".
 
 ### 3. Invariants
 
-Rules that stay true whatever the implementation. Each names the **one** part, and inside
-it the one concept, that enforces it. An invariant two concepts enforce will drift between
-them. An invariant no concept enforces is a wish. An invariant about the finished whole
+Rules that stay true whatever the implementation. Each names the **one** concept that owns
+it: the one that detects a breach and fails. Other concepts may uphold it during
+construction, and the invariant lists them. An invariant with two owners will drift between
+them. An invariant with no owner is a wish. An invariant about the finished whole
 belongs to the part that can see the finished whole.
 
 ### 4. Forces and patterns
@@ -129,7 +140,7 @@ Rules for both:
 - Each claim from section 1b is either re-derived here from a force, or listed as rejected
   with the reason.
 - Open lookups go here: each is a fact you need from the existing system, and the decision
-  that waits on it.
+  that waits on it. A lookup may need a run or a measurement, not only a read.
 
 ### 5. Mapping onto the existing system
 
@@ -151,7 +162,9 @@ this problem, park it under section 7 and point at `target-architecture`.
 
 Resolve the open lookups from section 4 here. When a lookup or a mismatch changes a part, a
 concept or a pattern, go back and change it in its own section. Do not patch the design in
-section 5.
+section 5. Open section 5 with a short revision log instead: one line per change, naming the
+section and item that changed and the finding that changed it. The changed item keeps its
+earlier verdict and marks it revised, with a pointer to its log line.
 
 ### 6. Slices
 
@@ -168,7 +181,7 @@ reason. Parked findings from section 5 go here too.
 
 Present the note and stop. Write no code and edit no source file until I approve it. If
 plan mode is on, the note is the plan. When the caller is another agent, return the note's
-path, the level 1 parts and section 7.
+path, the level 1 parts and section 7, plus anything else the caller asked for.
 
 When I push back on a part or a concept, change its section and re-derive what hangs off
 it: its concepts, its invariants, its pattern, its mapping. A change patched only into the

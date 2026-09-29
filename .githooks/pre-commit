@@ -5,4 +5,4 @@ set -eu
 # >>> farrier: hooks (generated) >>>
 make farrier-run-hook
 # <<< farrier: hooks <<<
-make check
+make lint

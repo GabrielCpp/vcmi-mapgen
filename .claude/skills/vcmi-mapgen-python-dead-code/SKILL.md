@@ -1,15 +1,15 @@
 ---
-name: vcmi-mapgen-dead-code
-description: "Find and delete code that no production path reaches: modules only tests import, modules nothing imports, and unused functions, classes and constants. Ships a stdlib reachability script for Python and names the tool for TypeScript and Go. Every candidate is verified against dynamic references before deletion, and a dead module leaves with its tests and its doc mentions. Load before a refactor or a target-architecture pass, when a module looks orphaned, or when asked to trim, prune or clean up unused code."
+name: vcmi-mapgen-python-dead-code
+description: "Find and delete Python code that no production path reaches: modules only tests import, modules nothing imports, and unused functions, classes and constants. Ships a stdlib reachability script and pairs it with vulture for unused symbols. Every candidate is verified against dynamic references before deletion, and a dead module leaves with its tests and its doc mentions. Load before a refactor or a target-architecture pass, when a module looks orphaned, or when asked to trim, prune or clean up unused code. Applies to **/*.py."
 metadata:
   generated_by: farrier
-  source: library/skills/dead-code/SKILL.md
-  resolve: "farrier source .claude/skills/vcmi-mapgen-dead-code/SKILL.md"
+  source: library/skills/python/python-dead-code/SKILL.md
+  resolve: "farrier source .claude/skills/vcmi-mapgen-python-dead-code/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [architecture, standards, refactoring]
 ---
 
-# Dead code
+# Python dead code
 
 Dead code costs the next reader twice. An agent searching for an owner finds the dead
 module, trusts it, and builds on it. A test that exercises only dead code keeps it green,
@@ -19,23 +19,21 @@ the target architecture is drawn around code that runs.
 ## What counts as dead
 
 - **A module no root reaches.** A root is an entry point: a declared script, a
-  `__main__` guard, a server or CLI main, a plugin registration. A module reached only
+  `__main__` guard, a plugin registration. A module reached only
   through a test is dead. Its test keeps it compiling and nothing more.
 - **A symbol nothing references.** A function, class, method, constant or parameter that
   no reachable code names.
 - **A branch that cannot run.** A flag nobody sets, a mode nobody selects, a fallback for
   a producer that always exists.
 
-## Tools per stack
+## Tools
 
-| Stack | Unreachable modules | Unused symbols |
-|-------|---------------------|----------------|
-| Python | `scripts/py_unreachable.py` (this skill) | `uvx vulture <pkg> --exclude '*_test.py,test_*.py,tests' --min-confidence 60` |
-| TypeScript | `npx knip` (files and exports) | `npx knip` |
-| Go | `go run golang.org/x/tools/cmd/deadcode@latest ./...` | same tool, it reports functions |
+| Finds | Command |
+|-------|---------|
+| Unreachable modules | `python3 <skill>/scripts/py_unreachable.py` (this skill) |
+| Unused symbols | `uvx vulture <pkg> --exclude '*_test.py,test_*.py,tests' --min-confidence 60` |
 
-Run the stack's tools with the repo's own runner. Do not add them as dependencies for one
-pass.
+Run vulture through `uvx`. Do not add it as a dependency for one pass.
 
 Exclude tests from the symbol scan. A symbol that only a test calls is dead, and a scan
 that counts test usage reports it as used. Keep vulture at 60: at 80 it reports unused
@@ -102,7 +100,7 @@ the guard only runs a demo. Read each guarded root and ask whether a user runs i
    - its fixtures and data files that nothing else reads;
    - every mention in `AGENTS.md`, `README.md`, maps and skills, found by grepping the
      module name;
-   - re-exports in `__init__.py`, `index.ts` or equivalent.
+   - re-exports in `__init__.py`.
    Then delete what the deletion orphaned. Re-run the tools until the list is empty or
    holds only "wire in" rows.
 5. **Prove behaviour held.** Run the full check suite. For a program with deterministic
