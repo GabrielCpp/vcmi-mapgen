@@ -115,8 +115,8 @@ class Catalog(Protocol):
         """The random monster of a strength level, clamped to 1..7."""
         ...
 
-    def random_artifact(self, tier: ArtifactTier | None) -> Identity:
-        """The random artifact of a rarity tier, or of any tier for None."""
+    def random_artifact(self, tier: ArtifactTier) -> Identity:
+        """The random artifact of a rarity tier. `relic` is the one top tier."""
         ...
 
     def random_resource(self) -> Identity:

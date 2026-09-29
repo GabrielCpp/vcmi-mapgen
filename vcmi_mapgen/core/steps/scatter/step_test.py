@@ -87,7 +87,7 @@ class FakeCatalog:
     def guard(self, level: int) -> Identity:
         return self._role("guard", str(level))
 
-    def random_artifact(self, tier: ArtifactTier | None) -> Identity:
+    def random_artifact(self, tier: ArtifactTier) -> Identity:
         return self._role("random_artifact", str(tier))
 
     def random_resource(self) -> Identity:

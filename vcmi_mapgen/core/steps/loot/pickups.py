@@ -32,13 +32,13 @@ from vcmi_mapgen.core.steps.loot.pockets import (
     reachable,
 )
 
-ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier | None, ...] = (
+ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier, ...] = (
     "treasure",
     "treasure",
     "minor",
     "major",
     "major",
-    None,
+    "relic",
 )
 
 

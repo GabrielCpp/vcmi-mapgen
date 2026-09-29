@@ -75,9 +75,8 @@ class VcmiCatalog:
     def guard(self, level: int) -> Identity:
         return OB.identity_of(RO.RANDOM_MONSTERS[max(1, min(7, int(level))) - 1])
 
-    def random_artifact(self, tier: ArtifactTier | None) -> Identity:
-        anim = RO.RANDOM_ARTIFACT if tier is None else RO.RANDOM_ARTIFACT_BY_TIER[tier]
-        return OB.identity_of(anim)
+    def random_artifact(self, tier: ArtifactTier) -> Identity:
+        return OB.identity_of(RO.RANDOM_ARTIFACT_BY_TIER[tier])
 
     def random_resource(self) -> Identity:
         return OB.identity_of(RO.RANDOM_RESOURCE)

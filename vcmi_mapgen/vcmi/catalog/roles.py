@@ -9,7 +9,6 @@ existing network and stays reachable. `SUBTERRANEAN_GATE` has one un-suffixed sp
 from vcmi_mapgen.core.catalog import ArtifactTier, Trait
 
 RANDOM_MONSTERS = tuple(f"avwmon{i}" for i in range(1, 8))
-RANDOM_ARTIFACT = "avarand"
 RANDOM_ARTIFACT_BY_TIER: dict[ArtifactTier, str] = {
     "treasure": "avarnd1",
     "minor": "avarnd2",

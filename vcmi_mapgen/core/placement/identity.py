@@ -9,11 +9,11 @@ from vcmi_mapgen.core.model import Identity, Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
-_ART_TIER_W: tuple[tuple[ArtifactTier | None, int], ...] = (
+_ART_TIER_W: tuple[tuple[ArtifactTier, int], ...] = (
     ("treasure", 50),
     ("minor", 30),
     ("major", 15),
-    (None, 5),
+    ("relic", 5),
 )
 
 
@@ -29,7 +29,7 @@ def pick_random_identity(
     if purpose == Purpose.RESOURCE_PILE and rng.random() < 0.6:
         return catalog.random_resource()
     if purpose == Purpose.REWARD_PICKUP and rng.random() < art_share:
-        tiers: list[ArtifactTier | None] = [t for t, _w in _ART_TIER_W]
+        tiers: list[ArtifactTier] = [t for t, _w in _ART_TIER_W]
         tier = rng.choices(tiers, weights=[w for _t, w in _ART_TIER_W], k=1)[0]
         return catalog.random_artifact(tier)
     return None
