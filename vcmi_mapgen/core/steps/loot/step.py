@@ -11,7 +11,6 @@ from vcmi_mapgen.core.grid.pockets import Pockets, find_pockets
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.border.result import BorderResult
@@ -148,5 +147,5 @@ class LootStep(PipelineStep):
             self.objs.extend(new_objs)
             pockets_by_level[level] = depth
 
-        map_state.add_objs(self.objs, TerrainGate(catalog))
+        map_state.add_objs(self.objs)
         self._ctx.provide(LootResult(pockets=pockets_by_level))

@@ -7,7 +7,6 @@ from typing import override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
@@ -67,4 +66,4 @@ class ScatterStep(PipelineStep):
             for line in piles.log:
                 print(line)
 
-        map_state.add_objs(self.objs, TerrainGate(catalog))
+        map_state.add_objs(self.objs)

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
-from typing import Protocol
 
 from vcmi_mapgen.core.model.objects import PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -195,10 +194,6 @@ class PlacementError(ValueError):
     pass
 
 
-class PlacementRules(Protocol):
-    def check(self, obj: PlacedObject, terrain: dict[int, list[list[Terrain]]], /) -> list[str]: ...
-
-
 @dataclass
 class MapState:
     """The map as VCMI means it: a ``size`` by ``size`` grid on each level, with terrain
@@ -267,18 +262,17 @@ class MapState:
     def conflicts(self, obj: PlacedObject) -> list[str]:
         return covering_problems(obj, self._covers_index())
 
-    def place(self, obj: PlacedObject, rules: PlacementRules) -> None:
-        self.add_objs([obj], rules)
+    def place(self, obj: PlacedObject) -> None:
+        self.add_objs([obj])
 
-    def add_objs(self, new: list[PlacedObject], rules: PlacementRules) -> None:
-        """Append ``new`` to the map. Only the new objects are checked: each against the
-        terrain rules, and each against every other object in both directions. The objects
-        already on the map stay as they are."""
+    def add_objs(self, new: list[PlacedObject]) -> None:
+        """Append ``new`` to the map. Only the new objects are checked, each against every
+        other object in both directions. The objects already on the map stay as they are."""
         objs = [*self.objs, *new]
         index = index_of(objs)
         problems: list[str] = []
         for obj in new:
-            problems += rules.check(obj, self.terrain) + covering_problems(obj, index)
+            problems += covering_problems(obj, index)
             for tile, role in footprint(obj):
                 for cover in index.get((obj.level, tile), ()):
                     if cover.obj is obj:

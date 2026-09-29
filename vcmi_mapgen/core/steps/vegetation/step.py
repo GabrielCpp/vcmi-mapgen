@@ -10,7 +10,6 @@ from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
@@ -98,7 +97,7 @@ class VegetationStep(PipelineStep):
         }
         new_objs = [o for g in grown.values() for o in g.objs]
         self.objs = new_objs
-        map_state.add_objs(new_objs, TerrainGate(catalog))
+        map_state.add_objs(new_objs)
         veg: dict[int, dict[int, VegetatedZone]] = {}
         for level, pl in plan.levels.items():
             sealed = self._seal_level(catalog, map_state, level, pl, pre_taken[level])
@@ -158,6 +157,6 @@ class VegetationStep(PipelineStep):
         if not sealers:
             return NO_TILES
         self.objs.extend(sealers)
-        map_state.add_objs(sealers, TerrainGate(catalog))
+        map_state.add_objs(sealers)
         self.log.append(f"L{level} border plan: {len(sealed)} cells closed")
         return frozenset(sealed)

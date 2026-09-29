@@ -60,7 +60,7 @@ class LootStep(PipelineStep):
 
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         ...
-        map_state.add_objs(self.objs, TerrainGate(catalog))
+        map_state.add_objs(self.objs)
         self._ctx.provide(LootResult(pockets=pockets_by_level))
 ```
 
@@ -109,10 +109,10 @@ raises `MissingProviderError` when it requires the missing value.
 
 ## Every placement step is additive
 
-A step appends its objects with `map_state.add_objs(new, rules)`, where `rules` is a
-`PlacementRules` such as `TerrainGate(catalog)`. It never removes or moves an object
-an earlier step placed. It checks each candidate with a `CoverIndex` and the terrain
-rules first, and it treats a refusal as "try the next candidate". Only `VegetationStep` may raise, when it walls off a pocket.
+A step appends its objects with `map_state.add_objs(new)`. It never removes or moves an
+object an earlier step placed. It checks each candidate with a `CoverIndex` first, and it
+treats a refusal as "try the next candidate". Terrain holds by construction: the step
+draws identities from the catalog for the zone's terrain and keeps solid cells in the zone. Only `VegetationStep` may raise, when it walls off a pocket.
 `core/steps/AGENTS.md` has the full rule, including guard spacing.
 
 ## Only `generate` builds the pipeline

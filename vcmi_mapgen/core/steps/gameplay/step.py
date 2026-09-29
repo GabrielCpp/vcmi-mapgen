@@ -15,7 +15,6 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
-from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteIndex, SiteZone, ZoneSite
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.priors.bundle import Priors
@@ -185,13 +184,11 @@ class GameplayStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         self._grids = map_state.terrain
-        gate = TerrainGate(catalog)
         self._pick_player_zones()
         for _level, pl in sorted(self._plan.levels.items()):
-            map_state.add_objs(list(pl.sea), gate)
+            map_state.add_objs(list(pl.sea))
         indexes = {
-            level: self._index(catalog, level, map_state, gate)
-            for level in sorted(self._plan.levels)
+            level: self._index(catalog, level, map_state) for level in sorted(self._plan.levels)
         }
         gates = self._place_gates(catalog, indexes, map_state)
         ledger = Ledger(set(BASIC_MINE_RES), len(self._player_zids), 0)
@@ -203,7 +200,7 @@ class GameplayStep(PipelineStep):
             self._place_shipyards(indexes[0], map_state, catalog)
         for (level, zid), draw in sorted(draws.items()):
             place_attractions(indexes[level].sites[zid], draw)
-        self._finish(catalog, indexes, map_state, gate)
+        self._finish(catalog, indexes, map_state)
         if ledger.missing:
             print(f"  WARNING: mine coverage incomplete — missing {sorted(ledger.missing)}")
         self._ctx.provide(gates)
@@ -267,13 +264,11 @@ class GameplayStep(PipelineStep):
         catalog: Catalog,
         level: int,
         map_state: MapState,
-        gate: TerrainGate,
     ) -> SiteIndex:
         lf = LevelField.build(
             level,
             self._grids[level],
             [o for o in map_state.objs if o.level == level],
-            lambda o: not gate.check(o, map_state.terrain),
         )
         idx = SiteIndex(lf)
         vegetated = self._veg.zones[level]
@@ -312,7 +307,6 @@ class GameplayStep(PipelineStep):
         catalog: Catalog,
         indexes: dict[int, SiteIndex],
         map_state: MapState,
-        gate: TerrainGate,
     ) -> None:
         towns: dict[tuple[int, int], list[PlacedObject]] = {}
         zones: dict[int, dict[int, PlacedZone]] = {}
@@ -334,7 +328,7 @@ class GameplayStep(PipelineStep):
                 [o for o in [*map_state.objs, *self.objs] if o.level == level],
             )
             landings[level] = ZPL.Landings(frozenset(blk), frozenset(appr))
-        map_state.add_objs(self.objs, gate)
+        map_state.add_objs(self.objs)
         map_state.player_towns = self._player_towns(towns)
         self._ctx.provide(GameplayResult(zones, landings, town_of_zone))
 

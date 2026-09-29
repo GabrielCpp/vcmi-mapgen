@@ -6,7 +6,6 @@ Where an object stands and which tiles it takes. A module here reads `Footprint`
 ## Map
 
 - `footprint.py`: footprint cell expansion: `anchored_cells`, `footprint_cells`, `blocking_cells`, `interactive_cells`, `decor_blocking_cells`, `overlay_clear` and `front_tiles`.
-- `rules.py`: `TerrainGate`, the terrain placement rule `MapState.add_objs` checks.
 - `guards.py`: the GAP rule, the gameplay-footprint fit, a guard's zone of control and spacing, and the random-monster identity.
 - `cells.py`: `CellRules` and `legal_cells`, the tiles a pickup may stand on.
 - `identity.py`: the random class ids and the identity picks. `pick_kind` draws one fixed identity from a pool under a caller's weight, and `solo_visit_pool` lists the visitable kinds a lone pickup may be.

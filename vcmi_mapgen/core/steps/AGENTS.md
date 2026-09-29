@@ -77,10 +77,11 @@ and `water_test.py` do, because no step package may import another step.
 
 ## Every placement step is additive
 
-A step appends its own objects with `map_state.add_objs(new, rules)`. It never removes,
+A step appends its own objects with `map_state.add_objs(new)`. It never removes,
 moves or replaces an object an earlier step placed. Plan into a scratch list and commit only what fits: pre-check
-each object with `CoverIndex.try_claim` and the terrain gate, and try the next candidate
-when one is refused. A group that fails part way rolls the cover back to its `mark()`. Only `VegetationStep` may raise, when it walls off a pocket.
+each object with `CoverIndex.try_claim`, and try the next candidate when one is refused.
+Terrain holds by construction. A step draws each identity from the catalog for its zone's
+terrain and keeps every solid cell inside that zone, so no step checks terrain afterwards. A group that fails part way rolls the cover back to its `mark()`. Only `VegetationStep` may raise, when it walls off a pocket.
 
 The step that places a guarded object also places its monster. No guard stands within
 Chebyshev 2 of another (`core.placement.guards.guard_spaced`), so no later pass deletes

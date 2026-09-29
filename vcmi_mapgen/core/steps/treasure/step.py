@@ -7,7 +7,6 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gated.result import GatedResult
@@ -50,7 +49,7 @@ class TreasureStep(PipelineStep):
             for o in new:
                 o.level = level
             self.objs.extend(new)
-        map_state.add_objs(self.objs, TerrainGate(catalog))
+        map_state.add_objs(self.objs)
 
     def _fill_level(
         self, catalog: Catalog, level: int, level_objs: list[PlacedObject]

@@ -7,7 +7,6 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.placement.rules import TerrainGate
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.steps.border import crossings as BS
@@ -80,5 +79,5 @@ class BorderStep(PipelineStep):
                 )
             guards[level] = guarded.guard_tiles
 
-        map_state.add_objs(self.objs, TerrainGate(catalog))
+        map_state.add_objs(self.objs)
         self._ctx.provide(BorderResult(log=self.log, guard_tiles=guards))

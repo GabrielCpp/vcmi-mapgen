@@ -120,7 +120,7 @@ class OpenZonePlacer:
         tiles = frozenset(ts)
         st = self.gameplay[terrain]
         sz = SiteZone(terrain, st, tiles, frozenset(), frozenset({min(ts)}), tiles, tiles)
-        lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [], lambda _o: True)
+        lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [])
         site = ZoneSite(self.catalog, 1, sz, lf, seed)
         ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
         spec = DrawSpec(1, terrain, len(ts), player=player)

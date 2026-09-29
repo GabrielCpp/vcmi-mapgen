@@ -35,8 +35,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       for the values it publishes.
     - `grid/`: pure grid algorithms: segmentation (`segment.py`), components, geodesic
       paths, pockets, edge distance and noise.
-    - `placement/`: where an object stands: footprint cells (`footprint.py`), the terrain
-      rule `TerrainGate` (`rules.py`), guards, sites, `place_one` and scatter.
+    - `placement/`: where an object stands: footprint cells (`footprint.py`), guards,
+      sites, `place_one` and scatter.
     - `planning/`: the zone plan `VegetationStep` starts from (`zone_plan.py`), the entrance
       geometry (`entrances.py`) and the one `ZoneRecord` per zone (`zone_index.py`).
     - `priors/`: the corpus priors as frozen values.

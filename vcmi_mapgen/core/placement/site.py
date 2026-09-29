@@ -15,7 +15,7 @@ from __future__ import annotations
 import collections
 import math
 import random
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final
@@ -144,7 +144,7 @@ def cheb(a: Tile, b: Tile) -> int:
 class LevelField:
     """What every zone of one level shares. ``unwalkable`` is water, rock and every blocking
     cell on the level, vegetation included. ``occupied`` holds gameplay footprints and
-    ``near`` their blocking cells inflated by GAP. ``legal`` is the terrain rule."""
+    ``near`` their blocking cells inflated by GAP."""
 
     level: int
     size: tuple[int, int]
@@ -152,7 +152,6 @@ class LevelField:
     occupied: set[Tile]
     near: set[Tile]
     covers: CoverIndex
-    legal: Callable[[PlacedObject], bool]
     avoid: AbstractSet[Tile] = NO_TILES
 
     @classmethod
@@ -161,7 +160,6 @@ class LevelField:
         level: int,
         grid: Sequence[Sequence[int]],
         objs: Sequence[PlacedObject],
-        legal: Callable[[PlacedObject], bool],
     ) -> LevelField:
         unwalkable = {
             (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if Terrain(c).is_barrier
@@ -178,7 +176,7 @@ class LevelField:
             if any(_on_land(grid, t) for t in allc):
                 inflate_gap(near, (t for t, ch in tiles if ch in ("B", "X")))
         size = (len(grid[0]) if grid else 0, len(grid))
-        return cls(level, size, unwalkable, occupied, near, CoverIndex(objs), legal)
+        return cls(level, size, unwalkable, occupied, near, CoverIndex(objs))
 
     def claim(self, obj: PlacedObject, cells: Iterable[Tile], blk: Iterable[Tile]) -> None:
         cells = list(cells)
@@ -193,7 +191,7 @@ class LevelField:
 
     def accepts(self, obj: PlacedObject) -> bool:
         obj.level = self.level
-        return self.covers.accepts(obj) and self.legal(obj)
+        return self.covers.accepts(obj)
 
 
 def _on_land(grid: Sequence[Sequence[int]], t: Tile) -> bool:

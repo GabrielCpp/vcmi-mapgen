@@ -10,7 +10,6 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.footprint import anchored_cells, interactive_cells
 from vcmi_mapgen.core.placement.guards import guard_spaced, guard_zoc
-from vcmi_mapgen.core.placement.rules import footprint_violations
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import (
     BorderStep,
@@ -143,11 +142,15 @@ def test_placement_steps_change_objs(
 
 
 def test_no_object_stands_on_a_disallowed_terrain(pipeline_run: PipelineRun) -> None:
+    catalog = pipeline_run.catalog
     violations = [
-        v
+        (o.kind, (tx, ty))
         for o in pipeline_run.state.objs
-        if (grid := pipeline_run.state.terrain.get(o.level)) is not None
-        for v in footprint_violations(pipeline_run.catalog, grid, o)
+        if o.kind and (grid := pipeline_run.state.terrain.get(o.level)) is not None
+        for tx, ty, _blocking in anchored_cells(o.footprint.solid(), o.x, o.y)
+        if 0 <= ty < len(grid)
+        and 0 <= tx < len(grid[ty])
+        and not catalog.allowed_on(o.kind, grid[ty][tx])
     ]
     assert violations == []
 
