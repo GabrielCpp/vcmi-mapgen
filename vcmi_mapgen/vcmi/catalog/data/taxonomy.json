@@ -465,7 +465,14 @@
                 "land": ["ava0007", "ava0008", "ava0009", "ava0010", "ava0011", "ava0012", "ava0013", "ava0014", "ava0015", "ava0016", "ava0017", "ava0018", "ava0019", "ava0020", "ava0021", "ava0022", "ava0023", "ava0024", "ava0025", "ava0026", "ava0027", "ava0028", "ava0029", "ava0030", "ava0031", "ava0032", "ava0033", "ava0034", "ava0035", "ava0036", "ava0037", "ava0038", "ava0039", "ava0040", "ava0041", "ava0042", "ava0043", "ava0044", "ava0045", "ava0046", "ava0047", "ava0048", "ava0049", "ava0050", "ava0051", "ava0052", "ava0053", "ava0054", "ava0055", "ava0056", "ava0057", "ava0058", "ava0059", "ava0060", "ava0061", "ava0062", "ava0063", "ava0064", "ava0065", "ava0066", "ava0067", "ava0068", "ava0069", "ava0070", "ava0071", "ava0072", "ava0073", "ava0074", "ava0075", "ava0076", "ava0077", "ava0078", "ava0079", "ava0080", "ava0081", "ava0082", "ava0083", "ava0084", "ava0085", "ava0086", "ava0087", "ava0088", "ava0089", "ava0090", "ava0091", "ava0092", "ava0093", "ava0094", "ava0095", "ava0096", "ava0097", "ava0098", "ava0099", "ava0100", "ava0101", "ava0102", "ava0103", "ava0104", "ava0105", "ava0106", "ava0107", "ava0108", "ava0109", "ava0110", "ava0111", "ava0112", "ava0113", "ava0114", "ava0115", "ava0116", "ava0117", "ava0118", "ava0119", "ava0120", "ava0121", "ava0122", "ava0123", "ava0124", "ava0125", "ava0126", "ava0127", "ava0129", "ava0130", "ava0131", "ava0132", "ava0133", "ava0134", "ava0135", "ava0136", "ava0137", "ava0138", "ava0139", "ava0140", "ava0141"]
             },
             "CAMPFIRE": {
-                "land": ["adcfra", "avxcfds0", "avxcflv0", "avxcfsn0"]
+                "dirt": ["adcfra"],
+                "grass": ["adcfra"],
+                "lava": ["avxcflv0"],
+                "rough": ["adcfra"],
+                "sand": ["avxcfds0"],
+                "snow": ["avxcfsn0"],
+                "subterr": ["avxcfds0"],
+                "swamp": ["adcfra"]
             },
             "CORPSE": {
                 "land": ["avxskds0"]

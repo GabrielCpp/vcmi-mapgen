@@ -356,6 +356,7 @@ TERRAIN_COUPLED = {
     "REDWOOD_OBSERVATORY",
     "SIGN",
     "PILLAR_OF_FIRE",
+    "CAMPFIRE",
 }
 
 
