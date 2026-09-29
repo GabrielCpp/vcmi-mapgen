@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Self
 
 from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
+from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
@@ -24,7 +25,6 @@ LOOT_HERO_STRUCTURE_MIN_SEP = 2
 _LOOT_RARE_RESOURCE_SUBTYPES = frozenset(
     {Resource.MERCURY, Resource.SULFUR, Resource.CRYSTAL, Resource.GEMS, Resource.GOLD}
 )
-_DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,54 +70,53 @@ class FillZone:
     """One sealed loot zone to fill: its walkable interior and the gate or monolith footprint
     that must stay clear of decoration."""
 
-    zid: int
     terrain: str
     st: TerrainStats
     reach: frozenset[Tile]
-    rng: random.Random
     all_ts: AbstractSet[Tile]
     footprint: AbstractSet[Tile]
 
-
-def _fill_background(
-    catalog: Catalog, zone: FillZone, objs_out: list[PlacedObject], cover: CoverIndex
-) -> None:
-    outside = zone.all_ts - zone.reach
-    interior = {
-        t for t in zone.reach if not any((t[0] + dx, t[1] + dy) in outside for dx, dy in _DIRS8)
-    }
-    pool_bg = catalog.decor(zone.terrain, blocking=False, max_cells=1)
-    if not pool_bg:
-        return
-    for t in sorted(interior):
-        if zone.rng.random() < 0.5:
-            o = PlacedObject.at(zone.rng.choice(pool_bg), t, purpose="")
-            if cover.try_add(o):
-                objs_out.append(o)
-
-
-def _fill_hero_structures(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
-    free = sorted(zone.reach - target.cover.claims)
-    zone.rng.shuffle(free)
-    for struct_type in sorted({i.type for i in pools.pool_vis if i.type is not None}):
-        candidates = [i for i in pools.pool_vis if i.type == struct_type]
-        if not candidates:
-            continue
-        spec = PlaceSpec(
-            Purpose.BONUS_TEMP,
-            None,
-            ident=zone.rng.choice(candidates),
-            cache=True,
-            interactive_only=True,
+    def interior(self) -> frozenset[Tile]:
+        """The reach tiles with no 8-neighbour outside the reach and inside the level's zones."""
+        outside = self.all_ts - self.reach
+        return frozenset(
+            t for t in self.reach if not any((t[0] + dx, t[1] + dy) in outside for dx, dy in NB8)
         )
-        placed: list[Tile] = []
-        for t in free:
-            if len(placed) >= _LOOT_HERO_STRUCTURE_COUNT:
-                break
-            if t in target.cover.claims or _too_close(t, placed):
-                continue
-            if place_one(target, spec, *t):
-                placed.append(t)
+
+
+@dataclass(frozen=True, slots=True)
+class _Walk:
+    """What the one pass reads beside the tile: the zone, its pools, the interior that takes
+    background decor, the chosen hero structure per type and the placement target."""
+
+    zone: FillZone
+    pools: _LootPools
+    interior: frozenset[Tile]
+    heroes: Mapping[str, Identity]
+    target: PlaceTarget
+
+
+def _hero_choices(rng: random.Random, pools: _LootPools) -> dict[str, Identity]:
+    types = sorted({i.type for i in pools.pool_vis if i.type is not None})
+    return {k: rng.choice([i for i in pools.pool_vis if i.type == k]) for k in types}
+
+
+def _hero_type(
+    rng: random.Random, t: Tile, left: int, placed: Mapping[str, Sequence[Tile]]
+) -> str | None:
+    """Selection sampling: with `left` tiles still to walk, a hero structure lands here with
+    the chance its unplaced count over `left`, so the structures spread over the zone in one
+    pass. The type is the least placed one with room that keeps its minimum separation at
+    `t`, so every type appears before any appears twice."""
+    owed = sum(_LOOT_HERO_STRUCTURE_COUNT - len(ts) for ts in placed.values())
+    if owed <= 0 or rng.random() * left >= owed:
+        return None
+    fits = [
+        (len(ts), kind)
+        for kind, ts in placed.items()
+        if len(ts) < _LOOT_HERO_STRUCTURE_COUNT and not _too_close(t, ts)
+    ]
+    return min(fits)[1] if fits else None
 
 
 def _too_close(t: Tile, placed: Sequence[Tile]) -> bool:
@@ -142,85 +141,88 @@ def _roll_spec(
         return PlaceSpec(
             Purpose.REWARD_PICKUP, pools.pool_art, ident=ident, cache=True, interactive_only=True
         )
-    if pools.pool_rare:
-        return PlaceSpec(
-            Purpose.RESOURCE_PILE,
-            pools.pool_res,
-            ident=rng.choice(pools.pool_rare),
-            cache=True,
-            interactive_only=True,
-        )
-    return None
+    return _rare_spec(rng, pools)
 
 
-def _fill_rolls(zone: FillZone, pools: _LootPools, target: PlaceTarget) -> None:
-    chest_kinds = [k for k, p in pools.chest_kind_pools.items() if p]
-    for t in sorted(zone.reach - target.cover.claims):
-        spec = _roll_spec(zone.rng, pools, chest_kinds)
-        if spec is not None:
-            _ = place_one(target, spec, *t)
+def _rare_spec(rng: random.Random, pools: _LootPools) -> PlaceSpec | None:
+    if not pools.pool_rare:
+        return None
+    return PlaceSpec(
+        Purpose.RESOURCE_PILE,
+        pools.pool_res,
+        ident=rng.choice(pools.pool_rare),
+        cache=True,
+        interactive_only=True,
+    )
 
 
-def _fill_decor(
-    catalog: Catalog, zone: FillZone, t: Tile, objs_out: list[PlacedObject], cover: CoverIndex
-) -> bool:
-    pool = catalog.decor(zone.terrain, blocking=True, max_cells=1)
-    if not pool:
+def _background(walk: _Walk, t: Tile) -> None:
+    pool = walk.target.catalog.decor(walk.zone.terrain, blocking=False, max_cells=1)
+    if t in walk.interior and pool and walk.target.rng.random() < 0.5:
+        o = PlacedObject.at(walk.target.rng.choice(pool), t, purpose="")
+        if walk.target.cover.try_add(o):
+            walk.target.objs.append(o)
+
+
+def _blocking_decor(walk: _Walk, t: Tile) -> bool:
+    pool = walk.target.catalog.decor(walk.zone.terrain, blocking=True, max_cells=1)
+    if t in walk.zone.footprint or not pool:
         return False
-    o = PlacedObject.at(zone.rng.choice(pool), t, purpose="")
-    if not cover.try_claim(o, [t]):
+    o = PlacedObject.at(walk.target.rng.choice(pool), t, purpose="")
+    if not walk.target.cover.try_claim(o, [t]):
         return False
-    objs_out.append(o)
+    walk.target.objs.append(o)
     return True
 
 
-def _fill_tile(
-    zone: FillZone, pools: _LootPools, target: PlaceTarget, t: Tile, cover: CoverIndex
-) -> bool:
-    if pools.pool_rare:
-        spec = PlaceSpec(
-            Purpose.RESOURCE_PILE,
-            pools.pool_res,
-            ident=zone.rng.choice(pools.pool_rare),
-            cache=True,
-            interactive_only=True,
-        )
-        if place_one(target, spec, *t):
-            return True
-    spec = PlaceSpec(Purpose.RESOURCE_PILE, pools.pool_res, cache=True, interactive_only=True)
-    if place_one(target, spec, *t):
-        return True
-    return t not in zone.footprint and _fill_decor(target.catalog, zone, t, target.objs, cover)
+def _hero(walk: _Walk, t: Tile, kind: str) -> bool:
+    ident = walk.heroes[kind]
+    spec = PlaceSpec(Purpose.BONUS_TEMP, None, ident=ident, cache=True, interactive_only=True)
+    return place_one(walk.target, spec, *t)
 
 
-def _fill_remaining(
-    zone: FillZone, pools: _LootPools, target: PlaceTarget, cover: CoverIndex
-) -> None:
-    for t in sorted(zone.reach - cover.claims):
-        if t in cover.claims:
-            continue
-        if not _fill_tile(zone, pools, target, t, cover):
-            print(
-                f"  WARNING: loot zone fill left tile {t} unclaimed "
-                + f"(no fitting identity for terrain {zone.terrain!r})"
-            )
+def _loot(walk: _Walk, t: Tile) -> bool:
+    """The first of these that lands at `t`: the rolled loot, a rare resource, any resource,
+    then a blocking decoration."""
+    rng, pools = walk.target.rng, walk.pools
+    chest_kinds = [k for k, p in pools.chest_kind_pools.items() if p]
+    specs = [
+        _roll_spec(rng, pools, chest_kinds),
+        _rare_spec(rng, pools),
+        PlaceSpec(Purpose.RESOURCE_PILE, pools.pool_res, cache=True, interactive_only=True),
+    ]
+    landed = any(spec is not None and place_one(walk.target, spec, *t) for spec in specs)
+    return landed or _blocking_decor(walk, t)
 
 
 def fill_loot_zone(
     catalog: Catalog,
     zone: FillZone,
-    objs_out: list[PlacedObject],
+    rng: random.Random,
     cover: CoverIndex,
     bounds: tuple[int, int] | None,
-) -> None:
-    """Fill one sealed loot zone: passable background decor, hero structures, rolled loot,
-    then a resource or a blocking decoration on every tile still free."""
+) -> list[PlacedObject]:
+    """Fill one sealed loot zone in one pass over its free tiles. A tile takes the hero
+    structure due there, or else a passable background decoration and then the first of
+    rolled loot, a resource or a blocking decoration that lands there."""
     pools = _LootPools.of(catalog, zone.terrain)
-    target = PlaceTarget(catalog, objs_out, cover, zone.reach, zone.rng, zone.st, bounds=bounds)
-    _fill_background(catalog, zone, objs_out, cover)
-    _fill_hero_structures(zone, pools, target)
-    _fill_rolls(zone, pools, target)
-    _fill_remaining(zone, pools, target, cover)
+    objs: list[PlacedObject] = []
+    target = PlaceTarget(catalog, objs, cover, zone.reach, rng, zone.st, bounds=bounds)
+    walk = _Walk(zone, pools, zone.interior(), _hero_choices(rng, pools), target)
+    placed: dict[str, list[Tile]] = {k: [] for k in walk.heroes}
+    tiles = sorted(zone.reach - cover.claims)
+    for i, t in enumerate(tiles):
+        hero = _hero_type(rng, t, len(tiles) - i, placed)
+        if hero is not None and _hero(walk, t, hero):
+            placed[hero].append(t)
+            continue
+        _background(walk, t)
+        if t not in cover.claims and not _loot(walk, t):
+            print(
+                f"  WARNING: loot zone fill left tile {t} unclaimed "
+                + f"(no fitting identity for terrain {zone.terrain!r})"
+            )
+    return objs
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,13 +262,12 @@ def fill_loot_zones(
             continue
         cover.claim((zr.ts & blocked) | (zr.ts & interactive) | footprint)
         zone = FillZone(
-            zid=zr.zid,
             terrain=zr.terrain,
             st=level.gameplay[zr.terrain],
             reach=frozenset(zr.ts - blocked - footprint),
-            rng=random.Random(seed ^ (zr.zid * 92821) ^ 0xA117),
             all_ts=all_ts,
             footprint=footprint,
         )
-        fill_loot_zone(catalog, zone, new, cover, bounds)
+        rng = random.Random(seed ^ (zr.zid * 92821) ^ 0xA117)
+        new.extend(fill_loot_zone(catalog, zone, rng, cover, bounds))
     return new, frozenset(cover.claims)

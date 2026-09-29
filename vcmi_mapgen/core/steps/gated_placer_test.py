@@ -427,7 +427,7 @@ def test_loot_zone_fill_across_many_seeds_never_exceeds_two_per_hero_structure(
 def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_each_other(
     catalog: Catalog, priors: Priors
 ) -> None:
-    """Pass 1 (user-mandated 2026-09): TWO instances of each of the 3 whitelisted
+    """Hero structures (user-mandated 2026-09): TWO instances of each of the 3 whitelisted
     hero-strengthening structures, separated from one another (never adjacent/
     touching) rather than clustered together. Sampled across enough seeds/zone sizes
     that a comfortably-sized zone actually reaches the target count of 2 for at least
@@ -475,7 +475,7 @@ def _rect_zone_records(w: int, h: int) -> tuple[list[ZoneRecord], list[PlacedObj
 def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_permitting(
     catalog: Catalog, priors: Priors
 ) -> None:
-    """Pass 1 (user-mandated 2026-09): no throttle to a fraction of the zone -- every
+    """Hero structures (user-mandated 2026-09): no throttle to a fraction of the zone -- every
     whitelisted type gets its (up to two) instances placed, tile availability
     permitting. A comfortably-sized zone must see all 3 whitelisted types appear on at
     least one seed."""
@@ -500,7 +500,7 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
 
 
 def test_loot_zone_fill_pass2_uses_the_20_40_40_split(catalog: Catalog, priors: Priors) -> None:
-    """Pass 2 (user-mandated 2026-09): 20% major/relic artifact, 40% chest, 40% rare
+    """Rolled loot (user-mandated 2026-09): 20% major/relic artifact, 40% chest, 40% rare
     resource -- not the old 30/30/40 split. Statistical check over many seeds/tiles:
     the artifact share must sit near 20%, not 30%."""
     n_art = n_chest = n_res = 0
