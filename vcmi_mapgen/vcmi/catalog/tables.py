@@ -13,7 +13,7 @@ small irreducible ontology the data cannot teach (zero negative examples). Subty
 are canonical H3 orderings, verified against the corpus subclass distributions.
 
 The full CLUSTER -> PURPOSE -> type -> terrain -> leaf tree lives in
-``vcmi/catalog/data/taxonomy.json`` and :func:`taxonomy` loads it once, lazily. It is the ABSOLUTE
+``data/catalog/taxonomy.json`` and :func:`taxonomy` loads it once, lazily. It is the ABSOLUTE
 object list the VCMI/H3 map editor can place, derived from the object-template table
 (objects.txt in the H3 LOD), NOT from the corpus::
 
@@ -24,7 +24,7 @@ object list the VCMI/H3 map editor can place, derived from the object-template t
 A terrain node holds its leaves as a sorted list of animation DEFs (leaf name == animation), OR
 a {colour: animation} dict for colour-keyed quest objects (leaf name == colour).
 
-``vcmi/catalog/data/leaf_meta.json`` holds per-animation placement metadata (footprint mask +
+``data/catalog/leaf_meta.json`` holds per-animation placement metadata (footprint mask +
 class/subclass) so the catalog is self-sufficient for tile placement and `.vmap` writing, with
 no corpus needed. It maps each lowercase animation DEF to ``[class, subclass, [row, ...]]``;
 the rows are B/A/V strings (vcmi.footprint.footprint_of semantics) decoded from the objects.txt
@@ -68,12 +68,12 @@ def _load_json[T](path: Path, _shape: type[T]) -> T:
         return cast(T, json.load(fh))
 
 
-DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "catalog"
 
 
 @cache
 def class_names() -> dict[int, str]:
-    """VCMI class id to its MapObjectID name, from ``vcmi/catalog/data/objclass_names.json``."""
+    """VCMI class id to its MapObjectID name, from ``data/catalog/objclass_names.json``."""
     return {
         int(k): v for k, v in _load_json(DATA_DIR / "objclass_names.json", dict[str, str]).items()
     }
@@ -446,21 +446,21 @@ def table_path(name: str) -> Path:
 
 @cache
 def taxonomy() -> Taxonomy:
-    """The CLUSTER->PURPOSE->type->terrain->leaf tree from ``vcmi/catalog/data/taxonomy.json``."""
+    """The CLUSTER->PURPOSE->type->terrain->leaf tree from ``data/catalog/taxonomy.json``."""
     with open(table_path("taxonomy.json")) as fh:
         return cast(Taxonomy, json.load(fh))
 
 
 @cache
 def vcmi_type_classes() -> dict[str, int]:
-    """VCMI object type to its class id, from ``vcmi/catalog/data/vcmi_types.json``."""
+    """VCMI object type to its class id, from ``data/catalog/vcmi_types.json``."""
     with open(table_path("vcmi_types.json")) as fh:
         return cast(dict[str, int], json.load(fh))
 
 
 @cache
 def leaf_meta() -> dict[str, LeafMeta]:
-    """Per-animation placement metadata from ``vcmi/catalog/data/leaf_meta.json``."""
+    """Per-animation placement metadata from ``data/catalog/leaf_meta.json``."""
     with open(table_path("leaf_meta.json")) as fh:
         raw = cast(dict[str, tuple[int, int, list[str]]], json.load(fh))
     return {anim: LeafMeta(cls, sub, tuple(rows)) for anim, (cls, sub, rows) in raw.items()}

@@ -20,7 +20,7 @@ economy and guard strength stay balanced.
 
 ## How it works
 
-Everything is **learned from real maps** (`maps/`, 159 classic `.h3m` maps) and
+Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m` maps) and
 **deterministic** (same seed ⇒ bit-identical map):
 
 1. **Macro layout** — capacity-constrained zone growth with textured borders,
@@ -69,7 +69,7 @@ uv run python -m vcmi_mapgen.cli generate \
 ```
 
 `generate` reads its corpus statistics from `data/pp/` and never loads a corpus map. After a
-change to `maps_vmap/` or to a statistic's code, rebuild the files:
+change to `data/corpus/vmap/` or to a statistic's code, rebuild the files:
 
 ```bash
 uv run python -m vcmi_mapgen.cli mine-stats
@@ -88,16 +88,19 @@ uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
 
 `audit` lists the corpus objects the generator cannot reproduce, and exits non-zero when there
 is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
-`maps_vmap/` from `maps/`. `corpus-match` compares where gameplay
+`data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
 objects sit in corpus zones and in generated zones.
 
 ## Map
 
 - `vcmi_mapgen/`: the Python package. It generates, renders and reads maps, and extracts the corpus.
 - `vcmi-h3m-format-reference/`: verbatim VCMI C++ sources that document the `.h3m` format.
-- `maps/`: the `.h3m` corpus of 159 real maps, the source data.
-- `maps_vmap/`: one `.vmap` per corpus map, the generator's input, regenerable from `maps/`.
-- `data/`: corpus-derived priors and fitted statistics. `cli mine-stats` writes `data/pp/`.
+- `data/`: every map and data file the project keeps.
+- `data/corpus/h3m/`: the `.h3m` corpus of 159 real maps, the source data.
+- `data/corpus/vmap/`: one `.vmap` per corpus map, regenerable from `data/corpus/h3m/`.
+- `data/catalog/`: the VCMI object tables, written by `cli regen-ontology`.
+- `data/pp/`: corpus-derived priors and fitted statistics, written by `cli mine-stats`.
+- `data/golden.json`: the golden map hashes.
 - `docs/`: specs, architecture and the VCMI H3M format reference notes.
 
 ## Tests

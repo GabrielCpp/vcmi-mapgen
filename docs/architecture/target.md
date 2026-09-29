@@ -311,7 +311,7 @@ statistics family, named after the family: `macro.py`, `markov.py`,
 | `catalog/regen.py` | `ontology.py` (s) | `regenerate`: rebuilds the two JSON tables from the editor's `objects.txt`. Only `cli` calls it. |
 | `catalog/adapter.py` | `ontology.py` `Ontology` (s) | `VcmiCatalog`, the implementation of `Catalog`. It maps `ObjectKind` to animation and a mask to a `Footprint`, and applies `Restrictions`. |
 | `catalog/restrictions.py` | | `Restrictions`: map-wide bans and the header's allowed spells, artifacts and heroes. |
-| `formats/vmap/` | `kit/vmap/*` | `VmapDocument`, reader, writer, mask charset, terrain strings, `visitable_from`. The reader is the one way any code reads a `.vmap`, including the 159 corpus maps in `maps_vmap/`. |
+| `formats/vmap/` | `kit/vmap/*` | `VmapDocument`, reader, writer, mask charset, terrain strings, `visitable_from`. The reader is the one way any code reads a `.vmap`, including the 159 corpus maps in `data/corpus/vmap/`. |
 | `formats/h3m.py` | `h3m.py` | `parse_file`, `H3Map`. Moves whole. |
 | `formats/lod.py` | `kit/lod.py` | LOD archive index. |
 | `formats/defs.py` | `renderers/sprites.py` (s) | `parse_def`, `_decode_frame` for DEF formats 0 to 3. |
@@ -343,7 +343,7 @@ Loading JSON is I/O, and it is allowed here because `vcmi/` is an adapter.
   The tiler loader is the exception: tile art is VCMI's, so its type lives in
   `vcmi/tiles.py` and no step receives it.
 - `corpus/maps.py` holds `corpus_path(name)`, `all_map_names` and `load_corpus_map(name)`,
-  which calls `vcmi.load.load_map` on `maps_vmap/<name>.vmap`. A corpus map is a
+  which calls `vcmi.load.load_map` on `data/corpus/vmap/<name>.vmap`. A corpus map is a
   `MapState`, like a generated one, so a miner, a renderer and `corpus-match` read both the
   same way. `FaithfulMap` goes. Only miners and `cli` import `corpus/maps.py`. The tiler
   miner reads tile strings through `vcmi/formats/vmap/reader.py`, because MapState carries

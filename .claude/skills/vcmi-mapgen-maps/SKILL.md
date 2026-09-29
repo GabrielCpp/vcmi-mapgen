@@ -19,9 +19,9 @@ metadata:
   `vcmi/formats/vmap/writer.py` read and write it through a full `VmapDocument` model. The model
   covers header players, teams, victory, defeat, every object, and terrain as VCMI tile
   strings. Its `extra` catch-all lets an unmodelled key round-trip losslessly.
-- **The corpus** is `maps_vmap/<name>.vmap`, loaded by `corpus.maps.load_corpus_map`
+- **The corpus** is `data/corpus/vmap/<name>.vmap`, loaded by `corpus.maps.load_corpus_map`
   as a `MapState`, the same type a generated map is.
-  `python -m vcmi_mapgen.cli extract-vmap` regenerates it from `maps/`.
+  `python -m vcmi_mapgen.cli extract-vmap` regenerates it from `data/corpus/h3m/`.
 - The internal mask charset tells `'X'` (blocked entrance) apart from `'A'` (walk-on).
   VCMI's own charset cannot, so `vcmi.load.load_map` never reads that distinction back from a
   `.vmap`. It re-derives the mask from `vcmi.catalog.objects.mask_of(animation)` instead.
@@ -55,7 +55,7 @@ metadata:
   its members and filter by its groups `VISIT_PURPOSES` and `COUNTED`, never against a bare
   string such as `"GUARD"`.
 - `vcmi.catalog.objects.purpose_of_type(type)` answers the purpose of a VCMI object type
-  through its class id in `vcmi/catalog/data/vcmi_types.json`. `regen-ontology` rewrites that
+  through its class id in `data/catalog/vcmi_types.json`. `regen-ontology` rewrites that
   table from VCMI's config.
 - `core.model.resource.Resource` names the eight resources.
 

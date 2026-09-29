@@ -1,7 +1,7 @@
 """Regenerate the corpus as real, editor-openable .vmap files.
 
-Reads the committed .h3m corpus at <repo>/maps/ and writes each one, via the h3m
-parser + VCMI's own object-identity config, to <repo>/maps_vmap/<name>.vmap — the
+Reads the committed .h3m corpus at <repo>/data/corpus/h3m/ and writes each one, via the h3m
+parser + VCMI's own object-identity config, to <repo>/data/corpus/vmap/<name>.vmap — the
 corpus's ONLY on-disk representation (replaces the old maps_json/ faithful-JSON
 dialect; see the vmap-unification plan). Run:
 `uv run python -m vcmi_mapgen.cli extract-vmap`.

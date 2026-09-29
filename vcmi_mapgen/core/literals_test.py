@@ -16,7 +16,7 @@ from typing import cast
 from vcmi_mapgen.core.model.purpose import Purpose
 
 _CORE = Path(__file__).parent
-_TYPES_JSON = _CORE.parent / "vcmi" / "catalog" / "data" / "vcmi_types.json"
+_TYPES_JSON = _CORE.parent.parent / "data" / "catalog" / "vcmi_types.json"
 _PURPOSE_MODULE = _CORE / "model" / "purpose.py"
 _ANIMATION = re.compile(r"av[a-z0-9]+", re.IGNORECASE)
 _OPTION_KEYS = frozenset(

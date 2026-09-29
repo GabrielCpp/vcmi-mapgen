@@ -16,7 +16,7 @@ as an integer-only guarantee. This roadmap is the milestone view.
 
 ## Source corpus
 
-- 159 `.h3m` maps (RoE / AB / SoD; no HotA) in `maps/`, parsed to faithful JSON in
+- 159 `.h3m` maps (RoE / AB / SoD; no HotA) in `data/corpus/h3m/`, parsed to faithful JSON in
   `maps_json/` (`extract_faithful`). 378,699 objects, all resolved to exact identity.
 - Editor-quality rendering reads the H3 sprite LOD files from a local VCMI install.
 

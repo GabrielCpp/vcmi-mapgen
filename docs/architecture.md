@@ -86,7 +86,7 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 | Terrain generation | `markov_terrain.py` (Markov chain learned from the corpus) |
 | Corpus statistics | `mine_stats.py`, run as `cli mine-stats`, writes `data/pp/*.json`; `cli audit` checks them |
 
-The `.h3m` corpus is in `maps/`; the format reference is in `vcmi-h3m-format-reference/`
+The `.h3m` corpus is in `data/corpus/h3m/`; the format reference is in `vcmi-h3m-format-reference/`
 (notes: [vcmi-h3m-format-reference.md](vcmi-h3m-format-reference.md)); transient outputs go to
 the gitignored `out/`.
 

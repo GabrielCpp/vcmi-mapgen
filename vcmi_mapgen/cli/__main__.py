@@ -8,10 +8,10 @@ Subcommands:
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
   audit           -> report corpus objects the generator cannot reproduce, or print the
                      gameplay densities it draws from.
-  extract-vmap    -> regenerate maps_vmap/ from the .h3m corpus.
+  extract-vmap    -> regenerate data/corpus/vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
-  regen-ontology  -> rebuild vcmi/catalog/data/*.json from the editor's objects.txt.
+  regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
 `generate` builds and runs a ``Pipeline`` (see ``core/pipeline.py``) from
 ``cli.steps.build_steps``; `render-ontology` stays outside that model entirely — it
@@ -186,7 +186,7 @@ def main() -> None:
     )
     _ = pau.set_defaults(func=cmd_audit)
 
-    pev = sub.add_parser("extract-vmap", help="regenerate maps_vmap/ from the .h3m corpus in maps/")
+    pev = sub.add_parser("extract-vmap", help="regenerate data/corpus/vmap/ from data/corpus/h3m/")
     _ = pev.set_defaults(func=cmd_extract_vmap)
 
     pcm = sub.add_parser("corpus-match", help="compare generated gameplay placement to the corpus")
@@ -204,7 +204,7 @@ def main() -> None:
     _ = prs.set_defaults(func=cmd_render_sprites)
 
     pro_regen = sub.add_parser(
-        "regen-ontology", help="rebuild vcmi/catalog/data/*.json from the editor's objects.txt"
+        "regen-ontology", help="rebuild data/catalog/*.json from the editor's objects.txt"
     )
     _ = pro_regen.set_defaults(func=cmd_regen_ontology)
 

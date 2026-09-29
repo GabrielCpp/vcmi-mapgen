@@ -52,7 +52,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       geometry (`entrances.py`) and the one `ZoneRecord` per zone (`zone_index.py`).
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production
-    `Catalog`, with its tables in `catalog/data/`. `formats/` reads and writes `.h3m`,
+    `Catalog`, with its tables in `data/catalog/`. `formats/` reads and writes `.h3m`,
     `.vmap`, LOD and DEF files. `tiles.py` autotiles terrain, `export.py` and `players.py`
     build a playable map, `load.py` `load_map` reads a `.vmap` back into a `MapState`, and
     `config.py` finds the local VCMI install.
@@ -62,12 +62,12 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     terrain colours (`palette.py`), `VmapRenderer` for playable `.vmap` export
     (`vmap.py`), the debug overlays (`overlays/`), and the `render-ontology` catalog
     (`ontology_render.py`).
-- **`maps/`**: the `.h3m` corpus, 159 maps.
-- **`maps_vmap/`**: one `.vmap` per corpus map, regenerated from `maps/` by
-  `extract-vmap`.
-- **`data/`**: corpus-derived priors (`pp/*.json`) and the golden map hashes
-  (`golden.json`). Static VCMI tables live with the code that reads them, in
-  `vcmi/catalog/data/` and `vcmi/formats/vmap/header_template.json`.
+- **`data/`**: every map and data file the project keeps. `corpus/h3m/` holds the
+  `.h3m` corpus, 159 maps. `corpus/vmap/` holds one `.vmap` per corpus map, regenerated
+  from `corpus/h3m/` by `extract-vmap`. `catalog/*.json` holds the VCMI object tables,
+  rebuilt by `regen-ontology`. `pp/*.json` holds the corpus-derived priors and `golden.json`
+  the golden map hashes. The fixed `.vmap` header lives with its reader, in
+  `vcmi/formats/vmap/header_template.json`.
 - **`out/`**: transient renders and maps. It is gitignored.
 - **`vcmi-h3m-format-reference/`**: verbatim VCMI C++ sources for the `.h3m` format,
   described in `docs/vcmi-h3m-format-reference.md`.
@@ -97,8 +97,8 @@ through `VCMI_HOME`. The rendering tests skip when those files are absent.
   `decor_category`, `decor_categories`, `mines_by_resource`, `spells`, `terrain_name`.
   No module under `core/` imports `vcmi.catalog`. `vcmi/catalog/` is the production source,
   `VcmiCatalog` in `adapter.py`. Its identity, footprint mask, terrain coupling and
-  decoration category come from `vcmi/catalog/data/taxonomy.json` and
-  `vcmi/catalog/data/leaf_meta.json`. `python -m vcmi_mapgen.cli regen-ontology` re-derives
+  decoration category come from `data/catalog/taxonomy.json` and
+  `data/catalog/leaf_meta.json`. `python -m vcmi_mapgen.cli regen-ontology` re-derives
   them from the editor table `objects.txt`. When the pipeline needs something the
   catalog lacks, add a `Catalog` method and extend the ontology behind it. The corpus may inform spatial statistics such as
   density, openness and frequency weights. It never decides object identity, mask or

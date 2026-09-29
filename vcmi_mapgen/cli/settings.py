@@ -34,13 +34,13 @@ class Settings:
 
     @property
     def maps_dir(self) -> Path:
-        """The corpus maps as ``.vmap``, ``maps_vmap/``."""
-        return self.root / "maps_vmap"
+        """The corpus maps as ``.vmap``, ``data/corpus/vmap/``."""
+        return self.root / "data" / "corpus" / "vmap"
 
     @property
     def h3m_dir(self) -> Path:
-        """The corpus maps as ``.h3m``, ``maps/``."""
-        return self.root / "maps"
+        """The corpus maps as ``.h3m``, ``data/corpus/h3m/``."""
+        return self.root / "data" / "corpus" / "h3m"
 
     @property
     def out_dir(self) -> Path:

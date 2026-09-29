@@ -1,4 +1,4 @@
-"""The corpus maps: `maps_vmap/<name>.vmap`, each loaded as a `MapState`."""
+"""The corpus maps: `data/corpus/vmap/<name>.vmap`, each loaded as a `MapState`."""
 
 from __future__ import annotations
 

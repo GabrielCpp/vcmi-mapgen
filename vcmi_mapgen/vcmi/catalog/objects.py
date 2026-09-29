@@ -105,7 +105,7 @@ def resolve(cid: int, subclass: int) -> ClassInfo:
 
 def build_tree() -> Taxonomy:
     """Return the full CLUSTER->PURPOSE->type->terrain->leaf taxonomy from
-    ``vcmi/catalog/data/taxonomy.json``."""
+    ``data/catalog/taxonomy.json``."""
     return taxonomy()
 
 
