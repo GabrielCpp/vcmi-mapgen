@@ -11,6 +11,8 @@ from vcmi_mapgen.core.planning.web import WebOptions, ZoneRef, protected_web
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.vegetation import sample as PP
 
+INLAND = 8
+
 
 def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
     return Zone(
@@ -20,6 +22,11 @@ def _zone(ts: set[Tile], cx: float, cy: float, terrain_type: int = 2) -> Zone:
         tiles=sorted(ts),
         tiles_set=frozenset(ts),
     )
+
+
+def _inland(label: list[list[int]]) -> list[list[int]]:
+    width = len(label[0]) + INLAND
+    return [row + [-1] * INLAND for row in label] + [[-1] * width for _ in range(INLAND)]
 
 
 def test_model_and_sampler_deterministic(catalog: Catalog, priors: Priors) -> None:
@@ -67,10 +74,13 @@ def test_border_bias_densifies_front(catalog: Catalog, priors: Priors) -> None:
     """Zone isolation: with BOTH zones sampling under the `border=` bias, the aligned
     open crossings outside the planned entrance band shrink. Each single side is only a
     partial ridge (Geyer saturation caps clumping), so the border plan closes the rest."""
-    ts1 = {(x, y) for x in range(14) for y in range(12)}
-    ts2 = {(x, y) for x in range(14, 28) for y in range(12)}
-    zones = {1: _zone(ts1, 6.5, 5.5), 2: _zone(ts2, 20.5, 5.5, 2)}
-    label = label_zones(zones)
+    ts1 = {(x + INLAND, y + INLAND) for x in range(14) for y in range(12)}
+    ts2 = {(x + INLAND, y + INLAND) for x in range(14, 28) for y in range(12)}
+    zones = {
+        1: _zone(ts1, 6.5 + INLAND, 5.5 + INLAND),
+        2: _zone(ts2, 20.5 + INLAND, 5.5 + INLAND, 2),
+    }
+    label = _inland(label_zones(zones))
     plan = plan_entrances(label)
     model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
 
