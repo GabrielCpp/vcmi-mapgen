@@ -82,14 +82,20 @@ def index_of(objs: list[PlacedObject]) -> dict[tuple[int, Tile], list[Cover]]:
 
 
 _BEHIND_SPRITES = frozenset({Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD})
+_DECOR = frozenset({"", Purpose.DECORATION})
+_DOOR = frozenset({Role.ENTRANCE, Role.APPROACH})
 
 
 def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str | None:
     """Why ``culprit``, covering ``tile`` with ``role``, may not share it with ``victim``. Only
     another object's visit, entrance or approach tile is protected. A guard stands on an
     approach tile and its sprite overlays the entrance, since that is its job. A pickup or a
-    guard may sit partly behind another object's sprite, so an overlay over either is allowed."""
+    guard may sit partly behind another object's sprite, so an overlay over either is allowed.
+    A decoration's sprite may overhang an entrance or its approach, as it does on most corpus
+    maps, but never a walk-on visit tile."""
     if role is Role.APPROACH:
+        return None
+    if role is Role.OVERLAY and culprit.purpose in _DECOR and victim.role in _DOOR:
         return None
     if role is Role.OVERLAY and (
         culprit.purpose == Purpose.GUARD or victim.obj.purpose in _BEHIND_SPRITES

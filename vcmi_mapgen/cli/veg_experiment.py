@@ -4,7 +4,9 @@ from vcmi_mapgen.cli.settings import Settings, load_settings
 from vcmi_mapgen.core.grid.geometry import run_lengths
 from vcmi_mapgen.core.grid.segment import segment_level
 from vcmi_mapgen.core.planning.web import ZoneRef
-from vcmi_mapgen.core.steps.vegetation.sample import build_model, sample_zone
+from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
+from vcmi_mapgen.core.steps.vegetation.model import build_model
+from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions
 from vcmi_mapgen.corpus.maps import load_corpus_map
 from vcmi_mapgen.corpus.vegetation import load_vegetation
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
@@ -23,7 +25,8 @@ def m1_experiment(settings: Settings, map_name: str, zid: int, seed: int = 1) ->
     head = f"model[{terrain}]: {len(model.cats)} categories, "
     print(f"{head}target veg_blocked_frac={model.target:.3f}")
 
-    objs, blocked, _prot = sample_zone(ZoneRef(ts, zone_label, zid, z.centroid), model, seed=seed)
+    ref = ZoneRef(ts, zone_label, zid, z.centroid)
+    objs, blocked, _prot = GibbsSampler().sample(ref, model, seed, SampleOptions())
     frac = len(blocked) / len(ts)
     zhead = f"zone {zid} ({terrain}, {len(ts)} tiles): {len(objs)} objects, "
     print(f"{zhead}blocked frac gen={frac:.3f} corpus={model.target:.3f}")

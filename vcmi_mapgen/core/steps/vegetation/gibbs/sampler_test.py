@@ -1,4 +1,4 @@
-"""Reliability tests for steps.vegetation.sample (marked-point-process vegetation sampler)."""
+"""Reliability tests for the Gibbs marked-point-process vegetation sampler."""
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import edge_dist
@@ -9,7 +9,9 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.entrances import plan_entrances, zone_fronts, zone_gate_bands
 from vcmi_mapgen.core.planning.web import WebOptions, ZoneRef, protected_web
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.vegetation import sample as PP
+from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
+from vcmi_mapgen.core.steps.vegetation.model import build_model
+from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions
 
 INLAND = 8
 
@@ -30,13 +32,13 @@ def _inland(label: list[list[int]]) -> list[list[int]]:
 
 
 def test_model_and_sampler_deterministic(catalog: Catalog, priors: Priors) -> None:
-    model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
+    model = build_model(catalog, "grass", priors.vegetation["grass"])
     assert model.cats, "grass model has categories"
     assert 0 < model.target < 1
     ts = {(x, y) for x in range(18) for y in range(14)}
     ref = ZoneRef(ts, label_zones({1: _zone(ts, 8.5, 6.5)}), 1, (8.5, 6.5))
-    a1, b1, _ = PP.sample_zone(ref, model, seed=5)
-    a2, b2, _ = PP.sample_zone(ref, model, seed=5)
+    a1, b1, _ = GibbsSampler().sample(ref, model, 5, SampleOptions())
+    a2, b2, _ = GibbsSampler().sample(ref, model, 5, SampleOptions())
     assert a1 == a2 and b1 == b2, "same seed must reproduce bit-exactly"
     assert a1, "some vegetation sampled"
     # every mask comes from the catalog and coverage is sane
@@ -47,10 +49,10 @@ def test_model_and_sampler_deterministic(catalog: Catalog, priors: Priors) -> No
 
 def test_protected_web_stays_open(catalog: Catalog, priors: Priors) -> None:
     """No blocking cell may land on the protected walkable web (the hard zero)."""
-    model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
+    model = build_model(catalog, "grass", priors.vegetation["grass"])
     ts = {(x, y) for x in range(20) for y in range(16)}
     ref = ZoneRef(ts, label_zones({1: _zone(ts, 9.5, 7.5)}), 1, (9.5, 7.5))
-    objs, blocked, prot = PP.sample_zone(ref, model, seed=9)
+    objs, blocked, prot = GibbsSampler().sample(ref, model, 9, SampleOptions())
     assert prot, "web exists"
     for o in objs:
         for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y):
@@ -82,7 +84,7 @@ def test_border_bias_densifies_front(catalog: Catalog, priors: Priors) -> None:
     }
     label = _inland(label_zones(zones))
     plan = plan_entrances(label)
-    model = PP.build_model(catalog, "grass", priors.vegetation["grass"])
+    model = build_model(catalog, "grass", priors.vegetation["grass"])
 
     def zone_pass(
         zid: int, ts: set[Tile], seed: int, border_bias: bool = True
@@ -95,11 +97,8 @@ def test_border_bias_densifies_front(catalog: Catalog, priors: Priors) -> None:
         front = {t for tiles in zone_fronts(ts, label, zid).values() for t in tiles}
         bands = {t for _r, b, _o in z_entr for t in b}
         border = frozenset(front - bands) if border_bias else frozenset[Tile]()
-        _, blk, _ = PP.sample_zone(
-            ZoneRef(ts, label, zid, c),
-            model,
-            seed=seed,
-            opts=PP.SampleOptions(prot=prot, border=border),
+        _, blk, _ = GibbsSampler().sample(
+            ZoneRef(ts, label, zid, c), model, seed, SampleOptions(prot=prot, border=border)
         )
         return blk, front, bands, frozenset(front - bands)
 

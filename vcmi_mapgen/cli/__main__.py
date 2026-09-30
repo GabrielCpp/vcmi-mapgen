@@ -2,7 +2,9 @@
 
 Subcommands:
   generate        -> synthesize a full map via the marked-point-process pipeline
-                     (CLI-selectable overlays/renderers/stop point).
+                     (CLI-selectable overlays/renderers/stop point/vegetation sampler).
+  render-vegetation -> run the pipeline through vegetation and save terrain-and-vegetation
+                     PNGs for a few seeds, with either vegetation sampler.
   render-ontology -> render one sprite (+ passability mask overlay) per documented
                      ontology item — a documentation/debug tool, not part of the pipeline.
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
@@ -13,9 +15,9 @@ Subcommands:
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
-`generate` builds and runs a ``Pipeline`` (see ``core/pipeline.py``) from
-``cli.steps.build_steps``; `render-ontology` stays outside that model entirely — it
-renders the object taxonomy itself, never touches a generated map, and calls
+`generate` and `render-vegetation` build and run a ``Pipeline`` (see
+``core/pipeline.py``) from ``cli.steps.build_steps``; `render-ontology` stays outside that
+model entirely — it renders the object taxonomy itself, never touches a generated map, and calls
 ``renderers.ontology_render`` directly.
 """
 
@@ -35,12 +37,14 @@ from vcmi_mapgen.cli.generate import (
     OVERLAY_FACTORIES,
     RENDERER_CHOICES,
     GenerateOptions,
+    VegetationRenderOptions,
     generate,
+    render_vegetation,
 )
 from vcmi_mapgen.cli.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.cli.render_sprites import render_sprites
 from vcmi_mapgen.cli.settings import Settings, load_settings, open_install
-from vcmi_mapgen.cli.steps import GENERATE_STOP_POINTS
+from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, GENERATE_STOP_POINTS, SAMPLERS
 from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
@@ -72,6 +76,7 @@ class Args(argparse.Namespace):
     compare: str | None = None
     level: int | None = None
     densities: bool = False
+    vegetation: str = DEFAULT_VEGETATION
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
@@ -116,6 +121,24 @@ def cmd_generate(args: Args) -> None:
             overlays=args.overlays,
             renderers=args.renderers,
             stop_after=args.stop_after,
+            vegetation=args.vegetation,
+        ),
+    )
+
+
+def cmd_render_vegetation(args: Args) -> None:
+    settings = load_settings()
+    render_vegetation(
+        _open_catalog(settings),
+        settings,
+        VegetationRenderOptions(
+            seeds=args.seeds,
+            size=args.size,
+            players=args.players,
+            water_mode=args.water_mode or "normal",
+            subterrain=args.subterrain,
+            overlays=args.overlays,
+            vegetation=args.vegetation,
         ),
     )
 
@@ -149,6 +172,16 @@ def cmd_regen_ontology(_args: Args) -> None:
         leaves = sum(1 for x in ON.iter_leaves(tree) if x[0] == cluster)
         print(f"  {cluster:11s} purposes={len(purposes):2d} types={types:3d} leaves={leaves}")
     print(f"  total leaves: {sum(1 for _ in ON.iter_leaves(tree))}")
+
+
+def _add_vegetation_arg(parser: argparse.ArgumentParser) -> None:
+    _ = parser.add_argument(
+        "--vegetation",
+        choices=list(SAMPLERS),
+        default=DEFAULT_VEGETATION,
+        help="vegetation sampler: 'gibbs' (the marked point process) or 'field' (the cellular "
+        + f"field) (default: {DEFAULT_VEGETATION})",
+    )
 
 
 def main() -> None:
@@ -262,7 +295,29 @@ def main() -> None:
         help="stop the pipeline early, right after the named step (debug), "
         + "instead of running the full pipeline through ScatterStep",
     )
+    _add_vegetation_arg(pg)
     _ = pg.set_defaults(func=cmd_generate)
+
+    prv = sub.add_parser(
+        "render-vegetation",
+        help="run the pipeline through vegetation and save terrain-and-vegetation PNGs to "
+        + "out/render/vegetation/veg_s<seed>_<step>.png",
+    )
+    _ = prv.add_argument("--seeds", type=int, nargs="+", default=[1, 2, 3])
+    _ = prv.add_argument("--size", type=int, default=72, help="W=H of the generated map")
+    _ = prv.add_argument("--players", type=int, default=2)
+    _ = prv.add_argument(
+        "--water-mode", choices=["none", "normal", "islands"], default=None, dest="water_mode"
+    )
+    _ = prv.add_argument("--subterrain", action="store_true")
+    _ = prv.add_argument(
+        "--overlays",
+        default="none",
+        help=f"comma-separated overlays (choices: {', '.join(OVERLAY_FACTORIES)}) "
+        + "(default: none)",
+    )
+    _add_vegetation_arg(prv)
+    _ = prv.set_defaults(func=cmd_render_vegetation)
 
     args = ap.parse_args(namespace=Args(func=cmd_render_ontology))
     args.func(args)

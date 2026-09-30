@@ -13,6 +13,9 @@ from vcmi_mapgen.core.steps import (
     TreasureStep,
     VegetationStep,
 )
+from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
+from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
+from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 
 GENERATE_STOP_POINTS = (
     "terrain",
@@ -26,17 +29,25 @@ GENERATE_STOP_POINTS = (
     "scatter",
 )
 
+SAMPLERS: dict[str, Sampler] = {
+    "gibbs": GibbsSampler(),
+    "field": FieldSampler(),
+}
+DEFAULT_VEGETATION = "gibbs"
+
 
 @dataclass(frozen=True, slots=True)
 class StepConfig:
     """What one generation asks for: the seed, the map side, the player count, the water
-    mode and whether the map has an underground level."""
+    mode, whether the map has an underground level, and which SAMPLERS entry grows the
+    vegetation."""
 
     seed: int
     size: int
     players: int = 2
     water_mode: str = "normal"
     subterrain: bool = False
+    vegetation: str = DEFAULT_VEGETATION
 
 
 def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineStep]]:
@@ -46,7 +57,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     seed, size, players, subterrain = config.seed, config.size, config.players, config.subterrain
     return [
         ("terrain", TerrainStep(priors, size, seed, config.water_mode, subterrain)),
-        ("vegetation", VegetationStep(priors, seed, players)),
+        ("vegetation", VegetationStep(priors, SAMPLERS[config.vegetation], seed, players)),
         ("gameplay", GameplayStep(priors, seed, players, size, subterrain)),
         ("gated", GatedStep(priors, seed, size)),
         ("treasure", TreasureStep(priors, seed, size)),

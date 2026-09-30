@@ -11,8 +11,9 @@ from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.planning.web import ZoneRef
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, ZonePlan
 from vcmi_mapgen.core.priors.vegetation import VegetationStats
-from vcmi_mapgen.core.steps.vegetation import sample as PP
+from vcmi_mapgen.core.steps.vegetation.model import VegModel, build_model
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone
+from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, Sampler
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,22 +39,27 @@ class Grown:
 
 def vegetation_models(
     catalog: Catalog, stats: Mapping[str, VegetationStats], plan: ZonePlan
-) -> dict[str, PP.VegModel]:
+) -> dict[str, VegModel]:
     """One fitted model per terrain the plan holds, built from that terrain's ``stats`` in
     the order the zones name them."""
-    models: dict[str, PP.VegModel] = {}
+    models: dict[str, VegModel] = {}
     for pl in plan.levels.values():
         for zone in pl.zones.values():
             if zone.terrain not in models:
                 st = stats[zone.terrain]
-                models[zone.terrain] = PP.build_model(catalog, zone.terrain, st)
+                models[zone.terrain] = build_model(catalog, zone.terrain, st)
     return models
 
 
-def grow_level(models: Mapping[str, PP.VegModel], lv: GrowLevel, seed: int) -> Grown:
-    """Grow each zone's vegetation off the taken tiles, the landings and the town room, and
-    densify it along the rim outside the entrance bands. A zone whose terrain has no
-    vegetation category keeps an empty ``VegetatedZone``."""
+def grow_level(
+    models: Mapping[str, VegModel],
+    lv: GrowLevel,
+    seed: int,
+    sampler: Sampler,
+) -> Grown:
+    """Grow each zone's vegetation with `sampler` off the taken tiles, the landings and the
+    town room, and densify it along the rim outside the entrance bands. A zone whose terrain
+    has no vegetation category keeps an empty ``VegetatedZone``."""
     landings = lv.plan.landings.blk | lv.plan.landings.appr
     objs: list[PlacedObject] = []
     zones: dict[int, VegetatedZone] = {}
@@ -64,11 +70,11 @@ def grow_level(models: Mapping[str, PP.VegModel], lv: GrowLevel, seed: int) -> G
             continue
         seaport = landings & zone.ts
         forbid = lv.taken | seaport | zone.town.clear
-        zobjs, blocked, _ = PP.sample_zone(
+        zobjs, blocked, _ = sampler.sample(
             ZoneRef(zone.ts, lv.label, zid, lv.centroids[zid], lv.level),
             model,
-            seed=seed,
-            opts=PP.SampleOptions(
+            seed,
+            SampleOptions(
                 prot=zone.prot,
                 forbid=forbid,
                 border=frozenset(zone.rim8 - zone.ent_bands - forbid),

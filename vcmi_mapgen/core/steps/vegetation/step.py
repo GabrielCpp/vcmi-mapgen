@@ -16,6 +16,7 @@ from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.vegetation.grow import GrowLevel, grow_level, vegetation_models
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone, VegetationResult
+from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -51,10 +52,11 @@ def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
 
 
 class VegetationStep(PipelineStep):
-    """Corpus-fitted Gibbs marked-point-process vegetation, per zone.
+    """Corpus-fitted vegetation, per zone, grown by the configured sampler.
 
     Config:
         priors   The corpus priors; the step reads the vegetation and gameplay statistics.
+        sampler  The algorithm that grows each zone's vegetation.
         seed     RNG seed.
         players  Number of player zones whose town spot stays clear of trees.
 
@@ -68,8 +70,9 @@ class VegetationStep(PipelineStep):
     the ``ZonePlan`` and ``VegetationResult``, which holds each zone's open and passable tiles.
     """
 
-    def __init__(self, priors: Priors, seed: int = 3, players: int = 0) -> None:
+    def __init__(self, priors: Priors, sampler: Sampler, seed: int = 3, players: int = 0) -> None:
         self.priors: Priors = priors
+        self.sampler: Sampler = sampler
         self.seed: int = seed
         self.players: int = players
         self.objs: list[PlacedObject] = []
@@ -92,7 +95,9 @@ class VegetationStep(PipelineStep):
         models = vegetation_models(catalog, self.priors.vegetation, plan)
         pre_taken = {lvl: _taken(map_state, lvl, pl) for lvl, pl in plan.levels.items()}
         grown = {
-            level: grow_level(models, self._grow_level(level, pl, pre_taken[level]), self.seed)
+            level: grow_level(
+                models, self._grow_level(level, pl, pre_taken[level]), self.seed, self.sampler
+            )
             for level, pl in plan.levels.items()
         }
         new_objs = [o for g in grown.values() for o in g.objs]

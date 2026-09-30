@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.cli.settings import Settings
-from vcmi_mapgen.cli.steps import StepConfig, build_steps
+from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
@@ -130,18 +130,62 @@ class GenerateOptions:
     overlays: str
     renderers: str
     stop_after: str | None
+    vegetation: str
 
 
-def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
-    pipeline = Pipeline(CATALOG, opts.size)
-    config = StepConfig(opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain)
+@dataclass(frozen=True, slots=True)
+class VegetationRenderOptions:
+    seeds: Sequence[int]
+    size: int
+    players: int
+    water_mode: str
+    subterrain: bool
+    overlays: str
+    vegetation: str
+
+
+def _run_pipeline(settings: Settings, config: StepConfig, stop_after: str | None) -> Pipeline:
+    pipeline = Pipeline(CATALOG, config.size)
     for point_name, step in build_steps(
         load_priors(settings.pp_dir, settings.pockets_file), config
     ):
         _ = pipeline.add_step(step)
-        if point_name == opts.stop_after:
+        if point_name == stop_after:
             break
-    map_state = pipeline.run()
+    _ = pipeline.run()
+    return pipeline
+
+
+def render_vegetation(
+    install: VcmiInstall, settings: Settings, opts: VegetationRenderOptions
+) -> None:
+    """Run the pipeline through the vegetation step for each seed and save one PNG of the
+    terrain and the vegetation per level to out/render/vegetation/."""
+    out = settings.out_dir / "render" / "vegetation"
+    os.makedirs(out, exist_ok=True)
+    tables = load_tiler(settings.pp_dir)
+    index = lod(install.data_dir)
+    for seed in opts.seeds:
+        config = StepConfig(
+            seed, opts.size, opts.players, opts.water_mode, opts.subterrain, opts.vegetation
+        )
+        pipeline = _run_pipeline(settings, config, "vegetation")
+        map_state = pipeline.map_state
+        zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
+        renderer = PngRenderer(index, str(out), tables, parse_overlays(opts.overlays, {}, zones))
+        print(f"vegetation s{seed} ({opts.vegetation}): {len(map_state.objs)} objects")
+        for level in sorted(map_state.terrain):
+            suffix = "" if level == 0 else f"_L{level}"
+            name = f"veg_s{seed}_{opts.vegetation}{suffix}.png"
+            print(f"  {renderer.save(map_state, name, level=level)}")
+
+
+def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
+    config = StepConfig(
+        opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain, opts.vegetation
+    )
+    pipeline = _run_pipeline(settings, config, opts.stop_after)
+    map_state = pipeline.map_state
 
     for line in (
         *pipeline.ctx.get(VegetationResult, VegetationResult()).log,
@@ -163,16 +207,19 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     renderers = _parse_renderers(opts.renderers)
     tables = load_tiler(settings.pp_dir)
     pp_out = settings.out_dir / "render" / "pp"
+    stem = f"ppmap_s{opts.seed}"
+    if opts.vegetation != DEFAULT_VEGETATION:
+        stem = f"{stem}_{opts.vegetation}"
 
     if "png" in renderers:
         index = lod(install.data_dir)
         png_renderer = PngRenderer(index, str(pp_out), tables)
-        png = str(pp_out / f"ppmap_s{opts.seed}.png")
+        png = str(pp_out / f"{stem}.png")
         os.makedirs(os.path.dirname(png), exist_ok=True)
         png_renderer.render(map_state, level=0).save(png)
         print(f"  {png}")
         if opts.subterrain and 1 in map_state.terrain:
-            png1 = png_renderer.save(map_state, f"ppmap_s{opts.seed}_L1.png", level=1)
+            png1 = png_renderer.save(map_state, f"{stem}_L1.png", level=1)
             print(f"  {png1}")
 
         zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
@@ -180,7 +227,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         if overlays:
             overlay_renderer = PngRenderer(index, str(pp_out), tables, overlays)
             ov_img = overlay_renderer.render(map_state, level=0)
-            ov_png = str(pp_out / f"ppmap_s{opts.seed}_overlays.png")
+            ov_png = str(pp_out / f"{stem}_overlays.png")
             os.makedirs(os.path.dirname(ov_png), exist_ok=True)
             ov_img.save(ov_png)
             print(f"  {ov_png}")
@@ -189,7 +236,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         vmap_renderer = VmapRenderer(str(settings.out_dir / "vmap"), tables, install)
         vmap = vmap_renderer.render(
             map_state,
-            f"ppmap_s{opts.seed}.vmap",
+            f"{stem}.vmap",
             name=f"pp-map s{opts.seed}",
             teams_spec=opts.teams,
         )

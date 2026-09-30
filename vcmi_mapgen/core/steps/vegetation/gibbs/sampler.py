@@ -30,35 +30,26 @@ validation metric, per the M1 experiment:
     uv run python -m vcmi_mapgen.cli.veg_experiment --map "All for One" --zone 11
 """
 
-import collections
 import math
 import random
-from collections.abc import Collection, Mapping
-from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
 from typing import cast, final
 
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
 from vcmi_mapgen.core.grid.noise import value_noise
-from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
-from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.planning.web import ZoneRef, protected_web
-from vcmi_mapgen.core.priors import vegetation as PS
+from vcmi_mapgen.core.model import Tile
+from vcmi_mapgen.core.planning.web import ZoneRef
+from vcmi_mapgen.core.steps.vegetation.canvas import ZoneCanvas, zone_rng
+from vcmi_mapgen.core.steps.vegetation.mix import ZoneMix
+from vcmi_mapgen.core.steps.vegetation.model import RINT, VegModel
+from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, ZoneGrowth
 
-RINT = 2  # local-interaction range (Chebyshev rings 0..RINT)
 KW = 2 * RINT + 1  # interaction window (5x5)
 STEPS_PER_TILE = 40  # MH proposals per zone tile
 SAT = 2  # Geyer saturation: neighbour count cap per (category, ring)
 COX_CELL = 7  # value-noise cell of the Cox log-field (~ the corpus CELL scale)
 STACK_CAP = 2
-BASE_W = 0.3  # base weight so native-but-corpus-rare sprites stay possible
-
-
-_NO_TILES: frozenset[Tile] = frozenset()
 
 
 def _f(a: NDArray[np.float64], *idx: int) -> float:
@@ -67,83 +58,6 @@ def _f(a: NDArray[np.float64], *idx: int) -> float:
 
 def _i(a: NDArray[np.int8], *idx: int) -> int:
     return cast(int, a[idx])
-
-
-@dataclass(slots=True)
-class VegModel:
-    terrain: str
-    cats: list[str]
-    L: NDArray[np.float64]
-    T: NDArray[np.float64]
-    idents: list[list[Identity]]
-    iweights: list[list[float]]
-    iblk: list[list[list[Tile]]]
-    ifoot: list[list[list[Tile]]]
-    sigma: float
-    target: float
-    runs: dict[str, float]
-
-
-def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegModel:
-    """Fitted per-terrain sampling model from the terrain's vegetation statistics ``st``:
-    category list, intensities, theta kernel, ident pools."""
-    th = PS.theta_local(st, rint=RINT)
-
-    by_cat: collections.defaultdict[str, list[Identity]] = collections.defaultdict(list)
-    for ident in catalog.decor(terrain):
-        cat = catalog.decor_category(ident.kind)
-        if cat is not None:
-            by_cat[cat].append(ident)
-
-    cats = [
-        c
-        for c in sorted(st.lam_tot, key=lambda name: st.lam_tot[name], reverse=True)
-        if st.lam_tot[c] > 0 and by_cat.get(c)
-    ]
-    A = len(cats)
-    cidx = {c: i for i, c in enumerate(cats)}
-
-    L = np.zeros((A, EBINS))
-    for c in cats:
-        L[cidx[c]] = st.lam[c]
-
-    T = np.zeros((A, A, RINT + 1))
-    for key, row in th.items():
-        ca, cb = key.split("|")
-        if ca in cidx and cb in cidx:
-            T[cidx[ca], cidx[cb]] = row
-
-    idents: list[list[Identity]] = []
-    iweights: list[list[float]] = []
-    iblk: list[list[list[Tile]]] = []
-    ifoot: list[list[list[Tile]]] = []
-    for c in cats:
-        w = st.anim_w.get(c, {})
-        ids = by_cat[c]
-        idents.append(ids)
-        iweights.append([w.get(i.kind.lower(), 0) + BASE_W for i in ids])
-        blk: list[list[Tile]] = []
-        foot: list[list[Tile]] = []
-        for i in ids:
-            cells = [(cx, cy, b) for cx, cy, b in FP.anchored_cells(i.footprint, 0, 0)]
-            blk.append([(cx, cy) for cx, cy, b in cells if b])
-            foot.append([(cx, cy) for cx, cy, _b in cells])
-        iblk.append(blk)
-        ifoot.append(foot)
-
-    return VegModel(
-        terrain=terrain,
-        cats=cats,
-        L=L,
-        T=T,
-        idents=idents,
-        iweights=iweights,
-        iblk=iblk,
-        ifoot=ifoot,
-        sigma=PS.cox_sigma(st),
-        target=st.veg_blocked_frac,
-        runs=st.runs,
-    )
 
 
 BORDER_W = 2.5  # log-intensity bonus on `border` tiles (zone-front belt):
@@ -158,40 +72,23 @@ BORDER_W = 2.5  # log-intensity bonus on `border` tiles (zone-front belt):
 #                                 the border rather than inflating overall density.
 
 
-@dataclass(frozen=True, slots=True)
-class SampleOptions:
-    steps_per_tile: int = STEPS_PER_TILE
-    prot: AbstractSet[Tile] | None = None
-    forbid: AbstractSet[Tile] = _NO_TILES
-    border: Collection[Tile] = _NO_TILES
-    impassable: AbstractSet[Tile] = _NO_TILES
-
-
-_DEFAULT_SAMPLE = SampleOptions()
-
-
-def sample_zone(
-    zone: ZoneRef,
-    model: VegModel,
-    seed: int = 1,
-    opts: SampleOptions = _DEFAULT_SAMPLE,
-) -> tuple[list[PlacedObject], set[Tile], AbstractSet[Tile]]:
-    """Birth/death MH over decoration configurations in one zone. Returns
-    (objects, blocked_set, prot) with objects = list[PlacedObject] on the zone's level.
-    `forbid` tiles (gameplay footprints + approach tiles) admit NO vegetation at all —
-    neither an anchor nor any footprint cell (decor must not bury gameplay, per the repo rule).
-    `border` tiles carry a +BORDER_W log-intensity bonus — the zone-isolation lever: the
-    zone's contact front (minus its planned entrance bands, which sit in `prot` as hard
-    zeros) densifies into a vegetation ridge with corpus-correct species/clumping, leaving
-    only the planned entrances open.
-    `impassable` tiles (gameplay footprints) count as walls for connectivity. A birth is
-    refused when its blocking cells would cut any open 4-neighbour off from the protected
-    web, so no walled-off open ground ever forms."""
-    A = len(model.cats)
-    if A == 0:
-        return [], set(), set()
-    rng = random.Random(seed ^ (zone.zid * 2654435761 & 0xFFFFFFFF))
-    return _ZoneSampler(zone, model, rng, opts).run()
+@final
+class GibbsSampler:
+    def sample(self, zone: ZoneRef, model: VegModel, seed: int, opts: SampleOptions) -> ZoneGrowth:
+        """Birth/death MH over decoration configurations in one zone. Returns
+        (objects, blocked_set, prot) with objects = list[PlacedObject] on the zone's level.
+        `forbid` tiles (gameplay footprints + approach tiles) admit NO vegetation at all —
+        neither an anchor nor any footprint cell (decor must not bury gameplay, per the repo
+        rule). `border` tiles carry a +BORDER_W log-intensity bonus — the zone-isolation
+        lever: the zone's contact front (minus its planned entrance bands, which sit in `prot`
+        as hard zeros) densifies into a vegetation ridge with corpus-correct species/clumping,
+        leaving only the planned entrances open.
+        `impassable` tiles (gameplay footprints) count as walls for connectivity. The canvas
+        refuses a birth or a death that would cut open ground off from the protected web, so
+        no walled-off open ground ever forms."""
+        if not model.cats:
+            return [], set(), set()
+        return _GibbsRun(ZoneCanvas(zone, model, opts), model, zone_rng(zone, seed)).run()
 
 
 def _ring_masks() -> NDArray[np.float64]:
@@ -203,115 +100,40 @@ def _ring_masks() -> NDArray[np.float64]:
 
 
 @final
-class _ZoneSampler:
-    def __init__(
-        self, zone: ZoneRef, model: VegModel, rng: random.Random, opts: SampleOptions
-    ) -> None:
-        ts = zone.ts
-        self.level = zone.level
-        self.map_h = len(zone.zone_label)
-        self.map_w = len(zone.zone_label[0])
-        self.model = model
-        self.rng = rng
-        self.forbid = opts.forbid
-        self.steps_per_tile = opts.steps_per_tile
-        A = len(model.cats)
-        self.A = A
-
-        xs = [x for x, _ in ts]
-        ys = [y for _, y in ts]
-        self.x0, self.y0 = min(xs), min(ys)
-        self.W = max(xs) - self.x0 + 1
-        self.H = max(ys) - self.y0 + 1
-        self.inz = self._zone_mask(ts)
-        edist = edge_dist(ts)
-        self.eb = self._edge_bins(ts, edist)
-
-        cx, cy = zone.centroid
-        seedt = min(ts, key=lambda t: (t[0] - round(cx)) ** 2 + (t[1] - round(cy)) ** 2)
-        prot = opts.prot
-        if prot is None:
-            prot = protected_web(zone, edist, seedt)
-        self.prot: AbstractSet[Tile] = prot
-        self.protm = self._prot_mask(prot)
-        self.solid = self._solid_mask(opts.impassable)
-
+class _GibbsRun:
+    def __init__(self, canvas: ZoneCanvas, model: VegModel, rng: random.Random) -> None:
+        self.canvas: ZoneCanvas = canvas
+        self.rng: random.Random = rng
+        self.mix: ZoneMix = ZoneMix(model, canvas.tiles_per_ebin, rng)
+        self.A: int = len(model.cats)
         self.L: NDArray[np.float64] = model.L
         self.T: NDArray[np.float64] = model.T
-        self.tiles = sorted(ts)
-        self.Nt = len(self.tiles)
-        # birth proposal: category mix from the zone's total first-order mass; `nexp` is also the
-        # corpus-expected object count per category for this zone (the intercept-correction target)
-        ebin_tiles = np.bincount(self.eb[self.inz].ravel(), minlength=EBINS)
-        self.nexp = cast(NDArray[np.float64], (self.L * ebin_tiles[None, :]).sum(axis=1))
-        self.qc = cast(NDArray[np.float64], self.nexp / self.nexp.sum())
-        self.qc_cum: NDArray[np.float64] = np.cumsum(self.qc)
-
-        # ring masks over the interaction window: RM[r] selects the Chebyshev ring r
         self.RM = _ring_masks()
-
         self.cox = self._cox_field(model.sigma)
-        self.att = self._bonus_grid(opts.border)
-
-        # padded per-category anchor-count grid (padding = no bounds checks on the window)
-        self.C = np.zeros((A, self.H + 2 * RINT, self.W + 2 * RINT), dtype=np.int16)
-        self.blkcnt = np.zeros((self.H, self.W), dtype=np.int32)  # blocking multiplicity per tile
-        self.objs: list[tuple[int, int, int, int]] = []  # (x, y, cat, ident_idx)
-        self.ncat = np.zeros(A, dtype=np.int64)  # objects per category (correction target)
-        self.nblocked = 0
-        self.alpha = 0.0  # global coverage offset
-        self.alpha_c: NDArray[np.float64] = np.zeros(A)  # per-category intercept corrections
+        self.att: NDArray[np.float64] = np.where(canvas.border, BORDER_W, 0.0)
+        self.C = np.zeros((self.A, canvas.H + 2 * RINT, canvas.W + 2 * RINT), dtype=np.int16)
+        self.ncat = np.zeros(self.A, dtype=np.int64)
+        self.alpha = 0.0
+        self.alpha_c: NDArray[np.float64] = np.zeros(self.A)
         self.target = model.target
-
-    def _zone_mask(self, ts: AbstractSet[Tile]) -> NDArray[np.bool_]:
-        inz: NDArray[np.bool_] = np.zeros((self.H, self.W), dtype=bool)
-        for x, y in ts:
-            inz[y - self.y0, x - self.x0] = True
-        return inz
-
-    def _edge_bins(self, ts: AbstractSet[Tile], edist: Mapping[Tile, int]) -> NDArray[np.int8]:
-        eb: NDArray[np.int8] = np.zeros((self.H, self.W), dtype=np.int8)
-        for x, y in ts:
-            eb[y - self.y0, x - self.x0] = min(edist[(x, y)], EBINS - 1)
-        return eb
-
-    def _prot_mask(self, prot: AbstractSet[Tile]) -> NDArray[np.bool_]:
-        protm: NDArray[np.bool_] = np.zeros((self.H, self.W), dtype=np.bool_)
-        for x, y in prot:
-            protm[y - self.y0, x - self.x0] = True
-        return protm
-
-    def _solid_mask(self, impassable: AbstractSet[Tile]) -> NDArray[np.bool_]:
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid: NDArray[np.bool_] = np.logical_not(self.inz)
-        for x, y in impassable:
-            if 0 <= x - x0 < W and 0 <= y - y0 < H:
-                solid[y - y0, x - x0] = True
-        return solid
 
     def _cox_field(self, sigma: float) -> NDArray[np.float64]:
         # log-Gaussian Cox modulation: smooth value noise, standardized over the zone, then
         # M = exp(sigma*G - sigma^2/2)  (mean-one lognormal -> carries forest-mass/clearing scale)
-        cox: NDArray[np.float64] = np.ones((self.H, self.W))
+        cv = self.canvas
+        cox: NDArray[np.float64] = np.ones((cv.H, cv.W))
         if sigma > 0:
-            noise = value_noise(self.W, self.H, COX_CELL, self.rng)
+            noise = value_noise(cv.W, cv.H, COX_CELL, self.rng)
             field: NDArray[np.float64] = np.array(noise)
-            v: NDArray[np.float64] = field[self.inz]
+            v: NDArray[np.float64] = field[cv.inz]
             field = cast(NDArray[np.float64], (field - v.mean()) / max(cast(float, v.std()), 1e-6))
             cox = np.exp(sigma * field - 0.5 * sigma * sigma)
         return cox
 
-    def _bonus_grid(self, border: Collection[Tile]) -> NDArray[np.float64]:
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        att: NDArray[np.float64] = np.zeros((H, W))  # additive log-bonus grid
-        for x, y in border:  # zone-front densification
-            if 0 <= x - x0 < W and 0 <= y - y0 < H:
-                att[y - y0, x - x0] += BORDER_W
-        return att
-
     def energy(self, c: int, x: int, y: int, self_present: bool = False) -> float:
         """Geyer-saturated local interaction  sum_co,r theta[c][co][r] * min(n_co(r), SAT)."""
-        ly, lx = y - self.y0, x - self.x0  # padded window: [ly, ly+KW) x [lx, lx+KW)
+        cv = self.canvas
+        ly, lx = y - cv.y0, x - cv.x0  # padded window: [ly, ly+KW) x [lx, lx+KW)
         win = self.C[:, ly : ly + KW, lx : lx + KW]
         rc: NDArray[np.float64] = np.tensordot(
             win, self.RM, axes=([1, 2], [1, 2])
@@ -321,132 +143,9 @@ class _ZoneSampler:
         weighted = cast(NDArray[np.float64], self.T[c] * np.minimum(rc, SAT))
         return cast(float, weighted.sum())
 
-    def blocked_cells(self, c: int, ii: int, x: int, y: int) -> list[Tile] | None:
-        """Absolute blocking cells of ident ii of category c anchored at (x,y); None = illegal."""
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        inz, protm, forbid, model = self.inz, self.protm, self.forbid, self.model
-        cells: list[Tile] = []
-        for dx, dy in model.iblk[c][ii]:
-            bx, by = x + dx, y + dy
-            if not self._on_map(bx, by):
-                continue
-            lx, ly = bx - x0, by - y0
-            if (
-                not (0 <= lx < W and 0 <= ly < H)
-                or not inz[ly, lx]
-                or protm[ly, lx]
-                or (bx, by) in forbid
-            ):
-                return None
-            cells.append((bx, by))
-        if any((x + dx, y + dy) in forbid for dx, dy in model.ifoot[c][ii]):
-            return None
-        return cells
-
-    def _on_map(self, x: int, y: int) -> bool:
-        return 0 <= x < self.map_w and 0 <= y < self.map_h
-
-    def _map_blocking(self, c: int, ii: int, x: int, y: int) -> list[Tile]:
-        return [
-            (x + dx, y + dy) for dx, dy in self.model.iblk[c][ii] if self._on_map(x + dx, y + dy)
-        ]
-
-    def frees_connected(self, cells: list[Tile]) -> bool:
-        """Whether every tile freed by removing `cells` reaches the protected web through open
-        tiles or other freed tiles."""
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid, protm, blkcnt = self.solid, self.protm, self.blkcnt
-        freed = {
-            (bx, by)
-            for bx, by in cells
-            if blkcnt[by - y0, bx - x0] == 1 and not solid[by - y0, bx - x0]
-        }
-        linked: set[Tile] = set()
-        for start in freed:
-            if start in linked:
-                continue
-            seen = {start}
-            queue = collections.deque([start])
-            found = bool(cast(np.bool_, protm[start[1] - y0, start[0] - x0]))
-            while queue and not found:
-                ux, uy = queue.popleft()
-                for m in ((ux + 1, uy), (ux - 1, uy), (ux, uy + 1), (ux, uy - 1)):
-                    mlx, mly = m[0] - x0, m[1] - y0
-                    if (
-                        m in seen
-                        or not (0 <= mlx < W and 0 <= mly < H)
-                        or solid[mly, mlx]
-                        or (blkcnt[mly, mlx] > 0 and m not in freed)
-                    ):
-                        continue
-                    if protm[mly, mlx] or m in linked:
-                        found = True
-                        break
-                    seen.add(m)
-                    queue.append(m)
-            if not found:
-                return False
-            linked |= seen
-        return True
-
-    def keeps_connected(self, cells: list[Tile]) -> bool:
-        """Whether every open 4-neighbour of `cells` still reaches the protected web once
-        `cells` are blocked."""
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid, blkcnt = self.solid, self.blkcnt
-        walls = set(cells)
-        linked: set[Tile] = set()
-        for bx, by in cells:
-            for nx, ny in ((bx + 1, by), (bx - 1, by), (bx, by + 1), (bx, by - 1)):
-                n = (nx, ny)
-                lx, ly = nx - x0, ny - y0
-                if (
-                    n in walls
-                    or n in linked
-                    or not (0 <= lx < W and 0 <= ly < H)
-                    or solid[ly, lx]
-                    or blkcnt[ly, lx] > 0
-                ):
-                    continue
-                seen = self._reach_web(n, walls, linked)
-                if seen is None:
-                    return False
-                linked |= seen
-        return True
-
-    def _reach_web(
-        self, n: Tile, walls: AbstractSet[Tile], linked: AbstractSet[Tile]
-    ) -> set[Tile] | None:
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid, protm, blkcnt = self.solid, self.protm, self.blkcnt
-        seen = {n}
-        queue = collections.deque([n])
-        found = bool(cast(np.bool_, protm[n[1] - y0, n[0] - x0]))
-        while queue and not found:
-            cx_, cy_ = queue.popleft()
-            for mx, my in ((cx_ + 1, cy_), (cx_ - 1, cy_), (cx_, cy_ + 1), (cx_, cy_ - 1)):
-                m = (mx, my)
-                mlx, mly = mx - x0, my - y0
-                if (
-                    m in seen
-                    or m in walls
-                    or not (0 <= mlx < W and 0 <= mly < H)
-                    or solid[mly, mlx]
-                    or blkcnt[mly, mlx] > 0
-                ):
-                    continue
-                if protm[mly, mlx] or m in linked:
-                    found = True
-                    break
-                seen.add(m)
-                queue.append(m)
-        if not found:
-            return None
-        return seen
-
-    def run(self) -> tuple[list[PlacedObject], set[Tile], AbstractSet[Tile]]:
+    def run(self) -> ZoneGrowth:
         rng = self.rng
-        total = self.steps_per_tile * self.Nt
+        total = STEPS_PER_TILE * self.canvas.Nt
         cat_correct_at = {int(total * f) for f in (0.2, 0.35, 0.5)}
         cov_correct_at = {int(total * f) for f in (0.65, 0.8)}
         for step in range(total):
@@ -455,21 +154,22 @@ class _ZoneSampler:
                 self._birth()
             else:  # ---- death
                 self._death()
-        return self._result()
+        return self.canvas.result()
 
     def _correct(self, step: int, cat_correct_at: set[int], cov_correct_at: set[int]) -> None:
+        nblocked, Nt = self.canvas.nblocked, self.canvas.Nt
         if step in cat_correct_at:  # per-category intercepts -> corpus counts
             self.alpha_c += np.clip(
-                np.log(np.maximum(self.nexp, 1e-3) / np.maximum(self.ncat, 0.5)), -0.9, 0.9
+                np.log(np.maximum(self.mix.nexp, 1e-3) / np.maximum(self.ncat, 0.5)), -0.9, 0.9
             )
-        if step in cov_correct_at and self.nblocked > 0:  # Boolean coverage-exponent correction
-            f_cur = self.nblocked / self.Nt
+        if step in cov_correct_at and nblocked > 0:  # Boolean coverage-exponent correction
+            f_cur = nblocked / Nt
             c_cur = -math.log(max(1e-6, 1.0 - min(f_cur, 0.999)))
             c_tgt = -math.log(max(1e-6, 1.0 - min(self.target, 0.999)))
             self.alpha += max(-0.9, min(0.9, math.log(c_tgt / max(c_cur, 1e-6))))
 
     def _lam_star(self, c: int, x: int, y: int, self_present: bool) -> float:
-        ly, lx = y - self.y0, x - self.x0
+        ly, lx = y - self.canvas.y0, x - self.canvas.x0
         return (
             math.exp(
                 self.alpha
@@ -477,75 +177,41 @@ class _ZoneSampler:
                 + _f(self.att, ly, lx)
                 + self.energy(c, x, y, self_present=self_present)
             )
-            * _f(self.L, c, _i(self.eb, ly, lx))
+            * _f(self.L, c, _i(self.canvas.eb, ly, lx))
             * _f(self.cox, ly, lx)
         )
 
     def _birth(self) -> None:
-        rng = self.rng
-        x, y = self.tiles[rng.randrange(self.Nt)]
-        if (x, y) in self.forbid:
+        rng, cv = self.rng, self.canvas
+        x, y = cv.tiles[rng.randrange(cv.Nt)]
+        if (x, y) in cv.forbid:
             return
-        r = rng.random()
-        c = min(int(np.searchsorted(self.qc_cum, r)), self.A - 1)
-        ws = self.model.iweights[c]
-        ii = rng.choices(range(len(ws)), weights=ws, k=1)[0]
-        cells = self.blocked_cells(c, ii, x, y)
+        c = self.mix.draw_category()
+        ii = self.mix.draw_identity(c)
+        cells = cv.blocked_cells(c, ii, x, y)
         if cells is None or self._buried(cells):
             return
         lam_star = self._lam_star(c, x, y, False)
-        acc = lam_star * self.Nt / ((len(self.objs) + 1) * _f(self.qc, c))
-        if rng.random() < acc and self.keeps_connected(cells):
-            self._add((x, y, c, ii), cells)
+        acc = lam_star * cv.Nt / ((len(cv.objs) + 1) * _f(self.mix.qc, c))
+        if rng.random() < acc and cv.try_place((x, y, c, ii), cells):
+            self._count(c, x, y, 1)
 
     def _buried(self, cells: list[Tile]) -> bool:
-        x0, y0, blkcnt = self.x0, self.y0, self.blkcnt
+        x0, y0, blkcnt = self.canvas.x0, self.canvas.y0, self.canvas.blkcnt
         return all(blkcnt[by - y0, bx - x0] >= STACK_CAP for bx, by in cells)
 
-    def _add(self, obj: tuple[int, int, int, int], cells: list[Tile]) -> None:
-        x0, y0, blkcnt = self.x0, self.y0, self.blkcnt
-        x, y, c, _ii = obj
-        self.objs.append(obj)
-        self.ncat[c] += 1
-        self.C[c, y - y0 + RINT, x - x0 + RINT] += 1
-        for bx, by in cells:
-            blkcnt[by - y0, bx - x0] += 1
-            if blkcnt[by - y0, bx - x0] == 1:
-                self.nblocked += 1
+    def _count(self, c: int, x: int, y: int, d: int) -> None:
+        self.ncat[c] += d
+        self.C[c, y - self.canvas.y0 + RINT, x - self.canvas.x0 + RINT] += d
 
     def _death(self) -> None:
-        rng = self.rng
-        n = len(self.objs)
+        rng, cv = self.rng, self.canvas
+        n = len(cv.objs)
         if n == 0:
             return
         j = rng.randrange(n)
-        x, y, c, ii = self.objs[j]
+        x, y, c, _ii = cv.objs[j]
         lam_star = self._lam_star(c, x, y, True)
-        acc = (n * _f(self.qc, c)) / max(lam_star * self.Nt, 1e-300)
-        if rng.random() < acc and self.frees_connected(self._map_blocking(c, ii, x, y)):
-            self._remove(j)
-
-    def _remove(self, j: int) -> None:
-        x0, y0, blkcnt, objs = self.x0, self.y0, self.blkcnt, self.objs
-        x, y, c, ii = objs[j]
-        objs[j] = objs[-1]
-        _ = objs.pop()
-        self.ncat[c] -= 1
-        self.C[c, y - y0 + RINT, x - x0 + RINT] -= 1
-        for tx, ty in self._map_blocking(c, ii, x, y):
-            bx, by = tx - x0, ty - y0
-            blkcnt[by, bx] -= 1
-            if blkcnt[by, bx] == 0:
-                self.nblocked -= 1
-
-    def _result(self) -> tuple[list[PlacedObject], set[Tile], AbstractSet[Tile]]:
-        x0, y0 = self.x0, self.y0
-        out: list[PlacedObject] = []
-        for x, y, c, ii in sorted(self.objs, key=lambda o: (o[1], o[0])):
-            ident = self.model.idents[c][ii]
-            out.append(PlacedObject.at(ident, (x, y), level=self.level, purpose=""))
-        nz_y, nz_x = self.blkcnt.nonzero()
-        ys_nz = cast(list[int], nz_y.tolist())
-        xs_nz = cast(list[int], nz_x.tolist())
-        blocked = {(x0 + lx, y0 + ly) for ly, lx in zip(ys_nz, xs_nz, strict=True)}
-        return out, blocked, self.prot
+        acc = (n * _f(self.mix.qc, c)) / max(lam_star * cv.Nt, 1e-300)
+        if rng.random() < acc and cv.try_remove(j):
+            self._count(c, x, y, -1)

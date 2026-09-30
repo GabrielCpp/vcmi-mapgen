@@ -70,7 +70,7 @@ def protected_web(
 
     `entrances` (this zone's `core.planning.entrances.plan_entrances` entries) switches
     the border model from corpus-open to ISOLATED: only the planned narrow entrance bands are
-    protected — the rest of the front is left plantable, and `sample_zone`'s border bias
+    protected — the rest of the front is left plantable, and the Gibbs sampler's border bias
     actively densifies it (the map-level isolation redesign). `keep_off` (the caller's 8-connected
     rim: every tile with an 8-neighbour in another zone) further restricts backbone
     ROUTING in that mode — a web corridor pinned to the rim would both hold the ridge open

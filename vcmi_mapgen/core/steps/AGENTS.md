@@ -8,7 +8,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 ## Map
 
 - `terrain_gen/`: `TerrainStep`, the macro terrain layout and its despeckle for both levels.
-- `vegetation/`: `VegetationStep`, the corpus-fitted Gibbs process that grows trees, rocks and lakes.
+- `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
 - `treasure/`: `TreasureStep`, the treasure inside each sealed loot zone.

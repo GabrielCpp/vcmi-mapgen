@@ -8,6 +8,8 @@ from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, PlanZone, ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
+from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 from vcmi_mapgen.core.steps.vegetation.grow import GrowLevel, grow_level, vegetation_models
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone
 
@@ -27,9 +29,9 @@ def test_grow_level_is_deterministic_and_keeps_off_taken_tiles(
     taken = frozenset((x, y) for x in range(24) for y in range(4))
     lv = _level(taken)
     models = vegetation_models(catalog, priors.vegetation, ZonePlan({0: lv.plan}, ()))
-    grown = grow_level(models, lv, 5)
+    grown = grow_level(models, lv, 5, GibbsSampler())
     assert grown.objs
-    assert [(o.x, o.y, o.kind) for o in grow_level(models, lv, 5).objs] == [
+    assert [(o.x, o.y, o.kind) for o in grow_level(models, lv, 5, GibbsSampler()).objs] == [
         (o.x, o.y, o.kind) for o in grown.objs
     ]
     assert not {(o.x, o.y) for o in grown.objs} & taken
@@ -40,7 +42,18 @@ def test_a_terrain_without_categories_grows_nothing(catalog: Catalog, priors: Pr
     lv = _level(frozenset())
     models = vegetation_models(catalog, priors.vegetation, ZonePlan({0: lv.plan}, ()))
     models = {t: replace(m, cats=[]) for t, m in models.items()}
-    grown = grow_level(models, lv, 5)
-    assert grown == grow_level(models, lv, 5)
+    grown = grow_level(models, lv, 5, GibbsSampler())
+    assert grown == grow_level(models, lv, 5, GibbsSampler())
     assert not grown.objs
     assert grown.zones == {1: VegetatedZone()}
+
+
+def test_grow_level_takes_the_field_sampler(catalog: Catalog, priors: Priors) -> None:
+    taken = frozenset((x, y) for x in range(24) for y in range(4))
+    lv = _level(taken)
+    models = vegetation_models(catalog, priors.vegetation, ZonePlan({0: lv.plan}, ()))
+    grown = grow_level(models, lv, 5, FieldSampler())
+    assert grown.objs
+    assert grown == grow_level(models, lv, 5, FieldSampler())
+    assert grown != grow_level(models, lv, 5, GibbsSampler())
+    assert not {(o.x, o.y) for o in grown.objs} & taken

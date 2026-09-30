@@ -65,12 +65,26 @@ def test_overlay_over_a_visit_tile_is_refused() -> None:
         state.add_objs([mine, canopy])
 
 
-def test_overlay_over_an_approach_tile_is_refused() -> None:
+def test_decor_overlay_may_overhang_an_approach_tile() -> None:
     mine = _obj(2, 2, ("X",), purpose=Purpose.MINE)
     canopy = _obj(2, 3, ("V",))
     state = MapState(size=5)
+    state.add_objs([mine, canopy])
+
+
+def test_decor_overlay_may_overhang_an_entrance_tile() -> None:
+    mine = _obj(2, 2, ("BB", "BX"), purpose=Purpose.MINE)
+    canopy = _obj(2, 2, ("V",), purpose=Purpose.DECORATION)
+    index = CoverIndex([canopy])
+    assert index.accepts(mine)
+
+
+def test_gameplay_overlay_over_an_approach_tile_is_refused() -> None:
+    mine = _obj(2, 2, ("X",), purpose=Purpose.MINE)
+    sprite = _obj(2, 3, ("V",), purpose=Purpose.BANK)
+    state = MapState(size=5)
     with pytest.raises(PlacementError):
-        state.add_objs([mine, canopy])
+        state.add_objs([mine, sprite])
 
 
 def test_guard_may_stand_on_an_approach_tile() -> None:

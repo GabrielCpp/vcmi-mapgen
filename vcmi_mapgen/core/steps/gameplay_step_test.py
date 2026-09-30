@@ -9,6 +9,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import GameplayStep, TerrainStep, VegetationStep
+from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 
 
 def _run_towns(catalog: Catalog, priors: Priors, seed: int, players: int = 2) -> MapState:
@@ -17,7 +18,7 @@ def _run_towns(catalog: Catalog, priors: Priors, seed: int, players: int = 2) ->
     with contextlib.redirect_stdout(buf):
         pipeline = Pipeline(catalog, size)
         _ = pipeline.add_step(TerrainStep(priors, size, seed, "normal", True))
-        _ = pipeline.add_step(VegetationStep(priors, seed, players))
+        _ = pipeline.add_step(VegetationStep(priors, GibbsSampler(), seed, players))
         _ = pipeline.add_step(GameplayStep(priors, seed, players, size, True))
         map_state = pipeline.run()
     return map_state
