@@ -6,7 +6,6 @@ skills:
   - process/target-architecture
   - stacks/python/python-dead-code
 packs:
-  - general
   - python
 
 localInstructions:

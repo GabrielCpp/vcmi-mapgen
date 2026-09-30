@@ -115,13 +115,18 @@ treats a refusal as "try the next candidate". Terrain holds by construction: the
 draws identities from the catalog for the zone's terrain and keeps solid cells in the zone. Only `VegetationStep` may raise, when it walls off a pocket.
 `core/steps/AGENTS.md` has the full rule, including guard spacing.
 
-## Only `generate` builds the pipeline
+## Two subcommands build the pipeline
 
-`cli/__main__.py` lists every subcommand in its docstring. `generate` is the only one that
-builds the pipeline, and the only one that takes `--overlays`, `--renderers` and
-`--stop-after`. Keep that configurability on `generate` alone. `render-ontology` renders
-the object catalog through `renderers/ontology_render.py`. It builds no pipeline and never
-touches a generated map.
+`cli/__main__.py` lists every subcommand in its docstring. `generate` and
+`render-vegetation` are the only ones that build the pipeline. `generate` alone takes
+`--renderers` and `--stop-after`. `render-vegetation` always stops after `vegetation` and
+writes one terrain-and-vegetation PNG per seed and level to `out/render/vegetation/`. Both
+take `--vegetation`, which picks a sampler from `SAMPLERS` in `cli/steps.py`. A second
+algorithm for part of a step is a variant of a role the step takes in its constructor, as
+`VegetationStep` takes a `Sampler`. The step stays one class and publishes the same values,
+so the later steps never know which variant ran. Never subclass a step to swap an
+algorithm. `render-ontology` renders the object catalog through
+`renderers/ontology_render.py`. It builds no pipeline and never touches a generated map.
 
 After `pipeline.run()`, `cli/generate.py` reads results back from `pipeline.ctx` by type,
 for example `pipeline.ctx.get(LootResult, LootResult())`.
