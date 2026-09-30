@@ -66,6 +66,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 ```bash
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --subterrain --stop-after vegetation
+uv run python -m vcmi_mapgen.cli render-vegetation --seeds 1 2 3 --vegetation field
 uv run python -m vcmi_mapgen.cli render-ontology
 uv run python -m vcmi_mapgen.cli regen-ontology
 uv run python -m vcmi_mapgen.cli audit
@@ -96,7 +97,8 @@ through `VCMI_HOME`. The rendering tests skip when those files are absent.
 - The root and `vcmi_mapgen/` `AGENTS.md` and everything under `.claude/` are generated
   by farrier. Edit the library source that `farrier source <file>` prints, then
   run `make agent-install`. `core/steps/AGENTS.md` and `core/model/AGENTS.md` are hand-written and
-  edited in place.
+  edited in place. `[code-review]` in `.agent-checks.toml` configures the `code-review`
+  reviewer.
 - **A rename or deletion updates the docs in the same change.** When you rename, move or
   delete a module, class, function or CLI subcommand, grep for the old name in the
   `AGENTS.md` files, `README.md`, `docs/architecture.md` and the library skill sources.

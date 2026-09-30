@@ -6,9 +6,5 @@ set -eu
 
 root=$(git rev-parse --show-toplevel)
 
-# vcmi-mapgen-codebase-map
-for gate in "$root/.claude/skills/vcmi-mapgen-codebase-map/scripts/check_map.py" "$root/.agents/skills/vcmi-mapgen-codebase-map/scripts/check_map.py" "$root/.github/skills/vcmi-mapgen-codebase-map/scripts/check_map.py"; do
-  [ -f "$gate" ] || continue
-  python3 "$gate"
-  break
-done
+# No installed skill declares a pre-commit hook.
+exit 0

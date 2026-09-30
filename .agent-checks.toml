@@ -2,3 +2,7 @@
 plan = "docs/architecture/plan.json"
 sources = ["*.py"]
 exclude = ["vcmi-h3m-format-reference/*", ".venv/*"]
+
+[code-review]
+exclude = ["vcmi-h3m-format-reference/*", ".venv/*"]
+rules = [".claude/skills/vcmi-mapgen-pipeline/SKILL.md"]
