@@ -2,6 +2,7 @@
 name: vcmi-mapgen
 description: "VCMI map-generator repo root: what the project is, uv tooling, the package layout, how to run the CLI and the checks, and the repo-wide rules. Load first for any work in this repo."
 metadata:
+  name: vcmi-mapgen
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen/SKILL.md"

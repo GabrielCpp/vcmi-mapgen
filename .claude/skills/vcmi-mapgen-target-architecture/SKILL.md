@@ -1,10 +1,11 @@
 ---
-name: vcmi-mapgen-process-target-architecture
+name: vcmi-mapgen-target-architecture
 description: "Settle a repository's target architecture before refactoring it, then turn it into a migration plan a workflow can execute. Produces two files: docs/architecture/target.md, the human contract (target tree, core models and the facts they own, sources of truth, allowed dependency edges, behaviour oracle), and docs/architecture/plan.json, the machine contract (a fate for every source file and ordered slices with touches, depends_on and done_when). Ships a validator that checks every file has a fate and that slices able to run in parallel touch disjoint files. Nothing moves until the operator sets status to approved. Load before a repo-wide refactor or restructuring, when asked what the architecture should be, or before running a refactor workflow."
 metadata:
+  name: target-architecture
   generated_by: farrier
   source: library/skills/process/target-architecture/SKILL.md
-  resolve: "farrier source .claude/skills/vcmi-mapgen-process-target-architecture/SKILL.md"
+  resolve: "farrier source .claude/skills/vcmi-mapgen-target-architecture/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [architecture, refactoring, planning]
 ---

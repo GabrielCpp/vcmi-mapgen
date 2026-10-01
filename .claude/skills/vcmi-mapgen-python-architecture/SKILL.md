@@ -2,6 +2,7 @@
 name: vcmi-mapgen-python-architecture
 description: "Python mechanics for the ports-and-adapters contract and the code-structure rules — Protocol vs ABC, the port package layout (interface at the root, adapters beneath, registry apart), which typed value to reach for (Pydantic / frozen dataclass / TypedDict / NamedTuple) and why round-trip beats provenance, services built by dependency injection from a frozen settings object, null objects instead of Optional collaborators, injected clocks, and the ruff / ty / import-linter rules that turn each of these into a gate. Load when structuring any Python package beyond a single module. Applies to **/*.py."
 metadata:
+  name: python-architecture
   generated_by: farrier
   source: library/skills/stacks/python/python-architecture/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen-python-architecture/SKILL.md"
@@ -14,14 +15,14 @@ metadata:
 This skill is the **Python spelling** of two language-neutral contracts. Read them first; the *why*
 lives there and is not repeated here:
 
-- [`~/.claude/skills/architecture-hexagonal-architecture/SKILL.md`](~/.claude/skills/architecture-hexagonal-architecture/SKILL.md)
+- [hexagonal-architecture](~/.claude/skills/hexagonal-architecture/SKILL.md)
   — dependency direction, domain purity, port purity, generic-engine-vs-port, testability.
-- [`~/.claude/skills/architecture-code-structure/SKILL.md`](~/.claude/skills/architecture-code-structure/SKILL.md)
+- [code-structure](~/.claude/skills/code-structure/SKILL.md)
   — when functions become an object, when a module becomes two, data at boundaries, configuration
   and effects.
 
 For CLI conventions (exit codes, logging, `pathlib`, subprocess, imports) see
-[`../vcmi-mapgen-python-cli/SKILL.md`](../vcmi-mapgen-python-cli/SKILL.md).
+[vcmi-mapgen-python-cli](../vcmi-mapgen-python-cli/SKILL.md).
 
 ---
 
@@ -274,7 +275,7 @@ if TYPE_CHECKING:
 | A double stands in for the real port | `ty check` — a structural look-alike stops being assignable the moment the port changes, which is exactly when a stale fake is worth hearing about |
 
 The last four are why **`ty` runs alongside ruff** — setup and the zero-findings bar are in
-[`../vcmi-mapgen-python-cli/SKILL.md`](../vcmi-mapgen-python-cli/SKILL.md). Ruff reads one
+[vcmi-mapgen-python-cli](../vcmi-mapgen-python-cli/SKILL.md). Ruff reads one
 file at a time and never resolves a name to its definition, so no ruff rule can see an adapter
 that has drifted from its port. That is the failure this architecture is *most* exposed to: the
 whole point of a port is that the caller is written against the interface and never sees the
@@ -287,6 +288,6 @@ first time a deadline is close.
 
 This file covers package layout, interfaces, typed values, injection, and the checks. It does
 **not** cover CLI conventions — see
-[`../vcmi-mapgen-python-cli/SKILL.md`](../vcmi-mapgen-python-cli/SKILL.md). It does **not**
+[vcmi-mapgen-python-cli](../vcmi-mapgen-python-cli/SKILL.md). It does **not**
 cover test design or pytest mechanics — see
-[`../vcmi-mapgen-python-testing/SKILL.md`](../vcmi-mapgen-python-testing/SKILL.md).
+[vcmi-mapgen-python-testing](../vcmi-mapgen-python-testing/SKILL.md).

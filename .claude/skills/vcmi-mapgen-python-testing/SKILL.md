@@ -2,6 +2,7 @@
 name: vcmi-mapgen-python-testing
 description: "Generic pytest patterns — fixtures, parametrize, subprocess testing, parallel safety, and doubles that subclass the port so `ty check` catches a fake that has drifted. Applies to test files."
 metadata:
+  name: python-testing
   generated_by: farrier
   source: library/skills/stacks/python/python-testing/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen-python-testing/SKILL.md"

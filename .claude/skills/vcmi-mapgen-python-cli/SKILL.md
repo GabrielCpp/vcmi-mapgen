@@ -2,6 +2,7 @@
 name: vcmi-mapgen-python-cli
 description: "Generic Python CLI conventions — Python 3.12+, type hints, absolute imports, uv, linting with ruff AND ty (zero findings, `# ty: ignore` not `# type: ignore`), entry points, exit codes, logging, subprocess, pathlib, JSON I/O, error handling, naming. Package structure, interfaces, typed values, and dependency injection live in python-architecture. Applies to all Python files."
 metadata:
+  name: python-cli
   generated_by: farrier
   source: library/skills/stacks/python/python-cli/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen-python-cli/SKILL.md"
@@ -280,7 +281,7 @@ Always specify `encoding="utf-8"` — never rely on platform default.
 Which typed value to reach for (Pydantic vs frozen dataclass vs `TypedDict`), when a group of
 functions becomes a class, how services are wired, and where interfaces and their implementations
 live are all in
-[`../vcmi-mapgen-python-architecture/SKILL.md`](../vcmi-mapgen-python-architecture/SKILL.md).
+[vcmi-mapgen-python-architecture](../vcmi-mapgen-python-architecture/SKILL.md).
 They are not repeated here, because they were losing to the CLI mechanics around them.
 
 The three that decide most day-to-day calls:

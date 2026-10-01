@@ -2,6 +2,7 @@
 name: vcmi-mapgen-python-htmx-accessibility
 description: "Accessibility for an HTMX + server-rendered HTML + vanilla-JS app (no SPA framework, no bundler) — semantic templates, ARIA on hand-authored HTML, focus management across hx-swap, aria-live for websocket/out-of-band pushes, accessible command palettes and keyboard nav, and keeping sanitized markdown perceivable. The concrete mechanics behind the universal contract for this stack. Applies to **/templates/**/*.html,**/assets/**/*.js."
 metadata:
+  name: python-htmx-accessibility
   generated_by: farrier
   source: library/skills/stacks/python/python-htmx-accessibility/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen-python-htmx-accessibility/SKILL.md"
@@ -12,7 +13,7 @@ metadata:
 # Accessibility in an HTMX + Server-Rendered HTML App
 
 The universal obligations — role, name, keyboard, focus, perceivable state — are defined once in
-[`~/.claude/skills/ui-accessibility/SKILL.md`](~/.claude/skills/ui-accessibility/SKILL.md). **Read that
+[ui-accessibility](~/.claude/skills/ui-accessibility/SKILL.md). **Read that
 first.** This skill is the concrete *how* for a stack that is hand-authored HTML templates + HTMX
 (`hx-*` attributes, `hx-swap`, `hx-ext="ws"`) + vanilla JS, with **no JSX, no component framework,
 and no build step** — so there is no `eslint-plugin-jsx-a11y` to catch anything; the roles and

@@ -2,6 +2,7 @@
 name: vcmi-mapgen-pipeline
 description: "VCMI map-generator pipeline wiring: Pipeline and ProviderRegistry, the PipelineStep contract (constructor config, inject(ctx), run(catalog, map_state)), the frozen placement results, the additive add_objs rule, --stop-after, and the generate subcommand. Load before adding, changing or reordering a step, or touching core/pipeline.py or cli/."
 metadata:
+  name: vcmi-mapgen-pipeline
   generated_by: farrier
   source: library/skills/projects/vcmi-mapgen/vcmi-mapgen-pipeline/SKILL.md
   resolve: "farrier source .claude/skills/vcmi-mapgen-pipeline/SKILL.md"
