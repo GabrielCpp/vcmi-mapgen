@@ -41,13 +41,12 @@ from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.planning.web import ZoneRef
 from vcmi_mapgen.core.steps.vegetation.canvas import ZoneCanvas, zone_rng
+from vcmi_mapgen.core.steps.vegetation.gibbs.energy import energy
 from vcmi_mapgen.core.steps.vegetation.mix import ZoneMix
 from vcmi_mapgen.core.steps.vegetation.model import RINT, VegModel
 from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, ZoneGrowth
 
-KW = 2 * RINT + 1  # interaction window (5x5)
 STEPS_PER_TILE = 40  # MH proposals per zone tile
-SAT = 2  # Geyer saturation: neighbour count cap per (category, ring)
 COX_CELL = 7  # value-noise cell of the Cox log-field (~ the corpus CELL scale)
 STACK_CAP = 2
 
@@ -91,14 +90,6 @@ class GibbsSampler:
         return _GibbsRun(ZoneCanvas(zone, model, opts), model, zone_rng(zone, seed)).run()
 
 
-def _ring_masks() -> NDArray[np.float64]:
-    RM: NDArray[np.float64] = np.zeros((RINT + 1, KW, KW))
-    for dy in range(-RINT, RINT + 1):
-        for dx in range(-RINT, RINT + 1):
-            RM[max(abs(dx), abs(dy)), dy + RINT, dx + RINT] = 1.0
-    return RM
-
-
 @final
 class _GibbsRun:
     def __init__(self, canvas: ZoneCanvas, model: VegModel, rng: random.Random) -> None:
@@ -108,7 +99,6 @@ class _GibbsRun:
         self.A: int = len(model.cats)
         self.L: NDArray[np.float64] = model.L
         self.T: NDArray[np.float64] = model.T
-        self.RM = _ring_masks()
         self.cox = self._cox_field(model.sigma)
         self.att: NDArray[np.float64] = np.where(canvas.border, BORDER_W, 0.0)
         self.C = np.zeros((self.A, canvas.H + 2 * RINT, canvas.W + 2 * RINT), dtype=np.int16)
@@ -129,19 +119,6 @@ class _GibbsRun:
             field = cast(NDArray[np.float64], (field - v.mean()) / max(cast(float, v.std()), 1e-6))
             cox = np.exp(sigma * field - 0.5 * sigma * sigma)
         return cox
-
-    def energy(self, c: int, x: int, y: int, self_present: bool = False) -> float:
-        """Geyer-saturated local interaction  sum_co,r theta[c][co][r] * min(n_co(r), SAT)."""
-        cv = self.canvas
-        ly, lx = y - cv.y0, x - cv.x0  # padded window: [ly, ly+KW) x [lx, lx+KW)
-        win = self.C[:, ly : ly + KW, lx : lx + KW]
-        rc: NDArray[np.float64] = np.tensordot(
-            win, self.RM, axes=([1, 2], [1, 2])
-        )  # (A cats, RINT+1 rings) neighbour counts
-        if self_present:
-            rc[c, 0] -= 1  # death eval: exclude the object itself
-        weighted = cast(NDArray[np.float64], self.T[c] * np.minimum(rc, SAT))
-        return cast(float, weighted.sum())
 
     def run(self) -> ZoneGrowth:
         rng = self.rng
@@ -175,7 +152,7 @@ class _GibbsRun:
                 self.alpha
                 + _f(self.alpha_c, c)
                 + _f(self.att, ly, lx)
-                + self.energy(c, x, y, self_present=self_present)
+                + energy(self.C, self.T, c, (ly, lx), self_present)
             )
             * _f(self.L, c, _i(self.canvas.eb, ly, lx))
             * _f(self.cox, ly, lx)

@@ -33,7 +33,7 @@ SAMPLERS: dict[str, Sampler] = {
     "gibbs": GibbsSampler(),
     "field": FieldSampler(),
 }
-DEFAULT_VEGETATION = "gibbs"
+DEFAULT_VEGETATION = "field"
 
 
 @dataclass(frozen=True, slots=True)

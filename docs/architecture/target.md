@@ -58,7 +58,7 @@ The layout follows the ports-and-adapters contract in the `hexagonal-architectur
 - **`core/`: map generation.** It holds the vocabulary generation reasons with, the grid
   algorithms, planning, placement, the pipeline and the steps. It names no Heroes III object,
   animation, type, terrain code, mask character or option key. It reads no file and imports
-  nothing outside `core/`, the standard library and numpy.
+  nothing outside `core/`, the standard library, numpy and numba.
 - **Ports that `core/` owns.** `core/catalog.py` declares `Catalog`, the one question
   surface about objects. `core/priors/` declares the corpus statistics as frozen value
   types. The core depends on these declarations and never on who fills them.
@@ -501,7 +501,7 @@ Core:
 10. `core.catalog` | `core.priors`
 11. `core.model`
 
-- `core` imports nothing outside `core`, the standard library and numpy.
+- `core` imports nothing outside `core`, the standard library, numpy and numba.
 - `core.steps.*` are independent. The one allowed crossing is a step importing another
   step's `result`.
 - `corpus.mine` and `corpus.maps` are imported only by `cli`.

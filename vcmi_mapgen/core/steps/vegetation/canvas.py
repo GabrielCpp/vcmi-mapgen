@@ -2,7 +2,6 @@
 web, the blocking count, and the legality and connectivity rules every placement and every
 removal obeys."""
 
-import collections
 import random
 from collections.abc import Collection, Mapping
 from collections.abc import Set as AbstractSet
@@ -14,6 +13,7 @@ from numpy.typing import NDArray
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.planning.web import ZoneRef, protected_web
+from vcmi_mapgen.core.steps.vegetation.connect import frees_connected, keeps_connected
 from vcmi_mapgen.core.steps.vegetation.model import VegModel
 from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, ZoneGrowth
 
@@ -111,98 +111,10 @@ class ZoneCanvas:
             return None
         return cells
 
-    def _keeps_connected(self, cells: list[Tile]) -> bool:
-        """Whether every open 4-neighbour of `cells` still reaches the protected web once
-        `cells` are blocked."""
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid, blkcnt = self.solid, self.blkcnt
-        walls = set(cells)
-        linked: set[Tile] = set()
-        for bx, by in cells:
-            for nx, ny in ((bx + 1, by), (bx - 1, by), (bx, by + 1), (bx, by - 1)):
-                n = (nx, ny)
-                lx, ly = nx - x0, ny - y0
-                if (
-                    n in walls
-                    or n in linked
-                    or not (0 <= lx < W and 0 <= ly < H)
-                    or solid[ly, lx]
-                    or blkcnt[ly, lx] > 0
-                ):
-                    continue
-                seen = self._reach_web(n, walls, linked)
-                if seen is None:
-                    return False
-                linked |= seen
-        return True
-
-    def _reach_web(
-        self, n: Tile, walls: AbstractSet[Tile], linked: AbstractSet[Tile]
-    ) -> set[Tile] | None:
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid, protm, blkcnt = self.solid, self.protm, self.blkcnt
-        seen = {n}
-        queue = collections.deque([n])
-        found = bool(cast(np.bool_, protm[n[1] - y0, n[0] - x0]))
-        while queue and not found:
-            cx_, cy_ = queue.popleft()
-            for mx, my in ((cx_ + 1, cy_), (cx_ - 1, cy_), (cx_, cy_ + 1), (cx_, cy_ - 1)):
-                m = (mx, my)
-                mlx, mly = mx - x0, my - y0
-                if (
-                    m in seen
-                    or m in walls
-                    or not (0 <= mlx < W and 0 <= mly < H)
-                    or solid[mly, mlx]
-                    or blkcnt[mly, mlx] > 0
-                ):
-                    continue
-                if protm[mly, mlx] or m in linked:
-                    found = True
-                    break
-                seen.add(m)
-                queue.append(m)
-        if not found:
-            return None
-        return seen
-
-    def _frees_connected(self, cells: list[Tile]) -> bool:
-        """Whether every tile freed by removing `cells` reaches the protected web through open
-        tiles or other freed tiles."""
-        x0, y0, W, H = self.x0, self.y0, self.W, self.H
-        solid, protm, blkcnt = self.solid, self.protm, self.blkcnt
-        freed = {
-            (bx, by)
-            for bx, by in cells
-            if blkcnt[by - y0, bx - x0] == 1 and not solid[by - y0, bx - x0]
-        }
-        linked: set[Tile] = set()
-        for start in freed:
-            if start in linked:
-                continue
-            seen = {start}
-            queue = collections.deque([start])
-            found = bool(cast(np.bool_, protm[start[1] - y0, start[0] - x0]))
-            while queue and not found:
-                ux, uy = queue.popleft()
-                for m in ((ux + 1, uy), (ux - 1, uy), (ux, uy + 1), (ux, uy - 1)):
-                    mlx, mly = m[0] - x0, m[1] - y0
-                    if (
-                        m in seen
-                        or not (0 <= mlx < W and 0 <= mly < H)
-                        or solid[mly, mlx]
-                        or (blkcnt[mly, mlx] > 0 and m not in freed)
-                    ):
-                        continue
-                    if protm[mly, mlx] or m in linked:
-                        found = True
-                        break
-                    seen.add(m)
-                    queue.append(m)
-            if not found:
-                return False
-            linked |= seen
-        return True
+    def _local(self, cells: list[Tile]) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+        xs = np.array([bx - self.x0 for bx, _ in cells], dtype=np.int64)
+        ys = np.array([by - self.y0 for _, by in cells], dtype=np.int64)
+        return xs, ys
 
     def _placed_cells(self, c: int, ii: int, x: int, y: int) -> list[Tile]:
         return [
@@ -212,7 +124,7 @@ class ZoneCanvas:
     def try_place(self, obj: tuple[int, int, int, int], cells: list[Tile]) -> bool:
         """Record `obj` as (x, y, category, identity) and block its `cells`, unless that walls
         off open ground. Whether it was placed."""
-        if not self._keeps_connected(cells):
+        if not keeps_connected(self.solid, self.protm, self.blkcnt, *self._local(cells)):
             return False
         x0, y0, blkcnt = self.x0, self.y0, self.blkcnt
         self.objs.append(obj)
@@ -228,7 +140,7 @@ class ZoneCanvas:
         x0, y0, blkcnt, objs = self.x0, self.y0, self.blkcnt, self.objs
         x, y, c, ii = objs[j]
         cells = self._placed_cells(c, ii, x, y)
-        if not self._frees_connected(cells):
+        if not frees_connected(self.solid, self.protm, self.blkcnt, *self._local(cells)):
             return False
         objs[j] = objs[-1]
         _ = objs.pop()

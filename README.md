@@ -28,9 +28,10 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    Subterranean Gate pairs.
 2. **Terrain** — corpus-learned transition tiles (shores, terrain edges) so
    coastlines and terrain borders look hand-drawn.
-3. **Vegetation** — a corpus-fitted Gibbs marked point process scatters trees,
-   rocks and lakes with the same clustering statistics as the real maps. A
-   protected walkable web keeps every zone entrance reachable.
+3. **Vegetation** — a cellular field covered with corpus-weighted trees, rocks
+   and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
+   point process instead. A protected walkable web keeps every zone entrance
+   reachable.
 4. **Gameplay** — gates, towns, mines, shipyards, dwellings, banks and shrines
    settle with their backs against the vegetation. Each zone holds objects at the
    corpus rate. Every town gets its sawmill and ore pit.

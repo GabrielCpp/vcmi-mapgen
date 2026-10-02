@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "pillow>=10",  # editor-quality H3 sprite rendering (vcmi_mapgen/render_editor.py)
     "numpy>=1.26",  # terrain segmentation + zone transform math
+    "numba>=0.68.0",
 ]
 
 # pytest in the PROJECT env; uv installs the `dev` group by default for `uv run`/`uv sync`.
@@ -79,7 +80,7 @@ ignore_imports = ["vcmi_mapgen.** -> vcmi_mapgen.conftest"]
 unmatched_ignore_imports_alerting = "none"
 
 [[tool.importlinter.contracts]]
-name = "Core imports only core, the standard library and numpy"
+name = "Core imports only core, the standard library, numpy and numba"
 type = "forbidden"
 source_modules = ["vcmi_mapgen.core"]
 forbidden_modules = [
