@@ -2,13 +2,16 @@
 zone shares (unwalkable tiles, gameplay footprints, the cover index, the terrain rule), one
 ``ZoneSite`` per zone finds and commits a spot for each object.
 
-A spot is legal when the footprint fits the zone clear of other gameplay footprints, with its
-blocking cells GAP tiles away from theirs, and off the entrance bands and earlier approaches;
-the entrance and its approach are walkable and
-reachable from the web; and the blocking cells split no reachable area in two. Blocking cells
-may land on vegetation, the zone rim and the web, and the web then walks around them. Among
-the legal anchors of a neighbourhood the one whose sprite top rests most against unwalkable
-tiles wins."""
+A ``Footing`` picked by purpose decides which anchors a zone site tries and whether a body
+may stand on one. ``ZoneFooting`` keeps the footprint in the zone clear of other gameplay
+footprints, with its blocking cells GAP tiles away from theirs, and off the entrance bands
+and earlier approaches. ``TownFooting`` only keeps a town off other footprints and earlier
+approaches, and lets its cells spill out of the zone onto unwalkable land that is not water
+or rock. Under either footing the entrance and its approach are walkable and reachable from
+the web, and the blocking cells split no reachable area in two. Blocking cells may land on
+vegetation, the zone rim and the web, and the web then walks around them. Among the legal
+anchors of a neighbourhood the one whose sprite top rests most against unwalkable tiles
+wins."""
 
 from __future__ import annotations
 
@@ -18,7 +21,7 @@ import random
 from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
-from typing import final
+from typing import Protocol, final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
@@ -31,12 +34,14 @@ from vcmi_mapgen.core.model import (
     Identity,
     Payload,
     PlacedObject,
+    PlacementRule,
     Role,
     Tile,
     Town,
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import (
     NO_TILES,
     Clearance,
@@ -153,6 +158,7 @@ class LevelField:
     near: set[Tile]
     covers: CoverIndex
     avoid: AbstractSet[Tile] = NO_TILES
+    barrier: frozenset[Tile] = frozenset()
 
     @classmethod
     def build(
@@ -160,10 +166,12 @@ class LevelField:
         level: int,
         grid: Sequence[Sequence[int]],
         objs: Sequence[PlacedObject],
+        rules: Sequence[PlacementRule] = (),
     ) -> LevelField:
-        unwalkable = {
+        barrier = frozenset(
             (x, y) for y, row in enumerate(grid) for x, c in enumerate(row) if Terrain(c).is_barrier
-        }
+        )
+        unwalkable = set(barrier)
         occupied: set[Tile] = set()
         near: set[Tile] = set()
         for o in objs:
@@ -176,7 +184,8 @@ class LevelField:
             if any(_on_land(grid, t) for t in allc):
                 inflate_gap(near, (t for t, ch in tiles if ch in ("B", "X")))
         size = (len(grid[0]) if grid else 0, len(grid))
-        return cls(level, size, unwalkable, occupied, near, CoverIndex(objs))
+        covers = CoverIndex(objs, rules=rules)
+        return cls(level, size, unwalkable, occupied, near, covers, barrier=barrier)
 
     def claim(self, obj: PlacedObject, cells: Iterable[Tile], blk: Iterable[Tile]) -> None:
         cells = list(cells)
@@ -192,6 +201,12 @@ class LevelField:
     def accepts(self, obj: PlacedObject) -> bool:
         obj.level = self.level
         return self.covers.accepts(obj)
+
+    def spillable(self, t: Tile) -> bool:
+        """A body may cover ``t`` outside its zone: on the map, unwalkable, not water or
+        rock."""
+        w, h = self.size
+        return 0 <= t[0] < w and 0 <= t[1] < h and t in self.unwalkable and t not in self.barrier
 
 
 def _on_land(grid: Sequence[Sequence[int]], t: Tile) -> bool:
@@ -356,8 +371,12 @@ class ZoneSite:
         return self.nearest_order(ccx, ccy)
 
     def place(self, purpose: str, ident: Identity, centres: Iterable[Tile]) -> PlacedObject | None:
-        mine = purpose == Purpose.MINE
-        legal = {t: f for t in sorted(self.ts) if (f := self.fit(ident, t, mine)) is not None}
+        footing = FOOTINGS.get(purpose, ZONE_FOOTING)
+        legal = {
+            t: f
+            for t in footing.anchors(self, ident)
+            if (f := footing.fit(self, ident, t)) is not None
+        }
         rejected: set[Tile] = set()
         backs: dict[Tile, int] = {}
         for c in centres:
@@ -499,3 +518,62 @@ class SiteIndex:
     def site_at(self, t: Tile) -> ZoneSite | None:
         zid = self.zone_of.get(t)
         return None if zid is None else self.sites.get(zid)
+
+
+class Footing(Protocol):
+    """Which anchors a zone site tries for an object, and whether its body may stand on one."""
+
+    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]: ...
+
+    def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ZoneFooting:
+    """The body inside the zone, GAP tiles clear of other bodies, off the entrance bands and
+    earlier approaches. A mine also keeps its front open and its guard tile legal."""
+
+    mine: bool = False
+
+    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+        _ = ident
+        return sorted(site.ts)
+
+    def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
+        return site.fit(ident, anchor, self.mine)
+
+
+@final
+class TownFooting:
+    """A town's body off other bodies, earlier approaches and avoided tiles, each cell in the
+    zone or on spillable land. Its entrance and approach are walkable and its approach stands
+    in the zone, reached from the web. It may cover the entrance bands and keeps no gap."""
+
+    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+        fw, fh = ident.footprint.width, ident.footprint.height
+        return sorted(
+            {(x + dx, y + dy) for x, y in site.ts for dx in range(fw) for dy in range(fh)}
+        )
+
+    def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
+        lf = site.lf
+        allc, blk, approach = footprint_cells(ident.footprint, *anchor)
+        if approach is None:
+            return None
+        hard = set(site.approaches) | lf.avoid
+        if any(
+            c in lf.occupied or c in hard or (c not in site.ts and not lf.spillable(c))
+            for c in allc
+        ):
+            return None
+        if approach not in site.ts or approach in lf.occupied or approach in blk:
+            return None
+        if approach in lf.avoid or approach not in site.reach or not lf.walkable(approach):
+            return None
+        if not all(lf.walkable(t) for t in door_cells(ident.footprint, anchor)):
+            return None
+        return allc, blk, approach
+
+
+ZONE_FOOTING = ZoneFooting()
+FOOTINGS: dict[str, Footing] = {Purpose.TOWN: TownFooting(), Purpose.MINE: ZoneFooting(mine=True)}

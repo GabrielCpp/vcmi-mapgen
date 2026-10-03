@@ -1,7 +1,9 @@
 """GameplayStep: the player-zone pick, the sea objects, then every gameplay object placed
 against the vegetated field, in order: gate pairs, towns, the economy mines, the other
 mines, shipyards, then dwellings, banks and visitables. Each zone draws its total at the
-corpus rate, and the forced objects count inside it."""
+corpus rate, and the forced objects count inside it. A town may cover the zone's entrance
+bands and spill onto vegetation beyond it. Every player town is protected from then on, so
+no later object guards its entrance or walls in its start."""
 
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteIndex, SiteZone, ZoneSite
+from vcmi_mapgen.core.placement.start_room import StartRoomRule
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.draw import (
@@ -35,19 +38,22 @@ from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 NO_TILES: frozenset[Tile] = frozenset()
 
 
-def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> None:
+def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> PlacedObject | None:
     """Place a zone's town: a player town pulls toward the zone centre, a neutral one follows
     the corpus intensity."""
-    if draw.town is not None:
-        centres = site.centroid_order(draw.town) if player else site.intensity_order(Purpose.TOWN)
-        if site.place(Purpose.TOWN, draw.town, centres) is None:
-            if player:
-                print(
-                    f"  WARNING: player zone {site.zid} (level {site.lf.level}) "
-                    + "could not fit its town"
-                )
-            else:
-                print(f"  zone {site.zid}: no spot for TOWN {draw.town.kind}")
+    if draw.town is None:
+        return None
+    centres = site.centroid_order(draw.town) if player else site.intensity_order(Purpose.TOWN)
+    town = site.place(Purpose.TOWN, draw.town, centres)
+    if town is None:
+        if player:
+            print(
+                f"  WARNING: player zone {site.zid} (level {site.lf.level}) "
+                + "could not fit its town"
+            )
+        else:
+            print(f"  zone {site.zid}: no spot for TOWN {draw.town.kind}")
+    return town
 
 
 def place_mines(site: ZoneSite, draw: ZoneDraw, ledger: Ledger, placed_res: set[str]) -> None:
@@ -172,6 +178,7 @@ class GameplayStep(PipelineStep):
         self._player_zids: list[tuple[int, int]] = []
         self._tunnels: frozenset[Tile] = NO_TILES
         self._placed_res: set[str] = set()
+        self._starts: dict[int, StartRoomRule] = {}
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -235,7 +242,10 @@ class GameplayStep(PipelineStep):
         for level, idx in sorted(indexes.items()):
             for zid, site in sorted(idx.sites.items()):
                 draws[level, zid] = self._draw(site, ledger)
-                place_town(site, draws[level, zid], (level, zid) in self._player_zids)
+                player = (level, zid) in self._player_zids
+                town = place_town(site, draws[level, zid], player)
+                if player and town is not None:
+                    self._starts[level].protect(town)
         self._move_player_towns(catalog, indexes)
         return draws
 
@@ -246,7 +256,9 @@ class GameplayStep(PipelineStep):
         for site in _town_hosts(sites):
             if need <= 0:
                 return
-            if site.place(Purpose.TOWN, ident, _town_order(site, ident)) is not None:
+            town = site.place(Purpose.TOWN, ident, _town_order(site, ident))
+            if town is not None:
+                self._starts[site.lf.level].protect(town)
                 site.spent += TOWN_SLOTS
                 need -= 1
                 print(f"  player town moved to zone {site.zid} (level {site.lf.level})")
@@ -265,10 +277,12 @@ class GameplayStep(PipelineStep):
         level: int,
         map_state: MapState,
     ) -> SiteIndex:
+        self._starts[level] = StartRoomRule(map_state, level)
         lf = LevelField.build(
             level,
             self._grids[level],
             [o for o in map_state.objs if o.level == level],
+            rules=(self._starts[level],),
         )
         idx = SiteIndex(lf)
         vegetated = self._veg.zones[level]

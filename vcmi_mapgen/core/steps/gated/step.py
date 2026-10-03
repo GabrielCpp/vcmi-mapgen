@@ -7,6 +7,7 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.start_room import start_rules
 from vcmi_mapgen.core.planning.zone_index import build_zone_index
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
@@ -68,7 +69,12 @@ class GatedStep(PipelineStep):
         for level, zone_records in index.zone_records.items():
             new, n, access, claims = place_gated_zones(
                 catalog,
-                GatedLevel(zone_records, by_level[level], self.priors.gameplay[0]),
+                GatedLevel(
+                    zone_records,
+                    by_level[level],
+                    self.priors.gameplay[0],
+                    start_rules(map_state, level),
+                ),
                 seed=self.seed,
                 bounds=(self.size, self.size),
             )

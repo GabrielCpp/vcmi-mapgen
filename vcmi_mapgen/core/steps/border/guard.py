@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Entrance, PlacedObject, Tile
+from vcmi_mapgen.core.model import Entrance, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.steps.border.crossings import CrossingRules, LevelGrid, guard_crossings
 from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entrances
@@ -16,13 +16,15 @@ from vcmi_mapgen.core.steps.border.entrances import EntranceField, guard_entranc
 @dataclass(frozen=True, slots=True)
 class BorderLevel:
     """What one level's guarding reads: its terrain and zones, its entrance plan, its zone
-    records, the zones that host a player town, and the tiles no guard may stand on."""
+    records, the zones that host a player town, the tiles no guard may stand on, and the rules
+    every guard must pass."""
 
     grid: LevelGrid
     entrance_plan: Mapping[int, Sequence[Entrance]]
     records: Sequence[ZoneRecord]
     home_zids: frozenset[int]
     avoid: frozenset[Tile]
+    rules: Sequence[PlacementRule] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,11 +65,15 @@ def guard_level(
         home_zids=lv.home_zids,
         skip_zids={zr.zid for zr in lv.records if zr.loot_zone},
         avoid=lv.avoid,
+        rules=lv.rules,
     )
     ent_objs = guard_entrances(catalog, field, objs, seed, lv.grid.level)
     objs.extend(ent_objs)
     rules = CrossingRules(
-        _entrance_bands(lv.entrance_plan), lv.avoid, skip_tiles=_loot_tiles(lv.records)
+        _entrance_bands(lv.entrance_plan),
+        lv.avoid,
+        skip_tiles=_loot_tiles(lv.records),
+        placement=lv.rules,
     )
     new_objs, guard_tiles, n_open = guard_crossings(catalog, lv.grid, rules, objs, seed)
     guard_tiles |= {(o.x, o.y) for o in ent_objs}

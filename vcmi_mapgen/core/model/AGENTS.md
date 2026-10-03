@@ -10,10 +10,12 @@ The one exception is `MapState`, which is the map's grid API: `MapState(size=...
 the blocking `BORDER` sentinel outside the map), `taken_tiles(level)`, `conflicts(obj)`,
 `place` and `add_objs`. Those methods answer questions about tiles and objects that are
 already on the map. They never search or score. Every placement step writes its objects
-through `add_objs(new, rules)`, which refuses an object that covers another object's
-visit, entrance or approach tile, or that `rules` rejects. A guard may stand on an
-approach tile, and any overlay may sit over a resource pile or reward pickup. A placer never relies on that refusal. It asks a
-`CoverIndex` before each placement and skips the spot. The same `CoverIndex` owns the
+through `add_objs(new)`, which refuses an object that covers another object's
+visit, entrance or approach tile. A guard may stand on an approach tile, and any overlay
+may sit over a resource pile or reward pickup. A placer never relies on that refusal. It
+asks a `CoverIndex` before each placement and skips the spot. A `CoverIndex` built with
+`rules` also asks each `PlacementRule` in turn. `StartRoomRule` is the one rule today: it
+keeps guards and walls off a player town's start. The same `CoverIndex` owns the
 cells placements have claimed: `claim(cells)` adds them, `mark()` records a point, and
 `rollback(mark)` forgets every object and claim since that point.
 

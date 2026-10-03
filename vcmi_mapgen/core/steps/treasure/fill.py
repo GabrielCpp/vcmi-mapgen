@@ -10,7 +10,7 @@ from typing import Self
 
 from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
 from vcmi_mapgen.core.grid.geometry import NB8
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
@@ -229,13 +229,14 @@ def fill_loot_zone(
 class LootLevel:
     """One level to fill: every zone record, the access footprint of each loot zone by zone
     id, the objects already on the level, the gameplay statistics per terrain and the tiles
-    the level has claimed."""
+    the level has claimed, and the rules every new object must pass."""
 
     zone_records: Sequence[ZoneRecord]
     footprints: Mapping[int, frozenset[Tile]]
     objs: Sequence[PlacedObject]
     gameplay: GameplayStats
     claims: frozenset[Tile] = frozenset()
+    rules: Sequence[PlacementRule] = ()
 
 
 def fill_loot_zones(
@@ -244,7 +245,7 @@ def fill_loot_zones(
     """Fill every loot zone of one level. Returns the new objects and the level's claims,
     grown by the tiles the fill claimed."""
     zone_records, footprints, level_objs = level.zone_records, level.footprints, level.objs
-    cover = CoverIndex(level_objs, level.claims)
+    cover = CoverIndex(level_objs, level.claims, level.rules)
     blocked: set[Tile] = {
         (cx, cy)
         for o in level_objs

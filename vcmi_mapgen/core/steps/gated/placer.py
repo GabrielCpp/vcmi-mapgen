@@ -14,7 +14,7 @@ from typing import Self, final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.reach import reach
-from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
@@ -234,11 +234,12 @@ class _Sited:
 @dataclass(frozen=True, slots=True)
 class GatedLevel:
     """One level to seal: every zone record, the objects already on the level and the
-    gameplay statistics per terrain."""
+    gameplay statistics per terrain, and the rules every new object must pass."""
 
     zone_records: Sequence[ZoneRecord]
     objs: Sequence[PlacedObject]
     gameplay: GameplayStats
+    rules: Sequence[PlacementRule] = ()
 
 
 @final
@@ -260,7 +261,7 @@ class GatedPlacer:
         self.seed = seed
         self.bounds = bounds
         self.town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == Purpose.TOWN}
-        self.cover = CoverIndex(objs_existing)
+        self.cover = CoverIndex(objs_existing, rules=level.rules)
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
         self.blocked = FP.blocking_cells(objs_existing)
         self.interactive_existing = {

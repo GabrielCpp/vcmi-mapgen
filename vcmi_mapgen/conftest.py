@@ -125,7 +125,7 @@ class OpenZonePlacer:
         ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
         spec = DrawSpec(1, terrain, len(ts), player=player)
         draw = ZoneDrawer(self.catalog, spec, site.st, ledger, seed).draw()
-        place_town(site, draw, player)
+        _ = place_town(site, draw, player)
         place_mines(site, draw, ledger, set())
         place_attractions(site, draw)
         tie_dwellings(self.catalog, site.objs)

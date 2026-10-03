@@ -7,6 +7,7 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.start_room import start_rules
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.steps.border import crossings as BS
@@ -65,6 +66,7 @@ class BorderStep(PipelineStep):
                 self._zones.zone_records[level],
                 frozenset(zid for lvl, zid in self._player_zids if lvl == level),
                 self._zones.hard_avoid[level],
+                start_rules(map_state, level),
             )
             guarded = guard_level(catalog, lv, by_level[level], self.seed)
             self.objs.extend(guarded.objs)

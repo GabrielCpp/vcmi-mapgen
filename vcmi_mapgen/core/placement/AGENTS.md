@@ -13,7 +13,8 @@ Where an object stands and which tiles it takes. A module here reads `Footprint`
 - `place.py`: `PlaceTarget`, `PlaceSpec` and `place_one`, the guarded placement over the open field, plus reachability.
 - `rewards.py`: the one reward builder, which draws the pandoraBox reward and the
   seer-hut quest payout a tier apart.
-- `site.py`: where an object may stand in a zone: the shared level field, the cover index and each zone's spot search, from the `SiteZone` a zone brings to the `PlacedZone` it leaves.
+- `site.py`: where an object may stand in a zone: the shared level field, the cover index and each zone's spot search with its `Footing` per purpose, from the `SiteZone` a zone brings to the `PlacedZone` it leaves.
+- `start_room.py`: `StartRoomRule`, the placement rule that keeps a guard's zone of control off a player town's entrance and stops any solid object from walling in its start. `start_rules` builds it for a finished map's level.
 - `scatter.py`: `place_scatter`, the unguarded resource piles over the finished open field. A
   `ScatterZone` carries its gate bands, so scatter never reads a label grid.
 - `water.py`: the water-body objects and the seaport guarantee, drawn by the zone plan and

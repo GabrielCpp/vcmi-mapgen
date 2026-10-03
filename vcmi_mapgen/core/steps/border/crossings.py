@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Guard, PlacedObject, Tile, Zone
+from vcmi_mapgen.core.model import CoverIndex, Guard, PlacedObject, PlacementRule, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced
@@ -27,6 +27,7 @@ class CrossingRules:
     bands: Container[Tile]
     hard_avoid: Container[Tile]
     skip_tiles: Container[Tile] = ()
+    placement: Sequence[PlacementRule] = ()
 
 
 @final
@@ -36,14 +37,14 @@ class _GuardPlacer:
         catalog: Catalog,
         rng: random.Random,
         objs: list[PlacedObject],
-        hard_avoid: Container[Tile],
+        rules: CrossingRules,
         level: int,
     ) -> None:
         self._catalog = catalog
         self._rng = rng
-        self._hard_avoid = hard_avoid
+        self._hard_avoid = rules.hard_avoid
         self._level = level
-        self._cover = CoverIndex(objs)
+        self._cover = CoverIndex(objs, rules=rules.placement)
         self._decor_blk = FP.decor_blocking_cells(objs)
         self._guards = [(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD]
 
@@ -129,7 +130,7 @@ def guard_crossings(
 
     existing_guards = {(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD}
 
-    placer = _GuardPlacer(catalog, rng, objs, rules.hard_avoid, terrain.level)
+    placer = _GuardPlacer(catalog, rng, objs, rules, terrain.level)
 
     guard_tiles, unguarded = placer.guard_pairs(pairs, existing_guards, new_objs)
 

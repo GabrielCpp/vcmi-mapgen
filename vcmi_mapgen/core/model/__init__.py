@@ -4,6 +4,7 @@ from vcmi_mapgen.core.model.map_state import (
     CoverIndex,
     MapState,
     PlacementError,
+    PlacementRule,
     TileView,
     footprint,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "Payload",
     "PlacedObject",
     "PlacementError",
+    "PlacementRule",
     "Quest",
     "Reward",
     "Role",

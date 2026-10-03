@@ -10,9 +10,10 @@ from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.pockets import Pockets, find_pockets
-from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.start_room import start_rules
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.pocket_masks import PocketMask
@@ -85,11 +86,12 @@ class LootStep(PipelineStep):
         level: int,
         objs: list[PlacedObject],
         seerhut_artifacts: set[str],
-        home_zids: set[int],
+        rules: Sequence[PlacementRule],
     ) -> tuple[list[PlacedObject], dict[Tile, float]]:
         """Seer-hut quests and guarded pocket caches for ONE level. ``objs`` is the level's
         existing objects, read only. Returns (new_objs, pocket_depth_by_tile)."""
         size, seed = self.size, self.seed
+        home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
         targets = self._targets[level]
         border_guards = self._guard_tiles.get(level, frozenset[Tile]())
         zone_records = [
@@ -98,7 +100,7 @@ class LootStep(PipelineStep):
         _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(
             zone_records, self.priors.pocket_masks, access_tiles(objs), occupied_tiles(objs)
         )
-        cover = CoverIndex(objs, self._claims.get(level, ()))
+        cover = CoverIndex(objs, self._claims.get(level, ()), rules)
         qobjs, n_quests = QU.place_seer_hut_quests(
             catalog,
             zone_records,
@@ -147,9 +149,12 @@ class LootStep(PipelineStep):
         seerhut_artifacts: set[str] = set()
         pockets_by_level: Pockets = {}
         for level in sorted(objs_by_level):
-            home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
             new_objs, depth = self._place_level_loot(
-                catalog, level, objs_by_level[level], seerhut_artifacts, home_zids
+                catalog,
+                level,
+                objs_by_level[level],
+                seerhut_artifacts,
+                start_rules(map_state, level),
             )
             for o in new_objs:
                 o.level = level

@@ -6,7 +6,15 @@ from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import CoverIndex, Entrance, Guard, Identity, PlacedObject, Tile
+from vcmi_mapgen.core.model import (
+    CoverIndex,
+    Entrance,
+    Guard,
+    Identity,
+    PlacedObject,
+    PlacementRule,
+    Tile,
+)
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import guard_spaced
@@ -18,13 +26,15 @@ ENTRANCE_SALT = 0xE47
 @dataclass(frozen=True, slots=True)
 class EntranceField:
     """One level's planned entrances per zone, each zone's tiles, the zones that host a
-    player town, the zones no entrance guard may touch, and the tiles no guard may stand on."""
+    player town, the zones no entrance guard may touch, the tiles no guard may stand on, and
+    the rules every guard must pass."""
 
     plan: Mapping[int, Sequence[Entrance]]
     zone_tiles: Mapping[int, frozenset[Tile]]
     home_zids: Container[int]
     skip_zids: Container[int]
     avoid: Container[Tile]
+    rules: Sequence[PlacementRule] = ()
 
 
 def _guard_level(rng: random.Random, area: int, home: bool) -> int:
@@ -41,7 +51,7 @@ class _EntranceGuards:
         self.catalog = catalog
         self.field = field
         self.level = level
-        self.cover = CoverIndex(objs)
+        self.cover = CoverIndex(objs, rules=field.rules)
         self.blocked = FP.blocking_cells(objs)
         self.guards = [(o.x, o.y) for o in objs if o.purpose == Purpose.GUARD]
         self.out: list[PlacedObject] = []

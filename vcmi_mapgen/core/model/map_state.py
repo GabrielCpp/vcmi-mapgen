@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from vcmi_mapgen.core.model.objects import PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -123,22 +124,38 @@ def covering_problems(obj: PlacedObject, index: dict[tuple[int, Tile], list[Cove
     return problems
 
 
+class PlacementRule(Protocol):
+    """A reason a candidate may not stand where it is, read from the covers of its level."""
+
+    def refuses(self, covers: CoverIndex, obj: PlacedObject) -> list[str]: ...
+
+
 class CoverIndex:
     """The tiles of one level that objects cover, and the tiles placers have claimed, kept up
     to date as a placer adds objects. ``conflicts`` answers both ways: ``obj`` covering another
     object's interactive tile, and another object covering an interactive tile of ``obj``.
-    ``mark`` and ``rollback`` undo every object added and every tile claimed since the mark."""
+    It then asks each of ``rules``. ``mark`` and ``rollback`` undo every object added and every
+    tile claimed since the mark."""
 
-    def __init__(self, objs: Iterable[PlacedObject] = (), claims: Iterable[Tile] = ()) -> None:
+    def __init__(
+        self,
+        objs: Iterable[PlacedObject] = (),
+        claims: Iterable[Tile] = (),
+        rules: Sequence[PlacementRule] = (),
+    ) -> None:
         self._at: dict[Tile, list[Cover]] = {}
         self._claimed: set[Tile] = set(claims)
         self._log: list[PlacedObject | frozenset[Tile]] = []
+        self._rules: tuple[PlacementRule, ...] = tuple(rules)
         for obj in objs:
             self.add(obj)
 
     @property
     def claims(self) -> AbstractSet[Tile]:
         return self._claimed
+
+    def covers_at(self, tile: Tile) -> Sequence[Cover]:
+        return self._at.get(tile, ())
 
     def add(self, obj: PlacedObject) -> None:
         for tile, role in footprint(obj):
@@ -178,6 +195,8 @@ class CoverIndex:
                 ):
                     if problem:
                         problems.append(problem)
+        for rule in self._rules:
+            problems += rule.refuses(self, obj)
         return problems
 
     def accepts(self, obj: PlacedObject) -> bool:

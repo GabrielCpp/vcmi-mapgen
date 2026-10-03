@@ -8,6 +8,7 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.start_room import start_rules
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
@@ -94,7 +95,8 @@ class PortalStep(PipelineStep):
         grids = map_state.terrain
         by_level = map_state.objs_by_level(grids)
         covers = {
-            lvl: CoverIndex(objs, self._claims.get(lvl, ())) for lvl, objs in by_level.items()
+            lvl: CoverIndex(objs, self._claims.get(lvl, ()), start_rules(map_state, lvl))
+            for lvl, objs in by_level.items()
         }
         world = RS.PortalWorld(
             self.size,

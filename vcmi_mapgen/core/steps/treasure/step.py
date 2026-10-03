@@ -7,6 +7,7 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.start_room import start_rules
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gated.result import GatedResult
@@ -45,14 +46,14 @@ class TreasureStep(PipelineStep):
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         for level in self._gated.access:
             level_objs = [o for o in map_state.objs if o.level == level]
-            new = self._fill_level(catalog, level, level_objs)
+            new = self._fill_level(catalog, level, level_objs, map_state)
             for o in new:
                 o.level = level
             self.objs.extend(new)
         map_state.add_objs(self.objs)
 
     def _fill_level(
-        self, catalog: Catalog, level: int, level_objs: list[PlacedObject]
+        self, catalog: Catalog, level: int, level_objs: list[PlacedObject], map_state: MapState
     ) -> list[PlacedObject]:
         footprints = {zid: acc.footprint for zid, acc in self._gated.access[level].items()}
         claims = self._zones.claims.get(level, frozenset())
@@ -62,6 +63,7 @@ class TreasureStep(PipelineStep):
             level_objs,
             self.priors.gameplay[0],
             claims,
+            start_rules(map_state, level),
         )
         new, self._zones.claims[level] = fill_loot_zones(
             catalog, loot, self.seed, (self.size, self.size)
