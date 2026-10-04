@@ -69,3 +69,11 @@ def test_unknown_identifiers_return_none_not_raise() -> None:
     assert ON.spell_level("notARealSpell") is None
     assert ON.artifact_tier("notARealArtifact") is None
     assert ON.monster_level("notARealCreature") is None
+
+
+def test_a_terrain_themed_crypt_stands_only_on_its_own_terrain() -> None:
+    assert ON.allowed_on("avxgysn0", "snow")
+    assert not ON.allowed_on("avxgysn0", "grass")
+    assert ON.allowed_on("avxgyne0", "grass")
+    assert not ON.allowed_on("avxgyne0", "snow")
+    assert ON.allowed_on("avxgyds0", "sand")

@@ -232,7 +232,11 @@
                 "land": ["avxbnk10", "avxbnk20", "avxbnk30", "avxbnk40", "avxbnk50", "avxbnk60", "avxbnk70"]
             },
             "CRYPT": {
-                "land": ["avxgyds0", "avxgyne0", "avxgysn0"]
+                "dirt": ["avxgyne0"],
+                "grass": ["avxgyne0"],
+                "sand": ["avxgyds0"],
+                "snow": ["avxgysn0"],
+                "swamp": ["avxgyne0"]
             },
             "DERELICT_SHIP": {
                 "water": ["avadlic0"]
@@ -279,7 +283,9 @@
                 "land": ["avxstbl0"]
             },
             "SWAN_POND": {
-                "land": ["avsclvd0", "avsclvg0", "avsclvs0"]
+                "dirt": ["avsclvd0"],
+                "grass": ["avsclvg0"],
+                "swamp": ["avsclvs0"]
             },
             "TEMPLE": {
                 "land": ["avstmpl0"]
@@ -373,7 +379,14 @@
                 "land": ["avxhutm0"]
             },
             "OBELISK": {
-                "land": ["avxoblb", "avxoblg", "avxoblk", "avxoblo", "avxoblp", "avxoblw", "avxobly"]
+                "dirt": ["avxoblg"],
+                "grass": ["avxoblw"],
+                "lava": ["avxobly"],
+                "rough": ["avxoblo"],
+                "sand": ["avxoblk"],
+                "snow": ["avxoblp"],
+                "subterr": ["avxoblk"],
+                "swamp": ["avxoblb"]
             },
             "OCEAN_BOTTLE": {
                 "water": ["avxbttl0"]
@@ -552,7 +565,9 @@
                 "land": ["avxtvrn0"]
             },
             "TRADING_POST": {
-                "land": ["avxpost0", "avxpstr0"]
+                "dirt": ["avxpost0"],
+                "grass": ["avxpost0"],
+                "rough": ["avxpstr0"]
             },
             "TRADING_POST_SNOW": {
                 "land": ["avxpssn"]
@@ -583,7 +598,8 @@
                 "land": ["avsgrdn0"]
             },
             "HILL_FORT": {
-                "land": ["avxhild0", "avxhilg0"]
+                "dirt": ["avxhild0"],
+                "grass": ["avxhilg0"]
             },
             "LEARNING_STONE": {
                 "land": ["avsgzbo0"]

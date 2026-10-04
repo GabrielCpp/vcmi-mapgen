@@ -166,9 +166,9 @@ def _decode_mask_full(passability: str, triggers: str, tile_dims: tuple[int, int
     of the leftmost tile), not in this decode chain."""
     grid = _decode_mask_grid(passability, triggers)  # 6 rows x 8 cols, '.' outside
     act = [(r, c) for r in range(6) for c in range(8) if grid[r][c] != "."]
-    if not act:
-        return ("B",)
     wt, ht = tile_dims if tile_dims else (0, 0)
+    if not act:
+        return tuple("V" * max(1, min(8, wt)) for _ in range(max(1, min(6, ht))))
     ht = max(1, min(6, ht), 6 - min(r for r, _ in act))  # never cut an active cell
     wt = max(1, min(8, wt), 8 - min(c for _, c in act))
     return tuple(
@@ -233,6 +233,20 @@ def _template_terrains(allowed_mask: str, native_mask: str, coupled: bool) -> li
     return ["land"]
 
 
+def themed_terrains(records: list[tuple[str, str, str, int, int, Mask]]) -> dict[str, list[str]]:
+    """The native land terrains of every template whose object type comes in several
+    templates with different native masks, such as the snow, sand and grass crypts. Those
+    templates draw the terrain into the sprite, so each one stands on its native terrain only."""
+    natives: dict[tuple[int, int], set[str]] = {}
+    for _anim, _allowed, native, cls, sub, _mask in records:
+        natives.setdefault((cls, sub), set()).add(native)
+    return {
+        anim: sorted(_mask_terrains(native) - {"water"})
+        for anim, _allowed, native, cls, sub, _mask in records
+        if len(natives[cls, sub]) > 1 and _mask_terrains(native) - {"water"}
+    }
+
+
 def _derive_leaf_meta(index: LodIndex) -> dict[str, LeafMeta]:
     """{animation: {"cls", "sub", "mask"}} for every objects.txt template — the per-animation
     placement metadata the ontology exposes via :func:`identity_of` / :func:`mask_of`, windowed
@@ -254,7 +268,11 @@ def _derive_leaf_meta(index: LodIndex) -> dict[str, LeafMeta]:
 def _derive_taxonomy(index: LodIndex) -> Taxonomy:
     """Build the CLUSTER->PURPOSE->type->terrain->leaf tree from objects.txt + the ontology."""
     raw: dict[str, dict[str, dict[str, dict[str, dict[str, str]]]]] = {}
-    for anim, allowed, native, cls, sub, _mask in _objects_txt_records(index):
+    records = _objects_txt_records(index)
+    themed = themed_terrains(
+        [rec for rec in records if not resolve(rec[3], rec[4]).terrain_coupled]
+    )
+    for anim, allowed, native, cls, sub, _mask in records:
         r = resolve(cls, sub)
         typ = r.name
         if typ in COLOR_KEYED_NAMES:
@@ -263,7 +281,11 @@ def _derive_taxonomy(index: LodIndex) -> Taxonomy:
             leaf_name = r.subtype  # faction (castle, rampart, ...)
         else:
             leaf_name = anim
-        terrains = LEAF_TERRAINS.get(anim) or _template_terrains(allowed, native, r.terrain_coupled)
+        terrains = (
+            LEAF_TERRAINS.get(anim)
+            or themed.get(anim)
+            or _template_terrains(allowed, native, r.terrain_coupled)
+        )
         for terrain in terrains:
             node = (
                 raw.setdefault(r.cluster, {})
