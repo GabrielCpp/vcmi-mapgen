@@ -12,7 +12,6 @@ from vcmi_mapgen.core.placement.footprint import anchored_cells, interactive_cel
 from vcmi_mapgen.core.placement.guards import guard_spaced, guard_zoc
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import (
-    BorderStep,
     GameplayStep,
     GatedStep,
     LootStep,
@@ -22,6 +21,8 @@ from vcmi_mapgen.core.steps import (
     TreasureStep,
     VegetationStep,
 )
+from vcmi_mapgen.core.steps.terrain_gen.markov import MarkovTerrain
+from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 
@@ -54,7 +55,6 @@ STEP_NAMES = (
     "gameplay",
     "gated",
     "treasure",
-    "border",
     "portal",
     "loot",
     "scatter",
@@ -63,12 +63,11 @@ STEP_NAMES = (
 
 def pipeline_steps(priors: Priors, seed: int = SEED) -> list[tuple[str, PipelineStep]]:
     steps: list[PipelineStep] = [
-        TerrainStep(priors, SIZE, seed, "normal", True),
+        TerrainStep(priors, MarkovTerrain(), seed, TerrainOptions(SIZE, "normal", True, PLAYERS)),
         VegetationStep(priors, GibbsSampler(), seed, PLAYERS),
         GameplayStep(priors, seed, PLAYERS, SIZE, True),
         GatedStep(priors, seed, SIZE),
         TreasureStep(priors, seed, SIZE),
-        BorderStep(seed, SIZE),
         PortalStep(priors, seed, SIZE),
         LootStep(priors, seed, SIZE),
         ScatterStep(priors, seed, SIZE),
@@ -134,7 +133,7 @@ def test_gameplay_writes_player_towns(
     assert len(after.player_towns) == PLAYERS
 
 
-@pytest.mark.parametrize("name", ["vegetation", "gameplay", "border", "loot", "scatter"])
+@pytest.mark.parametrize("name", ["vegetation", "gameplay", "loot", "scatter"])
 def test_placement_steps_change_objs(
     transitions: dict[str, tuple[Snapshot, Snapshot]], name: str
 ) -> None:
@@ -190,14 +189,13 @@ def test_every_step_keeps_the_objects_before_it(
     assert after.objs[: len(before.objs)] == before.objs
 
 
-@pytest.mark.parametrize("name", ["border", "loot"])
-def test_a_late_guard_keeps_its_distance_from_every_other_guard(
-    pipeline_run: PipelineRun, name: str
+def test_a_loot_guard_keeps_its_distance_from_every_other_guard(
+    pipeline_run: PipelineRun,
 ) -> None:
     guards = [o for o in pipeline_run.state.objs if o.purpose == Purpose.GUARD]
-    for g in (o for o in pipeline_run.added_by(name) if o.purpose == Purpose.GUARD):
+    for g in (o for o in pipeline_run.added_by("loot") if o.purpose == Purpose.GUARD):
         others = [(o.x, o.y) for o in guards if o is not g and o.level == g.level]
-        assert guard_spaced((g.x, g.y), others), f"{name} guard at {(g.x, g.y)} crowds another"
+        assert guard_spaced((g.x, g.y), others), f"loot guard at {(g.x, g.y)} crowds another"
 
 
 def _touches(o: PlacedObject, blocking: set[tuple[int, Tile]]) -> bool:

@@ -4,14 +4,15 @@ Code here reads the corpus, loads and saves the priors, and compares the corpus 
 
 ## Map
 
-- `maps.py`: the corpus maps: `corpus_path`, `all_map_names`, `load_corpus_map` and `corpus_maps`, each map a `MapState` read through `vcmi.load.load_map`, with one `Terrain` per tile.
+- `maps.py`: the corpus maps: `corpus_path`, `all_map_names`, `load_corpus_map`, `named_corpus_maps` and `corpus_maps`, each map a `MapState` read through `vcmi.load.load_map`, with one `Terrain` per tile.
 - `cache.py`: `read_cache` and `write_cache`, one statistics file under `data/pp/` with its
   version and source stamp.
 - `gates.py`: `load_gate_stats` and `save_gate_stats` over `data/pp/gate_stats.json`.
 - `gameplay.py`: `load_gameplay` and `save_gameplay` over the per-level gameplay statistics.
 - `macro.py`: `load_macro` and `save_macro` over `data/pp/macro_stats.json` and its underground twin.
-- `markov.py`: `load_tables` and `save_tables` over `data/pp/markov_<level>.json`.
-- `tiler.py`: `load_tiler` and `save_tiler` over `data/pp/tiler.json`. The export and the PNG renderer load it. No step does.
+- `markov.py`: `load_tables` and `save_tables` over `data/pp/markov_<level>.json`, and `load_inside` and `save_inside` over `data/pp/markov_places_<level>.json`.
+- `places.py`: `load_places` and `save_places` over `data/pp/place_stats.json` and its underground twin. Each `PlaceContent` row is saved as `[role, hop, area, rewards, value, fixed, guards]`, and the road statistics under `roads`.
+- `tiler.py`: `load_tiler` and `save_tiler` over `data/pp/tiler.json`, the terrain and the road frame tables. The export and the PNG renderer load it. No step does.
 - `vegetation.py`: `load_vegetation` and `save_vegetation` over `data/pp/veg_<terrain>.json`,
   and `vegetation_terrains`, the terrains that have a vegetation file.
 - `priors.py`: `load_priors`, which loads every prior above into one `Priors` value. The

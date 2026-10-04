@@ -6,11 +6,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.cli.settings import Settings
-from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
+from vcmi_mapgen.cli.steps import DEFAULT_TERRAIN, DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
-from vcmi_mapgen.core.steps.border.result import BorderResult
 from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
 from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
@@ -131,6 +130,7 @@ class GenerateOptions:
     renderers: str
     stop_after: str | None
     vegetation: str
+    terrain: str = DEFAULT_TERRAIN
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +142,7 @@ class VegetationRenderOptions:
     subterrain: bool
     overlays: str
     vegetation: str
+    terrain: str = DEFAULT_TERRAIN
 
 
 def _run_pipeline(settings: Settings, config: StepConfig, stop_after: str | None) -> Pipeline:
@@ -156,6 +157,10 @@ def _run_pipeline(settings: Settings, config: StepConfig, stop_after: str | None
     return pipeline
 
 
+def _terrain_tag(terrain: str) -> str:
+    return "" if terrain == DEFAULT_TERRAIN else f"_{terrain}"
+
+
 def render_vegetation(
     install: VcmiInstall, settings: Settings, opts: VegetationRenderOptions
 ) -> None:
@@ -167,7 +172,13 @@ def render_vegetation(
     index = lod(install.data_dir)
     for seed in opts.seeds:
         config = StepConfig(
-            seed, opts.size, opts.players, opts.water_mode, opts.subterrain, opts.vegetation
+            seed,
+            opts.size,
+            opts.players,
+            opts.water_mode,
+            opts.subterrain,
+            opts.vegetation,
+            opts.terrain,
         )
         pipeline = _run_pipeline(settings, config, "vegetation")
         map_state = pipeline.map_state
@@ -176,20 +187,25 @@ def render_vegetation(
         print(f"vegetation s{seed} ({opts.vegetation}): {len(map_state.objs)} objects")
         for level in sorted(map_state.terrain):
             suffix = "" if level == 0 else f"_L{level}"
-            name = f"veg_s{seed}_{opts.vegetation}{suffix}.png"
+            name = f"veg_s{seed}_{opts.vegetation}{_terrain_tag(opts.terrain)}{suffix}.png"
             print(f"  {renderer.save(map_state, name, level=level)}")
 
 
 def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
     config = StepConfig(
-        opts.seed, opts.size, opts.players, opts.water_mode, opts.subterrain, opts.vegetation
+        opts.seed,
+        opts.size,
+        opts.players,
+        opts.water_mode,
+        opts.subterrain,
+        opts.vegetation,
+        opts.terrain,
     )
     pipeline = _run_pipeline(settings, config, opts.stop_after)
     map_state = pipeline.map_state
 
     for line in (
         *pipeline.ctx.get(VegetationResult, VegetationResult()).log,
-        *pipeline.ctx.get(BorderResult, BorderResult()).log,
         *pipeline.ctx.get(PortalResult, PortalResult()).log,
     ):
         print(f"  {line}")
@@ -210,6 +226,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     stem = f"ppmap_s{opts.seed}"
     if opts.vegetation != DEFAULT_VEGETATION:
         stem = f"{stem}_{opts.vegetation}"
+    stem = f"{stem}{_terrain_tag(opts.terrain)}"
 
     if "png" in renderers:
         index = lod(install.data_dir)

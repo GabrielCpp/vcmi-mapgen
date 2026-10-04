@@ -1,5 +1,5 @@
-"""TerrainStep: macro terrain for the surface and the underground, despeckled into one
-``Terrain`` grid per level, then segmented into same-terrain zones. Tile art is the
+"""TerrainStep: one ``Terrain`` grid per level and the place map under it, drawn by the
+``TerrainModel`` it is given, then segmented into one zone per place. Tile art is the
 export's job, so no frame or flip leaves this step."""
 
 from __future__ import annotations
@@ -7,45 +7,35 @@ from __future__ import annotations
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import MapState, Tile
-from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
-from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
-from vcmi_mapgen.core.steps.terrain_gen.levels import level_protect, raw_levels, segment_levels
+from vcmi_mapgen.core.steps.terrain_gen.levels import segment_places
+from vcmi_mapgen.core.steps.terrain_gen.model import TerrainModel, TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
 
 class TerrainStep(PipelineStep):
-    """Generate macro terrain and despeckle it into the level's ``Terrain`` grid.
+    """Draw each level's terrain and place map, and segment the places into zones.
 
     Config:
-        priors      The corpus priors; the step reads each level's terrain priors.
-        size        Map side length in tiles (square).
-        seed        RNG seed.
-        water_mode  'none' | 'normal' | 'islands'
-        subterrain  Whether to generate a second underground level.
+        priors   The corpus priors; the model reads the terrain and place statistics.
+        model    The ``TerrainModel`` that draws the grids and the place map.
+        seed     RNG seed.
+        options  Map side, water mode, underground and player count.
 
     Produces: ``map_state.terrain``; ``TerrainGrids``, the tunnel cells despeckle kept;
-    ``Segmentation``, each level's same-terrain zones and zone label grid.
+    ``PlaceMap``, each level's places; ``Segmentation``, each level's zones, one per place,
+    and zone label grid.
     """
 
     def __init__(
-        self,
-        priors: Priors,
-        size: int = 72,
-        seed: int = 3,
-        water_mode: str = "normal",
-        subterrain: bool = False,
+        self, priors: Priors, model: TerrainModel, seed: int, options: TerrainOptions
     ) -> None:
         self.priors: Priors = priors
-        self.size: int = size
+        self.model: TerrainModel = model
         self.seed: int = seed
-        self.water_mode: str = water_mode
-        self.subterrain: bool = subterrain
-        self.terrain: dict[int, list[list[Terrain]]] = {}
-        self.tunnel_protect: frozenset[Tile] = frozenset()
+        self.options: TerrainOptions = options
         self._ctx: ProviderRegistry | None = None
 
     @override
@@ -54,22 +44,15 @@ class TerrainStep(PipelineStep):
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
-        raw = raw_levels(
-            self.priors.terrain,
-            self.size,
-            self.seed,
-            MTOPO.MacroOptions(water_mode=self.water_mode, level=0),
-            self.subterrain,
-        )
-        thin = catalog.thin_terrains()
-        for level, grid in raw.grids.items():
-            self.terrain[level] = despeckle(grid, thin, level_protect(level, raw.tunnel_protect))
-        self.tunnel_protect = raw.tunnel_protect
-        map_state.terrain = self.terrain
         if self._ctx is None:
             raise RuntimeError("TerrainStep.run() requires inject() to have been called")
-        self._ctx.provide(TerrainGrids(tunnel_protect=self.tunnel_protect))
-        segmentation, warnings = segment_levels(self.terrain, self.tunnel_protect)
+        draw = self.model.draw(catalog, self.priors, self.seed, self.options)
+        for line in draw.log:
+            print(line)
+        map_state.terrain = dict(draw.grids)
+        self._ctx.provide(TerrainGrids(tunnel_protect=draw.tunnel_protect))
+        self._ctx.provide(draw.places)
+        segmentation, warnings = segment_places(map_state.terrain, draw.places, draw.tunnel_protect)
         for line in warnings:
             print(line)
         self._ctx.provide(segmentation)

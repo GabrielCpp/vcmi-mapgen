@@ -12,8 +12,8 @@ registry.
 - `noise.py`: the seeded value-noise field.
 - `paths.py`: `geodesic_path` inside a tile set, `farthest_points` sampling and the backbone `SPACING`.
 - `pocket_masks.py`: `parse_masks`, which reads the drawn pocket shapes of `data/pockets.txt` into every distinct rotation and mirror.
-- `pockets.py`: `find_pockets`, which slides those masks over the walkable tiles with the map edge read as wall, each pocket tile's depth from its guard, `dedupe_pockets`, and the `Pockets` type.
+- `pockets.py`: `find_pockets`, which slides those masks over the walkable tiles with the map edge read as wall, `find_rooms`, which takes every dead end of at most 16 tiles behind a one-tile mouth whatever its shape, each pocket tile's depth from its guard, `dedupe_pockets`, and the `Pockets` type.
 - `reach.py`: the one BFS family over tile sets: `distances`, `reach` and `walk`, with
   `STEPS4` and `STEPS8`, and `entry_reach` from one entry tile. A search with its own stop
   rule, or one over a label grid or a numpy array, keeps its own loop.
-- `segment.py`: `segment_level`, the terrain flood fill with each tile's position inside its zone.
+- `segment.py`: `segment_level`, the terrain flood fill with each tile's position inside its zone, `flood_label`, the bare flood fill, and `zones_of_labels`, the zones of a finished label grid.

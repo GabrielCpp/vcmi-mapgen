@@ -15,7 +15,7 @@ metadata:
 The generator is one procedural pipeline. `cli/steps.py` builds it in `build_steps`, and
 that list is the source of truth for which steps run and in what order. At the time of
 writing it runs `terrain -> vegetation -> gameplay -> gated -> treasure ->
-border -> portal -> loot -> scatter`.
+portal -> loot -> scatter -> roads`.
 
 Two hand-written files hold the rest of the contract. Read them before changing a step:
 
@@ -57,7 +57,7 @@ class LootStep(PipelineStep):
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
         self._zones = ctx.require(ZoneIndex)
-        self._guard_tiles = ctx.require(BorderResult).guard_tiles
+        self._plan = ctx.get(ContentPlan, ContentPlan())
 
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         ...
@@ -78,8 +78,7 @@ pipeline.
 
 A loop inside `run` that chooses tiles, zones or objects is a function that has not been
 moved out yet. Move it to the step's package before adding to it.
-`run` stays under 30 lines. `vegetation/grow.py`, `scatter/piles.py` and `border/guard.py`
-show the shape: a frozen value holding one level's inputs, and a function that returns one
+`run` stays under 30 lines. `vegetation/grow.py` and `scatter/piles.py` show the shape: a frozen value holding one level's inputs, and a function that returns one
 level's result. `MapState.objs_by_level` gives each level's objects.
 
 The `code-structure` skill's rules 1.7 and 1.8 cover the values those functions take. A
@@ -98,11 +97,15 @@ Order matters for `MapState` writes, for `ZoneIndex` mutation and for RNG determ
 
 ## Placement steps hand each other frozen values
 
+`TerrainStep` provides the `PlaceMap`: each level's places, the kind of each border and
+its `Passages`. The places model draws one kind per border: closed, gated or open. The
+markov model gates every pair. The passage plan drives the walkable web in
+`VegetationStep` and the entrances of the `ZonePlan`.
+
 `VegetationStep` provides the `ZonePlan` (`core/planning/zone_plan.py`), each zone's
 entrances, web and town room. It also provides `VegetationResult`, each zone's open and
 walkable tiles. `GameplayStep` provides `GameplayResult`, one `PlacedZone` per zone.
-`GatedStep` builds the `ZoneIndex` from those values, and `BorderStep` provides its guard
-tiles in `BorderResult`. A producer provides a value once, and every consumer requires it.
+`GatedStep` builds the `ZoneIndex` from those values. A producer provides a value once, and every consumer requires it.
 No step creates a value for a later step to fill in.
 
 `--stop-after` is a prefix cut and never a skip-list. A step whose producer was skipped
@@ -116,18 +119,23 @@ treats a refusal as "try the next candidate". Terrain holds by construction: the
 draws identities from the catalog for the zone's terrain and keeps solid cells in the zone. Only `VegetationStep` may raise, when it walls off a pocket.
 `core/steps/AGENTS.md` has the full rule, including guard spacing.
 
-## Two subcommands build the pipeline
+## Which subcommands build the pipeline
 
 `cli/__main__.py` lists every subcommand in its docstring. `generate` and
-`render-vegetation` are the only ones that build the pipeline. `generate` alone takes
-`--renderers` and `--stop-after`. `render-vegetation` always stops after `vegetation` and
-writes one terrain-and-vegetation PNG per seed and level to `out/render/vegetation/`. Both
-take `--vegetation`, which picks a sampler from `SAMPLERS` in `cli/steps.py`. A second
-algorithm for part of a step is a variant of a role the step takes in its constructor, as
-`VegetationStep` takes a `Sampler`. The step stays one class and publishes the same values,
-so the later steps never know which variant ran. Never subclass a step to swap an
-algorithm. `render-ontology` renders the object catalog through
-`renderers/ontology_render.py`. It builds no pipeline and never touches a generated map.
+`render-vegetation` build the pipeline to make maps. `corpus-match` and `readings` build
+it through `build_steps` to measure maps, and write none. `readings` reads each map with
+`core/reading/vector.py`. `generate` alone takes `--renderers` and `--stop-after`.
+`render-vegetation` always stops after `vegetation` and writes one terrain-and-vegetation
+PNG per seed and level to `out/render/vegetation/`. Both take `--vegetation`, which picks
+a sampler from `SAMPLERS` in `cli/steps.py`, and `--terrain`, which picks a model from
+`TERRAIN_MODELS`. `places` is the default. The terrain model also picks the content
+planner from `CONTENTS` and the `RoadLayer` from `ROADS`, so `RoadsStep` lays passage
+roads under places and nothing under markov. A second algorithm for part of a step is a
+variant of a role the step takes in its constructor, as `VegetationStep` takes a
+`Sampler`. The step stays one class and publishes the same values, so the later steps
+never know which variant ran. Never subclass a step to swap an algorithm.
+`render-ontology` renders the object catalog through `renderers/ontology_render.py`. It
+builds no pipeline and never touches a generated map.
 
 After `pipeline.run()`, `cli/generate.py` reads results back from `pipeline.ctx` by type,
 for example `pipeline.ctx.get(LootResult, LootResult())`.

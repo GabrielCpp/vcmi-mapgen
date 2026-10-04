@@ -4,6 +4,7 @@ from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.planning import entrances as ZF
+from vcmi_mapgen.core.reading.borders import AdjacencyKind
 
 
 def _zone(ts: set[Tile], centroid: tuple[float, float], area: int, terrain_type: int) -> Zone:
@@ -76,3 +77,34 @@ def test_plan_entrances_aligned_and_few() -> None:
     assert max(abs(ra[0] - rb[0]), abs(ra[1] - rb[1])) >= ZF.MIN_ENTRANCE_SEP, (
         "the two entrances of one pair must not crowd each other"
     )
+
+
+def _strip_label() -> list[list[int]]:
+    return [[x // 8 for x in range(24)] for _y in range(10)]
+
+
+def test_all_passages_is_the_plan_over_every_pair() -> None:
+    label = _strip_label()
+    passages = ZF.all_passages(label)
+    assert passages.entrances == ZF.plan_entrances(label)
+    assert passages.open_pairs == frozenset()
+
+
+def test_every_kind_gets_its_own_passages() -> None:
+    label = _strip_label()
+    kinds = {(0, 1): AdjacencyKind.GATED, (1, 2): AdjacencyKind.OPEN}
+    passages = ZF.plan_passages(label, kinds)
+    assert passages.open_pairs == {(1, 2)}
+    assert passages.entrances[0] == ZF.plan_entrances(label)[0]
+    (_rep, band, other), *rest = [e for e in passages.entrances[2]]
+    assert other == 1 and not rest
+    assert band == {(16, y) for y in range(10)}
+    gated = [e for e in passages.entrances[1] if e.other == 0]
+    assert len(gated) == 1 and len(gated[0].band) == ZF.ENTRANCE_W
+
+
+def test_a_closed_or_unknown_pair_gets_no_passage() -> None:
+    label = _strip_label()
+    passages = ZF.plan_passages(label, {(0, 1): AdjacencyKind.CLOSED})
+    assert all(not ents for ents in passages.entrances.values())
+    assert set(passages.entrances) == {0, 1, 2}

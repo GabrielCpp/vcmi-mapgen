@@ -13,10 +13,11 @@ arguments in `__main__.py` and calls one module per subcommand.
 - `mine_stats.py`: the `mine-stats` subcommand: which corpus statistics exist and the one
   pass that rebuilds every `data/pp/` file.
 - `macro_preview.py`: prints the macro statistics and renders one macro terrain grid to a PNG.
+- `readings.py`: the `readings` subcommand. It generates maps with each terrain model, reads them and the corpus maps of the same side with `core/reading/vector.py`, prints each reading's corpus median and quartiles beside each model's median, and prints the `core/reading/verdict.py` switch rule's answer against the default model.
 - `render_sprites.py`: the `render-sprites` subcommand. It renders one `.vmap` with the real H3 sprites.
 - `settings.py`: `Settings`, the one place that reads `os.environ` and `sys.platform`, and `open_install`, which finds the VCMI install or exits naming `VCMI_HOME`.
 - `steps.py`: `StepConfig`, what one generation asks for, and `build_steps`, the one step
-  list built from the priors and that config.
+  list built from the priors and that config. `TERRAIN_MODELS` names the terrain models, and `DEFAULT_TERRAIN` is `places`. `CONTENTS` and `ROADS` pick the content planner and the road layer per terrain model.
 - `veg_report.py`: prints one terrain's mined vegetation statistics.
 - `veg_experiment.py`: the M1 experiment. It samples vegetation on a real corpus zone and
   compares the run lengths with the corpus.

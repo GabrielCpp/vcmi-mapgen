@@ -23,20 +23,27 @@ economy and guard strength stay balanced.
 Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m` maps) and
 **deterministic** (same seed ⇒ bit-identical map):
 
-1. **Macro layout** — capacity-constrained zone growth with textured borders,
-   optional ocean/islands, and an optional underground level connected by
-   Subterranean Gate pairs.
-2. **Terrain** — corpus-learned transition tiles (shores, terrain edges) so
-   coastlines and terrain borders look hand-drawn.
-3. **Vegetation** — a cellular field covered with corpus-weighted trees, rocks
+1. **Places.** A place graph drawn from corpus statistics, laid out on land:
+   one home per player, treasure grounds and pockets, each with its hop count
+   from the nearest home. Each border between two places is closed, gated or
+   open. Ocean, islands and an underground level linked by Subterranean Gate
+   pairs are optional.
+2. **Terrain.** Each palette region of places takes one dominant terrain, and
+   corpus-learned transition bands and accents paint it so coastlines and
+   terrain borders look hand-drawn. `--terrain markov` picks the older model,
+   which grows macro zones, textures their borders with a corpus Markov chain
+   and floods the terrain into places.
+3. **Vegetation.** A cellular field covered with corpus-weighted trees, rocks
    and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
-   point process instead. A protected walkable web keeps every zone entrance
+   point process instead. A protected walkable web keeps every planned passage
    reachable.
-4. **Gameplay** — gates, towns, mines, shipyards, dwellings, banks and shrines
+4. **Gameplay.** Gates, towns, mines, shipyards, dwellings, banks and shrines
    settle with their backs against the vegetation. Each zone holds objects at the
-   corpus rate. Every town gets its sawmill and ore pit.
-6. **Loot** — unguarded scatter along routes, guarded caches in pockets with a
-   monster on the mouth; guard level scales with the guarded value.
+   corpus rate. Every town gets its sawmill and ore pit. Reward value and guard
+   level follow each place's hop count from home.
+5. **Loot.** Unguarded scatter along routes, and guarded caches in pockets with a
+   monster on the mouth. Guard level scales with the guarded value.
+6. **Roads.** Roads link the towns through the planned passages.
 
 ## Requirements
 
@@ -79,18 +86,21 @@ uv run python -m vcmi_mapgen.cli mine-stats --only markov tiler
 
 A missing file stops `generate` with an error that names `mine-stats`.
 
-Three corpus tools run through the same CLI:
+Four corpus tools run through the same CLI:
 
 ```bash
 uv run python -m vcmi_mapgen.cli audit
 uv run python -m vcmi_mapgen.cli extract-vmap
 uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
+uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 ```
 
 `audit` lists the corpus objects the generator cannot reproduce, and exits non-zero when there
 is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
 `data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
-objects sit in corpus zones and in generated zones.
+objects sit in corpus zones and in generated zones. `readings` generates maps with each
+terrain model and prints the map-math 8 readings beside the corpus median and quartiles,
+then says whether a model would replace the default.
 
 ## Map
 

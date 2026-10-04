@@ -1,5 +1,17 @@
 # VCMI maps: the domain
 
+## Layers and variant tables
+
+- `lint-imports` enforces the import layers in `pyproject.toml`, top to bottom: `cli`,
+  `renderers`, `corpus`, `vcmi`, `core.steps`, `core.pipeline`, `core.planning`,
+  `core.reading`, `core.placement`, `core.grid`, `core.catalog` with `core.priors`, and
+  `core.model`. A module imports only from the layers below its own. `core/reading/`
+  sits below `core/planning/` because `planning/content.py` counts hops with it.
+- `cli/steps.py` holds the variant tables. `TERRAIN_MODELS` names the terrain models and
+  `SAMPLERS` the vegetation samplers. `CONTENTS` picks the content planner and `ROADS`
+  the road layer, both keyed by terrain model. `DEFAULT_TERRAIN` is `places` and
+  `DEFAULT_VEGETATION` is `field`.
+
 ## Formats and identifiers
 
 - `.h3m` is a real map, a gzip binary. `h3m.parse_file` parses it into an `H3Map` with
@@ -8,6 +20,11 @@
   `vcmi/formats/vmap/writer.py` read and write it through a full `VmapDocument` model. The model
   covers header players, teams, victory, defeat, every object, and terrain as VCMI tile
   strings. Its `extra` catch-all lets an unmodelled key round-trip losslessly.
+- A VCMI tile string carries the terrain, then an optional road field and an optional
+  river field, each a type prefix, a frame and a mirror. `vcmi.tiles.tile_string` writes
+  it and `decode_tile_string` reads it back into a `Cell`. `MapState.roads` round-trips
+  through it: `vcmi/export.py` writes each level's roads and `vcmi.load.load_map` reads
+  them back. Rivers are not modelled.
 - **The corpus** is `data/corpus/vmap/<name>.vmap`, loaded by `corpus.maps.load_corpus_map`
   as a `MapState`, the same type a generated map is.
   `python -m vcmi_mapgen.cli extract-vmap` regenerates it from `data/corpus/h3m/`.
@@ -50,14 +67,21 @@
 
 ## Segmentation
 
-- `core.grid.segment.segment_level(level)` returns `(zones, zone_label, canonical)`.
-  `TerrainStep` calls it through `terrain_gen/levels.py` and provides
-  `Segmentation(zones, zone_label)` from `terrain_gen/result.py`.
+- `TerrainStep` provides `Segmentation(zones, zone_label)` from `terrain_gen/result.py`,
+  one zone per place of the `PlaceMap` the terrain model draws.
+  `terrain_gen/levels.py` `segment_places` builds it through
+  `core.grid.segment.zones_of_labels`.
 - `zone_label` is a `ZoneLabel` grid read `[y][x]`. The entrance and gate geometry in
   `core/planning/entrances.py` reads it. `label_zones(zones)` rebuilds one from
   hand-built zones in tests.
-- The segmentation is a 4-connected flood fill by terrain type. Water and rock are
+- Under the places model, the default, the segmentation comes from the place map: each zone is one
+  place of the laid-out place graph. Two adjacent places stay two zones even when they
+  share a terrain.
+- Under the markov model, `terrain_gen/place_map.py` `flood_places` makes the places, so
+  the segmentation is a 4-connected flood fill by terrain type. Water and rock are
   barriers (`Terrain.is_barrier`), with `zone_label` set to -1.
+  `core.grid.segment.segment_level(level)` is the same flood fill, which the corpus
+  miners call.
 - Each zone tile's canonical coordinates are `(depth, sweep)`. Depth comes from the BFS
   distance to the zone boundary, renormalised to the zone's own range. Sweep is the
   tile's angle around the zone centroid.

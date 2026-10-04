@@ -1,7 +1,7 @@
 """Zone-border geometry: which zone owns each land tile and which open pairs cross a zone
-border. The vegetation border plan and the border guards both read them."""
+border. The vegetation border plan reads them."""
 
-from collections.abc import Collection, Container, Mapping
+from collections.abc import Collection, Container, Mapping, Sequence
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile, Zone
@@ -49,3 +49,18 @@ def cross_pairs(
                 else:
                     pairs.append((t, n))
     return pairs, band_pairs
+
+
+def closing_pairs(
+    pairs: Sequence[tuple[Tile, Tile]],
+    owner: Mapping[Tile, int],
+    open_pairs: Container[tuple[int, int]],
+) -> list[tuple[Tile, Tile]]:
+    """The crossings of ``pairs`` whose zone pair ``(a, b)``, ``a < b``, is not in
+    ``open_pairs``: an open border stays walkable along its whole front."""
+    out: list[tuple[Tile, Tile]] = []
+    for t, n in pairs:
+        a, b = owner[t], owner[n]
+        if (min(a, b), max(a, b)) not in open_pairs:
+            out.append((t, n))
+    return out

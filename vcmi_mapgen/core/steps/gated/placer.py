@@ -18,6 +18,7 @@ from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Placement
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
+from vcmi_mapgen.core.placement.ground import Ground, stands
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
@@ -234,12 +235,14 @@ class _Sited:
 @dataclass(frozen=True, slots=True)
 class GatedLevel:
     """One level to seal: every zone record, the objects already on the level and the
-    gameplay statistics per terrain, and the rules every new object must pass."""
+    gameplay statistics per terrain, the rules every new object must pass and the level's
+    terrain grid every seal must be allowed on."""
 
     zone_records: Sequence[ZoneRecord]
     objs: Sequence[PlacedObject]
     gameplay: GameplayStats
     rules: Sequence[PlacementRule] = ()
+    ground: Ground = ()
 
 
 @final
@@ -262,6 +265,7 @@ class GatedPlacer:
         self.bounds = bounds
         self.town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == Purpose.TOWN}
         self.cover = CoverIndex(objs_existing, rules=level.rules)
+        self.ground = level.ground
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
         self.blocked = FP.blocking_cells(objs_existing)
         self.interactive_existing = {
@@ -525,7 +529,7 @@ class GatedPlacer:
         return self._decor[terrain]
 
     def _seal_tile(self, t: Tile, terrain: str, rng: random.Random) -> bool:
-        pool = self._decor_pool(terrain)
+        pool = [i for i in self._decor_pool(terrain) if stands(self.catalog, i, t, self.ground)]
         if not pool:
             return False
         o = PlacedObject.at(rng.choice(pool), t, purpose="")

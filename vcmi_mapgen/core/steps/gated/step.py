@@ -74,6 +74,7 @@ class GatedStep(PipelineStep):
                     by_level[level],
                     self.priors.gameplay[0],
                     start_rules(map_state, level),
+                    map_state.terrain.get(level, ()),
                 ),
                 seed=self.seed,
                 bounds=(self.size, self.size),

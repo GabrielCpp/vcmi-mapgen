@@ -23,3 +23,20 @@ class MarkovModel4:
 class MarkovTables:
     chain: MarkovModel
     chain4: MarkovModel4
+
+
+def empty_tables() -> MarkovTables:
+    """Tables with no counts."""
+    return MarkovTables(
+        chain=MarkovModel(
+            full=collections.defaultdict(collections.Counter),
+            pair=collections.defaultdict(collections.Counter),
+            one=collections.defaultdict(collections.Counter),
+            marg=collections.Counter(),
+        ),
+        chain4=MarkovModel4(
+            full=collections.defaultdict(collections.Counter),
+            horiz=collections.defaultdict(collections.Counter),
+            vert=collections.defaultdict(collections.Counter),
+        ),
+    )

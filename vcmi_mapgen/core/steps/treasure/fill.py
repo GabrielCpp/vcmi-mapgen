@@ -261,11 +261,11 @@ def fill_loot_zones(
         footprint = footprints.get(zr.zid)
         if footprint is None:
             continue
-        cover.claim((zr.ts & blocked) | (zr.ts & interactive) | footprint)
+        cover.claim((zr.ts & blocked) | (zr.ts & interactive))
         zone = FillZone(
             terrain=zr.terrain,
             st=level.gameplay[zr.terrain],
-            reach=frozenset(zr.ts - blocked - footprint),
+            reach=frozenset(zr.ts - blocked - interactive),
             all_ts=all_ts,
             footprint=footprint,
         )

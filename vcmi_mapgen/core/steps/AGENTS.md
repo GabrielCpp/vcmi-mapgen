@@ -1,21 +1,21 @@
 # core/steps/ — the PipelineStep contract
 
 One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
-`gated/`, `treasure/`, `border/`, `portal/`, `loot/`, `scatter/`), each holding a `step.py` with one `PipelineStep` subclass. `VegetationStep` first calls `core/planning/zone_plan.py`, which builds each zone's entrances, walkable web and the sea plan. See
+`gated/`, `treasure/`, `portal/`, `loot/`, `scatter/`, `roads/`), each holding a `step.py` with one `PipelineStep` subclass. `VegetationStep` first calls `core/planning/zone_plan.py`, which builds each zone's entrances, walkable web and the sea plan. See
 `vcmi-mapgen-pipeline` for `PipelineStep`/`Pipeline`/`ProviderRegistry` themselves
 (in `core/pipeline.py`); this file is the contract a new or changed step must satisfy.
 
 ## Map
 
-- `terrain_gen/`: `TerrainStep`, the macro terrain layout and its despeckle for both levels.
-- `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers.
+- `terrain_gen/`: `TerrainStep`, the terrain of both levels drawn by the `TerrainModel` it is given, and its place map. `cli/steps.py` `TERRAIN_MODELS` names the markov and the places models, and places is the default.
+- `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers. It also plans each place's content with the `ContentPlanner` that `cli/steps.py` `CONTENTS` picks per terrain model, and provides the `ContentPlan` that gameplay and loot read.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
 - `treasure/`: `TreasureStep`, the treasure inside each sealed loot zone.
-- `border/`: `BorderStep`, which closes every zone border outside the planned entrances.
 - `portal/`: `PortalStep`, the portal pairs that link cut-off zones to the start zone.
-- `loot/`: `LootStep`, the seer-hut quests and guarded pocket caches.
+- `loot/`: `LootStep`, the seer-hut quests and the pocket caches, guarded only in a deep pocket.
 - `scatter/`: `ScatterStep`, the free resource piles placed last.
+- `roads/`: `RoadsStep`, the last step. It lays each level's roads into `map_state.roads` with the `RoadLayer` that `cli/steps.py` `ROADS` picks per terrain model. It runs after every object, so it routes over the tiles no blocking cell or gate covers and no later object can stand on a road.
 
 ## What a step must do
 
@@ -53,7 +53,7 @@ of step, it is a sign one of two things happened:
 A step's `run()` reads its inputs, calls the functions in its package that decide, and
 writes their results. It stays under 30 lines. A loop that chooses tiles, zones or objects
 lives in the step's package as a function over plain values, with its own test, as
-`vegetation/grow.py`, `scatter/piles.py` and `border/guard.py` do. A step that works level
+`vegetation/grow.py` and `scatter/piles.py` do. A step that works level
 by level gets each level's objects from `MapState.objs_by_level`.
 
 ## A step receives its priors in its constructor
@@ -80,12 +80,18 @@ and `water_test.py` do, because no step package may import another step.
 A step appends its own objects with `map_state.add_objs(new)`. It never removes,
 moves or replaces an object an earlier step placed. Plan into a scratch list and commit only what fits: pre-check
 each object with `CoverIndex.try_claim`, and try the next candidate when one is refused.
-Terrain holds by construction. A step draws each identity from the catalog for its zone's
-terrain and keeps every solid cell inside that zone, so no step checks terrain afterwards. A group that fails part way rolls the cover back to its `mark()`. Only `VegetationStep` may raise, when it walls off a pocket.
+A step draws each identity from the catalog for its zone's terrain, but a zone may hold
+tiles of another terrain: the places model paints accents and transitions inside a zone. So
+every solid cell is also checked against its own tile's terrain with
+`core.placement.ground.stands` before the object is kept. A group that fails part way rolls the cover back to its `mark()`. Only `VegetationStep` may raise, when it walls off a pocket.
 
 The step that places a guarded object also places its monster. No guard stands within
 Chebyshev 2 of another (`core.placement.guards.guard_spaced`), so no later pass deletes
 duplicate guards.
+
+Every guard has a ward, the thing it protects: a reward, a mine, a dwelling, a bank, a town,
+a visitable, or a passage into a place that holds one. The step decides the ward before it
+places the guard, and a guard with no ward is never placed.
 
 ## How a step publishes a value for a later step
 

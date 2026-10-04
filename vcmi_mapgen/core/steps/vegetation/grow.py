@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.planning.web import ZoneRef
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, ZonePlan
 from vcmi_mapgen.core.priors.vegetation import VegetationStats
@@ -19,13 +20,15 @@ from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, Sampler
 @dataclass(frozen=True, slots=True)
 class GrowLevel:
     """What one level's growing reads: its plan, each zone's centroid, the zone label grid,
-    and the tiles already taken before any tree grows."""
+    the tiles already taken before any tree grows, and the level's terrain grid every tree
+    must be allowed on. An empty ``ground`` checks no terrain."""
 
     level: int
     plan: PlanLevel
     centroids: Mapping[int, tuple[float, float]]
     label: ZoneLabel
     taken: frozenset[Tile]
+    ground: Sequence[Sequence[Terrain]] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +82,7 @@ def grow_level(
                 forbid=forbid,
                 border=frozenset(zone.rim8 - zone.ent_bands - forbid),
                 impassable=zone.town.blk,
+                ground=lv.ground,
             ),
         )
         objs.extend(zobjs)

@@ -42,11 +42,13 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
                     Cell(
                         t=t.terrain,
                         view=t.view,
-                        m=t.mirror,
+                        m=t.mirror & 3,
                         rt=t.river_type,
                         rd=t.river_dir,
                         ot=t.road_type,
                         od=t.road_dir,
+                        rm=(t.mirror >> 2) & 3,
+                        om=(t.mirror >> 4) & 3,
                     )
                 )
                 for t in row

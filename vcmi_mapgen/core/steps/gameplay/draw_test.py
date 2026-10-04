@@ -6,6 +6,8 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import GAP
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.steps.gameplay.draw import DrawSpec, ZoneDrawer
+from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger
 
 
 def _footprint(o: PlacedObject) -> tuple[list[Tile], list[Tile], Tile | None]:
@@ -130,3 +132,18 @@ def test_mine_sprites_match_terrain(open_zone: OpenZonePlacer, priors: Priors) -
                     f"({open_zone.catalog.identity_of(m.kind).subtype}) never used on "
                     f"{terrain} in the corpus"
                 )
+
+
+def test_a_zone_draws_its_object_total_scaled_by_its_content_intent(
+    open_zone: OpenZonePlacer,
+) -> None:
+    def total(spec: DrawSpec) -> int:
+        ledger = Ledger(set(BASIC_MINE_RES), 1, 0)
+        st = open_zone.gameplay["grass"]
+        return ZoneDrawer(open_zone.catalog, spec, st, ledger, 5).draw().total
+
+    def scaled(scale: float) -> int:
+        return total(DrawSpec(1, "grass", 900, scale=scale))
+
+    assert scaled(1.0) == total(DrawSpec(1, "grass", 900))
+    assert scaled(0.5) < scaled(1.0) < scaled(2.0)

@@ -2,6 +2,7 @@
 
 import collections
 from collections.abc import Collection, Container, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from itertools import pairwise
 
 from vcmi_mapgen.core.grid.geometry import NB8
@@ -11,6 +12,8 @@ from vcmi_mapgen.core.priors.pocket_masks import PocketMask
 
 POCKET_NOOK_BLOCKED = 4  # mouth_key's "in a neck" tiebreak: a mouth tile counts as
 # IN the neck when >=4 of its 8 neighbours are blocking
+
+ROOM_CAP = 16
 
 type Pockets = dict[int, dict[Tile, float]]
 
@@ -61,6 +64,58 @@ def find_pockets(
             if g not in found or len(pocket) > len(found[g][0]):
                 found[g] = (pocket, frozenset({g}))
     return found
+
+
+def find_rooms(
+    reach: AbstractSet[Tile], barred: Container[Tile], cap: int = ROOM_CAP
+) -> dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]]:
+    found: dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]] = {}
+    for g in sorted(reach):
+        if g in barred:
+            continue
+        ring = [(g[0] + dx, g[1] + dy) for dx, dy in NB8 if (g[0] + dx, g[1] + dy) in reach]
+        parts = _ring_parts(ring)
+        if len(parts) < 2:
+            continue
+        for start in parts:
+            room = _bounded_region(reach, g, start, cap)
+            if room is None or all(t in room for t in ring) or any(t in barred for t in room):
+                continue
+            if g not in found or len(room) > len(found[g][0]):
+                found[g] = (room, frozenset({g}))
+    return found
+
+
+def _ring_parts(ring: Sequence[Tile]) -> list[Tile]:
+    parent = {t: t for t in ring}
+
+    def find(t: Tile) -> Tile:
+        while parent[t] != t:
+            t = parent[t]
+        return t
+
+    for a in ring:
+        for b in ring:
+            if max(abs(a[0] - b[0]), abs(a[1] - b[1])) == 1:
+                parent[find(a)] = find(b)
+    return sorted({find(t) for t in ring})
+
+
+def _bounded_region(
+    reach: AbstractSet[Tile], g: Tile, start: Tile, cap: int
+) -> frozenset[Tile] | None:
+    seen = {start}
+    todo = [start]
+    while todo:
+        x, y = todo.pop()
+        for dx, dy in NB8:
+            n = (x + dx, y + dy)
+            if n != g and n in reach and n not in seen:
+                if len(seen) == cap:
+                    return None
+                seen.add(n)
+                todo.append(n)
+    return frozenset(seen)
 
 
 def _matches(reach: Container[Tile], access: Container[Tile], g: Tile, mask: PocketMask) -> bool:

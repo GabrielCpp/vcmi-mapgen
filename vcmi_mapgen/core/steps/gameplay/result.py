@@ -21,7 +21,7 @@ class GateResult:
 
 @dataclass
 class TownsIndex:
-    """Which zones host a player town: PortalStep's, LootStep's, BorderStep's and the CLI's
+    """Which zones host a player town: PortalStep's, LootStep's and the CLI's
     input. A run stopped before GameplayStep reads the empty default."""
 
     player_zids: list[tuple[int, int]] = field(default_factory=list)

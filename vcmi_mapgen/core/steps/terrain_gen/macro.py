@@ -26,6 +26,7 @@ import collections
 import heapq
 import math
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.noise import value_noise
@@ -191,7 +192,7 @@ def _sample_areas(st: MacroStats, budget: int, rng: random.Random) -> list[int]:
     return tgt
 
 
-def _pair_probs(st: MacroStats, lands: list[int]) -> dict[Tile, float]:
+def pair_probs(st: MacroStats, lands: Sequence[int]) -> dict[Tile, float]:
     adj_tot = sum(st.adj.values()) or 1
     padj: dict[Tile, float] = {}
     for a in lands:
@@ -223,7 +224,7 @@ def _assign_terrains(
     share = st.terr_share
     lands = sorted(share)
     wsum = sum(share.values())
-    padj = _pair_probs(st, lands)
+    padj = pair_probs(st, lands)
     knn = _knn3(seeds)
 
     def draw() -> int:
@@ -256,10 +257,10 @@ def _assign_terrains(
 # ---------------------------------------------------------------------------
 
 
-def _grow(
-    land: list[list[bool]],
-    seeds: list[Tile],
-    caps: list[int],
+def grow_regions(
+    land: Sequence[Sequence[bool]],
+    seeds: Sequence[Tile],
+    caps: Sequence[int],
     rng: random.Random,
 ) -> list[list[int]]:
     """Multi-source Dijkstra with jittered costs; a zone stops claiming at its capacity.
@@ -330,6 +331,26 @@ class MacroOptions:
     level: int = 0
 
 
+def surface_land(
+    size: int, barrier_fracs: Sequence[float], options: MacroOptions, rng: random.Random
+) -> list[list[bool]]:
+    """The surface land mask, read ``[y][x]``: True off the water. ``water_mode`` 'none' gives
+    pure land, 'islands' dominant water broken by finer noise, and 'normal' a water fraction
+    drawn from ``barrier_fracs``. ``options.water`` overrides the drawn fraction."""
+    W = H = size
+    water = options.water
+    if options.water_mode == "none":
+        wf, cell = 0.0, None
+    elif options.water_mode == "islands":
+        wf = rng.uniform(0.45, 0.60) if water is None else water
+        cell = max(4, min(W, H) // 10)
+    else:
+        wf = rng.choice(barrier_fracs) if water is None else water
+        cell = None
+    bmask = _water_mask(W, H, wf, rng, cell)
+    return [[not bmask[y][x] for x in range(W)] for y in range(H)]
+
+
 def generate(
     size: int,
     seed: int,
@@ -354,7 +375,6 @@ def generate(
     W = H = size
     opts = MacroOptions() if options is None else options
     water = opts.water
-    water_mode = opts.water_mode
     level = opts.level
     rng = random.Random(seed)
     st = priors.macro
@@ -364,16 +384,7 @@ def generate(
         rf = rng.choice(st.barrier_fracs) if water is None else water
         land, protect = _tunnel_mask(W, H, 1.0 - rf, rng)
     else:
-        if water_mode == "none":
-            wf, cell = 0.0, None
-        elif water_mode == "islands":
-            wf = rng.uniform(0.45, 0.60) if water is None else water
-            cell = max(4, min(W, H) // 10)
-        else:
-            wf = rng.choice(st.barrier_fracs) if water is None else water
-            cell = None
-        bmask = _water_mask(W, H, wf, rng, cell)
-        land = [[not bmask[y][x] for x in range(W)] for y in range(H)]
+        land = surface_land(size, st.barrier_fracs, opts, rng)
     budget = sum(1 for row in land for v in row if v)
 
     caps = _sample_areas(st, budget, rng)
@@ -381,7 +392,7 @@ def generate(
     caps.sort(reverse=True)  # biggest zones get the best-spread seeds
     terrs = _assign_terrains(seeds, st, rng)
 
-    label = _grow(land, seeds, caps, rng)
+    label = grow_regions(land, seeds, caps, rng)
     grid = [
         [
             barrier if not land[y][x] else terrs[label[y][x]] if label[y][x] >= 0 else terrs[0]

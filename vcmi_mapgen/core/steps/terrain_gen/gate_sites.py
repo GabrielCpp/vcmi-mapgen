@@ -45,6 +45,16 @@ def _gate_site_cells(ax: int, ay: int, pad: int = 4) -> set[Tile]:
     }
 
 
+def gate_site_tiles(anchors: list[Tile], size: int, pad: int = 4) -> frozenset[Tile]:
+    """The on-map tiles of every gate site disk around ``anchors``."""
+    return frozenset(
+        (x, y)
+        for ax, ay in anchors
+        for x, y in _gate_site_cells(ax, ay, pad)
+        if 0 <= x < size and 0 <= y < size
+    )
+
+
 def carve_gate_sites(
     grid0: list[list[int]],
     grid1: list[list[int]] | None,

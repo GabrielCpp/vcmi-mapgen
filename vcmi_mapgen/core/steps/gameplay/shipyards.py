@@ -1,6 +1,7 @@
 """Shipyards placed against the vegetated surface field. The shore planner in ``water`` picks
 the shores and the candidate anchors. These hooks decide which anchors are legal, rank them
-by back contact and commit the chosen one into the zone sites it touches. A shipyard may
+by back contact and commit the chosen one into the zone sites it touches. An anchor is
+illegal when a solid cell stands on a terrain the shipyard may not stand on. A shipyard may
 cross a zone rim, so the zone owning its approach links it to the web and every zone it
 touches keeps its reachable tiles reachable."""
 
@@ -14,6 +15,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import water as WT
 from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.ground import on_ground, solid_tiles
 from vcmi_mapgen.core.placement.guards import Fit
 from vcmi_mapgen.core.placement.site import SiteIndex, ZoneSite, back_score, door_cells
 
@@ -27,8 +29,9 @@ class _Pending:
 
 @final
 class _ShipyardHooks:
-    def __init__(self, idx: SiteIndex) -> None:
+    def __init__(self, idx: SiteIndex, catalog: Catalog) -> None:
         self.idx = idx
+        self.catalog = catalog
         self.lf = idx.lf
         self.pending: dict[Tile, _Pending] = {}
         self.banned: set[Tile] = set()
@@ -59,6 +62,9 @@ class _ShipyardHooks:
         anchor = (obj.x, obj.y)
         allc, blk, approach = footprint_cells(obj.footprint, *anchor)
         if approach is None or not self._cells_ok(allc, blk):
+            return False
+        solid = solid_tiles(obj.footprint, anchor)
+        if not on_ground(self.catalog, obj.kind, solid, self.lf.ground):
             return False
         owner = self._door_ok(obj.footprint, anchor, approach)
         if owner is None or not self.lf.accepts(obj):
@@ -104,7 +110,7 @@ class Shore:
 def place_shipyards(idx: SiteIndex, shore: Shore, seed: int, catalog: Catalog) -> int:
     """Guarantee a shipyard on every shore the water planner requires one on. Returns how
     many were added."""
-    hooks = _ShipyardHooks(idx)
+    hooks = _ShipyardHooks(idx, catalog)
     grid = shore.grid
     sea = WT.SeaMap(
         len(grid[0]) if grid else 0,

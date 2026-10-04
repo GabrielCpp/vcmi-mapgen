@@ -1,18 +1,18 @@
 """The raw macro grid of each terrain level, and the segmentation of each despeckled level
-into same-terrain zones."""
+into one zone per place."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.grid.segment import ZoneLabel, segment_level
+from vcmi_mapgen.core.grid.segment import ZoneLabel, zones_of_labels
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.bundle import TerrainPriors
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.gate_sites import carve_gate_sites, gate_anchor_points
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -66,14 +66,20 @@ def sliver_warnings(
     ]
 
 
-def segment_levels(
-    terrain: Mapping[int, Sequence[Sequence[Terrain]]], tunnel_protect: frozenset[Tile]
+def segment_places(
+    terrain: Mapping[int, Sequence[Sequence[Terrain]]],
+    places: PlaceMap,
+    tunnel_protect: frozenset[Tile],
 ) -> tuple[Segmentation, list[str]]:
-    """Each level's same-terrain zones and zone label grid, and the sliver warnings."""
+    """Each level's zones, one per place with the place's terrain, its zone label grid, and
+    the sliver warnings."""
     zones: dict[int, dict[int, Zone]] = {}
     labels: dict[int, ZoneLabel] = {}
     warnings: list[str] = []
     for level, grid in terrain.items():
-        zones[level], labels[level], _ = segment_level(grid)
+        plan = places.levels[level]
+        dominant = {pid: place.dominant for pid, place in plan.places.items()}
+        zones[level] = zones_of_labels(grid, plan.label, dominant)
+        labels[level] = plan.label
         warnings += sliver_warnings(zones[level], level, level_protect(level, tunnel_protect))
     return Segmentation(zones, labels), warnings

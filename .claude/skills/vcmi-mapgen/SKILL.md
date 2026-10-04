@@ -37,7 +37,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 - **`vcmi_mapgen/`**, the package, in four layers:
   - `cli/`: the CLI. `__main__.py` holds the subcommands, `generate.py` runs one map and
     `steps.py` `build_steps` builds the pipeline. The corpus and report tools sit beside
-    them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py` and `audit.py`.
+    them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
+    `readings.py`, which prints the map-math 8 readings per terrain model beside the
+    corpus spread.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
     - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
     - `catalog.py`: the `Catalog` port, the only way the core learns about objects.
@@ -47,15 +49,28 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       for the values it publishes.
     - `grid/`: pure grid algorithms: segmentation (`segment.py`), components, geodesic
       paths, pockets, edge distance and noise.
-    - `placement/`: where an object stands: footprint cells (`footprint.py`), guards,
-      sites, `place_one` and scatter.
+    - `placement/`: where an object stands: footprint cells (`footprint.py`), the ground
+      rule that every solid cell stands on terrain its identity allows (`ground.py`),
+      guards, sites, `place_one` and scatter.
     - `planning/`: the zone plan `VegetationStep` starts from (`zone_plan.py`), the entrance
-      geometry (`entrances.py`) and the one `ZoneRecord` per zone (`zone_index.py`).
+      geometry (`entrances.py`), the one `ZoneRecord` per zone (`zone_index.py`) and the
+      content intent per place, its role, hop from home, reward and guard level
+      (`content.py`).
+    - `reading/`: the place reader both sides share. It infers places from a corpus or a
+      generated map (`ground.py`, `places.py`), and measures them: borders, palettes
+      (`palette.py`), content by role and hop (`content.py`), object value and guard
+      level (`value.py`), roads, and one map's reading vector with the switch rule
+      (`vector.py`, `verdict.py`).
+    - `steps/terrain_gen/`: the terrain models. `places` is the default: it lays out a
+      place graph and paints each place. `markov` paints terrain from corpus transitions
+      and floods it into places. `palette.py` groups the places of the places model into
+      palette regions, one dominant terrain each.
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production
     `Catalog`, with its tables in `data/catalog/`. `formats/` reads and writes `.h3m`,
     `.vmap`, LOD and DEF files. `tiles.py` autotiles terrain, `export.py` and `players.py`
-    build a playable map, `load.py` `load_map` reads a `.vmap` back into a `MapState`, and
+    build a playable map, `load.py` `load_map` reads a `.vmap` back into a `MapState`
+    with its roads, and
     `config.py` finds the local VCMI install.
   - `corpus/`: the corpus loader (`maps.py`), the priors loader (`priors.py`), the
     corpus-versus-generated tally (`match.py`) and the miners in `mine/`.
@@ -67,8 +82,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
   `.h3m` corpus, 159 maps. `corpus/vmap/` holds one `.vmap` per corpus map, regenerated
   from `corpus/h3m/` by `extract-vmap`. `catalog/*.json` holds the VCMI object tables,
   rebuilt by `regen-ontology`. `pp/*.json` holds the corpus-derived priors and `golden.json`
-  the golden map hashes. The fixed `.vmap` header lives with its reader, in
-  `vcmi/formats/vmap/header_template.json`.
+  the golden map hashes. `pp/place_stats*.json` holds the place statistics, with the
+  place content and the road statistics the places model draws from. The fixed `.vmap`
+  header lives with its reader, in `vcmi/formats/vmap/header_template.json`.
 - **`out/`**: transient renders and maps. It is gitignored.
 - **`vcmi-h3m-format-reference/`**: verbatim VCMI C++ sources for the `.h3m` format,
   described in `docs/vcmi-h3m-format-reference.md`.
@@ -78,12 +94,14 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 ```bash
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --subterrain --stop-after vegetation
+uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --terrain markov --stop-after roads
 uv run python -m vcmi_mapgen.cli render-vegetation --seeds 1 2 3 --vegetation field
 uv run python -m vcmi_mapgen.cli render-ontology
 uv run python -m vcmi_mapgen.cli regen-ontology
 uv run python -m vcmi_mapgen.cli audit
 uv run python -m vcmi_mapgen.cli extract-vmap
 uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
+uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 make check
 make golden
 ```

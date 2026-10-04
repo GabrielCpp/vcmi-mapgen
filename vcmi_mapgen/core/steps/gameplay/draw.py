@@ -38,6 +38,7 @@ class DrawSpec:
     gates: int = 0
     has_water: bool = False
     has_subterrain: bool = False
+    scale: float = 1.0
 
 
 @dataclass(slots=True)
@@ -84,7 +85,8 @@ class ZoneDrawer:
 
     def draw(self) -> ZoneDraw:
         spec, rng = self.spec, self.rng
-        total = stoch_round(rng, spec.area * sum(self.dens.get(p, 0.0) for p in COUNTED))
+        rate = sum(self.dens.get(p, 0.0) for p in COUNTED)
+        total = stoch_round(rng, spec.area * rate * spec.scale)
         forced = spec.gates + (TOWN_SLOTS if spec.player else 0)
         town = spec.player or self._neutral_town(total - forced)
         if town and not spec.player:

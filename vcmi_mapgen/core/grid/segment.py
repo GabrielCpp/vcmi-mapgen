@@ -9,6 +9,10 @@ Public API
 ----------
 segment_level(terrain_level)
     -> (zones, zone_label, canonical (depth, sweep) per zone tile)
+flood_label(terrain_level)
+    -> zone_label of the terrain flood fill alone
+zones_of_labels(terrain_level, zone_label, zone_terrain)
+    -> zones of a label grid drawn elsewhere
 """
 
 from __future__ import annotations
@@ -83,7 +87,7 @@ def _bfs_global(
 # ---------------------------------------------------------------------------
 
 
-def _flood_fill(terrain_level: Sequence[Sequence[Terrain]]) -> list[list[int]]:
+def flood_label(terrain_level: Sequence[Sequence[Terrain]]) -> list[list[int]]:
     """4-connected flood-fill by terrain type. Returns zone_label (HxW, -1=barrier)."""
     H = len(terrain_level)
     W = len(terrain_level[0])
@@ -112,7 +116,7 @@ def _flood_fill(terrain_level: Sequence[Sequence[Terrain]]) -> list[list[int]]:
     return zone_label
 
 
-def _tiles_by_zone(zone_label: list[list[int]], W: int, H: int) -> dict[int, list[Tile]]:
+def _tiles_by_zone(zone_label: ZoneLabel, W: int, H: int) -> dict[int, list[Tile]]:
     tiles_by_zone: collections.defaultdict[int, list[Tile]] = collections.defaultdict(list)
     for y in range(H):
         for x in range(W):
@@ -124,7 +128,7 @@ def _tiles_by_zone(zone_label: list[list[int]], W: int, H: int) -> dict[int, lis
 
 def _boundary_and_adjacent(
     terrain_level: Sequence[Sequence[Terrain]],
-    zone_label: list[list[int]],
+    zone_label: ZoneLabel,
     tiles: list[Tile],
     zid: int,
 ) -> tuple[set[Tile], set[int]]:
@@ -168,9 +172,12 @@ def _chokepoints(terrain_level: Sequence[Sequence[Terrain]], boundary: set[Tile]
 
 
 def _compute_attrs(
-    terrain_level: Sequence[Sequence[Terrain]], zone_label: list[list[int]]
+    terrain_level: Sequence[Sequence[Terrain]],
+    zone_label: ZoneLabel,
+    zone_terrain: Mapping[int, Terrain] | None = None,
 ) -> dict[int, Zone]:
-    """Compute per-zone attributes from a finished zone_label."""
+    """Compute per-zone attributes from a finished zone_label. A zone's terrain is
+    ``zone_terrain[zid]`` when given, else the terrain of its first tile."""
     H = len(terrain_level)
     W = len(terrain_level[0])
     tiles_by_zone = _tiles_by_zone(zone_label, W, H)
@@ -178,7 +185,11 @@ def _compute_attrs(
     zones: dict[int, Zone] = {}
     for zid, tiles in tiles_by_zone.items():
         area = len(tiles)
-        t0 = terrain_level[tiles[0][1]][tiles[0][0]]
+        t0 = (
+            zone_terrain[zid]
+            if zone_terrain is not None
+            else terrain_level[tiles[0][1]][tiles[0][0]]
+        )
         cx = sum(x for x, _ in tiles) / area
         cy = sum(y for _, y in tiles) / area
         tiles_set = frozenset(tiles)
@@ -218,7 +229,7 @@ def _segment(terrain_level: Sequence[Sequence[Terrain]]) -> tuple[dict[int, Zone
     zone_label : list[list[int]]
         HxW; -1 for water/rock, zone_id otherwise.
     """
-    zone_label = _flood_fill(terrain_level)
+    zone_label = flood_label(terrain_level)
     zones = _compute_attrs(terrain_level, zone_label)
     return zones, zone_label
 
@@ -404,6 +415,15 @@ def segment_level(
     feats = _compute_static_features(lvl, zones, zone_label)
     canon = _canonical_coords(zones, feats[:, :, 20])
     return zones, zone_label, canon
+
+
+def zones_of_labels(
+    lvl: Sequence[Sequence[Terrain]], zone_label: ZoneLabel, zone_terrain: Mapping[int, Terrain]
+) -> dict[int, Zone]:
+    """The zones of a finished label grid, read ``[y][x]`` with -1 off every zone, each
+    with the terrain ``zone_terrain`` gives it. Two adjacent labels stay two zones even
+    when they share a terrain."""
+    return _compute_attrs(lvl, zone_label, zone_terrain)
 
 
 def label_zones(zones: Mapping[int, Zone]) -> list[list[int]]:

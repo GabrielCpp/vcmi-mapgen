@@ -39,3 +39,24 @@ def test_select_player_zones_far_apart() -> None:
     )
     assert dmin >= 32**2, "chosen starts keep real distance between them"
     assert select_player_zones(zones_by_level, 2) == picks, "selection is deterministic"
+
+
+def test_preferred_zones_are_picked_first_and_the_greedy_pick_fills_the_rest() -> None:
+    def zone(cx: float, cy: float, area: int, terrain: Terrain = Terrain.GRASS) -> Zone:
+        return Zone(
+            terrain_type=terrain, area=area, centroid=(cx, cy), tiles=[], tiles_set=frozenset()
+        )
+
+    zones = {
+        0: zone(36, 36, 500),
+        1: zone(4, 4, 220),
+        2: zone(68, 68, 220),
+        3: zone(60, 60, 40),
+        4: zone(10, 60, 300, Terrain.WATER),
+    }
+    by_level = {0: zones}
+    assert select_player_zones(by_level, 2, preferred=[(0, 3), (0, 1)]) == [(0, 3), (0, 1)]
+    assert select_player_zones(by_level, 2, preferred=[(0, 3)]) == [(0, 3), (0, 1)]
+    assert select_player_zones(by_level, 2, preferred=[(0, 4)])[0] == (0, 0)
+    refuse = select_player_zones(by_level, 2, lambda _l, zid: zid != 3, preferred=[(0, 3)])
+    assert (0, 3) not in refuse

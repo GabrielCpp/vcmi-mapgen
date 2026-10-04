@@ -2,12 +2,13 @@
 Shared by the gameplay, gated and vegetation steps' entrance and backbone logic."""
 
 import collections
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.geometry import NB4
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import Entrance, Tile
+from vcmi_mapgen.core.reading.borders import AdjacencyKind
 
 ENTRANCE_W = 3  # entrance band width in front tiles per side (hero + guard fit through)
 LONG_FRONT = 20  # a zone-pair front at least this long earns a second entrance
@@ -135,6 +136,35 @@ def _pair_reps(
     return reps
 
 
+@dataclass(frozen=True, slots=True)
+class EntranceGeometry:
+    entrance_w: int = ENTRANCE_W
+    long_front: int = LONG_FRONT
+    max_entrances: int = MAX_ENTRANCES
+    min_sep: int = MIN_ENTRANCE_SEP
+
+
+def _band(front: list[Tile], rep: Tile, width: int) -> frozenset[Tile]:
+    return frozenset(
+        sorted(front, key=lambda t: (max(abs(t[0] - rep[0]), abs(t[1] - rep[1])), t))[:width]
+    )
+
+
+def _gated(
+    Ta: list[Tile], Tb: list[Tile], geometry: EntranceGeometry
+) -> list[tuple[Tile, frozenset[Tile], Tile, frozenset[Tile]]]:
+    g = geometry
+    reps = _pair_reps(Ta, Tb, g.long_front, g.max_entrances, g.min_sep)
+    return [
+        (ra, _band(Ta, ra, g.entrance_w), rb, _band(Tb, rb, g.entrance_w))
+        for ra, rb in reps[: g.max_entrances]
+    ]
+
+
+def _zids(zone_label: ZoneLabel) -> list[int]:
+    return sorted({zz for row in zone_label for zz in row if zz >= 0})
+
+
 def plan_entrances(
     zone_label: ZoneLabel,
     entrance_w: int = ENTRANCE_W,
@@ -159,10 +189,10 @@ def plan_entrances(
     Returns {zid: [(rep, frozenset(band), other_zid), ...]} for every zone id in
     `zone_label`. Pure geometry, rng-free, deterministic (all argmin/argmax tie-break on the
     tile tuple)."""
+    geometry = EntranceGeometry(entrance_w, long_front, max_entrances, min_sep)
     fronts = _pair_fronts(zone_label)
 
-    zids = sorted({zz for row in zone_label for zz in row if zz >= 0})
-    out: dict[int, list[Entrance]] = {zid: [] for zid in zids}
+    out: dict[int, list[Entrance]] = {zid: [] for zid in _zids(zone_label)}
     for a, b in sorted(fronts):
         if a >= b:
             continue  # each unordered pair planned once
@@ -170,21 +200,54 @@ def plan_entrances(
         Tb = sorted(fronts.get((b, a), ()))
         if not Ta or not Tb:
             continue
-        reps = _pair_reps(Ta, Tb, long_front, max_entrances, min_sep)
-        for ra, rb in reps[:max_entrances]:
-            band_a = frozenset(
-                sorted(Ta, key=lambda t: (max(abs(t[0] - ra[0]), abs(t[1] - ra[1])), t))[
-                    :entrance_w
-                ]
-            )
-            band_b = frozenset(
-                sorted(Tb, key=lambda t: (max(abs(t[0] - rb[0]), abs(t[1] - rb[1])), t))[
-                    :entrance_w
-                ]
-            )
+        for ra, band_a, rb, band_b in _gated(Ta, Tb, geometry):
             out[a].append(Entrance(ra, band_a, b))
             out[b].append(Entrance(rb, band_b, a))
     return out
+
+
+@dataclass(frozen=True, slots=True)
+class Passages:
+    """One level's passage set, the only entrance plan the steps after the terrain read:
+    each zone's entrances by zone id, both sides of a pair agreeing on where, and the zone
+    pairs ``(a, b)``, ``a < b``, whose border is open."""
+
+    entrances: Mapping[int, Sequence[Entrance]]
+    open_pairs: frozenset[tuple[int, int]] = frozenset()
+
+
+def all_passages(zone_label: ZoneLabel, entrance_w: int = ENTRANCE_W) -> Passages:
+    """``plan_entrances`` over every touching pair, each band ``entrance_w`` front tiles
+    wide, with no open pair."""
+    return Passages(plan_entrances(zone_label, entrance_w))
+
+
+def plan_passages(
+    zone_label: ZoneLabel,
+    kinds: Mapping[tuple[int, int], AdjacencyKind],
+) -> Passages:
+    """The passages of each touching pair by its kind in ``kinds``: across a gated border
+    the entrances ``plan_entrances`` plans, across an open border one entrance whose band is
+    the whole front on each side, and none across a closed border or a pair ``kinds`` leaves
+    out."""
+    fronts = _pair_fronts(zone_label)
+    out: dict[int, list[Entrance]] = {zid: [] for zid in _zids(zone_label)}
+    opened: set[tuple[int, int]] = set()
+    for a, b in sorted(fronts):
+        if a >= b or kinds.get((a, b), AdjacencyKind.CLOSED) == AdjacencyKind.CLOSED:
+            continue
+        Ta, Tb = sorted(fronts[(a, b)]), sorted(fronts.get((b, a), ()))
+        if not Ta or not Tb:
+            continue
+        crossings = _gated(Ta, Tb, EntranceGeometry())
+        if kinds[(a, b)] == AdjacencyKind.OPEN:
+            ra, _ba, rb, _bb = crossings[0]
+            crossings = [(ra, frozenset(Ta), rb, frozenset(Tb))]
+            opened.add((a, b))
+        for ra, band_a, rb, band_b in crossings:
+            out[a].append(Entrance(ra, band_a, b))
+            out[b].append(Entrance(rb, band_b, a))
+    return Passages(out, frozenset(opened))
 
 
 def zone_gates(ts: Collection[Tile], zone_label: ZoneLabel, zid: int) -> list[Tile]:

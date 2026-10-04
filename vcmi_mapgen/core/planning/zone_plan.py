@@ -8,7 +8,7 @@ from __future__ import annotations
 import collections
 from collections.abc import Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog, Trait
@@ -20,10 +20,10 @@ from vcmi_mapgen.core.model import Entrance, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement import water as WT
-from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.footprint import footprint_cells, overlay_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
-from vcmi_mapgen.core.planning.entrances import plan_entrances
+from vcmi_mapgen.core.planning.entrances import Passages, all_passages
 from vcmi_mapgen.core.planning.player_zones import select_player_zones
 from vcmi_mapgen.core.planning.web import WebOptions, ZoneRef, protected_web
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
@@ -70,12 +70,14 @@ class Landings:
 @dataclass(frozen=True, slots=True)
 class PlanLevel:
     """One level of the plan: its zones, the entrance plan over all its zones, the planned
-    sea objects and the landings kept open for them. Only the surface has sea."""
+    sea objects, the landings kept open for them and the zone pairs whose border is open.
+    Only the surface has sea."""
 
     zones: Mapping[int, PlanZone]
-    entrance_plan: Mapping[int, list[Entrance]]
+    entrance_plan: Mapping[int, Sequence[Entrance]]
     sea: tuple[PlacedObject, ...] = ()
     landings: Landings = Landings()
+    open_pairs: frozenset[tuple[int, int]] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,6 +246,7 @@ class _LevelPlan:
     catalog: Catalog
     zones: Mapping[int, Zone]
     zone_label: ZoneLabel
+    passages: Passages
     tunnel_protect: AbstractSet[Tile]
     gstats: Mapping[str, TerrainStats]
 
@@ -252,7 +255,7 @@ class _LevelPlan:
 class _ZonePlanner:
     def __init__(self, lp: _LevelPlan) -> None:
         self.lp = lp
-        self.entrance_plan = plan_entrances(lp.zone_label)
+        self.entrance_plan = lp.passages.entrances
         self.rim_all = _rim8(lp.zones)
 
     def zone(self, zid: int, z: Zone, terrain: str) -> PlanZone:
@@ -288,13 +291,18 @@ class _ZonePlanner:
             if z.terrain_type.is_barrier or z.area < MIN_AREA:
                 continue
             zones[zid] = self.zone(zid, z, self.lp.catalog.terrain_name(z.terrain_type))
-        return PlanLevel(zones=zones, entrance_plan=self.entrance_plan)
+        return PlanLevel(
+            zones=zones, entrance_plan=self.entrance_plan, open_pairs=self.lp.passages.open_pairs
+        )
 
 
-def town_room(catalog: Catalog, zone: PlanZone, off: AbstractSet[Tile]) -> TownRoom | None:
+def town_room(
+    catalog: Catalog, zone: PlanZone, off: AbstractSet[Tile], size: int = 0
+) -> TownRoom | None:
     """The town spot nearest the zone centre before any tree grows: the footprint and approach
     inside the zone and clear of ``off``, the blocking cells off the web, and a walk from the
-    approach to the web."""
+    approach to the web. Given the map ``size``, the sprite's overlay cells block nothing, so
+    they may lie anywhere on the map, outside the zone and on ``off``."""
     ident = catalog.random_town()
     area = len(zone.ts)
     cx = sum(t[0] for t in zone.ts) / area + (ident.footprint.width - 1) / 2.0
@@ -304,7 +312,10 @@ def town_room(catalog: Catalog, zone: PlanZone, off: AbstractSet[Tile]) -> TownR
         if approach is None:
             continue
         cells = frozenset([*allc, approach])
-        if any(t not in zone.ts or t in off for t in cells):
+        held = cells - overlay_cells(ident.footprint, anchor) if size else cells
+        if any(t not in zone.ts or t in off for t in held):
+            continue
+        if any(not (0 <= x < size and 0 <= y < size) for x, y in cells - held):
             continue
         if any(t in zone.prot for t in blk):
             continue
@@ -321,16 +332,28 @@ def _room_off(landings: Landings, zone: PlanZone, tunnels: AbstractSet[Tile]) ->
     return off
 
 
+@dataclass(frozen=True, slots=True)
+class HomeRequest:
+    """How many player zones to pick, the ``(level, zid)`` zones to try first, and the map
+    side a preferred zone's town may spread its overlay cells over."""
+
+    players: int
+    preferred: Sequence[tuple[int, int]] = ()
+    size: int = 0
+
+
 def plan_player_zones(
     catalog: Catalog,
     levels: Mapping[int, PlanLevel],
     zones_by_level: Mapping[int, Mapping[int, Zone]],
     tunnels: AbstractSet[Tile],
-    players: int,
+    homes: HomeRequest,
 ) -> ZonePlan:
-    """Pick the player zones among those with room for a town, and keep that room: the town's
-    blocking cells, door and approach stay free of vegetation, count as walls when vegetation
-    keeps its ground reachable, and its approach joins the web."""
+    """Pick the player zones among those with room for a town, the preferred ones first, and
+    keep that room: the town's blocking cells, door and approach stay free of vegetation,
+    count as walls when vegetation keeps its ground reachable, and its approach joins the web.
+    A preferred zone's town may lay its overlay cells anywhere on the map."""
+    players, preferred = homes.players, homes.preferred
     rooms: dict[tuple[int, int], TownRoom | None] = {}
 
     def room(level: int, zid: int) -> TownRoom | None:
@@ -342,11 +365,12 @@ def plan_player_zones(
                 if zone is None or pl is None
                 else _room_off(pl.landings, zone, tunnels if level == 1 else NO_TILES)
             )
-            rooms[level, zid] = None if zone is None else town_room(catalog, zone, off)
+            loose = homes.size if (level, zid) in preferred else 0
+            rooms[level, zid] = None if zone is None else town_room(catalog, zone, off, loose)
         return rooms[level, zid]
 
     picks = select_player_zones(
-        zones_by_level, players, lambda level, zid: room(level, zid) is not None
+        zones_by_level, players, lambda level, zid: room(level, zid) is not None, preferred
     )
     zones = {level: dict(pl.zones) for level, pl in levels.items()}
     for level, zid in picks:
@@ -365,12 +389,14 @@ def plan_player_zones(
 @dataclass(frozen=True, slots=True)
 class PlanTerrain:
     """What a zone plan reads of the terrain: each level's zones and zone label grid, each
-    level's ``Terrain`` grid and the underground tunnel cells."""
+    level's ``Terrain`` grid, the underground tunnel cells and each level's passages. A
+    level with no passages gets ``all_passages`` over its zone label."""
 
     zones: Mapping[int, Mapping[int, Zone]]
     zone_label: Mapping[int, ZoneLabel]
     grids: Mapping[int, list[list[Terrain]]]
     tunnel_protect: frozenset[Tile]
+    passages: Mapping[int, Passages] = field(default_factory=dict[int, Passages])
 
 
 def plan_zones(
@@ -382,11 +408,14 @@ def plan_zones(
     levels: dict[int, PlanLevel] = {}
     for level in sorted(terrain.grids):
         zones = terrain.zones[level]
+        label = terrain.zone_label[level]
+        passages = terrain.passages.get(level)
         planner = _ZonePlanner(
             _LevelPlan(
                 catalog,
                 zones,
-                terrain.zone_label[level],
+                label,
+                all_passages(label) if passages is None else passages,
                 terrain.tunnel_protect if level == 1 else NO_TILES,
                 gameplay[level],
             )

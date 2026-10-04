@@ -10,7 +10,8 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.planning.borders import cross_pairs, zone_owner
+from vcmi_mapgen.core.placement.ground import Ground, stands
+from vcmi_mapgen.core.planning.borders import closing_pairs, cross_pairs, zone_owner
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +21,8 @@ class BorderPlan:
     bands: Container[Tile]
     avoid: Container[Tile]
     web: Container[Tile]
+    ground: Ground = ()
+    open_pairs: Container[tuple[int, int]] = frozenset[tuple[int, int]]()
 
 
 @final
@@ -53,12 +56,14 @@ class _Sealer:
         return pick
 
     def bridges(self, t: Tile) -> bool:
-        """True when the open 4-neighbours of `t` stay joined once `t` is closed."""
-        open_all = self._open_all
+        """True when the open 4-neighbours of `t` in its own zone stay joined inside that zone
+        once `t` is closed."""
+        open_all, owner = self._open_all, self._owner
+        zid = owner.get(t)
         around = [
             n
             for n in ((t[0] + 1, t[1]), (t[0] - 1, t[1]), (t[0], t[1] + 1), (t[0], t[1] - 1))
-            if n in open_all
+            if n in open_all and owner.get(n) == zid
         ]
         if len(around) < 2:
             return True
@@ -70,7 +75,7 @@ class _Sealer:
             if len(seen) > 400:
                 return True
             for m in ((u[0] + 1, u[1]), (u[0] - 1, u[1]), (u[0], u[1] + 1), (u[0], u[1] - 1)):
-                if m == t or m in seen or m not in open_all:
+                if m == t or m in seen or m not in open_all or owner.get(m) != zid:
                     continue
                 seen.add(m)
                 want.discard(m)
@@ -117,12 +122,14 @@ def seal_borders(
     that kills the most remaining pairs. `avoid` holds tiles that must stay open (protected
     web, approaches, tunnels). A pair whose both sides are in `avoid` stays open and is left
     to the guard pass. A cell is only sealed when every open 4-neighbour still reaches an
-    `avoid` tile. Returns (new_objs, sealed_cells)."""
+    `avoid` tile. A decoration only seals a cell whose terrain it may stand on. A crossing
+    between an `open_pairs` zone pair stays open. Returns (new_objs, sealed_cells)."""
     rng = random.Random(seed ^ 0x5EA1 ^ (level * 7919))
     owner, tname = zone_owner(catalog, plan.zones)
     blocked = FP.blocking_cells(objs)
     open_all = set(plan.land) - blocked
-    pairs: list[tuple[Tile, Tile]] = cross_pairs(open_all, owner, plan.bands)[0]
+    crossing = cross_pairs(open_all, owner, plan.bands)[0]
+    pairs: list[tuple[Tile, Tile]] = closing_pairs(crossing, owner, plan.open_pairs)
     sealer = _Sealer(plan, owner, open_all)
 
     new_objs: list[PlacedObject] = []
@@ -132,7 +139,11 @@ def seal_borders(
         pick = sealer.best_pick(pairs)
         if pick is None:
             break
-        pool = catalog.decor(tname[pick], blocking=True, max_cells=1)
+        pool = [
+            i
+            for i in catalog.decor(tname[pick], blocking=True, max_cells=1)
+            if stands(catalog, i, pick, plan.ground)
+        ]
         joined = sealer.bridges(pick) if pick in plan.web else sealer.keeps_connected(pick)
         if not pool or not joined:
             sealer.dead.add(pick)

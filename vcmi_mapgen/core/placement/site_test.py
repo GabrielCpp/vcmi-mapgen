@@ -21,6 +21,21 @@ _TOWN = Identity(
         ),
     ),
 )
+_TALL = Identity(
+    "town",
+    "castle",
+    "castle",
+    Footprint(
+        3,
+        3,
+        (
+            *_TOWN.footprint.cells,
+            (-2, -2, Role.OVERLAY),
+            (-1, -2, Role.OVERLAY),
+            (0, -2, Role.OVERLAY),
+        ),
+    ),
+)
 _ST = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
 
 
@@ -37,6 +52,14 @@ def _site(catalog: Catalog, outside: Terrain, vegetated: bool) -> ZoneSite:
     ts = frozenset((x, y) for x in range(10) for y in range(10))
     zone = SiteZone("grass", _ST, ts, frozenset(), frozenset({(0, 0)}), ts, ts)
     return ZoneSite(catalog, 1, zone, LevelField.build(0, grid, objs), 3)
+
+
+def _open_top(catalog: Catalog) -> ZoneSite:
+    """A zone over rows 3 to 9 of a 12x10 open grass level: rows 0 to 2 lie outside it."""
+    grid = [[int(Terrain.GRASS)] * 12 for _ in range(10)]
+    ts = frozenset((x, y) for x in range(12) for y in range(3, 10))
+    zone = SiteZone("grass", _ST, ts, frozenset(), frozenset({(0, 9)}), ts, ts)
+    return ZoneSite(catalog, 1, zone, LevelField.build(0, grid, []), 3)
 
 
 def test_a_town_may_spill_onto_vegetation_outside_its_zone(catalog: Catalog) -> None:
@@ -69,3 +92,14 @@ def test_town_anchors_reach_past_the_zone_by_the_footprint(catalog: Catalog) -> 
     anchors = TownFooting().anchors(site, _TOWN)
     assert (11, 10) in anchors
     assert (12, 5) not in anchors
+
+
+def test_a_home_town_overlay_may_lie_on_open_land_outside_its_zone(catalog: Catalog) -> None:
+    site = _open_top(catalog)
+    assert TownFooting().fit(site, _TALL, (5, 4)) is None
+    assert TownFooting(loose_overlay=True).fit(site, _TALL, (5, 4)) is not None
+
+
+def test_a_home_town_body_still_stays_on_its_zone_or_vegetation(catalog: Catalog) -> None:
+    site = _open_top(catalog)
+    assert TownFooting(loose_overlay=True).fit(site, _TALL, (5, 3)) is None

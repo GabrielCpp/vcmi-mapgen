@@ -28,7 +28,7 @@ def build_document(
     state: MapState, name: str, install: VcmiInstall | None, tables: TilerTables
 ) -> VM.VmapDocument:
     """A finished MapState -> a full, writable VmapDocument: tiles each level's terrain
-    with ``tables``, derives each object's VCMI
+    and roads with ``tables``, derives each object's VCMI
     type and subtype from its kind, turns its payload into VCMI options, builds its
     VCMI-charset mask/visitableFrom (a borderGate opens from every side), resolves
     `options["sameAsTown"]` markers
@@ -39,7 +39,10 @@ def build_document(
     This computes straight from MapState -- no intermediate faithful-shaped dict:
     that shape existed for the (now-retired) identity-rebuild engine's corpus
     comparisons, which this export never needed (see vcmi_mapgen/AGENTS.md)."""
-    terrain = [tile_strings(state.terrain[lvl], tables) for lvl in sorted(state.terrain)]
+    terrain = [
+        tile_strings(state.terrain[lvl], tables, state.roads.get(lvl, {}))
+        for lvl in sorted(state.terrain)
+    ]
     height, width = len(terrain[0]), len(terrain[0][0]) if terrain[0] else 0
 
     typed = [(o, OB.identity_of(o.kind)) for o in state.objs]

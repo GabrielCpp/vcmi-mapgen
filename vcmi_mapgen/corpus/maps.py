@@ -22,11 +22,15 @@ def load_corpus_map(maps_dir: Path, name: str) -> MapState:
     return load_map(corpus_path(maps_dir, name))
 
 
-def corpus_maps(maps_dir: Path) -> list[MapState]:
-    maps: list[MapState] = []
+def named_corpus_maps(maps_dir: Path) -> list[tuple[str, MapState]]:
+    maps: list[tuple[str, MapState]] = []
     for name in all_map_names(maps_dir):
         try:
-            maps.append(load_corpus_map(maps_dir, name))
+            maps.append((name, load_corpus_map(maps_dir, name)))
         except Exception:
             continue
     return maps
+
+
+def corpus_maps(maps_dir: Path) -> list[MapState]:
+    return [m for _, m in named_corpus_maps(maps_dir)]

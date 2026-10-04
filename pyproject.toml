@@ -71,6 +71,7 @@ layers = [
     "vcmi_mapgen.core.steps",
     "vcmi_mapgen.core.pipeline",
     "vcmi_mapgen.core.planning",
+    "vcmi_mapgen.core.reading",
     "vcmi_mapgen.core.placement",
     "vcmi_mapgen.core.grid",
     "vcmi_mapgen.core.catalog | vcmi_mapgen.core.priors",
@@ -98,11 +99,11 @@ unmatched_ignore_imports_alerting = "none"
 name = "A step imports another step only through its result module"
 type = "independence"
 modules = [
-    "vcmi_mapgen.core.steps.border",
     "vcmi_mapgen.core.steps.gameplay",
     "vcmi_mapgen.core.steps.gated",
     "vcmi_mapgen.core.steps.loot",
     "vcmi_mapgen.core.steps.portal",
+    "vcmi_mapgen.core.steps.roads",
     "vcmi_mapgen.core.steps.scatter",
     "vcmi_mapgen.core.steps.terrain_gen",
     "vcmi_mapgen.core.steps.treasure",

@@ -1,5 +1,6 @@
 """Mine the tiler tables: for every corpus tile, the frame and flip real maps draw for its
-terrain and its neighbours' terrains. The miner reads tile strings straight from each
+terrain and its neighbours' terrains, and for every road tile, the road frame and flip they
+draw for its road neighbours. The miner reads tile strings straight from each
 ``.vmap``, since a loaded ``MapState`` keeps only the terrain."""
 
 import collections
@@ -9,12 +10,15 @@ from pathlib import Path
 from vcmi_mapgen.corpus.maps import all_map_names, corpus_path
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.tiles import (
+    ROAD_FOUR_BITS,
+    MaskTable,
     SigTable,
     TilerTables,
     ViewMirror,
     decode_tile_string,
     four_of,
     neighbours8,
+    road_mask,
 )
 
 type TileGrid = Sequence[Sequence[str]]
@@ -33,13 +37,22 @@ def corpus_tile_grids(maps_dir: Path) -> Iterator[TileGrid]:
 def learn(grids: Iterable[TileGrid]) -> TilerTables:
     """Count each tile's frame and flip under its terrain with all eight neighbours, under
     its terrain with the four edge neighbours, and, for a tile whose neighbours all share
-    its terrain, under its terrain alone."""
+    its terrain, under its terrain alone. Count each road tile's road frame and flip under
+    the road mask of its eight neighbours and under the mask of its four edge neighbours."""
     exact: SigTable = collections.defaultdict(collections.Counter)
     four: SigTable = collections.defaultdict(collections.Counter)
     clean: dict[int, collections.Counter[ViewMirror]] = collections.defaultdict(collections.Counter)
+    road_exact: MaskTable = collections.defaultdict(collections.Counter)
+    road_four: MaskTable = collections.defaultdict(collections.Counter)
     for grid in grids:
         cells = [[decode_tile_string(s) for s in row] for row in grid]
         ids = [[c.t for c in row] for row in cells]
+        roads = {(x, y): c.ot for y, row in enumerate(cells) for x, c in enumerate(row) if c.ot}
+        for (x, y), _road in roads.items():
+            c = cells[y][x]
+            mask = road_mask(roads, x, y)
+            road_exact[mask][(c.od, c.om)] += 1
+            road_four[mask & ROAD_FOUR_BITS][(c.od, c.om)] += 1
         for y, row in enumerate(cells):
             for x, c in enumerate(row):
                 vm = (c.view, c.m)
@@ -48,4 +61,4 @@ def learn(grids: Iterable[TileGrid]) -> TilerTables:
                 four[(c.t, four_of(sig))][vm] += 1
                 if all(v == c.t for v in sig):
                     clean[c.t][vm] += 1
-    return TilerTables(exact, four, clean)
+    return TilerTables(exact, four, clean, road_exact, road_four)

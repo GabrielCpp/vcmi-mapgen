@@ -17,8 +17,10 @@ from functools import cache
 from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.vcmi.formats.defs import parse_def
 from vcmi_mapgen.vcmi.formats.lod import LodIndex
+from vcmi_mapgen.vcmi.tiles import decode_tile_string
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
 TERR_DEF: dict[str, str] = {
@@ -32,6 +34,11 @@ TERR_DEF: dict[str, str] = {
     "lv": "lavatl.def",
     "wt": "watrtl.def",
     "rc": "rocktl.def",
+}
+ROAD_DEF: dict[Road, str] = {
+    Road.DIRT: "dirtrd.def",
+    Road.GRAVEL: "gravrd.def",
+    Road.COBBLESTONE: "cobbrd.def",
 }
 TILE = 32  # pixels per map tile
 SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
@@ -91,6 +98,34 @@ def terr_tile_img(index: LodIndex, tile_str: str) -> Image.Image:
     return img.convert("RGBA")
 
 
+def _flipped(img: Image.Image, flip: int) -> Image.Image:
+    if flip & 1:
+        img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    if flip & 2:
+        img = img.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+    return img
+
+
+def road_tile_img(index: LodIndex, tile_str: str) -> Image.Image | None:
+    """The road sprite a tile string carries, flipped as it says, or None for no road."""
+    cell = decode_tile_string(tile_str)
+    if not cell.ot:
+        return None
+    groups = get_def(index, ROAD_DEF[Road(cell.ot)])
+    if not groups or not groups[0]:
+        return None
+    frames = groups[0]
+    return _flipped(frames[cell.od % len(frames)].convert("RGBA"), cell.om)
+
+
+def _paste_roads(canvas: Image.Image, index: LodIndex, surf: Sequence[Sequence[str]]) -> None:
+    for y, row in enumerate(surf):
+        for x, tile_str in enumerate(row):
+            img = road_tile_img(index, tile_str)
+            if img is not None:
+                canvas.paste(img.convert("RGB"), (x * TILE, y * TILE + TILE // 2), img.split()[3])
+
+
 # --------------------------------------------------------------------------- compositing
 
 
@@ -105,6 +140,7 @@ def render_map(
         for x in range(W):
             tile_img = terr_tile_img(index, surf[y][x])
             canvas.paste(tile_img.convert("RGB"), (x * TILE, y * TILE))
+    _paste_roads(canvas, index, surf)
 
     # 2) objects: painter's order = sort by y asc, then by x asc (back-to-front)
     sorted_objs = sorted(objs, key=lambda o: (o.level != 0, o.y, o.x))

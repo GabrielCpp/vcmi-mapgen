@@ -9,6 +9,7 @@ from typing import Protocol
 
 from vcmi_mapgen.core.model.objects import PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
 
 
@@ -222,8 +223,9 @@ class PlacementError(ValueError):
 @dataclass
 class MapState:
     """The map as VCMI means it: a ``size`` by ``size`` grid on each level, with terrain
-    (``terrain``, one ``Terrain`` per tile after despeckle), gate-blocked tiles
-    (``gate_blk``), placed objects (``objs``) and player towns (``player_towns``).
+    (``terrain``, one ``Terrain`` per tile after despeckle), the road on each road tile
+    (``roads``), gate-blocked tiles (``gate_blk``), placed objects (``objs``) and player
+    towns (``player_towns``).
 
     Ask about a tile with ``at``. A position outside the map answers ``BORDER``, a blocking
     sentinel. Ask about an object with ``free_for`` before placing it.
@@ -234,6 +236,7 @@ class MapState:
 
     size: int
     terrain: dict[int, list[list[Terrain]]] = field(default_factory=dict)
+    roads: dict[int, dict[Tile, Road]] = field(default_factory=dict)
     gate_blk: dict[int, frozenset[Tile]] = field(default_factory=dict)
     objs: list[PlacedObject] = field(default_factory=list)
     player_towns: list[PlacedObject] = field(default_factory=list)

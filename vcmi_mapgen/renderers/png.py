@@ -54,7 +54,7 @@ class PngRenderer:
         terrain = state.terrain.get(level)
         if terrain is None:
             raise ValueError(f"state.terrain has no level {level}")
-        surfs = tile_strings(terrain, self.tables)
+        surfs = tile_strings(terrain, self.tables, state.roads.get(level, {}))
         if level == 0:
             objs = [o for o in state.objs if o.level == 0]
         else:

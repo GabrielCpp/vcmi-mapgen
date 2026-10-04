@@ -66,7 +66,7 @@ class ProviderRegistry:
     result. A later step's ``inject()`` calls ``require(SomeType)`` for a value some
     earlier step is guaranteed to have produced by then, or ``get(SomeType, default)``
     when the producing step might not have run at all (e.g. the CLI reads an empty
-    ``BorderResult`` default when a run stops before ``BorderStep``). Each value is provided
+    ``PortalResult`` default when a run stops before ``PortalStep``). Each value is provided
     once, by the one step that produces it.
     """
 

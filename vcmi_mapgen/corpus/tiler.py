@@ -8,7 +8,7 @@ from pathlib import Path
 from vcmi_mapgen.core.model import JsonValue
 from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
-from vcmi_mapgen.vcmi.tiles import SigTable, TilerTables, ViewMirror
+from vcmi_mapgen.vcmi.tiles import MaskTable, SigTable, TilerTables, ViewMirror
 
 SOURCE = "vcmi_mapgen.corpus.mine.tiler.learn"
 
@@ -34,6 +34,14 @@ def _sig_table_from_json(raw: JsonValue) -> SigTable:
     return table
 
 
+def _mask_table_from_json(raw: JsonValue) -> MaskTable:
+    table: MaskTable = {}
+    for entry in jv.as_list(raw):
+        mask, counts = jv.as_list(entry)
+        table[jv.as_int(mask)] = _counts_from_json(counts)
+    return table
+
+
 def tiler_path(pp_dir: Path) -> Path:
     return pp_dir / "tiler.json"
 
@@ -46,6 +54,8 @@ def save_tiler(pp_dir: Path, tables: TilerTables) -> None:
             "exact": [[t, list(sig), _counts_to_json(c)] for (t, sig), c in tables.exact.items()],
             "four": [[t, list(sig), _counts_to_json(c)] for (t, sig), c in tables.four.items()],
             "clean": [[t, _counts_to_json(c)] for t, c in tables.clean.items()],
+            "road_exact": [[k, _counts_to_json(c)] for k, c in sorted(tables.road_exact.items())],
+            "road_four": [[k, _counts_to_json(c)] for k, c in sorted(tables.road_four.items())],
         },
     )
 
@@ -61,4 +71,6 @@ def load_tiler(pp_dir: Path) -> TilerTables:
         _sig_table_from_json(raw.get("exact")),
         _sig_table_from_json(raw.get("four")),
         clean,
+        _mask_table_from_json(raw.get("road_exact")),
+        _mask_table_from_json(raw.get("road_four")),
     )

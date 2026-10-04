@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import cast
 
 from vcmi_mapgen.core.model import JsonValue
-from vcmi_mapgen.core.priors.markov import MarkovModel, MarkovModel4, MarkovTables
+from vcmi_mapgen.core.priors.markov import MarkovModel, MarkovModel4, MarkovTables, empty_tables
 from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 SOURCE = "vcmi_mapgen.corpus.mine.markov.learn, learn4"
+INSIDE_SOURCE = "vcmi_mapgen.corpus.mine.markov.learn_inside"
 
 
 type _Table[K] = collections.defaultdict[K, collections.Counter[int]]
@@ -45,11 +46,23 @@ def tables_path(pp_dir: Path, level: int) -> Path:
     return pp_dir / f"markov_{level}.json"
 
 
+def inside_path(pp_dir: Path, level: int) -> Path:
+    return pp_dir / f"markov_places_{level}.json"
+
+
 def save_tables(pp_dir: Path, level: int, tables: MarkovTables) -> None:
+    _write(tables_path(pp_dir, level), SOURCE, tables)
+
+
+def save_inside(pp_dir: Path, level: int, tables: MarkovTables) -> None:
+    _write(inside_path(pp_dir, level), INSIDE_SOURCE, tables)
+
+
+def _write(path: Path, source: str, tables: MarkovTables) -> None:
     chain, chain4 = tables.chain, tables.chain4
     cache.write(
-        tables_path(pp_dir, level),
-        SOURCE,
+        path,
+        source,
         {
             "full": _table_to_json(chain.full),
             "pair": _table_to_json(chain.pair),
@@ -64,7 +77,18 @@ def save_tables(pp_dir: Path, level: int, tables: MarkovTables) -> None:
 
 @functools.cache
 def load_tables(pp_dir: Path, level: int) -> MarkovTables:
-    raw = cache.read(tables_path(pp_dir, level))
+    return _read(tables_path(pp_dir, level))
+
+
+@functools.cache
+def load_inside(pp_dir: Path, level: int) -> MarkovTables:
+    """The tables counted inside inferred places, empty when they were never mined."""
+    path = inside_path(pp_dir, level)
+    return _read(path) if path.exists() else empty_tables()
+
+
+def _read(path: Path) -> MarkovTables:
+    raw = cache.read(path)
     chain = MarkovModel(
         full=_table_from_json(raw.get("full")),
         pair=_table_from_json(raw.get("pair")),

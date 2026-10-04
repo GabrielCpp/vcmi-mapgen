@@ -3,11 +3,14 @@ from pathlib import Path
 
 from vcmi_mapgen.core.model import Footprint, Role
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.road import Road
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
 from vcmi_mapgen.vcmi.load import load_map
+from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
 
 
 def test_load_map_prefers_ontology_mask_over_file_mask(tmp_path: Path) -> None:
@@ -73,3 +76,19 @@ def test_load_map_falls_back_to_file_mask_when_ontology_is_silent(tmp_path: Path
     )
     m = load_map(write(doc, os.path.join(tmp_path, "fixture.vmap")))
     assert m.objs[0].footprint == Footprint.one(Role.VISIT)
+
+
+def test_load_map_reads_back_each_road_and_its_type(tmp_path: Path) -> None:
+    roads = {(1, 2): Road.DIRT, (2, 2): Road.GRAVEL, (3, 2): Road.COBBLESTONE}
+    grid = [[Terrain.GRASS] * 5 for _ in range(5)]
+    doc = VmapDocument(
+        name="roads",
+        width=5,
+        height=5,
+        two_level=False,
+        terrain=[tile_strings(grid, TilerTables({}, {}, {}), roads)],
+        objects=[],
+    )
+    m = load_map(write(doc, os.path.join(tmp_path, "roads.vmap")))
+    assert m.roads[0] == roads
+    assert m.terrain[0][2][2] == Terrain.GRASS

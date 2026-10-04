@@ -27,13 +27,14 @@ cells placements have claimed: `claim(cells)` adds them, `mark()` records a poin
 - `terrain.py`: `Terrain`, the terrain vocabulary, and which terrains are water, barrier or land.
 - `purpose.py`: `Purpose`, the purposes objects are placed for, and the groups `VISIT_PURPOSES` and `COUNTED`.
 - `resource.py`: `Resource`, the resources a map's economy counts.
+- `road.py`: `Road`, the three road surfaces a tile can carry, by VCMI road index.
 
 ## `MapState`
 
 `MapState` is the render-only view of a finished map: exactly what `PngRenderer`,
 `MapOverlay` and `VmapRenderer` read, and nothing else. A field belongs on `MapState`
 **only if it describes the map itself, as VCMI means it** — terrain (`terrain`, one `Terrain` per tile),
-gate-blocked tiles (`gate_blk`), placed objects (`objs`), player towns (`player_towns`).
+roads (`roads`, one `Road` per road tile by level), gate-blocked tiles (`gate_blk`), placed objects (`objs`), player towns (`player_towns`).
 
 Zone segmentation is not a map fact. The map is a grid, and a `.vmap` has no notion of
 zones. `TerrainStep` computes them from the terrain, so they are analysis. They live in

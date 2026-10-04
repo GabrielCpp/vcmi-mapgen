@@ -394,7 +394,7 @@ class _PortalRescue:
         if zr is None:  # zone skipped by the level pass (bare
             free = frozenset(zone.ts) - st.occupied  # terrain): synth a minimal record
             zr = bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
-        self.cover_by[lvl].claim(far_fit[0])  # the monolith's own cells
+        self.cover_by[lvl].claim((*far_fit[1], far_appr))  # the monolith's visit tile
         robjs = place_reward_zone(
             self.catalog,
             RewardSite(zr, far_appr, self.cover_by[lvl], self.world.gameplay[zr.terrain], (W, H)),

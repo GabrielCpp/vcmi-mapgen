@@ -95,3 +95,35 @@ def test_find_pockets_reads_the_map_edge_as_wall() -> None:
 def test_find_pockets_finds_nothing_along_a_straight_wall() -> None:
     reach = _reach([".......", ".......", "#######", ".......", "......."])
     assert PK.find_pockets(reach, MASKS, NO_ACCESS, NO_ACCESS) == {}
+
+
+ROOM = [
+    "........",
+    "........",
+    "........",
+    "###.####",
+    "#.....##",
+    "#.#...##",
+    "########",
+]
+
+
+def test_find_rooms_finds_a_dead_end_behind_a_one_tile_mouth() -> None:
+    reach = _reach(ROOM)
+    rooms = PK.find_rooms(frozenset(reach), NO_ACCESS)
+    room, mouth = rooms[(3, 3)]
+    assert mouth == frozenset({(3, 3)})
+    assert room == {t for t in reach if t[1] > 3}
+
+
+def test_find_rooms_skips_a_room_larger_than_the_cap() -> None:
+    assert (3, 3) not in PK.find_rooms(frozenset(_reach(ROOM)), NO_ACCESS, cap=4)
+
+
+def test_find_rooms_rejects_a_room_holding_a_barred_tile() -> None:
+    assert (3, 3) not in PK.find_rooms(frozenset(_reach(ROOM)), frozenset({(1, 5)}))
+
+
+def test_find_rooms_finds_nothing_in_open_ground() -> None:
+    reach = {(x, y) for x in range(6) for y in range(6)}
+    assert PK.find_rooms(frozenset(reach), NO_ACCESS) == {}

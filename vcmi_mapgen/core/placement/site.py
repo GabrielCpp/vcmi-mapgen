@@ -41,7 +41,8 @@ from vcmi_mapgen.core.model import (
 )
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.footprint import footprint_cells, overlay_cells
+from vcmi_mapgen.core.placement.ground import Ground, stands
 from vcmi_mapgen.core.placement.guards import (
     NO_TILES,
     Clearance,
@@ -149,7 +150,8 @@ def cheb(a: Tile, b: Tile) -> int:
 class LevelField:
     """What every zone of one level shares. ``unwalkable`` is water, rock and every blocking
     cell on the level, vegetation included. ``occupied`` holds gameplay footprints and
-    ``near`` their blocking cells inflated by GAP."""
+    ``near`` their blocking cells inflated by GAP. ``ground`` is the level's terrain grid
+    every solid cell must be allowed on."""
 
     level: int
     size: tuple[int, int]
@@ -159,6 +161,7 @@ class LevelField:
     covers: CoverIndex
     avoid: AbstractSet[Tile] = NO_TILES
     barrier: frozenset[Tile] = frozenset()
+    ground: Ground = ()
 
     @classmethod
     def build(
@@ -185,7 +188,7 @@ class LevelField:
                 inflate_gap(near, (t for t, ch in tiles if ch in ("B", "X")))
         size = (len(grid[0]) if grid else 0, len(grid))
         covers = CoverIndex(objs, rules=rules)
-        return cls(level, size, unwalkable, occupied, near, covers, barrier=barrier)
+        return cls(level, size, unwalkable, occupied, near, covers, barrier=barrier, ground=grid)
 
     def claim(self, obj: PlacedObject, cells: Iterable[Tile], blk: Iterable[Tile]) -> None:
         cells = list(cells)
@@ -202,11 +205,14 @@ class LevelField:
         obj.level = self.level
         return self.covers.accepts(obj)
 
+    def on_map(self, t: Tile) -> bool:
+        w, h = self.size
+        return 0 <= t[0] < w and 0 <= t[1] < h
+
     def spillable(self, t: Tile) -> bool:
         """A body may cover ``t`` outside its zone: on the map, unwalkable, not water or
         rock."""
-        w, h = self.size
-        return 0 <= t[0] < w and 0 <= t[1] < h and t in self.unwalkable and t not in self.barrier
+        return self.on_map(t) and t in self.unwalkable and t not in self.barrier
 
 
 def _on_land(grid: Sequence[Sequence[int]], t: Tile) -> bool:
@@ -284,6 +290,8 @@ class ZoneSite:
             ident, anchor, self.ts, Clearance(lf.occupied, lf.occupied, self.reserved, lf.avoid)
         )
         if fit is None or any(t in lf.near for t in fit[1]):
+            return None
+        if not stands(self.catalog, ident, anchor, lf.ground):
             return None
         approach = fit[2]
         if approach not in self.reach or not lf.walkable(approach):
@@ -370,8 +378,14 @@ class ZoneSite:
         ccy = sum(t[1] for t in self.ts) / area + (mh - 1) / 2.0
         return self.nearest_order(ccx, ccy)
 
-    def place(self, purpose: str, ident: Identity, centres: Iterable[Tile]) -> PlacedObject | None:
-        footing = FOOTINGS.get(purpose, ZONE_FOOTING)
+    def place(
+        self,
+        purpose: str,
+        ident: Identity,
+        centres: Iterable[Tile],
+        footing: Footing | None = None,
+    ) -> PlacedObject | None:
+        footing = FOOTINGS.get(purpose, ZONE_FOOTING) if footing is None else footing
         legal = {
             t: f
             for t in footing.anchors(self, ident)
@@ -468,8 +482,9 @@ class ZoneSite:
         if not seal_pool:
             return
         for s in ((ex - 1, ey), (ex + 1, ey), (ex - 1, ey + 1), (ex + 1, ey + 1)):
-            if self._sealable(s):
-                self._seal(self.rng.choice(seal_pool), s)
+            pool = [i for i in seal_pool if stands(self.catalog, i, s, self.lf.ground)]
+            if pool and self._sealable(s):
+                self._seal(self.rng.choice(pool), s)
 
     def _sealable(self, s: Tile) -> bool:
         return (
@@ -544,10 +559,15 @@ class ZoneFooting:
 
 
 @final
+@dataclass(frozen=True, slots=True)
 class TownFooting:
     """A town's body off other bodies, earlier approaches and avoided tiles, each cell in the
     zone or on spillable land. Its entrance and approach are walkable and its approach stands
-    in the zone, reached from the web. It may cover the entrance bands and keeps no gap."""
+    in the zone, reached from the web. It may cover the entrance bands and keeps no gap. With
+    ``loose_overlay``, the sprite's overlay cells block nothing, so outside the zone they may
+    lie anywhere on the map."""
+
+    loose_overlay: bool = False
 
     def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
         fw, fh = ident.footprint.width, ident.footprint.height
@@ -561,8 +581,11 @@ class TownFooting:
         if approach is None:
             return None
         hard = set(site.approaches) | lf.avoid
+        loose = overlay_cells(ident.footprint, anchor) if self.loose_overlay else NO_TILES
         if any(
-            c in lf.occupied or c in hard or (c not in site.ts and not lf.spillable(c))
+            c in lf.occupied
+            or c in hard
+            or (c not in site.ts and not lf.spillable(c) and not (c in loose and lf.on_map(c)))
             for c in allc
         ):
             return None
@@ -576,4 +599,5 @@ class TownFooting:
 
 
 ZONE_FOOTING = ZoneFooting()
+HOME_FOOTING = TownFooting(loose_overlay=True)
 FOOTINGS: dict[str, Footing] = {Purpose.TOWN: TownFooting(), Purpose.MINE: ZoneFooting(mine=True)}

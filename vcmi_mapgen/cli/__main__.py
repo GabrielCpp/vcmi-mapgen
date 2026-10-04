@@ -2,9 +2,10 @@
 
 Subcommands:
   generate        -> synthesize a full map via the marked-point-process pipeline
-                     (CLI-selectable overlays/renderers/stop point/vegetation sampler).
+                     (CLI-selectable overlays, renderers, stop point, vegetation sampler
+                     and terrain model).
   render-vegetation -> run the pipeline through vegetation and save terrain-and-vegetation
-                     PNGs for a few seeds, with either vegetation sampler.
+                     PNGs for a few seeds, with either vegetation sampler and terrain model.
   render-ontology -> render one sprite (+ passability mask overlay) per documented
                      ontology item — a documentation/debug tool, not part of the pipeline.
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
@@ -12,6 +13,8 @@ Subcommands:
                      gameplay densities it draws from.
   extract-vmap    -> regenerate data/corpus/vmap/ from the .h3m corpus.
   corpus-match    -> compare generated gameplay placement to the corpus.
+  readings        -> print the map-math 8 readings of generated maps per terrain model
+                     beside the corpus spread, and whether a model replaces the default.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
@@ -42,9 +45,16 @@ from vcmi_mapgen.cli.generate import (
     render_vegetation,
 )
 from vcmi_mapgen.cli.mine_stats import MINERS, mine_stats
+from vcmi_mapgen.cli.readings import readings
 from vcmi_mapgen.cli.render_sprites import render_sprites
 from vcmi_mapgen.cli.settings import Settings, load_settings, open_install
-from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, GENERATE_STOP_POINTS, SAMPLERS
+from vcmi_mapgen.cli.steps import (
+    DEFAULT_TERRAIN,
+    DEFAULT_VEGETATION,
+    GENERATE_STOP_POINTS,
+    SAMPLERS,
+    TERRAIN_MODELS,
+)
 from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
@@ -77,6 +87,8 @@ class Args(argparse.Namespace):
     level: int | None = None
     densities: bool = False
     vegetation: str = DEFAULT_VEGETATION
+    terrain: str = DEFAULT_TERRAIN
+    terrains: Sequence[str] = ()
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
@@ -122,6 +134,7 @@ def cmd_generate(args: Args) -> None:
             renderers=args.renderers,
             stop_after=args.stop_after,
             vegetation=args.vegetation,
+            terrain=args.terrain,
         ),
     )
 
@@ -139,6 +152,7 @@ def cmd_render_vegetation(args: Args) -> None:
             subterrain=args.subterrain,
             overlays=args.overlays,
             vegetation=args.vegetation,
+            terrain=args.terrain,
         ),
     )
 
@@ -152,6 +166,12 @@ def cmd_corpus_match(args: Args) -> None:
     settings = load_settings()
     _ = _open_catalog(settings)
     corpus_match(settings, args.seeds, args.size, args.subterrain)
+
+
+def cmd_readings(args: Args) -> None:
+    settings = load_settings()
+    _ = _open_catalog(settings)
+    readings(VcmiCatalog(), settings, args.seeds, args.size, args.terrains)
 
 
 def cmd_render_sprites(args: Args) -> None:
@@ -181,6 +201,16 @@ def _add_vegetation_arg(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_VEGETATION,
         help="vegetation sampler: 'gibbs' (the marked point process) or 'field' (the cellular "
         + f"field) (default: {DEFAULT_VEGETATION})",
+    )
+
+
+def _add_terrain_arg(parser: argparse.ArgumentParser) -> None:
+    _ = parser.add_argument(
+        "--terrain",
+        choices=list(TERRAIN_MODELS),
+        default=DEFAULT_TERRAIN,
+        help="terrain model: 'markov' (macro zones textured by the Markov chain) or 'places' "
+        + f"(a place graph laid out on land) (default: {DEFAULT_TERRAIN})",
     )
 
 
@@ -227,6 +257,16 @@ def main() -> None:
     _ = pcm.add_argument("--size", type=int, default=48)
     _ = pcm.add_argument("--subterrain", action="store_true")
     _ = pcm.set_defaults(func=cmd_corpus_match)
+
+    prd = sub.add_parser(
+        "readings", help="print the map-math 8 readings per terrain model beside the corpus"
+    )
+    _ = prd.add_argument("--seeds", type=int, nargs="+", default=list(range(1, 11)))
+    _ = prd.add_argument("--size", type=int, default=72)
+    _ = prd.add_argument(
+        "--terrains", choices=list(TERRAIN_MODELS), nargs="+", default=list(TERRAIN_MODELS)
+    )
+    _ = prd.set_defaults(func=cmd_readings)
 
     prs = sub.add_parser(
         "render-sprites", help="render a .vmap with real H3 sprites to out/render/<name>_editor.png"
@@ -293,9 +333,10 @@ def main() -> None:
         default=None,
         dest="stop_after",
         help="stop the pipeline early, right after the named step (debug), "
-        + "instead of running the full pipeline through ScatterStep",
+        + "instead of running the full pipeline through RoadsStep",
     )
     _add_vegetation_arg(pg)
+    _add_terrain_arg(pg)
     _ = pg.set_defaults(func=cmd_generate)
 
     prv = sub.add_parser(
@@ -317,6 +358,7 @@ def main() -> None:
         + "(default: none)",
     )
     _add_vegetation_arg(prv)
+    _add_terrain_arg(prv)
     _ = prv.set_defaults(func=cmd_render_vegetation)
 
     args = ap.parse_args(namespace=Args(func=cmd_render_ontology))

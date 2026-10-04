@@ -27,13 +27,11 @@ class ZoneRecord:
 class ZoneIndex:
     """Per-level walk targets and zone records. GatedStep builds it once, and every later
     step mutates that same instance in place. ``claims`` holds each level's claimed tiles,
-    which a step loads into its cover index and writes back when it is done. ``hard_avoid``
-    holds each level's gameplay footprints and approaches, which no border guard may take."""
+    which a step loads into its cover index and writes back when it is done."""
 
     targets: dict[int, list[Tile]] = field(default_factory=dict)
     zone_records: dict[int, list[ZoneRecord]] = field(default_factory=dict)
     claims: dict[int, frozenset[Tile]] = field(default_factory=dict)
-    hard_avoid: dict[int, frozenset[Tile]] = field(default_factory=dict)
 
 
 def bare_record(zid: int, terrain: str, ts: frozenset[Tile], free: frozenset[Tile]) -> ZoneRecord:
@@ -69,14 +67,10 @@ def build_zone_index(
     placed: Mapping[int, Mapping[int, PlacedZone]],
     landings: Mapping[int, Landings],
 ) -> ZoneIndex:
-    """One zone record per zone and the walk targets of every level, and each level's
-    ``hard_avoid`` set for BorderStep."""
+    """One zone record per zone and the walk targets of every level."""
     index = ZoneIndex()
     for level, pl in plan.levels.items():
         targets: list[Tile] = []
         index.zone_records[level] = _level_records(pl, placed[level], landings[level], targets)
         index.targets[level] = targets
-        index.hard_avoid[level] = frozenset[Tile]().union(
-            *(pz.cells | frozenset(pz.approaches) for pz in placed[level].values())
-        )
     return index

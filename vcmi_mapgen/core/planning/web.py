@@ -68,8 +68,8 @@ def protected_web(
     every placed object stays reachable); `avoid` tiles (gameplay footprints) are
     impassable, so corridors route AROUND towns/mines instead of through them.
 
-    `entrances` (this zone's `core.planning.entrances.plan_entrances` entries) switches
-    the border model from corpus-open to ISOLATED: only the planned narrow entrance bands are
+    `entrances` (this zone's entries in its level's `core.planning.entrances.Passages`) switches
+    the border model from corpus-open to ISOLATED: only the planned entrance bands are
     protected — the rest of the front is left plantable, and the Gibbs sampler's border bias
     actively densifies it (the map-level isolation redesign). `keep_off` (the caller's 8-connected
     rim: every tile with an 8-neighbour in another zone) further restricts backbone

@@ -40,6 +40,12 @@ def overlay_clear(fp: Footprint, x: int, y: int, blocked: Container[Tile]) -> bo
     )
 
 
+def overlay_cells(fp: Footprint, anchor: Tile) -> frozenset[Tile]:
+    """The cells of ``fp`` anchored at ``anchor`` that neither block nor interact: sprite
+    overlay a hero walks under."""
+    return frozenset(t for t, role in fp.at(*anchor) if not role.blocks and not role.interactive)
+
+
 def front_tiles(fp: Footprint, x: int, y: int) -> set[Tile]:
     """The row of tiles directly in front of (one step past) this object's own
     footprint, on the side its interactive cell sits on. Every multi-row mask in this

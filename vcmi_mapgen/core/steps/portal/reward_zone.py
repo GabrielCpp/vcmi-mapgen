@@ -62,7 +62,7 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
             break
         if place_one(
             PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
-            PlaceSpec(Purpose.RESOURCE_PILE, pool_res, cache=True),
+            PlaceSpec(Purpose.RESOURCE_PILE, pool_res, cache=True, interactive_only=True),
             t[0],
             t[1],
         ):
@@ -79,7 +79,7 @@ def place_reward_zone(catalog: Catalog, site: RewardSite, seed: int = 1) -> list
         for t in sorted(reach - cover.claims, key=partial(centre_key, cx=cx, cy=cy)):
             if place_one(
                 PlaceTarget(catalog, objs, cover, reach, rng, st, bounds=bounds),
-                PlaceSpec(Purpose.GUARD, None, ident=gident),
+                PlaceSpec(Purpose.GUARD, None, ident=gident, interactive_only=True),
                 t[0],
                 t[1],
             ):

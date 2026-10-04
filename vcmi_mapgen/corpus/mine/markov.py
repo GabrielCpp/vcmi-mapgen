@@ -6,10 +6,10 @@ coastlines, how terrains border each other) instead of arbitrary noise blobs.
 """
 
 import collections
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.core.priors.markov import MarkovModel, MarkovModel4
+from vcmi_mapgen.core.priors.markov import MarkovModel, MarkovModel4, MarkovTables
 
 
 def learn(level_index: int, maps: Iterable[MapState]) -> MarkovModel:
@@ -76,3 +76,49 @@ def learn4(level_index: int, maps: Iterable[MapState]) -> MarkovModel4:
                 horiz[(lf, r)][c] += 1
                 vert[(u, d)][c] += 1
     return MarkovModel4(full=full, horiz=horiz, vert=vert)
+
+
+def learn_inside(
+    level_index: int, maps: Iterable[MapState], labels: Iterable[Sequence[Sequence[int]]]
+) -> MarkovTables:
+    """The 4-neighbour tables and the terrain marginal counted inside inferred places only:
+    a context counts when the centre and every neighbour it reads share one place, so no
+    pair across a place border enters. ``labels`` holds each map's place label grid,
+    ``[y][x]`` with -1 off every place."""
+    full: collections.defaultdict[tuple[int, int, int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )
+    horiz: collections.defaultdict[tuple[int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )
+    vert: collections.defaultdict[tuple[int, int], collections.Counter[int]] = (
+        collections.defaultdict(collections.Counter)
+    )
+    marg: collections.Counter[int] = collections.Counter()
+    for m, lab in zip(maps, labels, strict=True):
+        if level_index >= len(m.terrain) or not lab:
+            continue
+        T = [[int(t) for t in row] for row in m.terrain[level_index]]
+        H, W = len(T), len(T[0])
+        for y in range(H):
+            for x in range(W):
+                z = lab[y][x]
+                if z < 0:
+                    continue
+                c = T[y][x]
+                marg[c] += 1
+                inside_h = 0 < x < W - 1 and lab[y][x - 1] == z == lab[y][x + 1]
+                inside_v = 0 < y < H - 1 and lab[y - 1][x] == z == lab[y + 1][x]
+                if inside_h:
+                    horiz[(T[y][x - 1], T[y][x + 1])][c] += 1
+                if inside_v:
+                    vert[(T[y - 1][x], T[y + 1][x])][c] += 1
+                if inside_h and inside_v:
+                    full[(T[y][x - 1], T[y - 1][x], T[y][x + 1], T[y + 1][x])][c] += 1
+    chain = MarkovModel(
+        full=collections.defaultdict(collections.Counter),
+        pair=collections.defaultdict(collections.Counter),
+        one=collections.defaultdict(collections.Counter),
+        marg=marg,
+    )
+    return MarkovTables(chain=chain, chain4=MarkovModel4(full=full, horiz=horiz, vert=vert))

@@ -17,9 +17,18 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.footprint import footprint_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
-from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteIndex, SiteZone, ZoneSite
+from vcmi_mapgen.core.placement.site import (
+    HOME_FOOTING,
+    Footing,
+    LevelField,
+    PlacedZone,
+    SiteIndex,
+    SiteZone,
+    ZoneSite,
+)
 from vcmi_mapgen.core.placement.start_room import StartRoomRule
 from vcmi_mapgen.core.planning import zone_plan as ZPL
+from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.draw import (
     TOWN_MIN_AREA,
@@ -38,13 +47,15 @@ from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 NO_TILES: frozenset[Tile] = frozenset()
 
 
-def place_town(site: ZoneSite, draw: ZoneDraw, player: bool) -> PlacedObject | None:
+def place_town(
+    site: ZoneSite, draw: ZoneDraw, player: bool, footing: Footing | None = None
+) -> PlacedObject | None:
     """Place a zone's town: a player town pulls toward the zone centre, a neutral one follows
-    the corpus intensity."""
+    the corpus intensity. ``footing`` replaces the town's default footing."""
     if draw.town is None:
         return None
     centres = site.centroid_order(draw.town) if player else site.intensity_order(Purpose.TOWN)
-    town = site.place(Purpose.TOWN, draw.town, centres)
+    town = site.place(Purpose.TOWN, draw.town, centres, footing)
     if town is None:
         if player:
             print(
@@ -145,7 +156,9 @@ class GameplayStep(PipelineStep):
 
     inject(ctx): ``ZonePlan`` (each zone's plan, the player zones and the sea objects),
     ``VegetationResult`` (each zone's open and walkable tiles), ``TerrainGrids`` (the tunnel
-    protect set), ``Segmentation`` (the surface zones). The step publishes the
+    protect set), ``Segmentation`` (the surface zones), and the ``ContentPlan`` when present:
+    a planned home's town may lay its overlay outside the zone, and each zone's total scales
+    by its planned reward. The step publishes the
     player zones the zone plan picked, then commits the sea objects the zone plan drew. Gates stay
     off each player town's kept room. Gates may stand on an underground tunnel. No other object's
     footprint may, and none may strand one. A player town that finds no spot in its zone moves to
@@ -179,6 +192,7 @@ class GameplayStep(PipelineStep):
         self._tunnels: frozenset[Tile] = NO_TILES
         self._placed_res: set[str] = set()
         self._starts: dict[int, StartRoomRule] = {}
+        self._content = ContentPlan()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -187,6 +201,7 @@ class GameplayStep(PipelineStep):
         self._veg = ctx.require(VegetationResult)
         self._tunnels = ctx.require(TerrainGrids).tunnel_protect
         self._segmentation = ctx.require(Segmentation)
+        self._content = ctx.get(ContentPlan, ContentPlan())
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -243,7 +258,8 @@ class GameplayStep(PipelineStep):
             for zid, site in sorted(idx.sites.items()):
                 draws[level, zid] = self._draw(site, ledger)
                 player = (level, zid) in self._player_zids
-                town = place_town(site, draws[level, zid], player)
+                footing = HOME_FOOTING if (level, zid) in self._content.homes else None
+                town = place_town(site, draws[level, zid], player, footing)
                 if player and town is not None:
                     self._starts[level].protect(town)
         self._move_player_towns(catalog, indexes)
@@ -306,6 +322,7 @@ class GameplayStep(PipelineStep):
             gates=site.gates,
             has_water=any(Terrain.WATER in row for row in self._grids[level]),
             has_subterrain=self.subterrain,
+            scale=self._content.scale(level, site.zid),
         )
         return ZoneDrawer(site.catalog, spec, site.st, ledger, self.seed + level).draw()
 

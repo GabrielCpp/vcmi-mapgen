@@ -4,8 +4,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import replace
 
-from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.pockets import find_pockets
+from vcmi_mapgen.core.catalog import Catalog, Trait
+from vcmi_mapgen.core.grid.pockets import find_pockets, find_rooms
 from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import CoverIndex, Footprint, PlacedObject, Role, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -18,6 +18,7 @@ from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.loot import pickups as CA
+from vcmi_mapgen.core.steps.loot.pocket_plan import ART_TIER_BY_GUARD_LEVEL, PocketPlan
 from vcmi_mapgen.core.steps.loot.pockets import access_tiles, occupied_tiles
 
 
@@ -168,7 +169,7 @@ def test_pocket_guard_level_matches_artifact_tier_exactly(catalog: Catalog, prio
     match = re.match(r"randomMonsterLevel(\d)", _type_of(catalog, guard))
     assert match is not None
     glvl = int(match.group(1))
-    want = catalog.random_artifact(CA.ART_TIER_BY_GUARD_LEVEL[glvl - 1]).kind
+    want = catalog.random_artifact(ART_TIER_BY_GUARD_LEVEL[glvl - 1]).kind
     assert art.kind == want, (
         f"guard is level {glvl} but artifact animation {art.kind!r} doesn't "
         f"match that tier ({want!r})"
@@ -318,3 +319,50 @@ def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog, priors:
             ):
                 violations.append(o)
     assert violations == []
+
+
+ROOM6 = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}
+
+
+def _planned(
+    catalog: Catalog, priors: Priors, room: set[Tile]
+) -> tuple[list[PlacedObject], dict[Tile, float]]:
+    zr = _field_with_room(room, {(5, 4)})
+    objs, _n, depth = CA.place_pocket_caches(
+        catalog,
+        [zr],
+        CA.PocketContext(
+            priors.gameplay[0],
+            find_rooms(zr.passable, ()),
+            plan=PocketPlan({0: 3.0}),
+        ),
+        3,
+        (20, 20),
+    )
+    return objs, depth
+
+
+def _artifacts(catalog: Catalog) -> set[str]:
+    return {catalog.random_artifact(t).kind for t in ("treasure", "minor", "major", "relic")}
+
+
+def _boxes(catalog: Catalog, objs: Sequence[PlacedObject]) -> list[PlacedObject]:
+    boxes = catalog.types_with(Trait.REWARD_BOX)
+    return [o for o in objs if _type_of(catalog, o) in boxes]
+
+
+def test_a_deep_pocket_guards_an_artifact_or_a_box(catalog: Catalog, priors: Priors) -> None:
+    objs, depth = _planned(catalog, priors, ROOM6)
+    guards = [o for o in objs if o.purpose == Purpose.GUARD]
+    assert [(g.x, g.y) for g in guards] == [(5, 4)]
+    wards = [o for o in objs if o.kind in _artifacts(catalog)] + _boxes(catalog, objs)
+    assert wards and all((w.x, w.y) in ROOM6 for w in wards)
+    assert set(depth) <= ROOM6
+
+
+def test_a_shallow_pocket_is_filled_without_a_guard(catalog: Catalog, priors: Priors) -> None:
+    objs, depth = _planned(catalog, priors, {(5, 5)})
+    assert not any(o.purpose == Purpose.GUARD for o in objs)
+    assert not any(o.kind in _artifacts(catalog) for o in objs)
+    assert [(o.x, o.y) for o in objs] == [(5, 5)]
+    assert set(depth) == {(5, 5)}

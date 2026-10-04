@@ -14,6 +14,8 @@ from vcmi_mapgen.core.steps import (
     TreasureStep,
     VegetationStep,
 )
+from vcmi_mapgen.core.steps.terrain_gen.markov import MarkovTerrain
+from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 
 
@@ -22,7 +24,11 @@ def _run_through_treasure(catalog: Catalog, priors: Priors, seed: int) -> MapSta
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         pipeline = Pipeline(catalog, size)
-        _ = pipeline.add_step(TerrainStep(priors, size, seed, "normal", True))
+        _ = pipeline.add_step(
+            TerrainStep(
+                priors, MarkovTerrain(), seed, TerrainOptions(size, "normal", True, players)
+            )
+        )
         _ = pipeline.add_step(VegetationStep(priors, GibbsSampler(), seed, players))
         _ = pipeline.add_step(GameplayStep(priors, seed, players, size, True))
         _ = pipeline.add_step(GatedStep(priors, seed, size))

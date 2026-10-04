@@ -3,9 +3,12 @@
 ## Map
 
 - `border_plan.py`: the zone-border plan that closes open crossings outside the entrance bands.
-  It reads the zone owners and the crossing pairs from `core/planning/borders.py`.
+  It reads the zone owners and the closing pairs from `core/planning/borders.py`, so an open
+  pair stays walkable. A web tile is sealed only when its open neighbours stay joined inside
+  its own zone.
 - `canvas.py`: `ZoneCanvas`, the zone grids every sampler grows on. It owns the hard rules:
-  `blocked_cells` is the legality check, and `try_place` and `try_remove` refuse any move that
+  `blocked_cells` is the legality check, which also refuses a blocking cell on a tile whose
+  terrain the identity's `VegModel.iland` lacks, and `try_place` and `try_remove` refuse any move that
   walls off open ground. `zone_rng` seeds one zone's draws.
 - `connect.py`: `keeps_connected` and `frees_connected`, the compiled connectivity checks
   behind `try_place` and `try_remove`.
@@ -31,4 +34,4 @@
   `render-vegetation --vegetation gibbs` and `generate --vegetation gibbs` select the Gibbs
   sampler through `cli/steps.py` `SAMPLERS`.
 - `result.py`: `VegetationResult`, which `VegetationStep` publishes.
-- `step.py`: `VegetationStep`, which takes its `Sampler` in the constructor.
+- `step.py`: `VegetationStep`, which takes its `Sampler` and its `ContentPlanner` in the constructor. It plans the content first, picks the plan's homes as the player zones, and provides the `ContentPlan` beside the `ZonePlan`.

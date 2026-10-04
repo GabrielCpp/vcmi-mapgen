@@ -11,7 +11,9 @@ from numpy.typing import NDArray
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import EBINS
 from vcmi_mapgen.core.model import Identity, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement.ground import allowed_terrains
 from vcmi_mapgen.core.priors import vegetation as PS
 
 RINT = 2
@@ -28,6 +30,7 @@ class VegModel:
     iweights: list[list[float]]
     iblk: list[list[list[Tile]]]
     ifoot: list[list[list[Tile]]]
+    iland: list[list[frozenset[Terrain]]]
     sigma: float
     target: float
     runs: dict[str, float]
@@ -68,6 +71,7 @@ def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegMo
     iweights: list[list[float]] = []
     iblk: list[list[list[Tile]]] = []
     ifoot: list[list[list[Tile]]] = []
+    iland: list[list[frozenset[Terrain]]] = []
     for c in cats:
         w = st.anim_w.get(c, {})
         ids = by_cat[c]
@@ -81,6 +85,7 @@ def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegMo
             foot.append([(cx, cy) for cx, cy, _b in cells])
         iblk.append(blk)
         ifoot.append(foot)
+        iland.append([allowed_terrains(catalog, i.kind) for i in ids])
 
     return VegModel(
         terrain=terrain,
@@ -91,6 +96,7 @@ def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegMo
         iweights=iweights,
         iblk=iblk,
         ifoot=ifoot,
+        iland=iland,
         sigma=PS.cox_sigma(st),
         target=st.veg_blocked_frac,
         runs=st.runs,

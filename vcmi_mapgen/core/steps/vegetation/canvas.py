@@ -3,7 +3,7 @@ web, the blocking count, and the legality and connectivity rules every placement
 removal obeys."""
 
 import random
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from typing import cast
 
@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 
 from vcmi_mapgen.core.grid.geometry import EBINS, edge_dist
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.planning.web import ZoneRef, protected_web
 from vcmi_mapgen.core.steps.vegetation.connect import frees_connected, keeps_connected
 from vcmi_mapgen.core.steps.vegetation.model import VegModel
@@ -27,7 +28,8 @@ class ZoneCanvas:
     """One zone's grids in its bounding box, and the objects placed on it so far.
 
     A blocking cell is legal inside the zone, off the protected web and off `forbid`, or past
-    the map edge, where it counts toward nothing. `impassable` tiles count as walls for
+    the map edge, where it counts toward nothing. A blocking cell also stands on a terrain the
+    identity allows. `impassable` tiles count as walls for
     connectivity. The canvas refuses a placement or a removal that would wall off open ground
     from the protected web."""
 
@@ -38,6 +40,7 @@ class ZoneCanvas:
         self.map_w: int = len(zone.zone_label[0])
         self.model: VegModel = model
         self.forbid: AbstractSet[Tile] = opts.forbid
+        self.ground: Sequence[Sequence[Terrain]] = opts.ground
 
         xs = [x for x, _ in ts]
         ys = [y for _, y in ts]
@@ -93,6 +96,7 @@ class ZoneCanvas:
         """Absolute blocking cells of ident ii of category c anchored at (x,y); None = illegal."""
         x0, y0, W, H = self.x0, self.y0, self.W, self.H
         inz, protm, forbid, model = self.inz, self.protm, self.forbid, self.model
+        ground, land = self.ground, model.iland[c][ii]
         cells: list[Tile] = []
         for dx, dy in model.iblk[c][ii]:
             bx, by = x + dx, y + dy
@@ -104,6 +108,7 @@ class ZoneCanvas:
                 or not inz[ly, lx]
                 or protm[ly, lx]
                 or (bx, by) in forbid
+                or (ground and ground[by][bx] not in land)
             ):
                 return None
             cells.append((bx, by))

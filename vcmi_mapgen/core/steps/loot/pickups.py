@@ -4,12 +4,12 @@ artifact's tier follows the guard's level through `ART_TIER_BY_GUARD_LEVEL`, so 
 strength matches the prize behind it."""
 
 import random
-from collections.abc import Collection, Container, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.pockets import dedupe_pockets, pocket_depths
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -19,6 +19,9 @@ from vcmi_mapgen.core.placement.identity import solo_visit_pool
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
+from vcmi_mapgen.core.reading.value import ValueTable, value_of
+from vcmi_mapgen.core.steps.loot import pocket_plan as PP
+from vcmi_mapgen.core.steps.loot.pocket_plan import ART_TIER_BY_GUARD_LEVEL, PocketPlan
 from vcmi_mapgen.core.steps.loot.pockets import (
     guard_stand,
     home_mine_protect_pairs,
@@ -26,24 +29,15 @@ from vcmi_mapgen.core.steps.loot.pockets import (
     reachable,
 )
 
-ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier, ...] = (
-    "treasure",
-    "treasure",
-    "minor",
-    "major",
-    "major",
-    "relic",
-)
-
 
 @dataclass(frozen=True, slots=True)
 class PocketContext:
     gameplay: GameplayStats
     pockets: Mapping[Tile, tuple[frozenset[Tile], frozenset[Tile]]]
-    border_guards: Container[Tile] = ()
     existing_objs: Sequence[PlacedObject] = ()
     home_zids: Collection[int] = ()
     cover: CoverIndex | None = None
+    plan: PocketPlan | None = None
 
 
 def place_pocket_caches(
@@ -131,6 +125,7 @@ class _PocketDraw:
     pool_art: Sequence[Identity]
     pool_chest: Sequence[Identity]
     pool_vis: Sequence[Identity]
+    pool_box: Sequence[Identity] = ()
 
 
 def _cache_spec(
@@ -152,7 +147,6 @@ class _PocketCachePass:
         self.catalog = catalog
         self.seed = seed
         self.bounds = bounds
-        self.border_guards = context.border_guards
         self.gameplay = context.gameplay
         self.zone_of: dict[Tile, int] = {}
         self.terrain_of: dict[int, str] = {}
@@ -196,6 +190,9 @@ class _PocketCachePass:
         self.guards: list[Tile] = [
             (o.x, o.y) for o in context.existing_objs if o.purpose == Purpose.GUARD
         ]
+        self.plan = context.plan
+        self.values = ValueTable.of(catalog) if context.plan else None
+        self.filled = 0
 
     def _absorb(self, zr: ZoneRecord) -> None:
         zid = zr.zid
@@ -281,6 +278,10 @@ class _PocketCachePass:
 
     def run(self) -> tuple[list[PlacedObject], int, dict[Tile, float]]:
         for candidates in self.blobs:
+            zid = self._planned_zone(candidates)
+            if zid is not None:
+                self._fill_planned(candidates, zid)
+                continue
             # Find the best guardable candidate (guard fits at the ZoC-centre position
             # whose ZoC seals the pocket and both mouth tiles are within it).
             pick = self._choose(candidates)
@@ -288,6 +289,115 @@ class _PocketCachePass:
                 continue
             self._fill_pocket(pick)
         return self.objs, len(self.blobs), self.pocket_depth_by_tile
+
+    def _planned_zone(self, candidates: Sequence[PP.Candidate]) -> int | None:
+        for g, _pocket, mouth in sorted(candidates, key=lambda c: -len(c[1])):
+            zid = self._zone_for(g, mouth)
+            if zid is not None:
+                return zid if self.plan and zid in self.plan.guard_means else None
+        return None
+
+    def _fill_planned(self, candidates: Sequence[PP.Candidate], zid: int) -> None:
+        big = PP.largest(candidates)
+        if self._kind(big) is PP.PocketKind.DEEP:
+            for cand in candidates:
+                if self._kind(cand) is not PP.PocketKind.DEEP:
+                    continue
+                if self._guard_fits(cand[0]) and self._leaves_cache_spot(cand[0], cand[1]):
+                    if self._guarded(cand, zid):
+                        return
+                    break
+        self._unguarded(big, zid)
+
+    @staticmethod
+    def _kind(cand: PP.Candidate) -> PP.PocketKind:
+        depths = pocket_depths(cand[1], cand[2])
+        return PP.pocket_kind(len(cand[1]), max(depths.values()) + 1 if depths else 0)
+
+    def _planned_draw(self, zid: int, g: Tile, salt: int) -> _PocketDraw:
+        terrain = self.terrain_of[zid]
+        pool_res = self.catalog.candidates(Purpose.RESOURCE_PILE, terrain)
+        pool_art = self.catalog.candidates(Purpose.REWARD_PICKUP, terrain)
+        boxes = self.catalog.types_with(Trait.REWARD_BOX)
+        chests = self.catalog.types_with(Trait.CHEST)
+        rng = random.Random(self.seed ^ (g[0] * 92821) ^ (g[1] * 131071) ^ salt)
+        return _PocketDraw(
+            rng,
+            self.gameplay[terrain],
+            pool_res,
+            pool_art,
+            [i for i in pool_art if i.type in chests and i.type not in boxes],
+            (),
+            [i for i in pool_art if i.type in boxes],
+        )
+
+    def _spots(self, cand: PP.Candidate, *covers: CoverIndex) -> list[Tile]:
+        return [
+            t
+            for t in cand[1]
+            if t != cand[0]
+            and t not in self.cover.claims
+            and t in self.global_place
+            and self._pickup_fits(t, *covers)
+        ]
+
+    def _guarded(self, cand: PP.Candidate, zid: int) -> bool:
+        g = cand[0]
+        draw = self._planned_draw(zid, g, 0x9C4)
+        with_guard = CoverIndex([PlacedObject.at(self.guard_ident, g, purpose=Purpose.GUARD)])
+        spots = PP.deepest_spots(self._spots(cand, with_guard), g, PP.FILL_CAP + 1)
+        mark, n0 = self.cover.mark(), len(self.objs)
+        target = self._target(self.global_place, draw)
+        values = self.values
+        if values is not None and spots and self._place_ward(target, draw, spots[-1], zid):
+            for t in spots[:-1]:
+                self._loose_fill(target, draw, t)
+            value = sum(value_of(self.catalog, values, o) for o in self.objs[n0:])
+            if self._place_guard(g, PP.guard_level_for_value(value), draw):
+                self._record_filled(cand, n0)
+                return True
+        self.cover.rollback(mark)
+        del self.objs[n0:]
+        return False
+
+    def _place_ward(self, target: PlaceTarget, draw: _PocketDraw, t: Tile, zid: int) -> bool:
+        assert self.plan is not None
+        tier = PP.ward_tier(draw.rng, self.plan.guard_means[zid])
+        art = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, self.catalog.random_artifact(tier))
+        if place_one(target, art, t[0], t[1]):
+            return True
+        box = draw.rng.choice(draw.pool_box) if draw.pool_box else None
+        return box is not None and place_one(
+            target, _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, box), t[0], t[1]
+        )
+
+    def _loose_fill(self, target: PlaceTarget, draw: _PocketDraw, t: Tile) -> None:
+        if draw.rng.random() < PP.CHEST_SHARE and draw.pool_chest:
+            ci = self._pick_spaced(draw.pool_chest, t, draw.rng)
+            spec = _cache_spec(Purpose.REWARD_PICKUP, draw.pool_art, ci)
+            if ci is not None and place_one(target, spec, t[0], t[1]):
+                self._register(ci, t[0], t[1])
+                return
+        _ = place_one(target, _cache_spec(Purpose.RESOURCE_PILE, draw.pool_res), t[0], t[1])
+
+    def _unguarded(self, cand: PP.Candidate, zid: int) -> None:
+        g = cand[0]
+        draw = self._planned_draw(zid, g, 0x5A1)
+        n0 = len(self.objs)
+        target = self._target(self.global_place, draw)
+        for t in PP.deepest_spots(self._spots(cand), g, PP.FILL_CAP):
+            self._loose_fill(target, draw, t)
+        self._record_filled(cand, n0)
+
+    def _record_filled(self, cand: PP.Candidate, n0: int) -> None:
+        placed = {(o.x, o.y) for o in self.objs[n0:]} & cand[1]
+        if not placed:
+            return
+        self.filled += 1
+        depths = pocket_depths(cand[1], cand[2])
+        max_d = max(depths.values()) if depths else 0
+        for t in placed:
+            self.pocket_depth_by_tile[t] = depths.get(t, 0) / max_d if max_d else 0.0
 
     def _zone_for(self, cand_g: Tile, cand_mouth_fs: frozenset[Tile]) -> int | None:
         cand_zid = self.zone_of.get(cand_g)
@@ -348,14 +458,12 @@ class _PocketCachePass:
     def _fill_pocket(self, pick: _PocketPick) -> None:
         guard_tile, pocket, ref_g = pick.guard_tile, pick.pocket, pick.ref_g
 
-        # Every pocket requires a guard — skip if none could be placed, unless the
-        # pocket mouth is already sealed by a border guard (which isn't in global_place;
-        # in that case fill proceeds without placing a new guard).
-        if guard_tile is None and ref_g not in self.border_guards:
+        # Every pocket requires a guard — skip if none could be placed.
+        if guard_tile is None:
             return
 
-        # Reference point for distance-sorting (guard tile or ZoC-centre).
-        ref = guard_tile if guard_tile is not None else ref_g
+        # Reference point for distance-sorting.
+        ref = guard_tile
 
         terrain = self.terrain_of[pick.zid]
         st = self.gameplay[terrain]
@@ -449,11 +557,10 @@ class _PocketCachePass:
 
     def _record_depths(self, pick: _PocketPick, cache_spots: list[Tile]) -> None:
         pocket = pick.pocket
-        # This pocket is genuinely committed now -- a guard is down (or the mouth was
-        # already border-sealed) and at least one cache tile is actually going to
-        # receive an object below. Only NOW record its geometric extent + depth
-        # gradient for the debug overlay (rendering only; it never re-derives this from
-        # objects) -- recording it any earlier (right after the guard-required gate)
+        # This pocket is genuinely committed now -- a guard is down and at least one cache
+        # tile is actually going to receive an object below. Only NOW record its geometric
+        # extent + depth gradient for the debug overlay (rendering only; it never re-derives
+        # this from objects) -- recording it any earlier (right after the guard-required gate)
         # painted a pocket magenta even when every later gate (`cache_spots`/`avail`
         # empty, guard placement itself failing) still dropped it with zero objects
         # actually placed (2026-09 diagnosis: "not all magenta tiles are filled").

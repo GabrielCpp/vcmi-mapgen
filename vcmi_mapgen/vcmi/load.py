@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.footprint import footprint_of
@@ -12,9 +13,9 @@ from vcmi_mapgen.vcmi.tiles import decode_tile_string
 
 
 def load_map(path: str) -> MapState:
-    """Load a `.vmap` into a MapState with `terrain`, `objs` and `size`. Each tile keeps its
-    terrain and drops its art. Fields a `.vmap` does not store (zones, gate_blk,
-    player_towns) keep their defaults.
+    """Load a `.vmap` into a MapState with `terrain`, `roads`, `objs` and `size`. Each tile
+    keeps its terrain and its road type and drops its art. Fields a `.vmap` does not store
+    (zones, gate_blk, player_towns) keep their defaults.
 
     Each object's footprint is re-derived from the ontology by animation
     (`vcmi.catalog.objects.mask_of`), NOT read from the file's `template.mask`, which cannot
@@ -26,7 +27,11 @@ def load_map(path: str) -> MapState:
     doc = VM.read(path)
     state = MapState(size=max(doc.width, doc.height))
     for level, grid in enumerate(doc.terrain):
-        state.terrain[level] = [[Terrain(decode_tile_string(t).t) for t in row] for row in grid]
+        cells = [[decode_tile_string(t) for t in row] for row in grid]
+        state.terrain[level] = [[Terrain(c.t) for c in row] for row in cells]
+        state.roads[level] = {
+            (x, y): Road(c.ot) for y, row in enumerate(cells) for x, c in enumerate(row) if c.ot
+        }
     state.objs = [
         PlacedObject(
             x=o.x,
