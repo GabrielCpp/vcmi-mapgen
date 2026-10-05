@@ -26,6 +26,10 @@ def as_int(value: JsonValue | None, default: int = 0) -> int:
     return value if isinstance(value, int) else default
 
 
+def as_float(value: JsonValue | None, default: float = 0.0) -> float:
+    return float(value) if isinstance(value, int | float) else default
+
+
 def opt_object(value: JsonValue | None) -> dict[str, JsonValue] | None:
     return value if isinstance(value, dict) else None
 

@@ -21,9 +21,11 @@ from vcmi_mapgen.corpus.mine.places import map_players, mine_places, place_label
 from vcmi_mapgen.corpus.mine.tiler import corpus_tile_grids
 from vcmi_mapgen.corpus.mine.tiler import learn as learn_tiler
 from vcmi_mapgen.corpus.mine.vegetation import mine as mine_vegetation
+from vcmi_mapgen.corpus.mine.water import mine_water
 from vcmi_mapgen.corpus.places import save_places
 from vcmi_mapgen.corpus.tiler import save_tiler
 from vcmi_mapgen.corpus.vegetation import save_vegetation
+from vcmi_mapgen.corpus.water import save_water
 
 LEVELS = (0, 1)
 
@@ -86,6 +88,10 @@ def _effort(m: MineInput) -> None:
     save_effort(m.pp_dir, mine_effort(m.catalog, m.maps, owners, tuned_effort(m.pp_dir)))
 
 
+def _water(m: MineInput) -> None:
+    save_water(m.pp_dir, mine_water(m.catalog, m.maps))
+
+
 MINERS: dict[str, Callable[[MineInput], None]] = {
     "macro": _macro,
     "markov": _markov,
@@ -96,6 +102,7 @@ MINERS: dict[str, Callable[[MineInput], None]] = {
     "places": _places,
     "markov_places": _markov_places,
     "effort": _effort,
+    "water": _water,
 }
 
 

@@ -11,14 +11,16 @@ Usage:
     (side-by-side: generated left, real right re-rendered from the corpus .vmap)
 """
 
+import io
 from collections.abc import Sequence
 from functools import cache
 
 from PIL import Image, ImageDraw
 
-from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model import JsonValue, PlacedObject
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.vcmi.content.archive import ContentArchive
+from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats.defs import parse_def
 from vcmi_mapgen.vcmi.tiles import decode_tile_string
 
@@ -34,12 +36,16 @@ TERR_DEF: dict[str, str] = {
     "lv": "lavatl.def",
     "wt": "watrtl.def",
     "rc": "rocktl.def",
+    "hl": "hota/highlands/tiles",
+    "ws": "hota/wasteland/tiles",
 }
 ROAD_DEF: dict[Road, str] = {
     Road.DIRT: "dirtrd.def",
     Road.GRAVEL: "gravrd.def",
     Road.COBBLESTONE: "cobbrd.def",
 }
+DEF_SUFFIX = ".def"
+JSON_SUFFIX = ".json"
 TILE = 32  # pixels per map tile
 SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
     0: (0, 0, 0, 0),
@@ -59,11 +65,50 @@ def get_def(index: ContentArchive, name: str) -> list[list[Image.Image]] | None:
 def _load_def(index: ContentArchive, key: str) -> list[list[Image.Image]] | None:
     data = index.read(key)
     if data is None:
-        return None
+        return _load_json(index, key)
     try:
         return parse_def(data)
     except Exception:
         return None
+
+
+def _json_frames(doc: dict[str, JsonValue]) -> list[str]:
+    for raw in jv.as_list(doc.get("sequences")):
+        seq = jv.as_object(raw)
+        if jv.as_int(seq.get("group")) == 0:
+            return jv.str_list(seq.get("frames"))
+    images = [jv.as_object(i) for i in jv.as_list(doc.get("images"))]
+    first = sorted(
+        (jv.as_int(i.get("frame")), jv.as_str(i.get("file")))
+        for i in images
+        if jv.as_int(i.get("group")) == 0
+    )
+    return [f for _, f in first]
+
+
+def _load_png(index: ContentArchive, name: str) -> Image.Image | None:
+    data = index.read(name)
+    if data is None:
+        return None
+    try:
+        return Image.open(io.BytesIO(data)).convert("RGBA")
+    except Exception:
+        return None
+
+
+def _load_json(index: ContentArchive, key: str) -> list[list[Image.Image]] | None:
+    """A VCMI `.json` animation: group 0's `.png` frames under its base path."""
+    raw = index.read(f"{key.removesuffix(DEF_SUFFIX)}{JSON_SUFFIX}")
+    if raw is None:
+        return None
+    try:
+        doc = jv.as_object(jv.loads_relaxed(raw.decode("utf-8-sig")))
+    except Exception:
+        return None
+    base = jv.as_str(doc.get("basepath"))
+    frames = [_load_png(index, f"{base}{f}") for f in _json_frames(doc)]
+    found = [f for f in frames if f is not None]
+    return [found] if found else None
 
 
 # --------------------------------------------------------------------------- terrain tile decode

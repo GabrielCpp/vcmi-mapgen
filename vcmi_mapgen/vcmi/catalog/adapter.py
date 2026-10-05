@@ -106,6 +106,11 @@ class VcmiCatalog:
         mines = OB.mines_by_resource(terrain)
         return {res: self._kept(ids) for res, ids in mines.items() if res not in RO.ABANDONED_MINES}
 
+    def abandoned_mines(self, terrain: str | int) -> list[Identity]:
+        mines = OB.mines_by_resource(terrain)
+        ids = [i for res in sorted(RO.ABANDONED_MINES) for i in mines.get(res, [])]
+        return sorted(self._kept(ids), key=lambda i: i.kind)
+
     def types_with(self, trait: Trait) -> tuple[str, ...]:
         return RO.TRAIT_TYPES[trait]
 
@@ -133,6 +138,11 @@ class VcmiCatalog:
             return None
         level = TB.monster_levels().get(OB.identity_of(kind).subtype or "", 0)
         return min(7, level) if level >= 1 else None
+
+    def dwelling_level(self, kind: str) -> int | None:
+        levels = [TB.monster_levels().get(c, 0) for c in OB.dwelling_creatures(kind)]
+        top = max(levels, default=0)
+        return top if top >= 1 else None
 
     def guard(self, level: int) -> Identity:
         return OB.identity_of(RO.RANDOM_MONSTERS[max(1, min(7, int(level))) - 1])

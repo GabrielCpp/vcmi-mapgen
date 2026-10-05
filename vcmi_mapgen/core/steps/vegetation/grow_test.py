@@ -10,7 +10,12 @@ from vcmi_mapgen.core.planning.zone_plan import PlanLevel, PlanZone, ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
-from vcmi_mapgen.core.steps.vegetation.grow import GrowLevel, grow_level, vegetation_models
+from vcmi_mapgen.core.steps.vegetation.grow import (
+    GrowLevel,
+    ground_patches,
+    grow_level,
+    vegetation_models,
+)
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone
 
 
@@ -57,3 +62,22 @@ def test_grow_level_takes_the_field_sampler(catalog: Catalog, priors: Priors) ->
     assert grown == grow_level(models, lv, 5, FieldSampler())
     assert grown != grow_level(models, lv, 5, GibbsSampler())
     assert not {(o.x, o.y) for o in grown.objs} & taken
+
+
+def test_a_patch_of_another_terrain_grows_its_own_vegetation(
+    catalog: Catalog, priors: Priors
+) -> None:
+    lava = frozenset((x, y) for x in range(2, 10) for y in range(12, 19))
+    ground = [
+        [Terrain.LAVA if (x, y) in lava else Terrain.GRASS for x in range(24)] for y in range(20)
+    ]
+    bare = replace(_level(frozenset()), ground=ground)
+    patches = ground_patches(catalog, bare.plan, ground)
+    assert patches == {1: {"lava": lava}}
+    lv = replace(bare, patches=patches)
+    models = vegetation_models(catalog, priors.vegetation, ZonePlan({0: lv.plan}, ()), ["lava"])
+    grown = grow_level(models, lv, 5, FieldSampler())
+    on_lava = [o for o in grown.objs if (o.x, o.y) in lava]
+    assert on_lava
+    assert not [o for o in grow_level(models, bare, 5, FieldSampler()).objs if (o.x, o.y) in lava]
+    assert grown == grow_level(models, lv, 5, FieldSampler())

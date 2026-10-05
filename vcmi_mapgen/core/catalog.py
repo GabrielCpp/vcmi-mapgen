@@ -122,6 +122,10 @@ class Catalog(Protocol):
         mines yield no fixed resource and are left out."""
         ...
 
+    def abandoned_mines(self, terrain: str | int) -> list[Identity]:
+        """The abandoned mine identities on a terrain, by kind."""
+        ...
+
     def types_with(self, trait: Trait) -> tuple[str, ...]:
         """The object types that carry a trait, in the catalog's order."""
         ...
@@ -149,6 +153,11 @@ class Catalog(Protocol):
     def creature_level(self, kind: str) -> int | None:
         """The level 1..7 of a monster stack, fixed or random, or None when the kind is no
         monster or a random monster of any level."""
+        ...
+
+    def dwelling_level(self, kind: str) -> int | None:
+        """The highest creature level a fixed dwelling recruits, unclamped, so a dragon
+        dwelling reads above 7. None when the kind recruits no known creature."""
         ...
 
     def guard(self, level: int) -> Identity:

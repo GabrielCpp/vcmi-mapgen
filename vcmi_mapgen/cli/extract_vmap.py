@@ -5,14 +5,20 @@ parser + VCMI's own object-identity config, to <repo>/data/corpus/vmap/<name>.vm
 corpus's ONLY on-disk representation (replaces the old maps_json/ faithful-JSON
 dialect; see the vmap-unification plan). Run:
 `uv run python -m vcmi_mapgen.cli extract-vmap`.
+
+Other folders of `.h3m` maps, HotA ones among them, convert the same way through
+`--h3m-dir`, `--out-dir` and `--mods`. The enabled mods' map format renames each HotA
+object and template to its VCMI identity and animation. A map of another format keeps the
+base names.
 """
 
 import os
-import re
 from pathlib import Path
 
-from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model import JsonValue, PlacedObject
 from vcmi_mapgen.vcmi.config import VcmiConfig
+from vcmi_mapgen.vcmi.content.map_format import NO_FORMAT, MapFormat
+from vcmi_mapgen.vcmi.content.mods import NO_MODS, ModContent
 from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import h3m
 from vcmi_mapgen.vcmi.formats import json_value as jv
@@ -33,8 +39,16 @@ def _blank_players() -> list[PlayerSlot]:
     ]
 
 
-def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
+def convert(
+    config: VcmiConfig, h3m_path: str, fmt: MapFormat = NO_FORMAT, mods: ModContent = NO_MODS
+) -> tuple[VmapDocument, int, int]:
+    """One `.h3m` map as a `.vmap` document, with its count of unresolved objects and of
+    objects. ``config`` names each object, and ``fmt`` renames the objects and template
+    animations of a HotA map. ``mods`` lists the mods its objects come from in the header."""
     m = h3m.parse_file(h3m_path)
+    if m.fmt != h3m.HOTA:
+        fmt = NO_FORMAT
+    config = fmt.config(config)
     terrain = [
         [
             [
@@ -66,7 +80,7 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
             unresolved += 1
         vtype, sub = r if r else (None, None)
         tmpl = m.templates[o.template_index]
-        anim = re.sub(r"\.(def|DEF)$", "", o.animation)
+        anim = fmt.animation(o.animation)
         internal_mask = build_mask_from_h3m(tmpl.block_mask, tmpl.visit_mask)
         objects.append(
             VmapObject(
@@ -105,17 +119,31 @@ def convert(config: VcmiConfig, h3m_path: str) -> tuple[VmapDocument, int, int]:
             defeat_icon_index=jv.opt_int(header_template()["defeatIconIndex"]),
             defeat_message=jv.opt_object(header_template()["defeatMessage"]),
             triggered_events=jv.opt_object(header_template()["triggeredEvents"]),
-            extra={
-                "versionMajor": header_template()["versionMajor"],
-                "versionMinor": header_template()["versionMinor"],
-            },
+            extra=_extra(mods, objects),
         ),
         unresolved,
         len(objects),
     )
 
 
-def extract_vmap(config: VcmiConfig, h3m_dir: Path, out_dir: Path) -> None:
+def _extra(mods: ModContent, objects: list[VmapObject]) -> dict[str, JsonValue]:
+    extra: dict[str, JsonValue] = {
+        "versionMajor": header_template()["versionMajor"],
+        "versionMinor": header_template()["versionMinor"],
+    }
+    required = mods.requirement(o.animation for o in objects)
+    if required:
+        extra["mods"] = required
+    return extra
+
+
+def extract_vmap(
+    config: VcmiConfig,
+    h3m_dir: Path,
+    out_dir: Path,
+    fmt: MapFormat = NO_FORMAT,
+    mods: ModContent = NO_MODS,
+) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     maps = sorted(str(p) for p in h3m_dir.glob("*.h3m"))
     ok = 0
@@ -123,7 +151,7 @@ def extract_vmap(config: VcmiConfig, h3m_dir: Path, out_dir: Path) -> None:
     total_unresolved = 0
     for p in maps:
         try:
-            doc, unresolved, n_obj = convert(config, p)
+            doc, unresolved, n_obj = convert(config, p, fmt, mods)
         except Exception as e:
             print("PARSE FAIL", os.path.basename(p), e)
             continue

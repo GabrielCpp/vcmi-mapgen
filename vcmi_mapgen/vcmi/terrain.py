@@ -1,6 +1,9 @@
 """Heroes III terrain as VCMI names it: each core `Terrain` with its map code, its VCMI tile
 prefix, its name and the id VCMI's config files give it. The core values coincide with the
 Heroes III codes, so the table changes no map.
+
+HotA adds highlands and wasteland. A HotA map keeps their codes and tile prefixes in its
+files and its renders, and the core reads each as the base terrain it stands in for.
 """
 
 from dataclasses import dataclass
@@ -32,6 +35,12 @@ BY_PREFIX: dict[str, Terrain] = {c.prefix: t for t, c in TERRAINS.items()}
 BY_CONFIG_ID: dict[str, str] = {c.config_id: c.name for c in TERRAINS.values()}
 LAND_NAMES: tuple[str, ...] = tuple(c.name for t, c in TERRAINS.items() if t.is_land)
 
+HOTA_TERRAINS: dict[int, TerrainCodes] = {
+    10: TerrainCodes(10, "hl", "highlands", "highlands"),
+    11: TerrainCodes(11, "ws", "wasteland", "wasteland"),
+}
+STAND_IN: dict[str, Terrain] = {"hl": Terrain.GRASS, "ws": Terrain.ROUGH}
+
 
 def name_of(code: int) -> str:
     """The VCMI name of a terrain code, or "" for a code Heroes III does not have."""
@@ -39,4 +48,13 @@ def name_of(code: int) -> str:
 
 
 def prefix_of(code: int) -> str:
+    if code in HOTA_TERRAINS:
+        return HOTA_TERRAINS[code].prefix
     return TERRAINS[Terrain(code)].prefix
+
+
+def terrain_of(prefix: str) -> Terrain:
+    """The core terrain of a tile prefix: its own, a HotA terrain's stand-in, else grass."""
+    if prefix in BY_PREFIX:
+        return BY_PREFIX[prefix]
+    return STAND_IN.get(prefix, Terrain.GRASS)

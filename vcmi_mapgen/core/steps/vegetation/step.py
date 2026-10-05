@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -15,7 +16,12 @@ from vcmi_mapgen.core.planning.content import ContentPlan, ContentPlanner, NoCon
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
-from vcmi_mapgen.core.steps.vegetation.grow import GrowLevel, grow_level, vegetation_models
+from vcmi_mapgen.core.steps.vegetation.grow import (
+    GrowLevel,
+    ground_patches,
+    grow_level,
+    vegetation_models,
+)
 from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone, VegetationResult
 from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 
@@ -50,6 +56,15 @@ def _taken(map_state: MapState, level: int, pl: ZPL.PlanLevel) -> frozenset[Tile
 
 def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
     return VegetatedZone(zone.open_set - mine, zone.passable - mine)
+
+
+def _patches(
+    catalog: Catalog, map_state: MapState, plan: ZPL.ZonePlan
+) -> dict[int, dict[int, dict[str, frozenset[Tile]]]]:
+    return {
+        level: ground_patches(catalog, pl, map_state.terrain.get(level, ()))
+        for level, pl in plan.levels.items()
+    }
 
 
 class VegetationStep(PipelineStep):
@@ -108,12 +123,14 @@ class VegetationStep(PipelineStep):
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         content = self.content.plan(self.priors.places, self._places.levels)
         plan = self._zone_plan(catalog, map_state, content)
-        models = vegetation_models(catalog, self.priors.vegetation, plan)
+        patches = _patches(catalog, map_state, plan)
+        terrains = sorted({name for lp in patches.values() for zp in lp.values() for name in zp})
+        models = vegetation_models(catalog, self.priors.vegetation, plan, terrains)
         pre_taken = {lvl: _taken(map_state, lvl, pl) for lvl, pl in plan.levels.items()}
         grown = {
             level: grow_level(
                 models,
-                self._grow_level(map_state, level, pl, pre_taken[level]),
+                self._grow_level(map_state, level, pl, pre_taken[level], patches[level]),
                 self.seed,
                 self.sampler,
             )
@@ -153,12 +170,18 @@ class VegetationStep(PipelineStep):
         )
 
     def _grow_level(
-        self, map_state: MapState, level: int, pl: ZPL.PlanLevel, taken: frozenset[Tile]
+        self,
+        map_state: MapState,
+        level: int,
+        pl: ZPL.PlanLevel,
+        taken: frozenset[Tile],
+        patches: Mapping[int, Mapping[str, frozenset[Tile]]],
     ) -> GrowLevel:
         zones = self._segmentation.zones[level]
         centroids = {zid: z.centroid for zid, z in zones.items()}
         label = self._segmentation.zone_label[level]
-        return GrowLevel(level, pl, centroids, label, taken, map_state.terrain.get(level, ()))
+        ground = map_state.terrain.get(level, ())
+        return GrowLevel(level, pl, centroids, label, taken, ground, patches)
 
     def _seal_level(
         self,

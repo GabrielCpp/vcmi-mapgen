@@ -3,7 +3,6 @@ each place base-coated with its dominant terrain, then painted with transition b
 accents and texture. The underground keeps the macro path."""
 
 import collections
-import statistics
 from collections.abc import Collection, Sequence
 from dataclasses import replace
 
@@ -19,22 +18,19 @@ from vcmi_mapgen.core.reading.palette import palette_regions, same_share
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.border_kinds import draw_kinds
+from vcmi_mapgen.core.steps.terrain_gen.coastline import SurfaceForm
 from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
-from vcmi_mapgen.core.steps.terrain_gen.gate_sites import (
-    carve_gate_sites,
-    gate_anchor_points,
-    gate_site_tiles,
-)
+from vcmi_mapgen.core.steps.terrain_gen.gate_sites import carve_gate_sites, gate_anchor_points
 from vcmi_mapgen.core.steps.terrain_gen.identity import (
     Palette,
     assign_dominants,
     town_terrains,
 )
-from vcmi_mapgen.core.steps.terrain_gen.layout import Layout, lay_out
+from vcmi_mapgen.core.steps.terrain_gen.layout import Layout
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainDraw, TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.paint import paint_places, paint_priors
 from vcmi_mapgen.core.steps.terrain_gen.palette import draw_palette
-from vcmi_mapgen.core.steps.terrain_gen.place_graph import PlaceGraph, draw_graph
+from vcmi_mapgen.core.steps.terrain_gen.place_graph import PlaceGraph
 from vcmi_mapgen.core.steps.terrain_gen.place_map import (
     flood_places,
     front_cells,
@@ -48,28 +44,6 @@ UNDERGROUND_SALT = 0x51E9
 UNDERGROUND_ENTRANCE_W = 1
 BARRIERS = frozenset((Terrain.WATER.value, Terrain.ROCK.value))
 MAX_BRIDGE_ROUNDS = 8
-
-
-def ground(macro_fracs: Sequence[float], seed: int, options: TerrainOptions) -> list[list[bool]]:
-    """The surface land mask from today's water model, with every gate site made land when
-    the map has an underground."""
-    land = MTOPO.surface_land(
-        options.size,
-        macro_fracs,
-        MTOPO.MacroOptions(water_mode=options.water_mode),
-        stream(seed, "ground"),
-    )
-    if options.subterrain:
-        anchors = gate_anchor_points(options.size, options.size, seed)
-        for x, y in gate_site_tiles(anchors, options.size):
-            land[y][x] = True
-    return land
-
-
-def target_gap(stats: PlaceStats) -> float:
-    """The lower quartile of the corpus home separation, 0 without two samples."""
-    seps = stats.home_separation
-    return statistics.quantiles(seps, n=4)[0] if len(seps) >= 2 else 0.0
 
 
 def plan_of(graph: PlaceGraph, layout: Layout, dominants: Sequence[Terrain]) -> LevelPlaces:
@@ -118,16 +92,14 @@ def coast(ids: list[list[int]], thin: Collection[Terrain]) -> list[list[Terrain]
 
 
 def surface(
-    catalog: Catalog, priors: Priors, seed: int, options: TerrainOptions
+    catalog: Catalog, form: SurfaceForm, priors: Priors, seed: int, options: TerrainOptions
 ) -> tuple[list[list[Terrain]], LevelPlaces, tuple[str, ...]]:
     """The painted surface, its place map with its bands, and lines on how the layout and
     the palette went."""
     macro = priors.terrain[0].macro
     stats = priors.places[0]
-    land = ground(macro.barrier_fracs, seed, options)
-    n_land = sum(v for row in land for v in row)
-    graph = draw_graph(stats, options.players, n_land, stream(seed, "places"))
-    layout = lay_out(land, graph, target_gap(stats), stream(seed, "layout"))
+    coastline = form.form(priors, seed, options)
+    graph, layout = coastline.graph, coastline.layout
     roles = [*graph.roles, *([PlaceRole.POCKET] * (layout.places - len(graph.roles)))]
     adjacency = label_adjacency(layout.label)
     k, groups = draw_palette(
@@ -153,7 +125,8 @@ def surface(
         catalog.thin_terrains(),
     )
     plan = replace(plan, bands=painted.bands)
-    return painted.grid, plan, (line, palette_line(k, painted.grid, plan), border_line(plan))
+    lines = (line, *coastline.log, palette_line(k, painted.grid, plan), border_line(plan))
+    return painted.grid, plan, lines
 
 
 def bordered(plan: LevelPlaces, stats: PlaceStats, seed: int) -> LevelPlaces:
@@ -206,12 +179,15 @@ def underground(
 
 
 class PlacesTerrain:
-    """A place-first surface and today's underground."""
+    """A place-first surface on the land its surface form gives, and today's underground."""
+
+    def __init__(self, form: SurfaceForm) -> None:
+        self.form: SurfaceForm = form
 
     def draw(
         self, catalog: Catalog, priors: Priors, seed: int, options: TerrainOptions
     ) -> TerrainDraw:
-        grid0, plan0, lines = surface(catalog, priors, seed, options)
+        grid0, plan0, lines = surface(catalog, self.form, priors, seed, options)
         if not options.subterrain:
             return TerrainDraw({0: grid0}, frozenset(), PlaceMap({0: plan0}), lines)
         raw1, tunnels = underground(priors.terrain[1], grid0, seed, options.size)

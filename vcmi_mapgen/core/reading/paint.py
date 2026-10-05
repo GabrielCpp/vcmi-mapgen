@@ -22,11 +22,15 @@ MIN_LEVEL = 3
 
 @dataclass(frozen=True, slots=True)
 class Accent:
-    """One accent: its place, its terrain and its tile count."""
+    """One accent: its place, its terrain and its tiles."""
 
     place: int
     terrain: Terrain
-    size: int
+    tiles: frozenset[Tile]
+
+    @property
+    def size(self) -> int:
+        return len(self.tiles)
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,7 +212,7 @@ def accents(terrain: Terrains, label: Labels, dominant: Mapping[int, Terrain]) -
     key = {(x, y): z * 16 + terrain[y][x] for (x, y), z in off.items()}
     edge = boundary_tiles(label)
     return [
-        Accent(off[comp[0]], terrain[comp[0][1]][comp[0][0]], len(comp))
+        Accent(off[comp[0]], terrain[comp[0][1]][comp[0][0]], frozenset(comp))
         for comp in components(off, key)
         if not any(t in edge for t in comp)
     ]

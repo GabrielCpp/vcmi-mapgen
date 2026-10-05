@@ -48,3 +48,19 @@ def test_a_mod_object_has_a_spec_until_it_is_banned() -> None:
     banned = VcmiCatalog(EnabledSet(banned=frozenset({LAIR})), fair_content())
     assert banned.spec(LAIR) is None
     assert LAIR not in [i.kind for i in banned.candidates(Purpose.BANK, "sand")]
+
+
+def test_abandoned_mines_stand_on_their_terrain_and_respect_bans() -> None:
+    mines = VcmiCatalog().abandoned_mines("lava")
+    assert mines
+    assert all(i.subtype in ("abandoned", "mine") for i in mines)
+    banned = VcmiCatalog(EnabledSet(banned=frozenset({"mine"})))
+    assert banned.abandoned_mines("lava") == []
+
+
+def test_a_dragon_dwelling_reads_its_creature_level_unclamped() -> None:
+    catalog = VcmiCatalog()
+    assert catalog.dwelling_level("avgazur") == 10
+    assert catalog.dwelling_level("avgfdrg") == 8
+    assert catalog.dwelling_level("avgtrog0") == 1
+    assert catalog.dwelling_level(catalog.random_dwelling(3).kind) is None

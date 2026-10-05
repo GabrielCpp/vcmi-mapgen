@@ -65,6 +65,10 @@ class FakeCatalog:
         self.asked.append(("mines_by_resource", str(terrain)))
         return {}
 
+    def abandoned_mines(self, terrain: str | int) -> list[Identity]:
+        self.asked.append(("abandoned_mines", str(terrain)))
+        return []
+
     def types_with(self, trait: Trait) -> tuple[str, ...]:
         self.asked.append(("types_with", str(trait)))
         return ()
@@ -95,6 +99,10 @@ class FakeCatalog:
 
     def creature_level(self, kind: str) -> int | None:
         self.asked.append(("creature_level", kind))
+        return None
+
+    def dwelling_level(self, kind: str) -> int | None:
+        self.asked.append(("dwelling_level", kind))
         return None
 
     def guard(self, level: int) -> Identity:

@@ -51,3 +51,8 @@ def test_tile_strings_draws_each_road_with_the_frame_of_its_neighbours() -> None
     assert decode_tile_string(rows[1][1]).ot == Road.GRAVEL
     assert decode_tile_string(rows[1][1]).od == 9
     assert all("p" not in s[2:] for s in rows[0])
+
+
+def test_a_hota_tile_decodes_to_its_stand_in() -> None:
+    assert decode_tile_string("hl3_").t == Terrain.GRASS
+    assert decode_tile_string("ws7|").t == Terrain.ROUGH

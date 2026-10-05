@@ -3,6 +3,8 @@ read directly from VCMI's own config (the source of truth the editor uses). No g
 
 config/objects/*.json :
     { "<type>": { "index": <class>, "types": { "<subtype>": {"index": <subID>} } } }
+config/objects/dwellings.json also lists each dwelling's creatures:
+    { "<type>": { "types": { "<subtype>": {"creatures": [["<creature>"], ...]} } } }
 config/creatures/*.json, config/factions/*.json :
     { "<identifier>": { "index": <id> } }  (for monster/town subtypes)
 """
@@ -31,9 +33,14 @@ class VcmiConfig:
     heroes: dict[int, str] = field(default_factory=dict)
     spells: dict[int, str] = field(default_factory=dict)
     artifacts: dict[int, str] = field(default_factory=dict)
+    objects: dict[tuple[int, int], tuple[str, str]] = field(default_factory=dict)
+    dwellings: dict[tuple[str, str], tuple[str, ...]] = field(default_factory=dict)
 
     def resolve(self, obj_class: int, obj_subid: int) -> tuple[str, str] | None:
-        """-> (type, subtype) or None if unknown."""
+        """-> (type, subtype) or None if unknown. A map format's own entry wins."""
+        named = self.objects.get((obj_class, obj_subid))
+        if named is not None:
+            return named
         e = self.classes.get(obj_class)
         if not e:
             return None
@@ -129,6 +136,26 @@ def _class_map(bases: tuple[Path, ...]) -> dict[int, tuple[str, dict[int, str]]]
     return classes
 
 
+def _creatures_of(sub: dict[str, JsonValue]) -> tuple[str, ...]:
+    levels = jv.as_list(sub.get("creatures"))
+    names = (n for level in levels for n in jv.as_list(level) if isinstance(n, str))
+    return tuple(n.rpartition(":")[2] for n in names)
+
+
+def _dwelling_map(bases: tuple[Path, ...]) -> dict[tuple[str, str], tuple[str, ...]]:
+    dwellings: dict[tuple[str, str], tuple[str, ...]] = {}
+    for f in _files(bases, "objects"):
+        d = _read_object(f)
+        if d is None:
+            continue
+        for tname, raw in d.items():
+            for sname, s in jv.as_object(jv.as_object(raw).get("types")).items():
+                creatures = _creatures_of(jv.as_object(s))
+                if creatures:
+                    _ = dwellings.setdefault((tname, sname), creatures)
+    return dwellings
+
+
 @cache
 def load_config(install: VcmiInstall) -> VcmiConfig:
     bases = (*install.config_dirs, install.mods_dir)
@@ -139,4 +166,5 @@ def load_config(install: VcmiInstall) -> VcmiConfig:
         heroes=_index_map(bases, "heroes"),
         spells=_index_map(bases, "spells"),
         artifacts=_single_map(bases, "artifacts.json"),
+        dwellings=_dwelling_map(bases),
     )

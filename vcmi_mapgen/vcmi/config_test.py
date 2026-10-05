@@ -38,3 +38,8 @@ def test_resolve_known_pairs(pair: tuple[int, int], expected: tuple[str, str]) -
 
 def test_resolve_unknown_class_is_none() -> None:
     assert CONFIG.resolve(-1, 0) is None
+
+
+def test_each_dwelling_lists_the_creatures_it_recruits() -> None:
+    assert CONFIG.dwellings["creatureGeneratorCommon", "frozenCliffs"] == ("azureDragon",)
+    assert CONFIG.dwellings["creatureGeneratorCommon", "basiliskPit"] == ("basilisk",)

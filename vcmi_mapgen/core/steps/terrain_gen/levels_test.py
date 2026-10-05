@@ -2,10 +2,12 @@
 
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.paint import Accent
+from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
-from vcmi_mapgen.core.steps.terrain_gen.levels import raw_levels, segment_places
+from vcmi_mapgen.core.steps.terrain_gen.levels import level_accents, raw_levels, segment_places
 from vcmi_mapgen.core.steps.terrain_gen.place_map import flood_places, front_cells
-from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap
+from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlaceMap, PlannedPlace
 
 
 def test_raw_levels_add_an_underground_with_protected_tunnels(priors: Priors) -> None:
@@ -40,3 +42,13 @@ def test_flood_places_plans_bands_as_wide_as_asked() -> None:
     wide = flood_places(grid).passages.entrances
     assert all(len(e.band) == 1 for es in narrow.values() for e in es)
     assert all(len(e.band) == 3 for es in wide.values() for e in es)
+
+
+def test_level_accents_reads_each_patch_off_its_place_terrain() -> None:
+    grid = [[Terrain.GRASS] * 10 for _ in range(10)]
+    for x, y in ((4, 4), (5, 4), (4, 5)):
+        grid[y][x] = Terrain.LAVA
+    label = [[0] * 10 for _ in range(10)]
+    plan = LevelPlaces(label, {0: PlannedPlace(PlaceRole.MIDDLE, None, Terrain.GRASS)}, frozenset())
+    found = level_accents({0: grid}, PlaceMap({0: plan}))
+    assert found.levels == {0: (Accent(0, Terrain.LAVA, frozenset({(4, 4), (5, 4), (4, 5)})),)}

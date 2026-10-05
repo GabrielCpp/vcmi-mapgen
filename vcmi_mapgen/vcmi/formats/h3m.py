@@ -1,7 +1,7 @@
 """Dependency-free parser for Heroes of Might & Magic 3 `.h3m` map files.
 
-Supports RoE (0x0E/14), AB (0x15/21) and SoD (0x1C/28) formats only.
-HotA / WoG / CHR are intentionally not supported.
+Supports RoE (0x0E/14), AB (0x15/21), SoD (0x1C/28) and HotA (0x20/32) with
+HotA sub-versions 0..9. WoG and CHR are not supported.
 
 This is a faithful re-implementation of VCMI's `CMapLoaderH3M` sequential
 loader (ref/MapFormatH3M.cpp + ref/MapReaderH3M.cpp + ref/MapFeaturesH3M.cpp).
@@ -17,8 +17,11 @@ import gzip
 import os
 import struct
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from functools import partial
 from typing import final
+
+from vcmi_mapgen.vcmi.formats.h3m_scripts import HotaScripts
 
 # ---------------------------------------------------------------------------
 # Map formats
@@ -26,6 +29,8 @@ from typing import final
 ROE = 0x0E  # 14
 AB = 0x15  # 21
 SOD = 0x1C  # 28
+HOTA = 0x20
+HOTA_MAX_VERSION = 9
 
 
 @dataclass
@@ -35,6 +40,7 @@ class Features:
     level_roe: bool = True
     level_ab: bool = False
     level_sod: bool = False
+    hota: int = -1
 
     factions_bytes: int = 1
     heroes_bytes: int = 16
@@ -63,8 +69,63 @@ class Features:
     creature_invalid: int = 0xFF
     spell_invalid: int = 0xFF
 
+    def hota_at(self, level: int) -> bool:
+        """True when the map is HotA at sub-version ``level`` or later (VCMI's levelHOTAn)."""
+        return self.hota >= level
 
-def features_for(fmt: int) -> Features:
+
+HOTA_TIERS: tuple[tuple[int, dict[str, int]], ...] = (
+    (
+        0,
+        {
+            "artifacts_bytes": 21,
+            "heroes_bytes": 23,
+            "terrains_count": 12,
+            "skills_count": 29,
+            "factions_count": 10,
+            "creatures_count": 171,
+            "artifacts_count": 163,
+            "heroes_count": 178,
+            "heroes_portraits_count": 186,
+        },
+    ),
+    (3, {"artifacts_count": 165, "heroes_count": 179, "heroes_portraits_count": 188}),
+    (
+        5,
+        {
+            "factions_count": 11,
+            "creatures_count": 186,
+            "artifacts_count": 166,
+            "heroes_count": 198,
+            "heroes_portraits_count": 228,
+            "heroes_bytes": 25,
+        },
+    ),
+    (
+        7,
+        {
+            "factions_count": 12,
+            "creatures_count": 200,
+            "heroes_count": 215,
+            "heroes_portraits_count": 245,
+            "skills_count": 30,
+            "heroes_bytes": 27,
+        },
+    ),
+)
+
+
+def hota_features(version: int) -> Features:
+    if not 0 <= version <= HOTA_MAX_VERSION:
+        raise ValueError(f"Unsupported HotA map version {version} (only 0..{HOTA_MAX_VERSION})")
+    f = replace(features_for(SOD), hota=version)
+    for since, changes in HOTA_TIERS:
+        if version >= since:
+            f = replace(f, **changes)
+    return f
+
+
+def features_for(fmt: int, hota_version: int = 0) -> Features:
     if fmt == ROE:
         return Features()
     if fmt == AB:
@@ -89,7 +150,9 @@ def features_for(fmt: int) -> Features:
         f.heroes_portraits_count = 163
         f.artifact_slots_count = 19
         return f
-    raise ValueError(f"Unsupported map format {fmt:#x} (only RoE/AB/SoD)")
+    if fmt == HOTA:
+        return hota_features(hota_version)
+    raise ValueError(f"Unsupported map format {fmt:#x} (only RoE/AB/SoD/HotA)")
 
 
 # ---------------------------------------------------------------------------
@@ -114,13 +177,15 @@ class Obj:
     DERELICT_SHIP = 24
     DRAGON_UTOPIA = 25
     EVENT = 26
-    FLOTSAM = 28
+    FLOTSAM = 29
     GARRISON = 33
     GARRISON2 = 219
     GRAIL = 36
     HERO = 34
     HERO_PLACEHOLDER = 214
-    HOTA_CUSTOM_OBJECT_1 = 17
+    HOTA_CUSTOM_OBJECT_1 = 145
+    HOTA_CUSTOM_OBJECT_2 = 146
+    HOTA_CUSTOM_OBJECT_3 = 144
     LEAN_TO = 39
     LIGHTHOUSE = 42
     MINE = 53
@@ -129,12 +194,11 @@ class Obj:
     PANDORAS_BOX = 6
     PRISON = 62
     PYRAMID = 63
-    RANDOM_ART = 64
-    RANDOM_TREASURE_ART = 65
-    RANDOM_MINOR_ART = 66
-    RANDOM_MAJOR_ART = 67
-    RANDOM_RELIC_ART = 68
-    RANDOM_ART_5 = 69  # 6th random-art tier present in H3M (AVArnd4)
+    RANDOM_ART = 65
+    RANDOM_TREASURE_ART = 66
+    RANDOM_MINOR_ART = 67
+    RANDOM_MAJOR_ART = 68
+    RANDOM_RELIC_ART = 69
     RANDOM_DWELLING = 216
     RANDOM_DWELLING_LVL = 217
     RANDOM_DWELLING_FACTION = 218
@@ -329,8 +393,30 @@ class Reader:
     def bitmask_buildings(self) -> list[int]:
         return self.bitmask(self.f.buildings_bytes)
 
+    def bitmask_sized(self) -> list[int]:
+        """A HotA bitmask that states its own bit count first, as a u32."""
+        count = self.u32()
+        return self.bitmask((count + 7) // 8)
+
     def resources(self) -> list[int]:
         return [self.i32() for _ in range(self.f.resources_count)]
+
+
+VICTORY_READS: dict[int, tuple[Callable[[Reader], object], ...]] = {
+    0: (Reader.artifact,),
+    1: (Reader.creature, Reader.i32),
+    2: (Reader.resource_id, Reader.i32),
+    3: (Reader.int3, Reader.i8, Reader.i8),
+    4: (Reader.int3,),
+    5: (Reader.int3,),
+    6: (Reader.int3,),
+    7: (Reader.int3,),
+    8: (),
+    9: (),
+    10: (Reader.artifact8, Reader.int3),
+    11: (),
+    12: (Reader.u32,),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -394,6 +480,7 @@ class H3Map:
     height: int
     two_level: bool
     players: int
+    hota_version: int = -1
     terrain: list[list[list[Tile]]] = field(default_factory=list)  # per-level list of rows of Tile
     templates: list[ObjectTemplate] = field(default_factory=list)
     objects: list[MapObject] = field(default_factory=list)
@@ -408,12 +495,16 @@ class H3Map:
 class H3MParser:
     def __init__(self, data: bytes) -> None:
         fmt = int(struct.unpack_from("<I", data, 0)[0])
+        hota_version = int(struct.unpack_from("<I", data, 4)[0]) if fmt == HOTA else -1
         self.fmt: int = fmt
-        self.f: Features = features_for(fmt)
+        self.hota_version: int = hota_version
+        self.f: Features = features_for(fmt, hota_version)
         self.r: Reader = Reader(data, self.f)
         self.templates: list[ObjectTemplate] = []
         self._cur_extra: dict[str, int] = {}
+        self._cur_sub: int = 0
         self._body_readers: dict[int, Callable[[], None]] = self._object_body_readers()
+        self._mission_readers: dict[int, Callable[[], None]] = self._quest_mission_readers()
 
     # -- public entry --------------------------------------------------------
     def parse(self, name: str) -> H3Map:
@@ -421,6 +512,7 @@ class H3MParser:
         f = self.f
 
         _ = r.u32()  # format version (already consumed conceptually)
+        self._read_hota_header()
         _ = r.boolean()  # any_players
         size = r.i32()
         two_level = r.boolean()
@@ -436,6 +528,8 @@ class H3MParser:
         self._read_allowed_heroes()
         self._read_disposed_heroes()
         self._read_map_options()
+        if f.hota_at(9):
+            HotaScripts(r).skip_section()
         self._read_allowed_artifacts()
         self._read_allowed_spells_abilities()
         self._read_rumors()
@@ -457,6 +551,7 @@ class H3MParser:
             height=size,
             two_level=two_level,
             players=player_count,
+            hota_version=self.hota_version,
             terrain=terrain,
             templates=self.templates,
             objects=objects,
@@ -466,6 +561,27 @@ class H3MParser:
         return m
 
     # -- header sub-sections -------------------------------------------------
+    def _read_hota_header(self) -> None:
+        r, f = self.r, self.f
+        if not f.hota_at(0):
+            return
+        _ = r.u32()
+        if f.hota_at(8):
+            r.skip(12)
+        if f.hota_at(1):
+            r.skip(2)
+        if f.hota_at(2):
+            _ = r.u32()
+        if f.hota_at(5):
+            _ = r.u32()
+            _ = r.i8()
+        if f.hota_at(7):
+            _ = r.boolean()
+        if f.hota_at(8):
+            _ = r.boolean()
+        if f.hota_at(9):
+            _ = r.i32()
+
     def _read_players(self) -> int:
         r = self.r
         count = 0
@@ -521,30 +637,15 @@ class H3MParser:
         r = self.r
         # EVictoryConditionType, -1..12 ; raw byte read
         vic = r.i8()
-        if vic != -1:  # not WINSTANDARD (0xFF)
-            _ = r.boolean()  # allowNormalVictory
-            _ = r.boolean()  # appliesToAI
-            if vic == 0:  # ARTIFACT
-                _ = r.artifact()
-            elif vic == 1:  # GATHERTROOP
-                _ = r.creature()
-                _ = r.i32()
-            elif vic == 2:  # GATHERRESOURCE
-                _ = r.resource_id()
-                _ = r.i32()
-            elif vic == 3:  # BUILDCITY
-                _ = r.int3()
-                _ = r.i8()
-                _ = r.i8()
-            elif vic in {4, 5, 6, 7}:  # BUILDGRAIL
-                _ = r.int3()
-            elif vic in {8, 9}:  # TAKEDWELLINGS
-                pass
-            elif vic == 10:  # TRANSPORTITEM
-                _ = r.artifact8()
-                _ = r.int3()
-            else:
-                raise DesyncError(f"unhandled victory condition {vic}")
+        if vic == -1:  # WINSTANDARD (0xFF)
+            return
+        _ = r.boolean()  # allowNormalVictory
+        _ = r.boolean()  # appliesToAI
+        reads = VICTORY_READS.get(vic)
+        if reads is None:
+            raise DesyncError(f"unhandled victory condition {vic}")
+        for read in reads:
+            _ = read(r)
 
     def _read_loss(self) -> None:
         r = self.r
@@ -566,7 +667,7 @@ class H3MParser:
 
     def _read_allowed_heroes(self) -> None:
         r, f = self.r, self.f
-        _ = r.bitmask_heroes()
+        _ = r.bitmask_sized() if f.hota_at(0) else r.bitmask_heroes()
         if f.level_ab:
             placeholders = r.u32()
             for _ in range(placeholders):
@@ -584,13 +685,22 @@ class H3MParser:
             _ = r.bitmask_players()
 
     def _read_map_options(self) -> None:
-        # 31 zero bytes (SoD/AB/RoE; HotA-only options excluded)
-        self.r.skip_zero(31)
+        r, f = self.r, self.f
+        r.skip_zero(31)
+        if f.hota_at(0):
+            _ = r.boolean()
+            r.skip_zero(3)
+        if f.hota_at(1):
+            _ = r.bitmask_sized()
+        if f.hota_at(3):
+            _ = r.i32()
+        if f.hota_at(5):
+            r.skip(8)
 
     def _read_allowed_artifacts(self) -> None:
         r, f = self.r, self.f
         if f.level_ab:
-            _ = r.bitmask_artifacts()
+            _ = r.bitmask_sized() if f.hota_at(0) else r.bitmask_artifacts()
 
     def _read_allowed_spells_abilities(self) -> None:
         r, f = self.r, self.f
@@ -611,20 +721,25 @@ class H3MParser:
         r, f = self.r, self.f
         if not f.level_sod:
             return
-        heroes_count = f.heroes_count
+        heroes_count = r.u32() if f.hota_at(0) else f.heroes_count
         for _ in range(heroes_count):
-            custom = r.boolean()
-            if not custom:
-                continue
-            has_exp = r.boolean()
-            if has_exp:
-                _ = r.u32()
-            self._read_optional_secondary_skills()
-            self._read_artifacts_of_hero()
-            self._read_optional_string()
-            _ = r.i8()  # gender
-            self._read_optional_spells()
-            self._read_optional_primary_skills()
+            if r.boolean():
+                self._read_predefined_hero()
+        if f.hota_at(5):
+            for _ in range(heroes_count):
+                r.skip(6)
+
+    def _read_predefined_hero(self) -> None:
+        r = self.r
+        has_exp = r.boolean()
+        if has_exp:
+            _ = r.u32()
+        self._read_optional_secondary_skills()
+        self._read_artifacts_of_hero()
+        self._read_optional_string()
+        _ = r.i8()  # gender
+        self._read_optional_spells()
+        self._read_optional_primary_skills()
 
     def _read_optional_string(self) -> None:
         r = self.r
@@ -660,10 +775,16 @@ class H3MParser:
         if not has_set:
             return
         for _ in range(f.artifact_slots_count):
-            _ = r.artifact()
+            self._read_artifact_with_scroll()
         amount = r.u16()
         for _ in range(amount):
-            _ = r.artifact()
+            self._read_artifact_with_scroll()
+
+    def _read_artifact_with_scroll(self) -> None:
+        """An artifact id, then from HotA 5 the spell a scroll in that slot holds."""
+        _ = self.r.artifact()
+        if self.f.hota_at(5):
+            _ = self.r.spell16()
 
     # -- terrain -------------------------------------------------------------
     def _read_terrain(self, size: int, two_level: bool) -> list[list[list[Tile]]]:
@@ -785,7 +906,7 @@ class H3MParser:
             ((Obj.SCHOLAR,), self._read_scholar),
             ((Obj.GARRISON, Obj.GARRISON2), self._read_garrison),
             # ARTIFACT(5) and the five random-artifact tiers (65..69).
-            # Class 64 (RANDOM_ART placeholder) carries no body.
+            # Class 64 (RALLY_FLAG) carries no body.
             ((Obj.ARTIFACT, *range(65, 70)), self._read_artifact_obj),
             ((Obj.SPELL_SCROLL,), self._read_scroll),
             ((Obj.RANDOM_RESOURCE, Obj.RESOURCE), self._read_resource),
@@ -824,6 +945,23 @@ class H3MParser:
                 self._read_bank,
             ),
             ((Obj.BORDER_GATE,), self._read_border_gate),
+            ((Obj.PYRAMID,), self._read_pyramid),
+            ((Obj.TREASURE_CHEST,), partial(self._read_reward_with_artifact, 3)),
+            ((Obj.CORPSE,), partial(self._read_reward_with_artifact, 1)),
+            (
+                (Obj.WARRIORS_TOMB, Obj.SHIPWRECK_SURVIVOR),
+                partial(self._read_reward_with_artifact, 0),
+            ),
+            ((Obj.SEA_CHEST,), partial(self._read_reward_with_artifact, 2)),
+            ((Obj.FLOTSAM, Obj.TREE_OF_KNOWLEDGE), self._read_reward_with_garbage),
+            ((Obj.CAMPFIRE,), self._read_campfire),
+            ((Obj.LEAN_TO,), self._read_lean_to),
+            ((Obj.WAGON,), self._read_wagon),
+            ((Obj.HOTA_CUSTOM_OBJECT_1,), self._read_hota_custom_1),
+            ((Obj.HOTA_CUSTOM_OBJECT_2,), self._read_hota_custom_2),
+            ((Obj.HOTA_CUSTOM_OBJECT_3,), self._read_hota_custom_3),
+            ((Obj.BLACK_MARKET,), self._read_black_market),
+            ((Obj.UNIVERSITY,), self._read_university),
         ]
         readers: dict[int, Callable[[], None]] = {}
         for classes, reader in groups:
@@ -834,6 +972,7 @@ class H3MParser:
     def _read_object_body(self, tmpl: ObjectTemplate) -> None:
         oid = tmpl.obj_class
         sub = tmpl.obj_subclass
+        self._cur_sub = sub
 
         if oid in (Obj.MINE, Obj.ABANDONED_MINE):
             if sub < 7:
@@ -849,13 +988,31 @@ class H3MParser:
         else:
             reader = self._body_readers.get(oid)
             if reader is None:
-                # Generic object: no type-specific body in RoE/AB/SoD.
+                # Generic object: no type-specific body.
                 return
             reader()
 
     def _read_border_gate(self) -> None:
-        # HotA hacks (sub 1000/1001) excluded; plain generic body for SoD
-        pass
+        if self._cur_sub == 1000:
+            self._read_quest_guard()
+        elif self._cur_sub == 1001:
+            self._read_grave()
+
+    def _read_hota_custom_1(self) -> None:
+        if self._cur_sub == 0:
+            self._read_reward_with_amount()
+        elif self._cur_sub == 1:
+            self._read_lean_to()
+        else:
+            self._read_reward_with_garbage()
+
+    def _read_hota_custom_2(self) -> None:
+        if self._cur_sub == 0:
+            self._read_university()
+
+    def _read_hota_custom_3(self) -> None:
+        if self._cur_sub == 12:
+            self._read_trapper_lodge()
 
     # ----- object body readers ----------------------------------------------
     def _read_message_and_guards(self) -> None:
@@ -890,7 +1047,7 @@ class H3MParser:
             _ = r.i8()
         gart = r.u8()
         for _ in range(gart):
-            _ = r.artifact()
+            self._read_artifact_with_scroll()
         gspel = r.u8()
         for _ in range(gspel):
             _ = r.spell()
@@ -907,10 +1064,30 @@ class H3MParser:
         _ = r.boolean()  # computerActivate
         _ = r.boolean()  # removeAfterVisit
         r.skip_zero(4)
-        # humanActivate present only for HOTA3 -> skipped
+        if self.f.hota_at(3):
+            _ = r.boolean()  # humanActivate
+        self._read_box_hota_content()
 
     def _read_pandora(self) -> None:
         self._read_box_content()
+        if self.f.hota_at(5):
+            self.r.skip_zero(1)
+        self._read_box_hota_content()
+
+    def _read_box_hota_content(self) -> None:
+        r, f = self.r, self.f
+        if f.hota_at(5):
+            r.skip(8)
+        if f.hota_at(6):
+            _ = r.i32()
+        self._read_hota_event_link()
+
+    def _read_hota_event_link(self) -> None:
+        """From HotA 9, an optional link to a scripted event: id and sync flag."""
+        r = self.r
+        if self.f.hota_at(9) and r.boolean():
+            _ = r.i32()
+            _ = r.boolean()
 
     def _read_monster(self) -> None:
         r, f = self.r, self.f
@@ -926,6 +1103,10 @@ class H3MParser:
         _ = r.boolean()  # neverFlees
         _ = r.boolean()  # notGrowingTeam
         r.skip_zero(2)
+        if f.hota_at(3):
+            r.skip(17)
+        if f.hota_at(5):
+            r.skip(5)
 
     def _read_sign(self) -> None:
         r = self.r
@@ -933,9 +1114,13 @@ class H3MParser:
         r.skip_zero(4)
 
     def _read_seer_hut(self) -> None:
-        r = self.r
-        # questsCount == 1 for non-HotA
-        self._read_seer_hut_quest()
+        r, f = self.r, self.f
+        quests = r.u32() if f.hota_at(3) else 1
+        for _ in range(quests):
+            self._read_seer_hut_quest()
+        if f.hota_at(3):
+            for _ in range(r.u32()):
+                self._read_seer_hut_quest()
         r.skip_zero(2)
 
     def _read_seer_hut_quest(self) -> None:
@@ -970,7 +1155,7 @@ class H3MParser:
             _ = r.skill()
             _ = r.i8()
         elif reward_type == 8:  # ARTIFACT
-            _ = r.artifact()
+            self._read_artifact_with_scroll()
         elif reward_type == 9:  # SPELL
             _ = r.spell()
         elif reward_type == 10:  # CREATURE
@@ -993,31 +1178,42 @@ class H3MParser:
         return mission
 
     def _read_quest_mission(self, mission: int) -> None:
-        r = self.r
-        if mission == 1:  # PRIMARY_SKILL (level? -> 4 bytes)
-            for _ in range(4):
-                _ = r.u8()
-        elif mission == 2 or mission in (3, 4):  # LEVEL
-            _ = r.u32()
-        elif mission == 5:  # ARTIFACT
-            self._read_quest_artifacts()
-        elif mission == 6:  # ARMY
-            self._read_quest_army()
-        elif mission == 7:  # RESOURCES
-            for _ in range(7):
-                _ = r.u32()
-        elif mission == 8:  # HERO
-            _ = r.hero()
-        elif mission == 9:  # PLAYER
-            _ = r.player()
-        else:
+        reader = self._mission_readers.get(mission)
+        if reader is None:
             raise DesyncError(f"bad quest mission {mission}")
+        reader()
+
+    def _quest_mission_readers(self) -> dict[int, Callable[[], None]]:
+        r = self.r
+        return {
+            1: partial(r.skip, 4),
+            2: partial(r.skip, 4),
+            3: partial(r.skip, 4),
+            4: partial(r.skip, 4),
+            5: self._read_quest_artifacts,
+            6: self._read_quest_army,
+            7: partial(r.skip, 28),
+            8: partial(r.skip, 1),
+            9: partial(r.skip, 1),
+            10: self._read_quest_hota_multi,
+        }
+
+    def _read_quest_hota_multi(self) -> None:
+        r = self.r
+        sub = r.u32()
+        if sub == 0:
+            _ = r.bitmask_sized()
+        elif sub in (1, 2):
+            _ = r.u32()
+        elif sub == 3:
+            _ = r.u32()
+            _ = r.boolean()
 
     def _read_quest_artifacts(self) -> None:
         r = self.r
         art_number = r.u8()
         for _ in range(art_number):
-            _ = r.artifact()
+            self._read_artifact_with_scroll()
 
     def _read_quest_army(self) -> None:
         r = self.r
@@ -1047,6 +1243,9 @@ class H3MParser:
 
     def _read_artifact_obj(self) -> None:
         self._read_message_and_guards()
+        if self.f.hota_at(5):
+            _ = self.r.u32()  # pickupMode
+            _ = self.r.u8()  # pickupFlags
 
     def _read_scroll(self) -> None:
         r = self.r
@@ -1063,7 +1262,11 @@ class H3MParser:
         self._cur_extra["owner"] = self.r.player32()
 
     def _read_abandoned_mine(self) -> None:
-        _ = self.r.bitmask_resources()
+        r = self.r
+        _ = r.bitmask_resources()
+        if self.f.hota_at(5):
+            _ = r.boolean()  # hasCustomGuards
+            r.skip(12)
 
     def _read_dwelling(self) -> None:
         self._cur_extra["owner"] = self.r.player32()
@@ -1086,7 +1289,8 @@ class H3MParser:
         _ = self.r.spell32()
 
     def _read_grail(self) -> None:
-        _ = self.r.i32()  # radius
+        if self._cur_sub < 1000:
+            _ = self.r.i32()  # radius
 
     def _read_quest_guard(self) -> None:
         _ = self._read_quest()
@@ -1099,13 +1303,77 @@ class H3MParser:
         _ = r.player()
         if r.hero() == -1:
             _ = r.u8()
+        if self.f.hota_at(5):
+            _ = r.boolean()
+            r.skip(7 * 8)
+            r.skip(4 * r.i32())
 
     def _read_lighthouse(self) -> None:
         _ = self.r.player32()
 
     def _read_bank(self) -> None:
-        # HotA3+ adds settings; not present in RoE/AB/SoD.
-        pass
+        r = self.r
+        if self.f.hota_at(3):
+            _ = r.i32()  # guardsPresetIndex
+            _ = r.i8()  # upgradedStackPresence
+            r.skip(4 * r.u32())
+
+    def _read_reward_with_garbage(self) -> None:
+        if self.f.hota_at(5):
+            self.r.skip(8)
+
+    def _read_pyramid(self) -> None:
+        if self.f.hota_at(5):
+            self.r.skip(8)
+
+    def _read_reward_with_artifact(self, artifact_index: int) -> None:
+        _ = artifact_index
+        if self.f.hota_at(5):
+            self.r.skip(8)
+
+    def _read_black_market(self) -> None:
+        r = self.r
+        if self.f.hota_at(5):
+            for _ in range(7):
+                self._read_artifact_scroll_pair(r)
+
+    def _read_artifact_scroll_pair(self, r: Reader) -> None:
+        _ = r.artifact()
+        _ = r.spell16()
+
+    def _read_university(self) -> None:
+        r = self.r
+        if self.f.hota_at(5):
+            _ = r.i32()  # customized
+            _ = r.bitmask_skills()
+
+    def _read_grave(self) -> None:
+        if self.f.hota_at(5):
+            self.r.skip(18)
+
+    def _read_wagon(self) -> None:
+        if self.f.hota_at(5):
+            content = self.r.i32()
+            if content in (-1, 0, 1):
+                self.r.skip(14)
+
+    def _read_reward_with_amount(self) -> None:
+        if self.f.hota_at(5):
+            content = self.r.i32()
+            if content in (-1, 0):
+                self.r.skip(14)
+
+    def _read_trapper_lodge(self) -> None:
+        if self.f.hota_at(9):
+            self.r.skip(16)
+
+    def _read_lean_to(self) -> None:
+        if self.f.hota_at(5):
+            self.r.skip(18)
+
+    def _read_campfire(self) -> None:
+        if self.f.hota_at(5):
+            self.r.skip(18)
 
     def _read_hero_obj(self) -> None:
         r, f = self.r, self.f
@@ -1130,6 +1398,10 @@ class H3MParser:
         _ = r.i8()  # formation
         self._read_artifacts_of_hero()
         _ = r.u8()  # patrol radius
+        self._read_hero_obj_tail()
+
+    def _read_hero_obj_tail(self) -> None:
+        r, f = self.r, self.f
         if f.level_ab:
             self._read_optional_string()
             _ = r.i8()  # gender
@@ -1140,6 +1412,8 @@ class H3MParser:
         if f.level_sod:
             self._read_optional_primary_skills()
         r.skip_zero(16)
+        if f.hota_at(5):
+            r.skip(6)
 
     def _read_town(self) -> None:
         r, f = self.r, self.f
@@ -1162,17 +1436,32 @@ class H3MParser:
         if f.level_ab:
             _ = r.bitmask_spells()  # obligatory spells
         _ = r.bitmask_spells()  # possible spells
-        # spellResearchAllowed only HOTA1+, skipped
+        self._read_town_hota_options()
         events_count = r.u32()
         for _ in range(events_count):
-            self._read_event_common()
-            _ = r.bitmask_buildings()  # new buildings
-            for _ in range(7):
-                _ = r.u16()  # creatures
-            r.skip_zero(4)
+            self._read_town_event()
         if f.level_sod:
             _ = r.u8()  # alignment
         r.skip_zero(3)
+
+    def _read_town_hota_options(self) -> None:
+        r, f = self.r, self.f
+        if f.hota_at(1):
+            _ = r.boolean()  # spellResearchAllowed
+        if f.hota_at(5):
+            r.skip(r.u32())
+
+    def _read_town_event(self) -> None:
+        r, f = self.r, self.f
+        self._read_event_common()
+        if f.hota_at(5):
+            r.skip(14)
+        if f.hota_at(7):
+            _ = r.boolean()  # neutralAffected
+        _ = r.bitmask_buildings()  # new buildings
+        for _ in range(7):
+            _ = r.u16()  # creatures
+        r.skip_zero(4)
 
     def _read_event_common(self) -> None:
         r, f = self.r, self.f
@@ -1186,12 +1475,17 @@ class H3MParser:
         _ = r.u16()  # firstOccurrence
         _ = r.u16()  # nextOccurrence
         r.skip_zero(16)
+        if f.hota_at(7):
+            _ = r.i32()  # affectedDifficulties
+        self._read_hota_event_link()
 
     def _read_events(self) -> None:
-        r = self.r
+        r, f = self.r, self.f
         count = r.u32()
         for _ in range(count):
             self._read_event_common()
+            if f.hota_at(5) and not f.hota_at(7):
+                r.skip(14)
 
 
 def parse_file(path: str) -> H3Map:

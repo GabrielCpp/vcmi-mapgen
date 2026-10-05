@@ -10,7 +10,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.terrain_gen.levels import segment_places
+from vcmi_mapgen.core.steps.terrain_gen.levels import level_accents, segment_places
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainModel, TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.result import TerrainGrids
 
@@ -26,7 +26,7 @@ class TerrainStep(PipelineStep):
 
     Produces: ``map_state.terrain``; ``TerrainGrids``, the tunnel cells despeckle kept;
     ``PlaceMap``, each level's places; ``Segmentation``, each level's zones, one per place,
-    and zone label grid.
+    and zone label grid; ``Accents``, each level's accent patches.
     """
 
     def __init__(
@@ -56,3 +56,4 @@ class TerrainStep(PipelineStep):
         for line in warnings:
             print(line)
         self._ctx.provide(segmentation)
+        self._ctx.provide(level_accents(map_state.terrain, draw.places))

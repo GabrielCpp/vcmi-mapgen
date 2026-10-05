@@ -9,12 +9,13 @@ from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.paint import theta_min
 from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain, bridge_pinches
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
+from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
 
 
 def test_the_same_seed_draws_the_same_place_map(catalog: Catalog, priors: Priors) -> None:
     options = TerrainOptions(size=48, players=2)
-    first = PlacesTerrain().draw(catalog, priors, 3, options)
-    again = PlacesTerrain().draw(catalog, priors, 3, options)
+    first = PlacesTerrain(TopologyForm()).draw(catalog, priors, 3, options)
+    again = PlacesTerrain(TopologyForm()).draw(catalog, priors, 3, options)
     assert first.places == again.places
     assert first.grids == again.grids
 
@@ -22,7 +23,9 @@ def test_the_same_seed_draws_the_same_place_map(catalog: Catalog, priors: Priors
 def test_every_place_reads_as_its_dominant_and_every_player_keeps_a_home(
     catalog: Catalog, priors: Priors
 ) -> None:
-    draw = PlacesTerrain().draw(catalog, priors, 2, TerrainOptions(size=48, players=4))
+    draw = PlacesTerrain(TopologyForm()).draw(
+        catalog, priors, 2, TerrainOptions(size=48, players=4)
+    )
     level = draw.places.levels[0]
     grid = draw.grids[0]
     for y, row in enumerate(level.label):

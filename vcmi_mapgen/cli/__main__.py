@@ -12,12 +12,15 @@ Subcommands:
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
   audit           -> report corpus objects the generator cannot reproduce, or print the
                      gameplay densities it draws from.
-  extract-vmap    -> regenerate data/corpus/vmap/ from the .h3m corpus.
+  extract-vmap    -> regenerate data/corpus/vmap/ from the .h3m corpus, or convert another
+                     folder of .h3m maps, HotA ones with `--mods hota`, and render them.
   corpus-match    -> compare generated gameplay placement to the corpus.
   readings        -> print the map-math 8 readings of generated maps per terrain model
                      beside the corpus spread, and whether a model replaces the default.
   effort-report   -> print the opener, the effort, the band and the prize of every cut-off
                      place on a few generated maps.
+  patch-report    -> compare how the corpus and generated maps dress their small enclosed
+                     patches: cover, landmark rate, purpose mix and dragon dwellings.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
@@ -32,6 +35,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import final
 
 from vcmi_mapgen.cli.audit import audit, densities
@@ -46,19 +50,27 @@ from vcmi_mapgen.cli.generate import (
     GenerateOptions,
     VegetationRenderOptions,
     generate,
+    open_catalog,
     render_vegetation,
+    sprite_source,
 )
 from vcmi_mapgen.cli.mine_stats import MINERS, mine_stats
+from vcmi_mapgen.cli.patch_report import patch_report
 from vcmi_mapgen.cli.readings import readings
 from vcmi_mapgen.cli.render_sprites import render_sprites
+from vcmi_mapgen.cli.render_vmaps import render_vmaps
 from vcmi_mapgen.cli.settings import Settings, load_settings, open_install
 from vcmi_mapgen.cli.steps import (
     DEFAULT_TERRAIN,
     DEFAULT_VEGETATION,
+    DEFAULT_WATER,
     GENERATE_STOP_POINTS,
     SAMPLERS,
+    SURFACE_FORMS,
     TERRAIN_MODELS,
 )
+from vcmi_mapgen.corpus.tiler import load_tiler
+from vcmi_mapgen.renderers import PngRenderer
 from vcmi_mapgen.renderers.ontology_render import render_ontology
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
@@ -66,6 +78,7 @@ from vcmi_mapgen.vcmi.catalog.regen import regenerate
 from vcmi_mapgen.vcmi.catalog.tables import CLUSTERS
 from vcmi_mapgen.vcmi.config import load_config
 from vcmi_mapgen.vcmi.content.enabled import ContentSetting
+from vcmi_mapgen.vcmi.content.map_format import read_map_format
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 
@@ -96,6 +109,9 @@ class Args(argparse.Namespace):
     terrains: Sequence[str] = ()
     mods: Sequence[str] = ()
     ban: Sequence[str] = ()
+    h3m_dir: str | None = None
+    out_dir: str | None = None
+    png_dir: str | None = None
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
@@ -141,7 +157,7 @@ def cmd_generate(args: Args) -> None:
             size=args.size,
             players=args.players,
             teams=args.teams,
-            water_mode=args.water_mode or ("none" if args.no_water else "normal"),
+            water_mode=args.water_mode or ("none" if args.no_water else DEFAULT_WATER),
             subterrain=args.subterrain,
             overlays=args.overlays,
             renderers=args.renderers,
@@ -162,7 +178,7 @@ def cmd_render_vegetation(args: Args) -> None:
             seeds=args.seeds,
             size=args.size,
             players=args.players,
-            water_mode=args.water_mode or "normal",
+            water_mode=args.water_mode or DEFAULT_WATER,
             subterrain=args.subterrain,
             overlays=args.overlays,
             vegetation=args.vegetation,
@@ -172,9 +188,18 @@ def cmd_render_vegetation(args: Args) -> None:
     )
 
 
-def cmd_extract_vmap(_args: Args) -> None:
+def cmd_extract_vmap(args: Args) -> None:
     settings = load_settings()
-    extract_vmap(load_config(open_install(settings)), settings.h3m_dir, settings.maps_dir)
+    install = _open_catalog(settings)
+    catalog = open_catalog(install, _content(args))
+    fmt = read_map_format(catalog.mods.manifests)
+    h3m_dir = Path(args.h3m_dir) if args.h3m_dir else settings.h3m_dir
+    out_dir = Path(args.out_dir) if args.out_dir else settings.maps_dir
+    extract_vmap(load_config(install), h3m_dir, out_dir, fmt, catalog.mods)
+    if args.png_dir:
+        index = sprite_source(install, catalog)
+        renderer = PngRenderer(index, args.png_dir, load_tiler(settings.pp_dir))
+        render_vmaps(renderer, out_dir, Path(args.png_dir))
 
 
 def cmd_corpus_match(args: Args) -> None:
@@ -193,6 +218,12 @@ def cmd_effort_report(args: Args) -> None:
     settings = load_settings()
     _ = _open_catalog(settings)
     effort_report(VcmiCatalog(), settings, ReportOptions(args.seeds, args.size, args.terrain))
+
+
+def cmd_patch_report(args: Args) -> None:
+    settings = load_settings()
+    _ = _open_catalog(settings)
+    patch_report(VcmiCatalog(), settings, args.seeds, args.size)
 
 
 def cmd_render_sprites(args: Args) -> None:
@@ -287,7 +318,20 @@ def main() -> None:
     )
     _ = pau.set_defaults(func=cmd_audit)
 
-    pev = sub.add_parser("extract-vmap", help="regenerate data/corpus/vmap/ from data/corpus/h3m/")
+    pev = sub.add_parser(
+        "extract-vmap",
+        help="regenerate data/corpus/vmap/ from data/corpus/h3m/, or convert another folder",
+    )
+    _ = pev.add_argument("--h3m-dir", help="folder of .h3m maps (default: data/corpus/h3m/)")
+    _ = pev.add_argument("--out-dir", help="folder for the .vmaps (default: data/corpus/vmap/)")
+    _ = pev.add_argument("--png-dir", help="also render each converted map to a PNG in this folder")
+    _ = pev.add_argument(
+        "--mods",
+        nargs="+",
+        default=[],
+        help="installed VCMI mods whose map format and objects name the maps' objects, "
+        + "such as hota for HotA maps (default: the base game)",
+    )
     _ = pev.set_defaults(func=cmd_extract_vmap)
 
     pcm = sub.add_parser("corpus-match", help="compare generated gameplay placement to the corpus")
@@ -313,6 +357,13 @@ def main() -> None:
     _ = per.add_argument("--size", type=int, default=72)
     _add_terrain_arg(per)
     _ = per.set_defaults(func=cmd_effort_report)
+
+    ppr = sub.add_parser(
+        "patch-report", help="compare how the corpus and generated maps dress small patches"
+    )
+    _ = ppr.add_argument("--seeds", type=int, nargs="+", default=list(range(1, 11)))
+    _ = ppr.add_argument("--size", type=int, default=72)
+    _ = ppr.set_defaults(func=cmd_patch_report)
 
     prs = sub.add_parser(
         "render-sprites", help="render a .vmap with real H3 sprites to out/render/<name>_editor.png"
@@ -349,10 +400,11 @@ def main() -> None:
     )
     _ = pg.add_argument(
         "--water-mode",
-        choices=["none", "normal", "islands"],
+        choices=list(SURFACE_FORMS),
         default=None,
         dest="water_mode",
-        help="water style",
+        help="water style: 'topology' draws water around the place layout, the others draw "
+        + f"it from noise first (default: {DEFAULT_WATER})",
     )
     _ = pg.add_argument(
         "--subterrain",
@@ -395,7 +447,7 @@ def main() -> None:
     _ = prv.add_argument("--size", type=int, default=72, help="W=H of the generated map")
     _ = prv.add_argument("--players", type=int, default=2)
     _ = prv.add_argument(
-        "--water-mode", choices=["none", "normal", "islands"], default=None, dest="water_mode"
+        "--water-mode", choices=list(SURFACE_FORMS), default=None, dest="water_mode"
     )
     _ = prv.add_argument("--subterrain", action="store_true")
     _ = prv.add_argument(

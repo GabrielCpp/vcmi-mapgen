@@ -28,7 +28,7 @@ from types import MappingProxyType
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.vcmi.terrain import BY_PREFIX, prefix_of
+from vcmi_mapgen.vcmi.terrain import prefix_of, terrain_of
 
 type ViewMirror = tuple[int, int]
 type SigTable = dict[tuple[int, tuple[int, ...]], collections.Counter[ViewMirror]]
@@ -212,7 +212,7 @@ def decode_tile_string(s: str) -> Cell:
         raise ValueError(f"not a VCMI tile string: {s!r}")
     road, river = m["road"], m["river"]
     return Cell(
-        t=int(BY_PREFIX.get(m["t"], Terrain.GRASS)),
+        t=int(terrain_of(m["t"])),
         view=int(m["view"]),
         m=_mir_code(m["mir"]),
         rt=_RIVER_REV.get(river, 0),

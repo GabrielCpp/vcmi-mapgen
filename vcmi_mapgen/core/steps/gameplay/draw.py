@@ -20,6 +20,7 @@ from vcmi_mapgen.core.placement.identity import pick_kind
 from vcmi_mapgen.core.placement.intensity import density, stoch_round
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.gameplay.economy import ECONOMY, Ledger, mine_variants, rest_mines
+from vcmi_mapgen.core.steps.gameplay.landmark import above_top_tier
 
 DRAW_SALT = 0x5EED
 TOWN_SLOTS = 3
@@ -193,8 +194,9 @@ class ZoneDrawer:
             _ = self._keep_pool(
                 Purpose.DWELLING, [self.catalog.random_dwelling(lvl) for lvl in range(1, 8)]
             )
+            fixed = self.catalog.candidates(Purpose.DWELLING, self.spec.terrain)
             _ = self._keep_pool(
-                Purpose.DWELLING, self.catalog.candidates(Purpose.DWELLING, self.spec.terrain)
+                Purpose.DWELLING, [i for i in fixed if not above_top_tier(self.catalog, i)]
             )
         for _ in range(n):
             ident: Identity | None

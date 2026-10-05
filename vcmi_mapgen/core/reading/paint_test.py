@@ -39,7 +39,7 @@ def test_an_inner_patch_is_an_accent_and_a_patch_on_the_border_a_violation() -> 
     label = halves(8, 4)
     terrain = coated(label)
     terrain[1][1] = D
-    assert accents(terrain, label, DOMINANT) == [Accent(0, D, 1)]
+    assert accents(terrain, label, DOMINANT) == [Accent(0, D, frozenset({(1, 1)}))]
     terrain[2][3] = D
     reading = read_paint(terrain, label, DOMINANT, ())
     assert reading.violations == 1

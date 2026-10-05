@@ -384,6 +384,7 @@ class ZoneSite:
         ident: Identity,
         centres: Iterable[Tile],
         footing: Footing | None = None,
+        guard: int | None = None,
     ) -> PlacedObject | None:
         footing = FOOTINGS.get(purpose, ZONE_FOOTING) if footing is None else footing
         legal = {
@@ -407,14 +408,14 @@ class ZoneSite:
                     backs[t] = self.back(ident, t)
             near.sort(key=lambda t: (-backs[t], cheb(t, c), t))
             for t in near:
-                obj = self.try_commit(purpose, ident, t, legal[t])
+                obj = self.try_commit(purpose, ident, t, legal[t], guard)
                 if obj is not None:
                     return obj
                 rejected.add(t)
         return None
 
     def try_commit(
-        self, purpose: str, ident: Identity, anchor: Tile, fit: Fit
+        self, purpose: str, ident: Identity, anchor: Tile, fit: Fit, guard: int | None = None
     ) -> PlacedObject | None:
         obj = PlacedObject.at(
             ident, anchor, level=self.lf.level, purpose=purpose, payload=payload_for(purpose)
@@ -424,10 +425,12 @@ class ZoneSite:
         reach = self.reach_without(fit[1])
         if reach is None:
             return None
-        self.commit(obj, fit, reach)
+        self.commit(obj, fit, reach, guard)
         return obj
 
-    def commit(self, obj: PlacedObject, fit: Fit, reach: set[Tile]) -> None:
+    def commit(
+        self, obj: PlacedObject, fit: Fit, reach: set[Tile], guard: int | None = None
+    ) -> None:
         allc, blk, approach = fit
         self.lf.claim(obj, allc, blk)
         self.objs.append(obj)
@@ -437,7 +440,9 @@ class ZoneSite:
         self.reserved.add(approach)
         start = approach
         if obj.purpose == Purpose.MINE:
-            start = self._mine_front(obj, approach)
+            start = self._guarded_front(obj, approach, self._mine_guard(obj))
+        elif guard is not None:
+            start = self._guarded_front(obj, approach, guard)
         elif obj.purpose == Purpose.TOWN:
             mh = obj.footprint.height
             mw = obj.footprint.width
@@ -447,14 +452,14 @@ class ZoneSite:
     def link(self, start: Tile) -> None:
         self.prot.update(path_to_web(start, self.prot, self.passable))
 
-    def _mine_front(self, obj: PlacedObject, approach: Tile) -> Tile:
+    def _guarded_front(self, obj: PlacedObject, approach: Tile, level: int) -> Tile:
         if walk_on_only(obj.footprint):
             approach = (approach[0], approach[1] + 1)
             self.approaches.append(approach)
         tail = (approach[0], approach[1] + 1)
         self.approaches.append(tail)
         self.reserved.update((approach, tail))
-        self._guard_mine(obj, approach)
+        self._guard_front(approach, level)
         return tail
 
     def add_guard(self, ident: Identity, tile: Tile) -> PlacedObject:
@@ -471,12 +476,15 @@ class ZoneSite:
         self.cells.add(tile)
         return guard
 
-    def _guard_mine(self, mine: PlacedObject, approach: Tile) -> None:
+    def _mine_guard(self, mine: PlacedObject) -> int:
         subtype = str(self.catalog.identity_of(mine.kind).subtype)
         lvl = MINE_GUARD_LVL.get(subtype, 3)
         if subtype not in ("sawmill", "orePit") and self.rng.random() < 0.25:
             lvl += 1
-        _ = self.add_guard(self.catalog.guard(lvl), approach)
+        return lvl
+
+    def _guard_front(self, approach: Tile, level: int) -> None:
+        _ = self.add_guard(self.catalog.guard(level), approach)
         ex, ey = approach[0], approach[1] - 1
         seal_pool = self.catalog.decor(self.zone.terrain, blocking=True, max_cells=1)
         if not seal_pool:

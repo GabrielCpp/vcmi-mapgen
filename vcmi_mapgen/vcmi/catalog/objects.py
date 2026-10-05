@@ -323,6 +323,14 @@ def monster_level(name: str) -> int | None:
     return monster_levels().get(name)
 
 
+def dwelling_creatures(animation: str) -> tuple[str, ...]:
+    """The creatures a fixed dwelling recruits, empty when the config lists none."""
+    ident = identity_of(animation)
+    if ident.type is None or ident.subtype is None:
+        return ()
+    return _CONFIG[0].dwellings.get((ident.type, ident.subtype), ())
+
+
 def monsters_by_level(level: int) -> list[str]:
     """Sorted list of creature identifiers at town tier `level`."""
     return sorted(n for n, lvl in monster_levels().items() if lvl == level)

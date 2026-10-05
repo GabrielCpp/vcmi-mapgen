@@ -10,7 +10,10 @@ are absent (e.g. CI without a VCMI install).
 Run: `uv run pytest vcmi_mapgen/renderers/sprites_test.py -q`
 """
 
+import io
+import json
 import struct
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -18,6 +21,8 @@ from PIL import Image
 import vcmi_mapgen.renderers.sprites as RE
 from vcmi_mapgen.conftest import corpus_map, find_install
 from vcmi_mapgen.core.model import Footprint, PlacedObject
+from vcmi_mapgen.vcmi.content.archive import FolderArchive, open_archive
+from vcmi_mapgen.vcmi.content.sprites import SpriteSource
 from vcmi_mapgen.vcmi.formats.lod import LOD_FILES, LodIndex, lod
 
 TEST_MAP = "All for One"
@@ -59,6 +64,8 @@ def _nonempty(img: Image.Image) -> bool:
 def test_every_terrain_tile_decodes() -> None:
     """Every terrain .def decodes, and terr_tile_img yields a 32x32 non-empty tile."""
     for tc, defname in RE.TERR_DEF.items():
+        if not defname.endswith(RE.DEF_SUFFIX):
+            continue
         groups = RE.get_def(_index(), defname)
         assert groups and groups[0], f"terrain {tc} ({defname}) failed to decode"
         tile = RE.terr_tile_img(_index(), f"{tc}0_")
@@ -114,3 +121,45 @@ def test_render_is_deterministic() -> None:
     b = RE.render_map(_index(), surf, objs)
     assert a.size == b.size
     assert a.tobytes() == b.tobytes(), "renderer is not deterministic"
+
+
+def _png(colour: tuple[int, int, int]) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (RE.TILE, RE.TILE), colour).save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_a_json_animation_loads_its_group_zero_frames(tmp_path: Path) -> None:
+    doc = {"basepath": "hota/hl/", "sequences": [{"group": 0, "frames": ["b.png", "a.png"]}]}
+    files = {"hota/hl.json": json.dumps(doc).encode(), "hota/hl/a.png": _png((1, 2, 3))}
+    files["hota/hl/b.png"] = _png((4, 5, 6))
+    for name, data in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_bytes(data)
+    groups = RE.get_def(FolderArchive(tmp_path), "hota/hl")
+    assert groups is not None
+    assert [f.getpixel((0, 0)) for f in groups[0]] == [(4, 5, 6, 255), (1, 2, 3, 255)]
+
+
+HOTA_TERRAIN_MODS = ("highlandsTerrain", "wastelandTerrain")
+
+
+def _hota_sprites() -> SpriteSource | None:
+    if _INSTALL is None:
+        return None
+    folders = [_INSTALL.mods_dir / "hota" / "mods" / m for m in HOTA_TERRAIN_MODS]
+    if not all(f.is_dir() for f in folders):
+        return None
+    return SpriteSource(_index(), [open_archive(f) for f in folders])
+
+
+@pytest.mark.skipif(_hota_sprites() is None, reason="needs the HotA terrain mods")
+def test_hota_terrain_tiles_come_from_their_mods() -> None:
+    source = _hota_sprites()
+    assert source is not None
+    for tc in ("hl", "ws"):
+        tile = RE.terr_tile_img(source, f"{tc}0_")
+        assert tile.size == (RE.TILE, RE.TILE)
+        assert tile.getpixel((5, 5)) not in ((40, 40, 40, 255), (80, 40, 80, 255)), tc
+        assert _nonempty(tile), tc

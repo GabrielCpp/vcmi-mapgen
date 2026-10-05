@@ -14,11 +14,11 @@ from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap
 
 @dataclass(frozen=True, slots=True)
 class TerrainOptions:
-    """The map's brief: its side in tiles, the water style ('none', 'normal' or 'islands'),
-    whether it has an underground, and its player count."""
+    """The map's brief: its side in tiles, the water style ('topology', 'none', 'normal' or
+    'islands'), whether it has an underground, and its player count."""
 
     size: int = 72
-    water_mode: str = "normal"
+    water_mode: str = "topology"
     subterrain: bool = False
     players: int = 2
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from PIL import Image
 
@@ -49,12 +49,20 @@ class PngRenderer:
         self._overlays = list(overlays)
         self.tables = tables
 
-    def render(self, state: MapState, level: int = 0, title: str = "") -> Image.Image:
-        """Return a PIL Image for the given level, with overlays composited."""
+    def render(
+        self,
+        state: MapState,
+        level: int = 0,
+        title: str = "",
+        surface: Sequence[Sequence[str]] | None = None,
+    ) -> Image.Image:
+        """Return a PIL Image for the given level, with overlays composited. A map read from
+        a file passes its own tile strings as ``surface`` to keep its art and its HotA
+        terrains. Otherwise the tiler draws the level from its terrain."""
         terrain = state.terrain.get(level)
         if terrain is None:
             raise ValueError(f"state.terrain has no level {level}")
-        surfs = tile_strings(terrain, self.tables, state.roads.get(level, {}))
+        surfs = surface or tile_strings(terrain, self.tables, state.roads.get(level, {}))
         if level == 0:
             objs = [o for o in state.objs if o.level == 0]
         else:

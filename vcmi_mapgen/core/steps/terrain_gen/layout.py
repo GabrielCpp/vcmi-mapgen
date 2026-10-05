@@ -31,6 +31,8 @@ ROOM_FILL = 0.9
 
 type Land = Sequence[Sequence[bool]]
 type Point = tuple[float, float]
+type Mask = NDArray[np.bool_]
+type Labels = NDArray[np.int64]
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,25 +211,39 @@ def snap(
     """Each point's nearest land tile, taken in ``order``. The tile lies in the point's
     ``room`` while one is free there, and at least ``gap`` from every tile an earlier point
     took while such a tile is left."""
-    free = _land_tiles(land)
-    taken: set[Tile] = set()
+    free: Mask = np.array(land, dtype=np.bool_)
+    h, w = free.shape
+    xs, ys = _coords(h, w)
+    rooms = {i: _mask(tiles, h, w) for i, tiles in room.items()}
+    near: Mask = np.zeros((h, w), dtype=np.bool_)
     out: dict[int, Tile] = {}
     for i in order:
+        own = free & rooms[i] if i in rooms else free
+        own = own if own.any() else free
+        pool = own & ~near
+        pool = pool if pool.any() else own
+        if not pool.any():
+            raise ValueError("snap needs a free land tile for every point")
         px, py = points[i]
-        mine = room.get(i, frozenset())
-        own = [t for t in free if t in mine and t not in taken] or [
-            t for t in free if t not in taken
-        ]
-        spaced = [
-            t
-            for t in own
-            if all((t[0] - u[0]) ** 2 + (t[1] - u[1]) ** 2 >= gap * gap for u in taken)
-        ]
-        pool = spaced or own
-        t = min(pool, key=lambda t: ((t[0] - px) ** 2 + (t[1] - py) ** 2, t[1], t[0]))
-        taken.add(t)
-        out[i] = t
+        d2 = np.where(pool, (xs - px) ** 2 + (ys - py) ** 2, np.inf)
+        y, x = divmod(int(np.argmin(d2)), w)
+        free[y, x] = False
+        near |= (xs - x) ** 2 + (ys - y) ** 2 < gap * gap
+        out[i] = (x, y)
     return [out[i] for i in range(len(points))]
+
+
+def _coords(h: int, w: int) -> tuple[Labels, Labels]:
+    xs = np.tile(np.arange(w, dtype=np.int64), h).reshape(h, w)
+    ys = np.repeat(np.arange(h, dtype=np.int64), w).reshape(h, w)
+    return xs, ys
+
+
+def _mask(tiles: AbstractSet[Tile], h: int, w: int) -> Mask:
+    mask: Mask = np.zeros((h, w), dtype=np.bool_)
+    for x, y in tiles:
+        mask[y, x] = True
+    return mask
 
 
 def _pockets(land: Land, label: list[list[int]], first: int) -> int:

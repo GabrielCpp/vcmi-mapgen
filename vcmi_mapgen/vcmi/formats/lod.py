@@ -35,8 +35,9 @@ class LodIndex:
 
     def read(self, name: str) -> bytes | None:
         """Payload of a LOD entry keyed by lowercase name (".def" appended when absent). A
-        csize of 0 means the entry is stored uncompressed with `size` bytes. A zlib failure
-        means it is stored uncompressed despite the size mismatch, so the raw bytes return."""
+        csize of 0 means the entry is stored uncompressed with `size` bytes. Any other csize
+        means zlib data, as in VCMI, even when it equals `size`. A zlib failure means the
+        entry is stored uncompressed anyway, so the raw bytes return."""
         key = name.lower()
         if key not in self._files and not key.endswith(".def"):
             key += ".def"
@@ -47,7 +48,7 @@ class LodIndex:
         with open(entry.path, "rb") as f:
             _ = f.seek(entry.offset)
             raw = f.read(nbytes)
-        if entry.csize in (entry.size, 0):
+        if not entry.csize:
             return raw
         try:
             return zlib.decompress(raw)

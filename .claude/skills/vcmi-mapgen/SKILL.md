@@ -39,8 +39,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     `steps.py` `build_steps` builds the pipeline. The corpus and report tools sit beside
     them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
     `readings.py`, which prints the map-math 8 readings per terrain model beside the
-    corpus spread, and `effort_report.py`, which prints each gated place's hero-days,
-    band and top prize.
+    corpus spread, `effort_report.py`, which prints each gated place's hero-days,
+    band and top prize, and `patch_report.py`, which prints how the corpus and
+    generated maps dress their small enclosed patches.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
     - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
     - `catalog.py`: the `Catalog` port, the only way the core learns about objects.
@@ -63,7 +64,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       (`palette.py`), content by role and hop (`content.py`), object value and guard
       level (`value.py`), roads, and one map's reading vector with the switch rule
       (`vector.py`, `verdict.py`). It also routes a hero over a map (`routes.py`) and
-      prices each tile in hero-days from the nearest home (`effort.py`).
+      prices each tile in hero-days from the nearest home (`effort.py`). It reads the
+      small enclosed patches with their cover and content (`patches.py`).
     - `steps/terrain_gen/`: the terrain models. `places` is the default: it lays out a
       place graph and paints each place. `markov` paints terrain from corpus transitions
       and floods it into places. `palette.py` groups the places of the places model into
@@ -109,6 +111,7 @@ uv run python -m vcmi_mapgen.cli extract-vmap
 uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
 uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 uv run python -m vcmi_mapgen.cli effort-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
+uv run python -m vcmi_mapgen.cli patch-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 make check
 make golden
 ```

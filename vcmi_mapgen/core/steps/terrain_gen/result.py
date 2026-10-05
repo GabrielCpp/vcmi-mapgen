@@ -10,6 +10,7 @@ from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.planning.entrances import Passages
 from vcmi_mapgen.core.reading.borders import AdjacencyKind
+from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.places import PlaceRole
 
 
@@ -67,3 +68,11 @@ class PlaceMap:
     """Each level's places, the zones every later step reads."""
 
     levels: Mapping[int, LevelPlaces]
+
+
+@dataclass(frozen=True, slots=True)
+class Accents:
+    """Each level's accent patches: the same-terrain components off their place's dominant
+    terrain that touch no other place."""
+
+    levels: Mapping[int, tuple[Accent, ...]] = field(default_factory=dict[int, tuple[Accent, ...]])

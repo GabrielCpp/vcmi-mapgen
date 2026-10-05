@@ -2,7 +2,8 @@
 
 The table is a fixed modelling guess, never learned. Identities come from the catalog: a
 random artifact's tier, a random dwelling's level and a random monster's level are read
-by matching the object's kind against what the catalog names for them."""
+by matching the object's kind against what the catalog names for them. A fixed dwelling
+takes the level of the highest creature it recruits."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -59,6 +60,8 @@ def value_of(catalog: Catalog, table: ValueTable, obj: PlacedObject) -> int:
         return ARTIFACT_VALUE[table.artifacts[kind]]
     if kind in table.dwellings:
         return DWELLING_STEP * table.dwellings[kind]
+    if purpose == Purpose.DWELLING and (level := catalog.dwelling_level(obj.kind)) is not None:
+        return DWELLING_STEP * level
     return PURPOSE_VALUE.get(purpose, 0)
 
 

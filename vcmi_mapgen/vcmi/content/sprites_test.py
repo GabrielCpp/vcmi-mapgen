@@ -25,3 +25,11 @@ def test_a_mod_sprite_is_read_from_its_sprites_folder(tmp_path: Path) -> None:
     assert source.read("fair/tent") == b"tent"
     assert source.read("fair/tent.def") == b"tent"
     assert source.read("fair/none") is None
+
+
+def test_a_json_animation_and_its_frames_are_read_as_named(tmp_path: Path) -> None:
+    mod = _archive(tmp_path / "m", {"Sprites/hota/tiles.json": b"{}", "Sprites/hota/a.png": b"p"})
+    source = SpriteSource(EmptyArchive(), [mod])
+    assert source.read("hota/tiles.json") == b"{}"
+    assert source.read("hota/a.png") == b"p"
+    assert source.read("hota/tiles") is None
