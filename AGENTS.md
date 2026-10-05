@@ -53,7 +53,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       level (`value.py`), roads, and one map's reading vector with the switch rule
       (`vector.py`, `verdict.py`). It also routes a hero over a map (`routes.py`) and
       prices each tile in hero-days from the nearest home (`effort.py`). It reads the
-      small enclosed patches with their cover and content (`patches.py`).
+      small enclosed patches with their cover and content (`patches.py`), and counts the
+      objects closed on both flanks (`flanks.py`).
     - `steps/terrain_gen/`: the terrain models. `places` is the default: it lays out a
       place graph and paints each place. `markov` paints terrain from corpus transitions
       and floods it into places. `palette.py` groups the places of the places model into

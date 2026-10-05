@@ -23,10 +23,11 @@ def test_gameplay_layer_legal_and_deterministic(open_zone: OpenZonePlacer) -> No
     objs, occupied, approaches = o1.objs, o1.cells, o1.approaches
     blocked = {t for o in objs for t in _footprint(o)[1]}
     assert objs, "a 720-tile grass zone should hold gameplay"
-    # GUARD monsters deliberately sit ON approaches/gates, and MINE_SEAL decorations
-    # deliberately sit GAP-adjacent to the mine they seal off (no approach of their own) —
-    # the rigid rules below apply to the buildings only.
-    core = [o for o in objs if o.purpose not in (Purpose.GUARD, Purpose.MINE_SEAL)]
+    # GUARD monsters deliberately sit ON approaches/gates, and MINE_SEAL decorations and
+    # the decorations planted on an open flank deliberately sit GAP-adjacent to the object
+    # they close off (no approach of their own) — the rigid rules below apply to the
+    # buildings only.
+    core = [o for o in objs if o.purpose not in (Purpose.GUARD, Purpose.MINE_SEAL, "")]
     for g in (o for o in objs if o.purpose == Purpose.GUARD):
         # monster masks are V-padded to the sprite's tile extent (ground truth from
         # Maps/RandomMaps: every creature mask is ['VV', 'VA']), not a bare single cell.
@@ -36,7 +37,7 @@ def test_gameplay_layer_legal_and_deterministic(open_zone: OpenZonePlacer) -> No
         )
         gtype = open_zone.catalog.identity_of(g.kind).type
         assert (gtype or "").startswith("randomMonster"), "guards are random monsters"
-    for s in (o for o in objs if o.purpose == Purpose.MINE_SEAL):
+    for s in (o for o in objs if o.purpose in (Purpose.MINE_SEAL, "")):
         assert (s.x, s.y) in ts and s.footprint == Footprint.one(Role.BLOCKING), (
             "a mine seal is a single blocking cell"
         )

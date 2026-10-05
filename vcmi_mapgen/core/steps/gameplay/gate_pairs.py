@@ -49,8 +49,8 @@ class _GatePlacer:
             self.cache[key] = None if site is None or fit is None else (site, fit)
         return self.cache[key]
 
-    def _back(self, t: Tile, a: Side, b: Side) -> int:
-        return a[0].back(self.ident, t) + b[0].back(self.ident, t)
+    def _cover(self, t: Tile, a: Side, b: Side) -> int:
+        return a[0].cover(self.ident, t) + b[0].cover(self.ident, t)
 
     def place(self, c: Tile, spread: Spread) -> Tile | None:
         cands: list[tuple[int, int, Tile, Side, Side]] = []
@@ -61,9 +61,9 @@ class _GatePlacer:
                     continue
                 a, b = self._fit(0, t), self._fit(1, t)
                 if a is not None and b is not None:
-                    cands.append((-self._back(t, a, b), cheb(t, c), t, a, b))
+                    cands.append((-self._cover(t, a, b), cheb(t, c), t, a, b))
         cands.sort(key=lambda k: (k[0], k[1], k[2]))
-        for _back, _d, t, a, b in cands:
+        for _cover, _d, t, a, b in cands:
             if self._commit(t, a, b):
                 return t
         return None

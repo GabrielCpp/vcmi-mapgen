@@ -34,6 +34,13 @@ VISIT_PURPOSES = (
     Purpose.MANA,
     Purpose.INFO,
 )
+FLANKED = (
+    Purpose.TOWN,
+    Purpose.MINE,
+    Purpose.DWELLING,
+    Purpose.BANK,
+    *VISIT_PURPOSES,
+)
 COUNTED = (
     Purpose.TOWN,
     Purpose.MINE,

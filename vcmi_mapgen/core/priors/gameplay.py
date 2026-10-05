@@ -21,3 +21,8 @@ class TerrainStats:
 
 type GameplayStats = Mapping[str, TerrainStats]
 """The gameplay statistics of one terrain level, keyed by terrain name."""
+
+
+HEMMED_SHARE = 0.66
+"""The corpus share of towns, mines, dwellings, banks and visited objects whose sprite has a
+closed tile on both flanks."""

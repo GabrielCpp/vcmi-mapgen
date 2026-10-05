@@ -10,8 +10,9 @@ approaches, and lets its cells spill out of the zone onto unwalkable land that i
 or rock. Under either footing the entrance and its approach are walkable and reachable from
 the web, and the blocking cells split no reachable area in two. Blocking cells may land on
 vegetation, the zone rim and the web, and the web then walks around them. Among the legal
-anchors of a neighbourhood the one whose sprite top rests most against unwalkable tiles
-wins."""
+anchors of a neighbourhood the one whose sprite top and flanks rest most against unwalkable
+tiles wins. While a level hems fewer objects than HEMMED_SHARE, a commit plants a decoration on
+each open flank it can close without cutting a path."""
 
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ from typing import Protocol, final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
+from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
 from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.reach import walk
 from vcmi_mapgen.core.model import (
@@ -39,7 +41,7 @@ from vcmi_mapgen.core.model import (
     Tile,
     Town,
 )
-from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.purpose import FLANKED, Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.footprint import footprint_cells, overlay_cells
 from vcmi_mapgen.core.placement.ground import Ground, stands
@@ -52,7 +54,7 @@ from vcmi_mapgen.core.placement.guards import (
 )
 from vcmi_mapgen.core.placement.intensity import Covariates, gate_dist, intensity_weights, openness
 from vcmi_mapgen.core.placement.place import web_dist
-from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.core.priors.gameplay import HEMMED_SHARE, TerrainStats
 
 # guard strength tracks the value guarded: mine guards by resource rarity. Every mine is
 # guarded (user-reported bug: unguarded mines), valuable mines scaling higher still. The
@@ -71,6 +73,7 @@ MINE_GUARD_LVL = {
 
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3
+FLANK_WEIGHT = 2
 MIN_WEIGHT = 1e-300
 
 
@@ -162,6 +165,8 @@ class LevelField:
     avoid: AbstractSet[Tile] = NO_TILES
     barrier: frozenset[Tile] = frozenset()
     ground: Ground = ()
+    hemmed: int = 0
+    flanked: int = 0
 
     @classmethod
     def build(
@@ -200,6 +205,20 @@ class LevelField:
 
     def walkable(self, t: Tile) -> bool:
         return t not in self.unwalkable
+
+    def closed(self, t: Tile) -> bool:
+        return not self.on_map(t) or t in self.unwalkable
+
+    def plant(self, obj: PlacedObject, t: Tile) -> None:
+        """Record a one-tile blocking decoration at ``t``: no body may cover it, and it keeps
+        no gap."""
+        self.covers.add(obj)
+        self.occupied.add(t)
+        self.unwalkable.add(t)
+
+    def below_share(self) -> bool:
+        """Whether hemming one more object keeps the level at or under HEMMED_SHARE."""
+        return self.hemmed < HEMMED_SHARE * (self.flanked + 1)
 
     def accepts(self, obj: PlacedObject) -> bool:
         obj.level = self.level
@@ -326,8 +345,12 @@ class ZoneSite:
             for t in behind
         )
 
-    def back(self, ident: Identity, anchor: Tile) -> int:
-        return back_score(ident.footprint, anchor, self.lf.unwalkable, self.lf.size)
+    def cover(self, ident: Identity, anchor: Tile) -> int:
+        """How snug a sprite at ``anchor`` sits: its back score plus FLANK_WEIGHT per closed
+        flank."""
+        cells = [t for t, _role in ident.footprint.at(*anchor)]
+        back = back_score(ident.footprint, anchor, self.lf.unwalkable, self.lf.size)
+        return back + FLANK_WEIGHT * closed_flanks(cells, self.lf.closed)
 
     def set_reach(self, reach: set[Tile]) -> None:
         self.reach = reach
@@ -393,7 +416,7 @@ class ZoneSite:
             if (f := footing.fit(self, ident, t)) is not None
         }
         rejected: set[Tile] = set()
-        backs: dict[Tile, int] = {}
+        covers: dict[Tile, int] = {}
         for c in centres:
             if len(rejected) == len(legal):
                 return None
@@ -404,9 +427,9 @@ class ZoneSite:
             ]
             near = [t for t in window if t in legal and t not in rejected]
             for t in near:
-                if t not in backs:
-                    backs[t] = self.back(ident, t)
-            near.sort(key=lambda t: (-backs[t], cheb(t, c), t))
+                if t not in covers:
+                    covers[t] = self.cover(ident, t)
+            near.sort(key=lambda t: (-covers[t], cheb(t, c), t))
             for t in near:
                 obj = self.try_commit(purpose, ident, t, legal[t], guard)
                 if obj is not None:
@@ -449,6 +472,40 @@ class ZoneSite:
             mw = obj.footprint.width
             self.town_center = (obj.x - (mw - 1) / 2.0, obj.y - (mh - 1) / 2.0)
         self.link(start)
+        if obj.purpose in FLANKED:
+            self._hem(obj)
+
+    def _hem(self, obj: PlacedObject) -> None:
+        lf = self.lf
+        sides = flank_tiles(t for t, _role in obj.footprint.at(obj.x, obj.y))
+        if lf.below_share():
+            for side in sides:
+                if not any(lf.closed(t) for t in side):
+                    _ = any(self._plant(t) for t in side)
+        lf.flanked += 1
+        lf.hemmed += all(any(lf.closed(t) for t in side) for side in sides)
+
+    def _plant(self, t: Tile) -> bool:
+        if not self._plantable(t):
+            return False
+        pool = [
+            i
+            for i in self.catalog.decor(self.zone.terrain, blocking=True, max_cells=1)
+            if stands(self.catalog, i, t, self.lf.ground)
+        ]
+        if not pool:
+            return False
+        plant = PlacedObject.at(self.rng.choice(pool), t, level=self.lf.level, purpose="")
+        if not self.lf.accepts(plant):
+            return False
+        reach = self.reach_without([t])
+        if reach is None:
+            return False
+        self.lf.plant(plant, t)
+        self.objs.append(plant)
+        self.cells.add(t)
+        self.block([t], reach)
+        return True
 
     def link(self, start: Tile) -> None:
         self.prot.update(path_to_web(start, self.prot, self.passable))
@@ -494,6 +551,16 @@ class ZoneSite:
             pool = [i for i in seal_pool if stands(self.catalog, i, s, self.lf.ground)]
             if pool and self._sealable(s):
                 self._seal(self.rng.choice(pool), s)
+
+    def _plantable(self, t: Tile) -> bool:
+        return (
+            t in self.ts
+            and t not in self.lf.occupied
+            and t not in self.lf.avoid
+            and t not in self.zone.ent_bands
+            and t not in self.approaches
+            and self.lf.walkable(t)
+        )
 
     def _sealable(self, s: Tile) -> bool:
         return (
