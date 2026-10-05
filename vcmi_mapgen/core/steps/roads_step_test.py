@@ -53,7 +53,7 @@ def _steps(priors: Priors) -> list[PipelineStep]:
             priors, PlacesTerrain(NoiseForm()), SEED, TerrainOptions(SIZE, "normal", False, PLAYERS)
         ),
         VegetationStep(priors, FieldSampler(), SEED, PLAYERS, HopContent()),
-        GameplayStep(priors, SEED, PLAYERS, SIZE, False),
+        GameplayStep(priors, SEED, PLAYERS, False),
         GatedStep(priors, SEED, SIZE),
         TreasureStep(priors, SEED, SIZE),
         PortalStep(priors, SEED, SIZE),

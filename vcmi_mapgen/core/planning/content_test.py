@@ -33,11 +33,6 @@ def _rows() -> tuple[PlaceContent, ...]:
     )
 
 
-def test_the_empty_plan_keeps_every_default() -> None:
-    plan = ContentPlan()
-    assert plan.scale(0, 5) == 1.0
-
-
 def test_a_sparse_cell_reads_between_its_own_rate_and_its_hop_bin() -> None:
     table = ContentTable.of(_rows())
     rich = table.intent("treasure", 2)

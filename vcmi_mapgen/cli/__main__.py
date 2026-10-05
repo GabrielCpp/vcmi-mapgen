@@ -92,6 +92,7 @@ class Args(argparse.Namespace):
     size: int = 72
     no_water: bool = False
     players: int = 2
+    density: float = 1.0
     teams: str = "ffa"
     water_mode: str | None = None
     subterrain: bool = False
@@ -165,6 +166,7 @@ def cmd_generate(args: Args) -> None:
             vegetation=args.vegetation,
             terrain=args.terrain,
             content=_content(args),
+            density=args.density,
         ),
     )
 
@@ -394,6 +396,12 @@ def main() -> None:
         type=int,
         default=2,
         help="number of players; the N largest zones get start towns",
+    )
+    _ = pg.add_argument(
+        "--density",
+        type=float,
+        default=1.0,
+        help="multiplier on the corpus count of gameplay objects per tile",
     )
     _ = pg.add_argument(
         "--teams", default="ffa", help="team matrix: 'ffa', '2v2'-style, or explicit '0,0,1,1'"

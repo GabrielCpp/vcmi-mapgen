@@ -1,9 +1,7 @@
-"""The zone economy: the mines every map must cover, the map-level mine ledger, and the
-dwellings tied to a zone's town."""
+"""The zone economy: the mines every map must cover, the mine sprites a terrain shows, and
+the dwellings tied to a zone's town."""
 
 from collections.abc import Iterable, Mapping
-from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.model import Dwelling, Identity, PlacedObject
@@ -13,14 +11,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 # only worth placing when the map holds several towns)
 BASIC_MINE_RES = ("sawmill", "orePit", "alchemistLab", "sulfurDune", "crystalCavern", "gemPond")
 
-ECONOMY: tuple[str, ...] = ("sawmill", "orePit")
-
-
-@dataclass(slots=True)
-class Ledger:
-    missing: set[str]
-    towns: int
-    gold: int
+GOLD = "goldMine"
 
 
 def mine_variants(ids: list[Identity], mine_w: Mapping[str, int]) -> list[Identity]:
@@ -34,17 +25,6 @@ def mine_variants(ids: list[Identity], mine_w: Mapping[str, int]) -> list[Identi
         keep = [i for i in ids if ws[i.kind.lower()] >= 0.2 * top]
         return keep or ids
     return ids
-
-
-def rest_mines(
-    mines: Mapping[str, list[Identity]], used_res: AbstractSet[str], ledger: Ledger | None
-) -> dict[str, list[Identity]]:
-    gold_ok = ledger is None or ledger.gold < max(0, ledger.towns - 1)
-    return {
-        res: ids
-        for res, ids in mines.items()
-        if res not in used_res and ids and (res != "goldMine" or gold_ok)
-    }
 
 
 def tie_dwellings(catalog: Catalog, objs: Iterable[PlacedObject]) -> None:

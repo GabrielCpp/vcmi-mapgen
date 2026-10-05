@@ -30,7 +30,7 @@ def _run_through_treasure(catalog: Catalog, priors: Priors, seed: int) -> MapSta
             )
         )
         _ = pipeline.add_step(VegetationStep(priors, GibbsSampler(), seed, players))
-        _ = pipeline.add_step(GameplayStep(priors, seed, players, size, True))
+        _ = pipeline.add_step(GameplayStep(priors, seed, players, True))
         _ = pipeline.add_step(GatedStep(priors, seed, size))
         _ = pipeline.add_step(TreasureStep(priors, seed, size))
         map_state = pipeline.run()

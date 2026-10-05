@@ -19,6 +19,7 @@ from vcmi_mapgen.core.placement.site import ZoneSite, door_cells
 from vcmi_mapgen.core.reading.effort import Effort
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.routes import Spot
+from vcmi_mapgen.core.steps.gameplay.economy import GOLD
 from vcmi_mapgen.core.steps.gameplay.fallback import smaller
 
 LANDMARK_FLOOR = 20
@@ -56,7 +57,7 @@ def above_top_tier(catalog: Catalog, ident: Identity) -> bool:
 def landmark_pool(catalog: Catalog, kind: LandmarkKind, terrain: str) -> list[Identity]:
     """The identities of ``kind`` on ``terrain``, without the dwellings above the top tier."""
     if kind == GOLD_MINE:
-        return catalog.mines_by_resource(terrain).get("goldMine", [])
+        return catalog.mines_by_resource(terrain).get(GOLD, [])
     if kind == ABANDONED_MINE:
         return catalog.abandoned_mines(terrain)
     return [i for i in catalog.candidates(kind.purpose, terrain) if not above_top_tier(catalog, i)]
@@ -163,7 +164,6 @@ def place_dragon(
             continue
         terrain = site.catalog.terrain_name(int(patch.terrain))
         if stand_dragon(site, patch, terrain, patch_rng(seed, level, patch)) is not None:
-            site.spent += 1
             return level, patch
         x, y = min(patch.tiles)
         print(f"  zone {site.zid}: no dragon dwelling fits the {terrain} patch at {(x, y)}")

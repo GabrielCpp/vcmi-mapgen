@@ -58,11 +58,6 @@ class ContentPlan:
     homes: tuple[ZoneKey, ...] = ()
     intents: Mapping[ZoneKey, PlaceIntent] = field(default_factory=dict[ZoneKey, PlaceIntent])
 
-    def scale(self, level: int, zid: int) -> float:
-        """The reward multiplier of a zone, 1.0 when it has no intent."""
-        intent = self.intents.get((level, zid))
-        return 1.0 if intent is None else intent.scale
-
 
 def hop_bin(hop: int) -> int:
     return hop if hop == UNREACHED else min(hop, HOP_CAP)

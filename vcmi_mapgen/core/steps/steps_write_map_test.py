@@ -65,7 +65,7 @@ def pipeline_steps(priors: Priors, seed: int = SEED) -> list[tuple[str, Pipeline
     steps: list[PipelineStep] = [
         TerrainStep(priors, MarkovTerrain(), seed, TerrainOptions(SIZE, "normal", True, PLAYERS)),
         VegetationStep(priors, GibbsSampler(), seed, PLAYERS),
-        GameplayStep(priors, seed, PLAYERS, SIZE, True),
+        GameplayStep(priors, seed, PLAYERS, True),
         GatedStep(priors, seed, SIZE),
         TreasureStep(priors, seed, SIZE),
         PortalStep(priors, seed, SIZE),

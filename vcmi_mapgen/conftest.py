@@ -1,3 +1,4 @@
+import random
 from collections.abc import Iterator
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
@@ -8,13 +9,15 @@ import pytest
 from vcmi_mapgen.cli.settings import Settings, load_settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteZone, ZoneSite
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
-from vcmi_mapgen.core.steps.gameplay.draw import DrawSpec, ZoneDrawer
-from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger, tie_dwellings
-from vcmi_mapgen.core.steps.gameplay.step import place_attractions, place_mines, place_town
+from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
+from vcmi_mapgen.core.steps.gameplay.pick import Picker
+from vcmi_mapgen.core.steps.gameplay.placer import Demand, Placement
 from vcmi_mapgen.corpus import gameplay, vegetation
 from vcmi_mapgen.corpus.maps import corpus_path, load_corpus_map
 from vcmi_mapgen.corpus.priors import load_priors
@@ -110,10 +113,12 @@ class OpenZone:
 class OpenZonePlacer:
     catalog: Catalog
     gameplay: GameplayStats
+    effort: EffortPriors
 
-    def __call__(self, zone: OpenZone, seed: int, ledger: Ledger | None = None) -> PlacedZone:
-        """Draw and place one zone of open land with no vegetation and a one-tile web at its
-        top-left corner, outside any pipeline. Returns the placed zone."""
+    def __call__(self, zone: OpenZone, seed: int) -> PlacedZone:
+        """Place one zone of open land with no vegetation and a one-tile web at its top-left
+        corner, outside any pipeline: a player town on the centroid when a player starts
+        there, then the zone's share of the map-wide pass. Returns the placed zone."""
         ts, terrain, player = zone.ts, zone.terrain, zone.player
         w = max(x for x, _y in ts) + 1
         h = max(y for _x, y in ts) + 1
@@ -122,16 +127,19 @@ class OpenZonePlacer:
         sz = SiteZone(terrain, st, tiles, frozenset(), frozenset({min(ts)}), tiles, tiles)
         lf = LevelField.build(0, [[int(Terrain.GRASS)] * w for _ in range(h)], [])
         site = ZoneSite(self.catalog, 1, sz, lf, seed)
-        ledger = ledger or Ledger(set(BASIC_MINE_RES), 1, 0)
-        spec = DrawSpec(1, terrain, len(ts), player=player)
-        draw = ZoneDrawer(self.catalog, spec, site.st, ledger, seed).draw()
-        _ = place_town(site, draw, player)
-        place_mines(site, draw)
-        place_attractions(site, draw)
+        homes = []
+        if player:
+            ident = self.catalog.random_town()
+            town = site.place(Purpose.TOWN, ident, site.centroid_order(ident))
+            homes = [] if town is None else [town]
+        rng = random.Random(seed)
+        demand = Demand(0)
+        placement = Placement(self.catalog, [site], self.effort, demand, rng)
+        _ = placement.place(placement.plan(homes, [], []), Picker(self.catalog, rng), list)
         tie_dwellings(self.catalog, site.objs)
         return site.placed()
 
 
 @pytest.fixture
 def open_zone(catalog: Catalog, priors: Priors) -> OpenZonePlacer:
-    return OpenZonePlacer(catalog, priors.gameplay[0])
+    return OpenZonePlacer(catalog, priors.gameplay[0], priors.effort)

@@ -85,6 +85,7 @@ class StepConfig:
     subterrain: bool = False
     vegetation: str = DEFAULT_VEGETATION
     terrain: str = DEFAULT_TERRAIN
+    density: float = 1.0
 
 
 def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineStep]]:
@@ -100,7 +101,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     return [
         ("terrain", TerrainStep(priors, model, seed, terrain)),
         ("vegetation", VegetationStep(priors, sampler, seed, players, content)),
-        ("gameplay", GameplayStep(priors, seed, players, size, subterrain)),
+        ("gameplay", GameplayStep(priors, seed, players, subterrain, config.density)),
         ("gated", GatedStep(priors, seed, size)),
         ("treasure", TreasureStep(priors, seed, size)),
         ("portal", PortalStep(priors, seed, size)),

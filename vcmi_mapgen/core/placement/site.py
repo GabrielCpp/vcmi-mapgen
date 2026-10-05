@@ -27,7 +27,6 @@ from typing import Protocol, final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
-from vcmi_mapgen.core.grid.geometry import edge_dist
 from vcmi_mapgen.core.grid.reach import walk
 from vcmi_mapgen.core.model import (
     CoverIndex,
@@ -52,7 +51,6 @@ from vcmi_mapgen.core.placement.guards import (
     fits,
     inflate_gap,
 )
-from vcmi_mapgen.core.placement.intensity import Covariates, gate_dist, intensity_weights, openness
 from vcmi_mapgen.core.placement.place import web_dist
 from vcmi_mapgen.core.priors.gameplay import HEMMED_SHARE, TerrainStats
 
@@ -290,17 +288,12 @@ class ZoneSite:
         self.reach: set[Tile] = set()
         self.comp: dict[Tile, int] = {}
         self.set_reach(set(web_dist(self.passable, self.prot)))
-        self.cov = Covariates(
-            edge_dist(zone.ts), gate_dist(zone.ts, zone.ent_bands), openness(zone.open_set)
-        )
-        self.wcache: dict[str, dict[Tile, float]] = {}
         self.objs: list[PlacedObject] = []
         self.cells: set[Tile] = set()
         self.blk: set[Tile] = set()
         self.stranded: set[Tile] = set()
         self.approaches: list[Tile] = []
         self.town_center: tuple[float, float] | None = None
-        self.spent: int = 0
         self.gates: int = 0
 
     def fit(self, ident: Identity, anchor: Tile, mine: bool = False) -> Fit | None:
@@ -382,13 +375,6 @@ class ZoneSite:
         if cut & self.prot:
             self.prot = mend(self.prot, cut, self.passable)
         self.set_reach(reach)
-
-    def intensity_order(self, purpose: str) -> list[Tile]:
-        if purpose not in self.wcache:
-            self.wcache[purpose] = intensity_weights(self.ts, purpose, self.st, self.cov)
-        w = self.wcache[purpose]
-        keys = {t: es_key(self.rng, w[t]) for t in sorted(self.ts)}
-        return sorted(keys, key=lambda t: (-keys[t], t))
 
     def nearest_order(self, cx: float, cy: float) -> list[Tile]:
         return sorted(self.ts, key=lambda t: ((t[0] - cx) ** 2 + (t[1] - cy) ** 2, t))

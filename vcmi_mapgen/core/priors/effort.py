@@ -59,6 +59,10 @@ def _no_counts() -> Mapping[ArtifactTier, int]:
     return {}
 
 
+def _no_families() -> Mapping[str, tuple[int, ...]]:
+    return {}
+
+
 class BandEdgeError(ValueError):
     pass
 
@@ -68,7 +72,9 @@ class EffortPriors:
     """The days a hero spends beating a guard of each level 0..7, the three effort edges
     that split places into four bands, and per band its artifact class weights, its Pandora's
     Box grant and its box count. `medians` is the corpus effort at the pickups of each
-    artifact class, and `counts` the pickups behind each median."""
+    artifact class, and `counts` the pickups behind each median. `families` holds per
+    gameplay family the corpus count of objects at each effort in days, the last count
+    holding every effort past it."""
 
     toll: tuple[int, ...] = DEFAULT_TOLL
     edges: tuple[int, ...] = (8, 13, 22)
@@ -77,6 +83,7 @@ class EffortPriors:
     boxes: tuple[int, ...] = DEFAULT_BOXES
     medians: Mapping[ArtifactTier, float] = field(default_factory=_no_medians)
     counts: Mapping[ArtifactTier, int] = field(default_factory=_no_counts)
+    families: Mapping[str, tuple[int, ...]] = field(default_factory=_no_families)
 
     def __post_init__(self) -> None:
         if len(self.edges) != BANDS - 1 or any(

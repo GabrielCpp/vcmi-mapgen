@@ -1,4 +1,5 @@
-"""Mine the effort band edges from the effort at every corpus artifact pickup."""
+"""Mine the effort band edges from the effort at every corpus artifact pickup, and the effort
+spread of each gameplay family."""
 
 import itertools
 import math
@@ -11,6 +12,7 @@ from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.artifact import TIERS, ArtifactTier
 from vcmi_mapgen.core.priors.effort import BANDS, EffortPriors
 from vcmi_mapgen.core.reading.effort import effort_map
+from vcmi_mapgen.core.reading.families import family_days, histogram
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 
 type TownKey = tuple[int, int, int]
@@ -90,12 +92,17 @@ def mine_effort(
     tuned: EffortPriors,
 ) -> EffortPriors:
     """The ``tuned`` priors with their band edges read from the effort at every corpus
-    artifact pickup of each class. The toll and the baskets stay as tuned."""
+    artifact pickup of each class, and the effort spread of each gameplay family from the
+    player towns. The toll and the baskets stay as tuned."""
     tiers = ArtifactTiers.of(catalog)
     by_tier: dict[ArtifactTier, list[int]] = {t: [] for t in TIERS}
+    by_family: dict[str, list[int]] = {}
     for state, own in zip(maps, owners, strict=True):
         for tier, total in pickup_efforts(catalog, state, own, tiers, tuned.toll):
             by_tier[tier].append(total)
+        homes = [s for o in state.objs if (o.x, o.y, o.level) in own for s in _interactive(o)]
+        for family, days in family_days(catalog, state, homes, set(own), tuned.toll):
+            by_family.setdefault(family, []).append(days)
     medians = {t: float(statistics.median(v)) for t, v in by_tier.items() if v}
     values = sorted(v for vs in by_tier.values() for v in vs)
     edges = band_edges([medians[t] for t in TIERS if t in medians], values)
@@ -104,4 +111,5 @@ def mine_effort(
         edges=edges,
         medians=medians,
         counts={t: len(v) for t, v in by_tier.items()},
+        families={f: histogram(v) for f, v in sorted(by_family.items())},
     )

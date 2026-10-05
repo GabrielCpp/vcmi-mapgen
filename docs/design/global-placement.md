@@ -174,12 +174,13 @@ The spot pool of claim C20 is not a concept here. Revised, see R1.
 | Promise list | For each basic resource, the spots that bring every player within 14 days at the smallest gap | Other families |
 | Quota | Per family, how many objects the map holds | Spots |
 | Band plan | Per family, how many objects each player gets in each band | Spots |
+| Held reach | Per family and player, the objects that player reaches within each band | Spots |
 | Order | Which object goes next | Bands |
-| Siting | The one spot an object takes, by band then cover | How spots are found |
+| Siting | The one spot an object takes, by even reach, then band, then cover | How spots are found |
 | Identity pick | Which object of a family stands on a spot, by its terrain and its size | Effort |
 | Repair | The mine to add or swap when the promise breaks | Spot scoring |
 
-Identity pick was added. See R6.
+Identity pick was added. See R6. Held reach was added. See R8.
 
 **Standing**
 
@@ -222,13 +223,15 @@ Shortfall tally moved here from Allocation. See R7.
    Promise check. Upheld by Promise list, Repair and Reach keeper.
 2. For each basic resource, the gap between players is at most 3 days. **Owner:** Promise
    check. Upheld by Promise list.
-3. No gold mine stands within 14 days of any player. **Owner:** Promise check. Upheld by
-   Band plan.
+3. No gold mine stands within 14 days of any player, its own guard counted. **Owner:**
+   Promise check. Upheld by Guard post. See R10.
 4. No body covers another body, the vegetation web, or another object's entrance or front
    tile. **Owner:** Claim. Upheld by Ground and Shape.
 5. Every tile a hero could walk before a commit stays reachable after it. **Owner:** Reach
    keeper. Upheld by Seal and Flank filler, which ask it first.
-6. Each player gets the same count per family per band, within one. **Owner:** Band plan.
+6. Within each band, the objects of a family each player reaches differ by at most one
+   between players at the moment each object stands. **Owner:** Siting, which skips an
+   object that would break it. Upheld by Held reach. See R8 and R9.
 7. The map never holds more objects of a family than its quota. **Owner:** Quota. Upheld by
    Siting.
 8. A road crosses an object it does not serve only where no other way exists. **Owner:**
@@ -333,6 +336,30 @@ Shortfall tally moved here from Allocation. See R7.
   purpose (`gameplay/fallback.py`).
 - R7. Section 2: Shortfall tally moved from Allocation to Accounting. Allocation had eight
   concepts, and only Accounting sees the finished whole.
+- R8. Section 2, Allocation: Held reach added, and fairness counts what each player reaches,
+  not who arrives first. A tile belongs to the player who reaches it first, and one player
+  reaches two to four times more land first on most seeds. Equal counts by first arrival
+  were out of reach. A player reaches an object in band b and in every band after it, so
+  Held reach counts cumulatively. Siting ranks a spot by how far it would spread those
+  counts before it ranks by band.
+- R9. Section 3, invariant 6: the bound holds while placing, not on the finished map. A
+  later object can lengthen the path to an earlier one and push it across a band edge. On
+  twenty maps, eight end with one to three families two apart, always in the nearest two
+  bands. The finished-map check allows two. Siting prices the map again after every 12
+  objects, which removes two of those ten. Siting also ranks a spot by the worst tier
+  within 3 tiles, because an object slides up to 3 tiles from its centre and could
+  otherwise cross into a worse tier.
+- R10. Section 3, invariant 3: the promise check counts the mine's own guard. A gold mine
+  carries a level 6 guard, 28 days of toll, so no gold mine stands inside 14 days. Ten seeds
+  measured 29 to 49 days. Band plan needs no floor of its own for gold.
+- R11. Section 6, slice 3: generated travel runs shorter than the corpus. Each family's
+  median sits inside the corpus p10 to p90, and below the corpus median for most families.
+  The corpus maps are larger and more cut up. Terrain owns that gap, and this note leaves it
+  out of scope.
+- R12. Section 3, invariant 6: the zone plan's sea objects count as standing. Buoys and
+  mermaids stand on water before the pass, and one markov map gave the sea's player three
+  more shrines near home. Siting ranks a spot by how much it changes the spread, so a spot
+  that narrows a gap the sea opened ranks below zero and stands.
 
 **Parts.**
 
@@ -341,7 +368,7 @@ Shortfall tally moved here from Allocation. See R7.
 | Targets | Reshape | `corpus/mine/effort.py` reads effort at artifact pickups only. It gains a per-family reading. |
 | Reach | Exists, revised R5 | `core/reading/effort.py`, `core/reading/routes.py`, `core/planning/pricing.py` |
 | Spot survey | Reshape | `core/placement/site.py` fits per zone. A new `core/placement/spots.py` holds the map-wide survey. |
-| Allocation | New | `core/steps/gameplay/allocate.py`. It replaces `ZoneDrawer` (`gameplay/draw.py:74`). |
+| Allocation | New | `core/steps/gameplay/`: `allocate.py` keeps the promise, `placer.py` runs the map-wide pass. They replace the zone draw. |
 | Standing | Exists, mismatch | `ZoneSite.commit` (`placement/site.py:431`) |
 | Road courtesy | Reshape | `core/steps/roads/network.py:93` |
 | Accounting | New | `core/reading/promise.py` |
@@ -352,7 +379,7 @@ Shortfall tally moved here from Allocation. See R7.
 |---|---|---|
 | Home effort reading | New | Beside `pickup_efforts` (`corpus/mine/effort.py:46`), reusing its owners and routes |
 | Target band | New | A new table in `data/pp/effort.json`, loaded by `corpus/effort.py` |
-| Density | Reshape | Per-terrain densities exist (`gameplay/draw.py:83`). The map sums them over walkable tiles. |
+| Density | Reshape | Per-terrain densities exist (`placement/intensity.py`). `gameplay/quota.py` sums them over the sites. |
 | Flank share | New | `core/reading/`, so corpus and generated maps read the same way |
 | Home | Reshape, R5 | `planning/pricing.py:54` |
 | Toll | Exists | `priors/effort.py:73` |
@@ -363,11 +390,12 @@ Shortfall tally moved here from Allocation. See R7.
 | Cover | Reshape | `back_score` (`site.py:77`) scores the back only |
 | Pocket | Reshape | `grid/pockets.py` `find_pockets` serves loot only |
 | Promise list | Reshape | `Ledger` (`economy.py:19`) tracks missing resources map-wide, not per player |
-| Quota | Reshape | `ZoneDrawer.draw` (`draw.py:87`) counts per zone |
-| Band plan | New | `allocate.py` |
-| Order | New | `allocate.py` |
-| Siting | Reshape | `ZoneSite.place` (`site.py:381`) walks a 7 by 7 window around intensity peaks |
-| Identity pick | Exists, R6 | `mine_variants`, `smaller`, `ZoneDrawer._pick` |
+| Quota | Reshape | `gameplay/quota.py`. It replaces the per-zone count of the zone draw. |
+| Band plan | New | `gameplay/bands.py` |
+| Held reach | New, R8 | `gameplay/reach.py` |
+| Order | New | `gameplay/bands.py` `slot_order` |
+| Siting | Reshape | `gameplay/siting.py` ranks the tiles map-wide. `ZoneSite.place` (`site.py:381`) still walks a 7 by 7 window around each centre. |
+| Identity pick | Exists, R6 | `mine_variants`, `smaller`, `gameplay/pick.py` |
 | Repair | New | `allocate.py` |
 | Claim | Exists | `LevelField.claim` (`site.py:193`), `MapState.accepts` |
 | Guard post | Reshape, R4 | `_guarded_front` (`site.py:455`). Mouth guard is new. |
@@ -431,10 +459,11 @@ the thinnest path a player can see. The miner comes when bands need targets.
    by cover. Done when: the closed-flank share on ten seeds sits within the corpus spread,
    about 2 in 3. The promise still holds.
 3. **One map-wide count, fair bands.** Home effort reading, Target band, Density, Quota,
-   Band plan, Order, Identity pick, Shortfall tally. The zone draw is gone. Done when: per
-   family, the generated effort spread sits within the corpus spread. Per player, band
-   counts differ by at most one. Total density is within 10% of the corpus rate. The
-   promise holds.
+   Band plan, Held reach, Order, Identity pick, Shortfall tally. The zone draw is gone.
+   Done when: per family, the generated median effort sits within the corpus p10 to p90.
+   Per band, the objects of a family each player reaches differ by at most one while
+   placing and at most two on the finished map (R9). Total density is within 10% of the
+   corpus rate. The promise holds.
 4. **Pockets hold objects.** Pocket, Mouth guard. Done when: the share of gameplay objects
    in pockets sits within the corpus spread. The promise holds.
 5. **Roads keep off.** Served objects, Courtesy price. Done when: road contact with

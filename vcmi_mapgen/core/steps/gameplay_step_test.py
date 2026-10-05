@@ -25,7 +25,7 @@ def _run_towns(catalog: Catalog, priors: Priors, seed: int, players: int = 2) ->
             )
         )
         _ = pipeline.add_step(VegetationStep(priors, GibbsSampler(), seed, players))
-        _ = pipeline.add_step(GameplayStep(priors, seed, players, size, True))
+        _ = pipeline.add_step(GameplayStep(priors, seed, players, True))
         map_state = pipeline.run()
     return map_state
 

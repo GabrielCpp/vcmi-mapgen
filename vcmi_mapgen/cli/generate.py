@@ -140,6 +140,7 @@ class GenerateOptions:
     vegetation: str
     terrain: str = DEFAULT_TERRAIN
     content: ContentSetting = BASE_CONTENT
+    density: float = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +230,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.subterrain,
         opts.vegetation,
         opts.terrain,
+        opts.density,
     )
     catalog = open_catalog(install, opts.content)
     pipeline = _run_pipeline(catalog, settings, config, opts.stop_after)

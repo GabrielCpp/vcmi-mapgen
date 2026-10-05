@@ -38,9 +38,12 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    point process instead. A protected walkable web keeps every planned passage
    reachable.
 4. **Gameplay.** Gates, towns, mines, shipyards, dwellings, banks and shrines
-   settle with their backs against the vegetation. Each zone holds objects at the
-   corpus rate. Every town gets its sawmill and ore pit. Reward value and guard
-   level follow each place's hop count from home.
+   settle with their backs against the vegetation. The whole map holds objects
+   at the corpus rate per tile, and `--density` scales it. Every player reaches
+   a mine of each basic resource within 14 hero-days. Each kind of object sits
+   at the corpus effort from home, and the players reach the same count of it
+   band by band, within one or two. Reward value and guard level follow each
+   place's hop count from home.
 5. **Loot.** Unguarded scatter along routes, and guarded caches in pockets with a
    monster on the mouth. Guard level scales with the guarded value.
 6. **Roads.** Roads link the towns through the planned passages.

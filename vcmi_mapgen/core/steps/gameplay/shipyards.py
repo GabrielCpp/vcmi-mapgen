@@ -94,7 +94,6 @@ class _ShipyardHooks:
             site.block(blk, reach)
         owner_reach = next(r for s, r in p.reaches if s is p.owner)
         p.owner.commit(obj, p.fit, owner_reach)
-        p.owner.spent += 1
         self.banned |= set(allc) | set(p.owner.approaches)
 
 

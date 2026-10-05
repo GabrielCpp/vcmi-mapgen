@@ -70,6 +70,7 @@ def load_effort(pp_dir: Path) -> EffortPriors:
         boxes=_ints(st["boxes"]) if "boxes" in st else DEFAULT_BOXES,
         medians={t: float(v) for t in TIERS if isinstance(v := medians.get(t), int | float)},
         counts={t: jv.as_int(counts.get(t)) for t in TIERS if t in counts},
+        families={f: _ints(v) for f, v in jv.as_object(st.get("families", {})).items()},
     )
 
 
@@ -86,6 +87,7 @@ def save_effort(pp_dir: Path, st: EffortPriors) -> None:
             "boxes": list(st.boxes),
             "medians": dict(st.medians),
             "counts": dict(st.counts),
+            "families": {f: list(v) for f, v in sorted(st.families.items())},
         },
     )
 

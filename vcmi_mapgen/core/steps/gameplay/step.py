@@ -1,12 +1,14 @@
 """GameplayStep: the player-zone pick, the sea objects, then every gameplay object placed
-against the vegetated field, in order: gate pairs, towns, the accent landmarks, the economy
-mines, the other mines, shipyards, then dwellings, banks and visitables. Each zone draws its
-total at the corpus rate, and the forced objects count inside it. A town may cover the
-zone's entrance bands and spill onto vegetation beyond it. Every player town is protected
-from then on, so no later object guards its entrance or walls in its start."""
+against the vegetated field, in order: gate pairs, player towns, shipyards, the accent
+landmarks, the promised mines, then one map-wide pass over the neutral towns, mines,
+dwellings, banks and visitables. The pass holds each family at the corpus rate per tile, and
+the objects already standing count inside it. A town may cover the zone's entrance bands and
+spill onto vegetation beyond it. Every player town is protected from then on, so no later
+object guards its entrance or walls in its start."""
 
 from __future__ import annotations
 
+import random
 from collections.abc import Sequence
 from typing import final, override
 
@@ -18,7 +20,6 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import (
     HOME_FOOTING,
-    Footing,
     LevelField,
     PlacedZone,
     SiteIndex,
@@ -31,18 +32,16 @@ from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.pricing import effort_with
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.effort import EffortMap
+from vcmi_mapgen.core.reading.families import Families, unguarded
 from vcmi_mapgen.core.reading.paint import Accent
-from vcmi_mapgen.core.reading.promise import player_maps, promise_from, promise_ways
-from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
-from vcmi_mapgen.core.steps.gameplay.draw import (
-    TOWN_MIN_AREA,
-    TOWN_SLOTS,
-    DrawSpec,
-    ZoneDraw,
-    ZoneDrawer,
+from vcmi_mapgen.core.reading.promise import (
+    player_maps,
+    promise_from,
+    promise_ways,
 )
-from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, Ledger, tie_dwellings
-from vcmi_mapgen.core.steps.gameplay.fallback import smaller
+from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
+from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.landmark import (
     LANDMARK_FLOOR,
@@ -50,6 +49,8 @@ from vcmi_mapgen.core.steps.gameplay.landmark import (
     place_dragon,
     place_landmarks,
 )
+from vcmi_mapgen.core.steps.gameplay.pick import Picker
+from vcmi_mapgen.core.steps.gameplay.placer import Demand, Placement
 from vcmi_mapgen.core.steps.gameplay.result import (
     GameplayResult,
     GateResult,
@@ -57,44 +58,16 @@ from vcmi_mapgen.core.steps.gameplay.result import (
     TownsIndex,
 )
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
+from vcmi_mapgen.core.steps.gameplay.siting import TOWN_MIN_AREA
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
+PLACER_SALT = 0x61A7
 
 
-def place_town(
-    site: ZoneSite, draw: ZoneDraw, player: bool, footing: Footing | None = None
-) -> PlacedObject | None:
-    """Place a zone's town: a player town pulls toward the zone centre, a neutral one follows
-    the corpus intensity. ``footing`` replaces the town's default footing."""
-    if draw.town is None:
-        return None
-    centres = site.centroid_order(draw.town) if player else site.intensity_order(Purpose.TOWN)
-    town = site.place(Purpose.TOWN, draw.town, centres, footing)
-    if town is None:
-        if player:
-            print(
-                f"  WARNING: player zone {site.zid} (level {site.lf.level}) "
-                + "could not fit its town"
-            )
-        else:
-            print(f"  zone {site.zid}: no spot for TOWN {draw.town.kind}")
-    return town
-
-
-def place_mines(site: ZoneSite, draw: ZoneDraw, skip: int = 0) -> None:
-    """Place a zone's drawn mines past the first ``skip``, which the zone's promised mines
-    stand for: the first two of a town zone nearest the town, the rest by intensity."""
-    for i, ident in enumerate(draw.mines[skip:]):
-        centre = site.town_center
-        centres = (
-            site.nearest_order(*centre)
-            if centre is not None and i < 2 - skip
-            else site.intensity_order(Purpose.MINE)
-        )
-        if site.place(Purpose.MINE, ident, centres) is None:
-            print(f"  zone {site.zid}: no spot for MINE {ident.kind}")
+def _sites(indexes: dict[int, SiteIndex]) -> list[ZoneSite]:
+    return [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
 
 
 def _town_hosts(sites: Sequence[ZoneSite]) -> list[ZoneSite]:
@@ -113,23 +86,6 @@ def _town_order(site: ZoneSite, ident: Identity) -> list[Tile]:
     return sorted(site.ts, key=lambda t: (-((t[0] - cx) ** 2 + (t[1] - cy) ** 2), t))
 
 
-def place_attractions(site: ZoneSite, draw: ZoneDraw) -> None:
-    """Place a zone's dwellings, banks and visitables. A shipyard or a moved player town the
-    zone received already used slots of the drawn total, so as many attractions drop from the
-    end. An attraction that finds no spot falls back to a smaller object of its purpose, the
-    largest shape first."""
-    items = draw.attractions
-    if site.spent:
-        items = items[: max(0, len(items) - site.spent)]
-    for purpose, ident in items:
-        order = site.intensity_order(purpose)
-        if site.place(purpose, ident, order) is not None:
-            continue
-        smaller_ids = smaller(site, draw.pools.get(purpose, []), ident)
-        if not any(site.place(purpose, alt, order) is not None for alt in smaller_ids):
-            print(f"  zone {site.zid}: no spot for {purpose} {ident.kind}")
-
-
 @final
 class GameplayStep(PipelineStep):
     """Place every gameplay object once vegetation has grown.
@@ -139,25 +95,26 @@ class GameplayStep(PipelineStep):
                     estimator.
         seed        RNG seed.
         players     Number of player zones to designate (0 = neutral map).
-        size        Map side length in tiles (square).
         subterrain  Whether a second underground level is active.
+        density     The multiplier on the corpus rate of gameplay objects per tile.
 
     inject(ctx): ``ZonePlan`` (each zone's plan, the player zones and the sea objects),
     ``VegetationResult`` (each zone's open and walkable tiles), ``TerrainGrids`` (the tunnel
     protect set), ``Segmentation`` (the surface zones), and the ``ContentPlan`` when present:
-    a planned home's town may lay its overlay outside the zone, and each zone's total scales
-    by its planned reward. The ``Accents`` when present: each accent patch of
-    ``LANDMARK_FLOOR`` tiles or more takes a landmark right after the towns, one slot of its
-    zone's total. The patch the homes reach last takes a dragon dwelling behind a level-7
-    guard instead. The step publishes the player zones the zone plan picked, then commits the
-    sea objects the zone plan drew. Gates stay off each player town's kept room. Gates may
-    stand on an underground tunnel. No other object's footprint may, and none may strand one.
+    a planned home's town may lay its overlay outside the zone. The ``Accents`` when present:
+    each accent patch of ``LANDMARK_FLOOR`` tiles or more takes a landmark right after the
+    towns, and the map-wide pass counts it. The patch the homes reach last takes a dragon
+    dwelling behind a level-7 guard instead. The step publishes the player zones the zone
+    plan picked, then commits the sea objects the zone plan drew. Gates stay off each player
+    town's kept room. Gates may stand on an underground tunnel. No other object's footprint
+    may, and none may strand one.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
 
     Each player reaches a mine of each basic resource within ``PROMISE_DAYS`` hero-days: the
-    promised mines stand before the drawn ones, and a repair pass after the attractions adds
-    any mine a player lost. From the promised mines on, no object closes a player's way to
-    its nearest mine of each resource.
+    promised mines stand before the map-wide pass, and a repair pass after it adds any mine a
+    player lost. The pass spreads each family evenly between the players band by band, and
+    ``density`` multiplies its corpus rate. From the promised mines on, no object closes a
+    player's way to its nearest mine of each resource.
 
     Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
     ``map_state.player_towns``. Into ctx: ``TownsIndex``, ``GateResult``, ``GameplayResult``
@@ -169,14 +126,14 @@ class GameplayStep(PipelineStep):
         priors: Priors,
         seed: int = 3,
         players: int = 0,
-        size: int = 72,
         subterrain: bool = False,
+        density: float = 1.0,
     ) -> None:
         self.priors = priors
         self.seed = seed
         self.players = players
-        self.size = size
         self.subterrain = subterrain
+        self.density = density
         self.objs: list[PlacedObject] = []
         self._ctx = ProviderRegistry()
         self._plan = ZPL.ZonePlan({}, ())
@@ -210,12 +167,17 @@ class GameplayStep(PipelineStep):
             level: self._index(catalog, level, map_state) for level in sorted(self._plan.levels)
         }
         gates = self._place_gates(catalog, indexes, map_state)
-        ledger = Ledger(set(BASIC_MINE_RES), len(self._player_zids), 0)
-        draws = self._place_towns(catalog, indexes, ledger)
+        self._place_player_towns(catalog, indexes)
         if 0 in indexes:
             self._place_shipyards(indexes[0], map_state, catalog)
-        self._place_mines(catalog, indexes, map_state, draws)
-        self._place_attractions(catalog, indexes, map_state, draws)
+        self._place_landmarks(catalog, indexes, map_state)
+        for line in self._keep_promise(catalog, indexes, map_state).warnings:
+            print(f"  WARNING: mine promise: {line}")
+        if 0 in indexes:
+            indexes[0].lf.avoid = NO_TILES
+        self._place_all(catalog, indexes, map_state)
+        for line in self._keep_promise(catalog, indexes, map_state).warnings:
+            print(f"  WARNING: mine promise repair: {line}")
         self._finish(catalog, indexes, map_state)
         self._read_promise(catalog, map_state)
         self._ctx.provide(gates)
@@ -227,44 +189,44 @@ class GameplayStep(PipelineStep):
         ways = promise_ways(catalog, map_state.objs, maps, BASIC_MINE_RES)
         self._ctx.provide(PromisedWays(ways))
 
-    def _place_mines(
-        self,
-        catalog: Catalog,
-        indexes: dict[int, SiteIndex],
-        map_state: MapState,
-        draws: dict[tuple[int, int], ZoneDraw],
+    def _place_landmarks(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> None:
         dragon = self._place_dragon(catalog, indexes, map_state)
-        for level, zid in sorted(draws):
+        for level, idx in sorted(indexes.items()):
             patches = self._accents.levels.get(level, ())
             skip = dragon[1] if dragon is not None and dragon[0] == level else None
-            site = indexes[level].sites[zid]
-            site.spent += place_landmarks(site, patches, self.seed, skip)
-        kept = self._keep_promise(catalog, indexes, map_state)
-        for line in kept.warnings:
-            print(f"  WARNING: mine promise: {line}")
-        for (level, zid), draw in sorted(draws.items()):
-            site = indexes[level].sites[zid]
-            place_mines(site, draw, kept.count(site))
+            for _zid, site in sorted(idx.sites.items()):
+                _ = place_landmarks(site, patches, self.seed, skip)
 
-    def _place_attractions(
-        self,
-        catalog: Catalog,
-        indexes: dict[int, SiteIndex],
-        map_state: MapState,
-        draws: dict[tuple[int, int], ZoneDraw],
+    def _place_all(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> None:
-        if 0 in indexes:
-            indexes[0].lf.avoid = NO_TILES
-        for (level, zid), draw in sorted(draws.items()):
-            place_attractions(indexes[level].sites[zid], draw)
-        for line in self._keep_promise(catalog, indexes, map_state).warnings:
-            print(f"  WARNING: mine promise repair: {line}")
+        sites = _sites(indexes)
+        homes = self._view(indexes, map_state).player_towns
+        demand = Demand(len(homes), self.density)
+        rng = random.Random(self.seed ^ PLACER_SALT)
+        toll = self.priors.effort.toll
+        families = Families.of(catalog)
+
+        def price() -> list[EffortMap]:
+            view = self._view(indexes, map_state)
+            objs = [o for o in view.objs if families.family(catalog, o) is not None]
+            return player_maps(catalog, unguarded(catalog, view, objs), toll)
+
+        placement = Placement(catalog, sites, self.priors.effort, demand, rng)
+        sea = [o for _level, pl in sorted(self._plan.levels.items()) for o in pl.sea]
+        plan = placement.plan(homes, sea, price())
+        has_water = any(Terrain.WATER in row for grid in self._grids.values() for row in grid)
+        picker = Picker(catalog, rng, has_water, self.subterrain)
+        short = placement.place(plan, picker, price)
+        for line in short.lines():
+            print(f"  WARNING: gameplay shortfall: {line}")
 
     def _keep_promise(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> Kept:
-        sites = [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
+        sites = _sites(indexes)
         kept = keep_promise(
             sites, site_variants(catalog), lambda: self._survey(catalog, indexes, map_state)
         )
@@ -322,23 +284,23 @@ class GameplayStep(PipelineStep):
                 site.reserved |= self._tunnels & site.ts
         return gates
 
-    def _place_towns(
-        self, catalog: Catalog, indexes: dict[int, SiteIndex], ledger: Ledger
-    ) -> dict[tuple[int, int], ZoneDraw]:
-        draws: dict[tuple[int, int], ZoneDraw] = {}
-        for level, idx in sorted(indexes.items()):
-            for zid, site in sorted(idx.sites.items()):
-                draws[level, zid] = self._draw(site, ledger)
-                player = (level, zid) in self._player_zids
-                footing = HOME_FOOTING if (level, zid) in self._content.homes else None
-                town = place_town(site, draws[level, zid], player, footing)
-                if player and town is not None:
-                    self._starts[level].protect(town)
+    def _place_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:
+        for level, zid in sorted(self._player_zids):
+            idx = indexes.get(level)
+            site = idx.sites.get(zid) if idx is not None else None
+            if site is None:
+                continue
+            ident = catalog.random_town()
+            footing = HOME_FOOTING if (level, zid) in self._content.homes else None
+            town = site.place(Purpose.TOWN, ident, site.centroid_order(ident), footing)
+            if town is None:
+                print(f"  WARNING: player zone {zid} (level {level}) could not fit its town")
+            else:
+                self._starts[level].protect(town)
         self._move_player_towns(catalog, indexes)
-        return draws
 
     def _move_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:
-        sites = [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
+        sites = _sites(indexes)
         need = self.players - sum(1 for s in sites if s.town_center is not None)
         ident = catalog.random_town()
         for site in _town_hosts(sites):
@@ -347,7 +309,6 @@ class GameplayStep(PipelineStep):
             town = site.place(Purpose.TOWN, ident, _town_order(site, ident))
             if town is not None:
                 self._starts[site.lf.level].protect(town)
-                site.spent += TOWN_SLOTS
                 need -= 1
                 print(f"  player town moved to zone {site.zid} (level {site.lf.level})")
         if need > 0:
@@ -394,20 +355,6 @@ class GameplayStep(PipelineStep):
             idx.sites[zid] = ZoneSite(catalog, zid, site, lf, self.seed)
             idx.zone_of.update(dict.fromkeys(zone.ts, zid))
         return idx
-
-    def _draw(self, site: ZoneSite, ledger: Ledger) -> ZoneDraw:
-        level = site.lf.level
-        spec = DrawSpec(
-            zid=site.zid,
-            terrain=site.zone.terrain,
-            area=len(site.zone.ts),
-            player=(level, site.zid) in self._player_zids,
-            gates=site.gates,
-            has_water=any(Terrain.WATER in row for row in self._grids[level]),
-            has_subterrain=self.subterrain,
-            scale=self._content.scale(level, site.zid),
-        )
-        return ZoneDrawer(site.catalog, spec, site.st, ledger, self.seed + level).draw()
 
     def _place_shipyards(self, idx: SiteIndex, map_state: MapState, catalog: Catalog) -> None:
         objs = [o for o in map_state.objs if o.level == 0 and o.purpose]
