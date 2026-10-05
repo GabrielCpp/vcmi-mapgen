@@ -13,13 +13,13 @@ from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Placement
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.prizes import HeldPrize
-from vcmi_mapgen.core.placement.start_room import start_rules
+from vcmi_mapgen.core.placement.ways import kept_rules
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.guarding import prize_guard
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.pocket_masks import PocketMask
-from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import PromisedWays, TownsIndex
 from vcmi_mapgen.core.steps.loot import pickups as PK
 from vcmi_mapgen.core.steps.loot import pocket_plan as PP
 from vcmi_mapgen.core.steps.loot import quests as QU
@@ -87,10 +87,12 @@ class LootStep(PipelineStep):
         self._claims: dict[int, frozenset[Tile]] = {}
         self._player_zids: list[tuple[int, int]] = []
         self._plan = ContentPlan()
+        self._ways = PromisedWays()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
+        self._ways = ctx.get(PromisedWays, PromisedWays())
         zones = ctx.require(ZoneIndex)
         self._targets = zones.targets
         self._zone_records = zones.zone_records
@@ -180,7 +182,7 @@ class LootStep(PipelineStep):
                 level,
                 objs_by_level[level],
                 seerhut_artifacts,
-                start_rules(map_state, level),
+                kept_rules(map_state, level, self._ways.on(level)),
             )
             for o in fill.objs:
                 o.level = level

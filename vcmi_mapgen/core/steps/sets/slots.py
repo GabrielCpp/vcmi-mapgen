@@ -11,6 +11,7 @@ from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.placement.prizes import HeldPrize
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.reading.effort import effort_map
+from vcmi_mapgen.core.reading.homes import town_homes
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 
 NO_HOME = -1
@@ -25,14 +26,6 @@ class Slot:
     band: int
     effort: int
     home: int
-
-
-def town_homes(map_state: MapState) -> list[list[Spot]]:
-    """The visit tiles of each player's starting town, one list per town."""
-    return [
-        [Spot(t.level, x, y) for (x, y), role in t.footprint.at(t.x, t.y) if role.interactive]
-        for t in map_state.player_towns
-    ]
 
 
 def price_slots(

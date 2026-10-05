@@ -8,14 +8,14 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.reach import land_reach
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.placement.start_room import start_rules
+from vcmi_mapgen.core.placement.ways import kept_rules
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.guarding import prize_guard
 from vcmi_mapgen.core.planning.pricing import homes
 from vcmi_mapgen.core.planning.zone_index import build_zone_index
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, PromisedWays
 from vcmi_mapgen.core.steps.gated.loot_zones import mark_loot_zones, walk_targets
 from vcmi_mapgen.core.steps.gated.placer import GatedLevel, place_gated_zones
 from vcmi_mapgen.core.steps.gated.result import GatedResult
@@ -72,10 +72,12 @@ class GatedStep(PipelineStep):
         self._gameplay = GameplayResult({}, {}, {})
         self._content = ContentPlan()
         self._gate_xy: set[Tile] = set()
+        self._ways = PromisedWays()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
+        self._ways = ctx.get(PromisedWays, PromisedWays())
         self._plan = ctx.require(ZonePlan)
         self._gameplay = ctx.require(GameplayResult)
         self._content = ctx.get(ContentPlan, ContentPlan())
@@ -94,7 +96,7 @@ class GatedStep(PipelineStep):
                     zone_records,
                     by_level[level],
                     self.priors.gameplay[0],
-                    start_rules(map_state, level),
+                    kept_rules(map_state, level, self._ways.on(level)),
                     map_state.terrain.get(level, ()),
                     prize_guard(self.priors.places, self._content, level),
                     None if reached is None else reached[level],

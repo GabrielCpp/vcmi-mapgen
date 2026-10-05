@@ -8,13 +8,18 @@ from typing import final, override
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
-from vcmi_mapgen.core.placement.start_room import start_rules
+from vcmi_mapgen.core.placement.ways import kept_rules
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.guarding import prize_guard
 from vcmi_mapgen.core.planning.pricing import CutoffPlace, effort_with, prize_count
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import (
+    GameplayResult,
+    GateResult,
+    PromisedWays,
+    TownsIndex,
+)
 from vcmi_mapgen.core.steps.portal import rescue as RS
 from vcmi_mapgen.core.steps.portal.hoard import HoardPricing, fill_hoards
 from vcmi_mapgen.core.steps.portal.result import PortalResult
@@ -89,10 +94,12 @@ class PortalStep(PipelineStep):
         self._gate_objs: list[PlacedObject] = []
         self._content = ContentPlan()
         self._priced: set[tuple[int, int]] = set()
+        self._ways = PromisedWays()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
+        self._ways = ctx.get(PromisedWays, PromisedWays())
         zones = ctx.require(ZoneIndex)
         self._targets = zones.targets
         self._zone_records = zones.zone_records
@@ -110,7 +117,9 @@ class PortalStep(PipelineStep):
         grids = map_state.terrain
         by_level = map_state.objs_by_level(grids)
         covers = {
-            lvl: CoverIndex(objs, self._claims.get(lvl, ()), start_rules(map_state, lvl))
+            lvl: CoverIndex(
+                objs, self._claims.get(lvl, ()), kept_rules(map_state, lvl, self._ways.on(lvl))
+            )
             for lvl, objs in by_level.items()
         }
         world = RS.PortalWorld(

@@ -134,12 +134,3 @@ class StartRoomRule:
             if any(_key(c.obj) in keys for c in covers.covers_at((ap[0], ap[1] - 1))):
                 out.append(ap)
         return out
-
-
-def start_rules(ground: MapState, level: int) -> tuple[StartRoomRule]:
-    """The start room rule of a finished map's player towns on ``level``."""
-    rule = StartRoomRule(ground, level)
-    for town in ground.player_towns:
-        if town.level == level:
-            rule.protect(town)
-    return (rule,)

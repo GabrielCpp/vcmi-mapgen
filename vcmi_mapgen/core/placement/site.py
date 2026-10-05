@@ -300,12 +300,12 @@ class ZoneSite:
             return None
         if mine and not self._front_open(ident, fit):
             return None
-        if mine and not self.guard_ok(self._guard_tile(ident, approach)):
+        if mine and not self.guard_ok(self.guard_tile(ident, approach)):
             return None
         return fit
 
     @staticmethod
-    def _guard_tile(ident: Identity, approach: Tile) -> Tile:
+    def guard_tile(ident: Identity, approach: Tile) -> Tile:
         return (approach[0], approach[1] + 1) if walk_on_only(ident.footprint) else approach
 
     def guard_ok(self, tile: Tile) -> bool:
@@ -440,7 +440,8 @@ class ZoneSite:
         self.reserved.add(approach)
         start = approach
         if obj.purpose == Purpose.MINE:
-            start = self._guarded_front(obj, approach, self._mine_guard(obj))
+            level = self._mine_guard(obj) if guard is None else guard
+            start = self._guarded_front(obj, approach, level)
         elif guard is not None:
             start = self._guarded_front(obj, approach, guard)
         elif obj.purpose == Purpose.TOWN:

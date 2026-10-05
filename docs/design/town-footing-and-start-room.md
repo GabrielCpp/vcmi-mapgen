@@ -211,7 +211,7 @@ Call sites (L2). Cover records built after gameplay: `border/crossings.py:46`,
 `loot/step.py:101`, `loot/quests.py:71`, `loot/pickups.py:163`, `scatter/piles.py:53`,
 `portal/step.py:97`, `placement/scatter.py:102`, `placement/water.py:102`. Each runs inside
 a step whose `run` has the map. The steps build the rule with
-`start_rules(map_state, level)` and pass it to their cover record. A record that only
+`kept_rules(map_state, level, ways)` and pass it to their cover record. A record that only
 probes a guard against itself (`pickups.py:325`) needs none. `vegetation/border_plan.py`
 runs before any town exists and needs none.
 

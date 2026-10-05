@@ -10,7 +10,7 @@ from vcmi_mapgen.core.grid.reach import land_reach
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.prizes import HeldPrize
-from vcmi_mapgen.core.placement.start_room import start_rules
+from vcmi_mapgen.core.placement.ways import kept_rules
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.guarding import prize_guard
 from vcmi_mapgen.core.planning.pricing import (
@@ -23,7 +23,7 @@ from vcmi_mapgen.core.planning.pricing import (
 )
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.steps.gameplay.result import GateResult
+from vcmi_mapgen.core.steps.gameplay.result import GateResult, PromisedWays
 from vcmi_mapgen.core.steps.gated.result import GatedResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.treasure.fill import LootFill, LootLevel, fill_loot_zones
@@ -67,10 +67,12 @@ class TreasureStep(PipelineStep):
         self._gate_objs: list[PlacedObject] = []
         self._content = ContentPlan()
         self._ctx = ProviderRegistry()
+        self._ways = PromisedWays()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
+        self._ways = ctx.get(PromisedWays, PromisedWays())
         self._zones = ctx.require(ZoneIndex)
         self._gated = ctx.require(GatedResult)
         self._segmentation = ctx.require(Segmentation)
@@ -117,7 +119,7 @@ class TreasureStep(PipelineStep):
 
     def _islands(self, map_state: MapState, level: int) -> IslandFill:
         objs = [o for o in map_state.objs if o.level == level]
-        rules = start_rules(map_state, level)
+        rules = kept_rules(map_state, level, self._ways.on(level))
         lvl = IslandLevel(
             level,
             self._segmentation.zones.get(level, {}),
@@ -151,7 +153,7 @@ class TreasureStep(PipelineStep):
             level_objs,
             self.priors.gameplay[0],
             claims,
-            start_rules(map_state, level),
+            kept_rules(map_state, level, self._ways.on(level)),
             level,
         )
         fill = fill_loot_zones(catalog, loot, self.seed, (self.size, self.size))

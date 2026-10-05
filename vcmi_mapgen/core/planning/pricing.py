@@ -15,6 +15,7 @@ from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.places import PlaceContent, PlaceStats
 from vcmi_mapgen.core.reading.content import UNREACHED
 from vcmi_mapgen.core.reading.effort import Effort, EffortMap, effort_map
+from vcmi_mapgen.core.reading.homes import town_homes
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.reading.value import ValueTable, value_of
 
@@ -54,12 +55,7 @@ class CutoffPlace:
 
 def homes(map_state: MapState) -> list[Spot]:
     """The visit tiles of every player's starting town."""
-    return [
-        Spot(t.level, x, y)
-        for t in map_state.player_towns
-        for (x, y), role in t.footprint.at(t.x, t.y)
-        if role.interactive
-    ]
+    return [s for spots in town_homes(map_state) for s in spots]
 
 
 def effort_with(

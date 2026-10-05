@@ -9,10 +9,11 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.prizes import HeldPrize
-from vcmi_mapgen.core.placement.start_room import start_rules
+from vcmi_mapgen.core.placement.ways import kept_rules
 from vcmi_mapgen.core.planning.pricing import CutoffPlace
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.steps.gameplay.result import PromisedWays
 from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.sets.deal import (
@@ -66,10 +67,12 @@ class SetsStep(PipelineStep):
         self._zones = ZoneIndex()
         self._held: list[HeldPrize] = []
         self._ctx = ProviderRegistry()
+        self._ways = PromisedWays()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
         self._ctx = ctx
+        self._ways = ctx.get(PromisedWays, PromisedWays())
         self._zones = ctx.require(ZoneIndex)
         treasure = ctx.get(TreasureResult, TreasureResult()).places
         portal = ctx.get(PortalResult, PortalResult()).places
@@ -102,5 +105,7 @@ class SetsStep(PipelineStep):
         for level, objs in by_level.items():
             held = {h.tile for h in self._held if h.level == level}
             claims = self._zones.claims.get(level, frozenset()) - held
-            covers[level] = CoverIndex(objs, claims, start_rules(map_state, level))
+            covers[level] = CoverIndex(
+                objs, claims, kept_rules(map_state, level, self._ways.on(level))
+            )
         return Board(covers, self.priors.gameplay[0], (self.size, self.size))

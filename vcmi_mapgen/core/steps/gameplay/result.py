@@ -35,3 +35,16 @@ class GameplayResult:
     zones: Mapping[int, Mapping[int, PlacedZone]]
     landings: Mapping[int, Landings]
     town_of_zone: Mapping[int, Mapping[int, PlacedObject]]
+
+
+@dataclass(frozen=True, slots=True)
+class PromisedWays:
+    """Per level, the tiles each player's hero walks from its town to its nearest mine of each
+    basic resource. Every later placement step keeps them open with ``kept_rules``. A run
+    stopped before GameplayStep reads the empty default."""
+
+    tiles: Mapping[int, frozenset[Tile]] = field(default_factory=dict[int, frozenset[Tile]])
+
+    def on(self, level: int) -> frozenset[Tile]:
+        """The kept tiles of ``level``."""
+        return self.tiles.get(level, frozenset())

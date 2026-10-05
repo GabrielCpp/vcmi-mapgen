@@ -14,12 +14,15 @@ from __future__ import annotations
 import heapq
 import math
 from collections.abc import Iterator, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot
 
 DIAGONAL = math.sqrt(2)
 _SLACK = 1e-9
+_MATCH = 1e-6
+AROUND = 3
 _STEPS = tuple(
     (dx, dy, DIAGONAL if dx and dy else 1.0) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy
 )
@@ -53,6 +56,11 @@ class _Flat:
 
     def index(self, spot: Spot) -> int:
         return (self.levels.index(spot.level) * self.size + spot.y) * self.size + spot.x
+
+    def spot(self, tile: int) -> Spot:
+        rest, x = divmod(tile, self.size)
+        level, y = divmod(rest, self.size)
+        return Spot(self.levels[level], x, y)
 
 
 def _flat(route: RouteMap) -> _Flat:
@@ -159,17 +167,135 @@ class EffortMap:
     days: dict[int, list[float]]
     toll: Sequence[int]
 
-    def at(self, spot: Spot) -> Effort | None:
+    def at(self, spot: Spot, least: int = 0) -> Effort | None:
+        """The effort to reach ``spot``, beating a guard of at least ``least`` on the way."""
+        best = self._cheapest([self.flat.index(spot)], least)
+        return None if best is None else best[0]
+
+    def beside(self, spot: Spot, least: int, shut: AbstractSet[Spot]) -> Effort | None:
+        """The effort to reach ``spot`` once an object blocks ``shut``, beating a guard of at
+        least ``least`` on the way. The tiles within ``AROUND`` steps of ``spot`` are walked
+        again around ``shut``. The days beyond them stand."""
         tile = self.flat.index(spot)
+        blocked = {self.flat.index(s) for s in shut if s.level == spot.level}
+        options: list[tuple[int, int, int]] = []
+        for ceiling, days in self.days.items():
+            if any(ceiling < c <= least for c in self.days):
+                continue
+            arrive = _around(self.flat, days, ceiling, tile, blocked)
+            if arrive < math.inf:
+                guard = max(ceiling, least)
+                options.append((self.toll[guard] + _whole(arrive), guard, _whole(arrive)))
+        if not options:
+            return None
+        total, guard, whole = min(options)
+        return Effort(days=whole, guard=guard, total=total)
+
+    def visit(self, door: Spot) -> Effort | None:
+        """The effort to visit the object whose entrance is ``door``: a hero steps on it from
+        an open tile beside it and beats the guard covering ``door`` on the way."""
+        best = self._cheapest(self._sides(door), self.flat.guard[self.flat.index(door)])
+        return None if best is None else best[0]
+
+    def way(self, door: Spot) -> list[Spot]:
+        """The tiles a hero walks from the nearest home to the tile beside ``door`` it visits
+        from, home first, under the guard ceiling `visit` prices. Empty when no home reaches
+        ``door``."""
+        best = self._cheapest(self._sides(door), self.flat.guard[self.flat.index(door)])
+        if best is None:
+            return []
+        _effort, ceiling, tile = best
+        return [self.flat.spot(t) for t in reversed(_descend(self.flat, self.days[ceiling], tile))]
+
+    def _sides(self, door: Spot) -> list[int]:
+        size = self.flat.size
+        return [
+            self.flat.index(Spot(door.level, door.x + dx, door.y + dy))
+            for dx, dy, _ in _STEPS
+            if 0 <= door.x + dx < size and 0 <= door.y + dy < size
+        ]
+
+    def _cheapest(self, tiles: Sequence[int], least: int) -> tuple[Effort, int, int] | None:
         options = [
-            (self.toll[ceiling] + _whole(days[tile]), ceiling, _whole(days[tile]))
+            (
+                self.toll[max(ceiling, least)] + _whole(days[tile]),
+                max(ceiling, least),
+                _whole(days[tile]),
+                ceiling,
+                tile,
+            )
             for ceiling, days in self.days.items()
+            for tile in tiles
             if days[tile] < math.inf
         ]
         if not options:
             return None
-        total, guard, days = min(options)
-        return Effort(days=days, guard=guard, total=total)
+        total, guard, days, ceiling, tile = min(options)
+        return Effort(days=days, guard=guard, total=total), ceiling, tile
+
+
+def _around(flat: _Flat, days: list[float], ceiling: int, tile: int, shut: set[int]) -> float:
+    rest, x = divmod(tile, flat.size)
+    base, y = divmod(rest, flat.size)
+    near = {
+        (base * flat.size + ny) * flat.size + nx
+        for ny in range(max(0, y - AROUND), min(flat.size, y + AROUND + 1))
+        for nx in range(max(0, x - AROUND), min(flat.size, x + AROUND + 1))
+    }
+    best = dict.fromkeys(near, math.inf)
+    heap: list[tuple[float, int]] = []
+    for t in near:
+        nx, ny = t % flat.size, t // flat.size % flat.size
+        edge = max(abs(nx - x), abs(ny - y)) == AROUND or days[t] <= _SLACK
+        if edge and t not in shut and days[t] < math.inf:
+            best[t] = days[t]
+            heap.append((days[t], t))
+    heapq.heapify(heap)
+    while heap:
+        d, t = heapq.heappop(heap)
+        if d > best[t]:
+            continue
+        for n, scale in _neighbours(flat.size, t):
+            if n not in near or n in shut or not flat.open[n] or flat.guard[n] > ceiling:
+                continue
+            same = flat.water[n] == flat.water[t]
+            arrive = d + flat.cost[t] * scale if same else math.floor(d + _SLACK) + 1.0
+            if arrive < best[n]:
+                best[n] = arrive
+                heapq.heappush(heap, (arrive, n))
+    return best[tile]
+
+
+def _before(flat: _Flat, days: list[float], tile: int, landed: dict[int, list[int]]) -> int | None:
+    here = days[tile]
+    lower = [(days[n], n, scale) for n, scale in _neighbours(flat.size, tile) if days[n] < here]
+    for d, n, scale in sorted(lower):
+        if flat.water[n] == flat.water[tile]:
+            if abs(d + flat.cost[n] * scale - here) <= _MATCH:
+                return n
+        elif abs(math.floor(d + _SLACK) + 1.0 - here) <= _MATCH:
+            return n
+    jumped = [n for n in landed.get(tile, ()) if abs(days[n] - here) <= _MATCH]
+    if jumped:
+        return min(jumped)
+    return min(lower)[1] if lower else None
+
+
+def _descend(flat: _Flat, days: list[float], tile: int) -> list[int]:
+    landed: dict[int, list[int]] = {}
+    for src, ends in flat.jumps.items():
+        for end in ends:
+            landed.setdefault(end, []).append(src)
+    path = [tile]
+    seen = {tile}
+    while days[tile] > _SLACK:
+        prev = _before(flat, days, tile, landed)
+        if prev is None or prev in seen:
+            break
+        path.append(prev)
+        seen.add(prev)
+        tile = prev
+    return path
 
 
 def effort_map(route: RouteMap, homes: Sequence[Spot], toll: Sequence[int]) -> EffortMap:

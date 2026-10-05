@@ -26,11 +26,14 @@ from vcmi_mapgen.core.placement.site import (
     ZoneSite,
 )
 from vcmi_mapgen.core.placement.start_room import StartRoomRule
+from vcmi_mapgen.core.placement.ways import WayRule
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.pricing import effort_with
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.reading.paint import Accent
+from vcmi_mapgen.core.reading.promise import player_maps, promise_from, promise_ways
+from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
 from vcmi_mapgen.core.steps.gameplay.draw import (
     TOWN_MIN_AREA,
     TOWN_SLOTS,
@@ -47,7 +50,12 @@ from vcmi_mapgen.core.steps.gameplay.landmark import (
     place_dragon,
     place_landmarks,
 )
-from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import (
+    GameplayResult,
+    GateResult,
+    PromisedWays,
+    TownsIndex,
+)
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
@@ -75,23 +83,18 @@ def place_town(
     return town
 
 
-def place_mines(site: ZoneSite, draw: ZoneDraw, ledger: Ledger, placed_res: set[str]) -> None:
-    """Place a zone's mines: the economy pair nearest the town, the rest by intensity. A basic
-    mine that finds no spot goes back to the ledger's missing set."""
-    for i, ident in enumerate(draw.mines):
+def place_mines(site: ZoneSite, draw: ZoneDraw, skip: int = 0) -> None:
+    """Place a zone's drawn mines past the first ``skip``, which the zone's promised mines
+    stand for: the first two of a town zone nearest the town, the rest by intensity."""
+    for i, ident in enumerate(draw.mines[skip:]):
         centre = site.town_center
         centres = (
             site.nearest_order(*centre)
-            if centre is not None and i < 2
+            if centre is not None and i < 2 - skip
             else site.intensity_order(Purpose.MINE)
         )
-        res = str(ident.subtype)
-        if site.place(Purpose.MINE, ident, centres) is not None:
-            placed_res.add(res)
-            continue
-        print(f"  zone {site.zid}: no spot for MINE {ident.kind}")
-        if res in BASIC_MINE_RES and res not in placed_res:
-            ledger.missing.add(res)
+        if site.place(Purpose.MINE, ident, centres) is None:
+            print(f"  zone {site.zid}: no spot for MINE {ident.kind}")
 
 
 def _town_hosts(sites: Sequence[ZoneSite]) -> list[ZoneSite]:
@@ -151,9 +154,14 @@ class GameplayStep(PipelineStep):
     stand on an underground tunnel. No other object's footprint may, and none may strand one.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
 
+    Each player reaches a mine of each basic resource within ``PROMISE_DAYS`` hero-days: the
+    promised mines stand before the drawn ones, and a repair pass after the attractions adds
+    any mine a player lost. From the promised mines on, no object closes a player's way to
+    its nearest mine of each resource.
+
     Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
-    ``map_state.player_towns``. Into ctx: ``TownsIndex``, ``GateResult`` and
-    ``GameplayResult``.
+    ``map_state.player_towns``. Into ctx: ``TownsIndex``, ``GateResult``, ``GameplayResult``
+    and ``PromisedWays``.
     """
 
     def __init__(
@@ -177,8 +185,8 @@ class GameplayStep(PipelineStep):
         self._segmentation = Segmentation({}, {})
         self._player_zids: list[tuple[int, int]] = []
         self._tunnels: frozenset[Tile] = NO_TILES
-        self._placed_res: set[str] = set()
         self._starts: dict[int, StartRoomRule] = {}
+        self._ways: dict[int, WayRule] = {}
         self._content = ContentPlan()
         self._accents = Accents()
 
@@ -206,21 +214,90 @@ class GameplayStep(PipelineStep):
         draws = self._place_towns(catalog, indexes, ledger)
         if 0 in indexes:
             self._place_shipyards(indexes[0], map_state, catalog)
+        self._place_mines(catalog, indexes, map_state, draws)
+        self._place_attractions(catalog, indexes, map_state, draws)
+        self._finish(catalog, indexes, map_state)
+        self._read_promise(catalog, map_state)
+        self._ctx.provide(gates)
+
+    def _read_promise(self, catalog: Catalog, map_state: MapState) -> None:
+        maps = player_maps(catalog, map_state, self.priors.effort.toll)
+        for line in promise_from(catalog, map_state.objs, maps, BASIC_MINE_RES).broken():
+            print(f"  WARNING: mine promise broken: {line}")
+        ways = promise_ways(catalog, map_state.objs, maps, BASIC_MINE_RES)
+        self._ctx.provide(PromisedWays(ways))
+
+    def _place_mines(
+        self,
+        catalog: Catalog,
+        indexes: dict[int, SiteIndex],
+        map_state: MapState,
+        draws: dict[tuple[int, int], ZoneDraw],
+    ) -> None:
         dragon = self._place_dragon(catalog, indexes, map_state)
-        for (level, zid), draw in sorted(draws.items()):
-            site = indexes[level].sites[zid]
+        for level, zid in sorted(draws):
             patches = self._accents.levels.get(level, ())
             skip = dragon[1] if dragon is not None and dragon[0] == level else None
+            site = indexes[level].sites[zid]
             site.spent += place_landmarks(site, patches, self.seed, skip)
-            place_mines(site, draw, ledger, self._placed_res)
+        kept = self._keep_promise(catalog, indexes, map_state)
+        for line in kept.warnings:
+            print(f"  WARNING: mine promise: {line}")
+        for (level, zid), draw in sorted(draws.items()):
+            site = indexes[level].sites[zid]
+            place_mines(site, draw, kept.count(site))
+
+    def _place_attractions(
+        self,
+        catalog: Catalog,
+        indexes: dict[int, SiteIndex],
+        map_state: MapState,
+        draws: dict[tuple[int, int], ZoneDraw],
+    ) -> None:
         if 0 in indexes:
             indexes[0].lf.avoid = NO_TILES
         for (level, zid), draw in sorted(draws.items()):
             place_attractions(indexes[level].sites[zid], draw)
-        self._finish(catalog, indexes, map_state)
-        if ledger.missing:
-            print(f"  WARNING: mine coverage incomplete — missing {sorted(ledger.missing)}")
-        self._ctx.provide(gates)
+        for line in self._keep_promise(catalog, indexes, map_state).warnings:
+            print(f"  WARNING: mine promise repair: {line}")
+
+    def _keep_promise(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
+    ) -> Kept:
+        sites = [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
+        kept = keep_promise(
+            sites, site_variants(catalog), lambda: self._survey(catalog, indexes, map_state)
+        )
+        if kept.stood:
+            _ = self._survey(catalog, indexes, map_state)
+        return kept
+
+    def _survey(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
+    ) -> tuple[Pricer, dict[str, tuple[int | None, ...]]]:
+        view = self._view(indexes, map_state)
+        maps = player_maps(catalog, view, self.priors.effort.toll)
+        for level, tiles in promise_ways(catalog, view.objs, maps, BASIC_MINE_RES).items():
+            if level in self._ways:
+                self._ways[level].keep(tiles)
+        have = promise_from(catalog, view.objs, maps, BASIC_MINE_RES)
+        return Pricer(maps), {r: tuple(d[r] for d in have.days) for r in BASIC_MINE_RES}
+
+    def _view(self, indexes: dict[int, SiteIndex], map_state: MapState) -> MapState:
+        objs = [o for idx in indexes.values() for site in idx.sites.values() for o in site.objs]
+        towns: dict[tuple[int, int], list[PlacedObject]] = {}
+        for level, idx in sorted(indexes.items()):
+            for zid, site in sorted(idx.sites.items()):
+                zone_towns = [o for o in site.objs if o.purpose == Purpose.TOWN]
+                if zone_towns:
+                    towns[level, zid] = zone_towns
+        return MapState(
+            size=map_state.size,
+            terrain=map_state.terrain,
+            gate_blk=map_state.gate_blk,
+            objs=[*map_state.objs, *objs],
+            player_towns=self._player_towns(towns),
+        )
 
     def _pick_player_zones(self) -> None:
         self._player_zids = list(self._plan.player_zids)
@@ -281,20 +358,7 @@ class GameplayStep(PipelineStep):
     ) -> tuple[int, Accent] | None:
         if not any(p.size >= LANDMARK_FLOOR for ps in self._accents.levels.values() for p in ps):
             return None
-        objs = [o for idx in indexes.values() for site in idx.sites.values() for o in site.objs]
-        towns: dict[tuple[int, int], list[PlacedObject]] = {}
-        for level, idx in sorted(indexes.items()):
-            for zid, site in sorted(idx.sites.items()):
-                zone_towns = [o for o in site.objs if o.purpose == Purpose.TOWN]
-                if zone_towns:
-                    towns[level, zid] = zone_towns
-        view = MapState(
-            size=map_state.size,
-            terrain=map_state.terrain,
-            gate_blk=map_state.gate_blk,
-            objs=[*map_state.objs, *objs],
-            player_towns=self._player_towns(towns),
-        )
+        view = self._view(indexes, map_state)
         em = effort_with(catalog, view, self.priors.effort.toll)
         sites = {(lv, z): s for lv, idx in indexes.items() for z, s in idx.sites.items()}
         return place_dragon(sites, dragon_order(self._accents.levels, em.at), self.seed)
@@ -312,11 +376,12 @@ class GameplayStep(PipelineStep):
         map_state: MapState,
     ) -> SiteIndex:
         self._starts[level] = StartRoomRule(map_state, level)
+        self._ways[level] = WayRule()
         lf = LevelField.build(
             level,
             self._grids[level],
             [o for o in map_state.objs if o.level == level],
-            rules=(self._starts[level],),
+            rules=(self._starts[level], self._ways[level]),
         )
         idx = SiteIndex(lf)
         vegetated = self._veg.zones[level]

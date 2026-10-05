@@ -126,7 +126,7 @@ class OpenZonePlacer:
         spec = DrawSpec(1, terrain, len(ts), player=player)
         draw = ZoneDrawer(self.catalog, spec, site.st, ledger, seed).draw()
         _ = place_town(site, draw, player)
-        place_mines(site, draw, ledger, set())
+        place_mines(site, draw)
         place_attractions(site, draw)
         tie_dwellings(self.catalog, site.objs)
         return site.placed()
