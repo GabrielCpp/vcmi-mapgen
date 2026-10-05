@@ -1,0 +1,111 @@
+{
+ "admiralsHat": {
+  "parts": [
+   "necklaceOfOceanGuidance",
+   "seaCaptainsHat"
+  ],
+  "water": true
+ },
+ "angelicAlliance": {
+  "parts": [
+   "armorOfWonder",
+   "sandalsOfTheSaint",
+   "celestialNecklaceOfBliss",
+   "lionsShieldOfCourage",
+   "swordOfJudgement",
+   "helmOfHeavenlyEnlightenment"
+  ],
+  "water": false
+ },
+ "armorOfTheDamned": {
+  "parts": [
+   "blackshardOfTheDeadKnight",
+   "shieldOfTheYawningDead",
+   "skullHelmet",
+   "ribCage"
+  ],
+  "water": false
+ },
+ "bowOfTheSharpshooter": {
+  "parts": [
+   "bowOfElvenCherrywood",
+   "bowstringOfTheUnicornsMane",
+   "angelFeatherArrows"
+  ],
+  "water": false
+ },
+ "cloakOfTheUndeadKing": {
+  "parts": [
+   "amuletOfTheUndertaker",
+   "vampiresCowl",
+   "deadMansBoots"
+  ],
+  "water": false
+ },
+ "cornucopia": {
+  "parts": [
+   "everflowingCrystalCloak",
+   "ringOfInfiniteGems",
+   "everpouringVialOfMercury",
+   "eversmokingRingOfSulfur"
+  ],
+  "water": false
+ },
+ "elixirOfLife": {
+  "parts": [
+   "ringOfVitality",
+   "ringOfLife",
+   "vialOfLifeblood"
+  ],
+  "water": false
+ },
+ "powerOfTheDragonFather": {
+  "parts": [
+   "quietEyeOfTheDragon",
+   "redDragonFlameTongue",
+   "dragonScaleShield",
+   "dragonScaleArmor",
+   "dragonboneGreaves",
+   "dragonWingTabard",
+   "necklaceOfDragonteeth",
+   "crownOfDragontooth",
+   "stillEyeOfTheDragon"
+  ],
+  "water": false
+ },
+ "ringOfTheMagi": {
+  "parts": [
+   "collarOfConjuring",
+   "ringOfConjuring",
+   "capeOfConjuring"
+  ],
+  "water": false
+ },
+ "statueOfLegion": {
+  "parts": [
+   "legsOfLegion",
+   "loinsOfLegion",
+   "torsoOfLegion",
+   "armsOfLegion",
+   "headOfLegion"
+  ],
+  "water": false
+ },
+ "titansThunder": {
+  "parts": [
+   "titansGladius",
+   "sentinelsShield",
+   "thunderHelmet",
+   "titansCuirass"
+  ],
+  "water": false
+ },
+ "wizardsWell": {
+  "parts": [
+   "charmOfMana",
+   "talismanOfMana",
+   "mysticOrbOfMana"
+  ],
+  "water": false
+ }
+}

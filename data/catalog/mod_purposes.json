@@ -1,0 +1,23 @@
+{
+ "handlers": {
+  "configurable": "REWARDS",
+  "market": "SPECIAL",
+  "hillFort": "STAT_PERMANENT"
+ },
+ "rewards": [
+  ["manaPoints", "MANA"],
+  ["manaPercentage", "MANA"],
+  ["primary", "STAT_PERMANENT"],
+  ["heroExperience", "STAT_PERMANENT"],
+  ["heroLevel", "STAT_PERMANENT"],
+  ["secondary", "SPELL_SKILL"],
+  ["spells", "SPELL_SKILL"],
+  ["revealTiles", "INFO"],
+  ["guards", "BANK"],
+  ["bonuses", "BONUS_TEMP"],
+  ["movePoints", "BONUS_TEMP"],
+  ["movePercentage", "BONUS_TEMP"],
+  ["resources", "MINE"]
+ ],
+ "joins": ["BANK", "STAT_PERMANENT", "SPELL_SKILL", "BONUS_TEMP", "MANA", "INFO"]
+}

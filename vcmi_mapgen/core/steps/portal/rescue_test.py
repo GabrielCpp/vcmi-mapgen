@@ -113,42 +113,40 @@ def test_check_reach_raises_on_a_cut_off_target() -> None:
         RS.check_reach(_world(veg_wall + picks))
 
 
-def test_portal_reward_zone(catalog: Catalog, priors: Priors) -> None:
-    """A rock-enclosed zone becomes a SPECIAL REWARD zone: a same-subtype two-way monolith
-    pair bridges it (far end inside, near end in the reachable host zone with a hostile
-    guard adjacent), cache-tagged loot fills it, and traverse counts it reachable."""
-    size, grid, zones, inner, ts1 = _enclave_fixture()
+def _rescue(
+    catalog: Catalog, priors: Priors, mines: tuple[Tile, ...] = ((31, 31),)
+) -> tuple[list[RS.Rescued], RS.PortalWorld, list[Tile]]:
+    size, grid, zones, _inner, _ts1 = _enclave_fixture()
+    mine = Identity("mine", "s", "X", Footprint.one(Role.VISIT))
+    objs = {
+        0: [
+            _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (5, 5), Purpose.TOWN),
+            *(_obj(mine, xy, Purpose.MINE) for xy in mines),
+        ]
+    }
+    targets = {0: [(5, 6)]}
+    world = RS.PortalWorld(
+        size,
+        {0: grid},
+        {0: zones},
+        objs,
+        targets,
+        {0: []},
+        {0: CoverIndex(objs[0])},
+        priors.gameplay[0],
+    )
+    rescued = RS.rescue_unreachable_zones(catalog, world, RS.Departure((0, (5, 5))), seed=3)
+    return rescued, world, targets[0]
 
-    no_gates: set[Tile] = set()
 
-    def run() -> tuple[int, list[PlacedObject], list[Tile]]:
-        objs = {
-            0: [
-                _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (5, 5), Purpose.TOWN),
-                _obj(Identity("mine", "s", "X", Footprint.one(Role.VISIT)), (31, 31), Purpose.MINE),
-            ]
-        }
-        targets = {0: [(5, 6)]}
-        n = RS.rescue_unreachable_zones(
-            catalog,
-            RS.PortalWorld(
-                size,
-                {0: grid},
-                {0: zones},
-                objs,
-                targets,
-                {0: []},
-                {0: CoverIndex(objs[0])},
-                priors.gameplay[0],
-            ),
-            start=(0, (5, 5)),
-            gate_xy=no_gates,
-            seed=3,
-        )
-        return n, objs[0], targets[0]
-
-    n, objs, targets = run()
-    assert n == 1, "the enclave must be rescued by exactly one portal pair"
+def test_portal_rescue_bridges_an_enclave(catalog: Catalog, priors: Priors) -> None:
+    """A rock-enclosed zone gets a same-subtype two-way monolith pair: the far end inside,
+    the near end in the reachable host zone with a hostile guard beside it."""
+    size, grid, _zones, inner, ts1 = _enclave_fixture()
+    rescued, world, _targets = _rescue(catalog, priors)
+    objs = world.objs_by_level[0]
+    assert len(rescued) == 1 and rescued[0].record.zid == 2
+    assert rescued[0].entry in inner
     mono = [o for o in objs if catalog.identity_of(o.kind).type == "monolithTwoWay"]
     subs = {catalog.identity_of(o.kind).subtype for o in mono}
     assert len(mono) == 2 and len(subs) == 1, "a same-subtype two-way pair"
@@ -159,55 +157,32 @@ def test_portal_reward_zone(catalog: Catalog, priors: Priors) -> None:
     guards = [
         o for o in objs if o.purpose == Purpose.GUARD and max(abs(o.x - nx), abs(o.y - ny)) == 1
     ]
-    assert guards and guards[0].payload == Guard(), (
-        "a hostile guard must sit adjacent to the reachable-side end"
-    )
-    loot = [o for o in objs if o.cache]
-    assert len(loot) >= 6 and all((o.x, o.y) in inner for o in loot), (
-        "the enclave holds a dense cache-tagged hoard"
-    )
-    assert set(targets) & {(o.x, o.y) for o in loot}, "rewards are named G2 targets"
+    assert guards and guards[0].payload == Guard()
 
-    n2, objs2, _ = run()
-    assert n2 == n and objs2 == objs
+    again, world2, _ = _rescue(catalog, priors)
+    assert again == rescued and world2.objs_by_level[0] == objs
 
     assert RS.unreachable_targets(size, grid, objs, [(5, 6), (nx, ny)]) == [], (
         "the reachable-side portal end must be walkable from the start"
     )
 
 
-def test_portal_reward_zone_never_places_an_artifact(catalog: Catalog, priors: Priors) -> None:
-    """Artifacts (and pandora's box / chests) are pocket/loot-zone only now -- the
-    portal-rescue reward hoard must be resource piles alone, never a REWARD_PICKUP
-    (which used to draw random artifacts)."""
-    size, grid, zones, _inner, _ts1 = _enclave_fixture()
-    no_gates: set[Tile] = set()
-    objs = {
-        0: [
-            _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (5, 5), Purpose.TOWN),
-            _obj(Identity("mine", "s", "X", Footprint.one(Role.VISIT)), (31, 31), Purpose.MINE),
-        ]
-    }
-    targets = {0: [(5, 6)]}
-    _ = RS.rescue_unreachable_zones(
-        catalog,
-        RS.PortalWorld(
-            size,
-            {0: grid},
-            {0: zones},
-            objs,
-            targets,
-            {0: []},
-            {0: CoverIndex(objs[0])},
-            priors.gameplay[0],
-        ),
-        start=(0, (5, 5)),
-        gate_xy=no_gates,
-        seed=3,
-    )
+def test_a_crowded_enclave_still_gets_its_portal(catalog: Catalog, priors: Priors) -> None:
+    _size, _grid, _zones, inner, _ts1 = _enclave_fixture()
+    rescued, world, _targets = _rescue(catalog, priors, ((32, 32), (35, 35), (32, 35), (35, 32)))
+    assert len(rescued) == 1 and rescued[0].entry in inner
+    mono = [
+        o for o in world.objs_by_level[0] if catalog.identity_of(o.kind).type == "monolithTwoWay"
+    ]
+    assert len([o for o in mono if (o.x, o.y) in inner]) == 1
 
-    loot = [o for o in objs[0] if o.cache]
-    assert len(loot) >= 6, "fixture assumption broke: expected a dense reward hoard"
-    assert not any(o.purpose == Purpose.REWARD_PICKUP for o in loot), (
-        "a portal-rescued zone's hoard must be resources only, never an artifact"
+
+def test_a_priced_zone_is_left_to_its_price(catalog: Catalog, priors: Priors) -> None:
+    size, grid, zones, _inner, _ts1 = _enclave_fixture()
+    objs: dict[int, list[PlacedObject]] = {0: []}
+    world = RS.PortalWorld(
+        size, {0: grid}, {0: zones}, objs, {0: []}, {0: []}, {0: CoverIndex([])}, priors.gameplay[0]
     )
+    departure = RS.Departure((0, (5, 5)), priced={(0, 2)})
+    found = RS.rescue_unreachable_zones(catalog, world, departure, seed=3)
+    assert found == [] and objs[0] == []

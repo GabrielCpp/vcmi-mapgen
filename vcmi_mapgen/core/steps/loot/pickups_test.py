@@ -41,14 +41,14 @@ def _pickups(catalog: Catalog, zone: ScatterZone, priors: Priors, seed: int) -> 
         passable=frozenset(zone.open_set),
         reach=frozenset(reach),
     )
-    cobjs, _n, _depths = CA.place_pocket_caches(
+    cobjs = CA.place_pocket_caches(
         catalog,
         [record],
         seed=seed,
         context=CA.PocketContext(
             priors.gameplay[0], _pockets(priors, record, sobjs), existing_objs=sobjs, cover=cover
         ),
-    )
+    ).objs
     return sobjs + cobjs
 
 
@@ -156,22 +156,19 @@ def test_pocket_guard_level_matches_artifact_tier_exactly(catalog: Catalog, prio
 
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
     zr = _field_with_room(room, {(5, 4)})
-    objs, n_pockets, _depth = CA.place_pocket_caches(
+    fill = CA.place_pocket_caches(
         catalog, [zr], CA.PocketContext(priors.gameplay[0], _pockets(priors, zr)), 3, (20, 20)
     )
+    objs, n_pockets = fill.objs, fill.n_pockets
     assert n_pockets == 1, "fixture assumption broke: expected exactly one pocket"
     guard = next(o for o in objs if o.purpose == Purpose.GUARD)
-    art = next(
-        o
-        for o in objs
-        if o.purpose == Purpose.REWARD_PICKUP and "artifact" in _type_of(catalog, o).lower()
-    )
+    [art] = fill.held
     match = re.match(r"randomMonsterLevel(\d)", _type_of(catalog, guard))
     assert match is not None
     glvl = int(match.group(1))
     want = catalog.random_artifact(ART_TIER_BY_GUARD_LEVEL[glvl - 1]).kind
-    assert art.kind == want, (
-        f"guard is level {glvl} but artifact animation {art.kind!r} doesn't "
+    assert art.fallback.kind == want, (
+        f"guard is level {glvl} but artifact animation {art.fallback.kind!r} doesn't "
         f"match that tier ({want!r})"
     )
 
@@ -191,7 +188,7 @@ def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_fil
 
     room = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}  # 6-tile cavity
     zr = _field_with_room(room, {(5, 4)})
-    objs, _n_pockets, depth = CA.place_pocket_caches(
+    fill = CA.place_pocket_caches(
         catalog,
         [zr],
         seed=3,
@@ -200,6 +197,7 @@ def test_pocket_overlay_depth_is_only_recorded_for_pockets_that_actually_get_fil
             priors.gameplay[0], _pockets(priors, zr), cover=CoverIndex(claims=room)
         ),
     )
+    objs, depth = fill.objs, fill.depth
     assert not any(o.purpose == Purpose.GUARD for o in objs)
     assert not depth, f"pocket tiles marked magenta with nothing placed: {sorted(depth)}"
 
@@ -219,10 +217,11 @@ def test_pocket_overlay_never_marks_an_approach_reserved_tile_that_cant_receive_
     zr = _field_with_room(room, {(5, 4)})
     zr = replace(zr, open_set=zr.open_set - {(6, 7)})  # walkable (still in ts/passable/reach) but
     # reserved -- e.g. another object's approach cell
-    objs, _n_pockets, depth = CA.place_pocket_caches(
+    fill = CA.place_pocket_caches(
         catalog, [zr], CA.PocketContext(priors.gameplay[0], _pockets(priors, zr)), 3, (20, 20)
     )
-    claimed: set[Tile] = set()
+    objs, depth = fill.objs, fill.depth
+    claimed: set[Tile] = {h.tile for h in fill.held}
     for o in objs:
         for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y):
             claimed.add((cx, cy))
@@ -259,7 +258,7 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine(
         reach=frozenset(ts),
     )
 
-    objs, _n_pockets, _depth = CA.place_pocket_caches(
+    fill = CA.place_pocket_caches(
         catalog,
         [zr],
         seed=3,
@@ -271,6 +270,7 @@ def test_pocket_guard_never_cuts_a_town_off_from_its_own_starting_mine(
             home_zids={0},
         ),
     )
+    objs = fill.objs
 
     stands = {
         c
@@ -304,13 +304,14 @@ def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog, priors:
     for seed in range(1, 15):
         room = {(x, y) for x in range(5, 7) for y in range(5, 9)}
         zr = _field_with_room(room, {(5, 4)})
-        objs, _n_pockets, _depth = CA.place_pocket_caches(
+        fill = CA.place_pocket_caches(
             catalog,
             [zr],
             CA.PocketContext(priors.gameplay[0], _pockets(priors, zr)),
             seed,
             (20, 20),
         )
+        objs = fill.objs
         for o in objs:
             if (
                 o.purpose == Purpose.REWARD_PICKUP
@@ -324,22 +325,20 @@ def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog, priors:
 ROOM6 = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}
 
 
-def _planned(
-    catalog: Catalog, priors: Priors, room: set[Tile]
-) -> tuple[list[PlacedObject], dict[Tile, float]]:
+def _planned(catalog: Catalog, priors: Priors, room: set[Tile]) -> CA.PocketFill:
     zr = _field_with_room(room, {(5, 4)})
-    objs, _n, depth = CA.place_pocket_caches(
+    fill = CA.place_pocket_caches(
         catalog,
         [zr],
         CA.PocketContext(
             priors.gameplay[0],
             find_rooms(zr.passable, ()),
-            plan=PocketPlan({0: 3.0}),
+            plan=PocketPlan(frozenset({0})),
         ),
         3,
         (20, 20),
     )
-    return objs, depth
+    return fill
 
 
 def _artifacts(catalog: Catalog) -> set[str]:
@@ -352,16 +351,18 @@ def _boxes(catalog: Catalog, objs: Sequence[PlacedObject]) -> list[PlacedObject]
 
 
 def test_a_deep_pocket_guards_an_artifact_or_a_box(catalog: Catalog, priors: Priors) -> None:
-    objs, depth = _planned(catalog, priors, ROOM6)
-    guards = [o for o in objs if o.purpose == Purpose.GUARD]
+    fill = _planned(catalog, priors, ROOM6)
+    guards = [o for o in fill.objs if o.purpose == Purpose.GUARD]
     assert [(g.x, g.y) for g in guards] == [(5, 4)]
-    wards = [o for o in objs if o.kind in _artifacts(catalog)] + _boxes(catalog, objs)
-    assert wards and all((w.x, w.y) in ROOM6 for w in wards)
-    assert set(depth) <= ROOM6
+    held = [h.tile for h in fill.held if h.fallback.kind in _artifacts(catalog)]
+    wards = held + [(o.x, o.y) for o in _boxes(catalog, fill.objs)]
+    assert wards and all(w in ROOM6 for w in wards)
+    assert set(fill.depth) <= ROOM6
 
 
 def test_a_shallow_pocket_is_filled_without_a_guard(catalog: Catalog, priors: Priors) -> None:
-    objs, depth = _planned(catalog, priors, {(5, 5)})
+    fill = _planned(catalog, priors, {(5, 5)})
+    objs, depth = fill.objs, fill.depth
     assert not any(o.purpose == Purpose.GUARD for o in objs)
     assert not any(o.kind in _artifacts(catalog) for o in objs)
     assert [(o.x, o.y) for o in objs] == [(5, 5)]

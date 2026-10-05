@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from vcmi_mapgen.core.steps.gated.placer import LootAccess
+from vcmi_mapgen.core.model import Tile
+
+
+@dataclass(frozen=True, slots=True)
+class LootAccess:
+    """How a loot zone is entered: the inside tile next to the access object, the access
+    object's footprint and its visit tiles."""
+
+    entry: Tile
+    footprint: frozenset[Tile]
+    interactive: frozenset[Tile]
 
 
 @dataclass

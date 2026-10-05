@@ -12,8 +12,10 @@ from vcmi_mapgen.core.grid.pockets import Pockets, find_pockets, find_rooms
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement.prizes import HeldPrize
 from vcmi_mapgen.core.placement.start_room import start_rules
 from vcmi_mapgen.core.planning.content import ContentPlan
+from vcmi_mapgen.core.planning.guarding import prize_guard
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.pocket_masks import PocketMask
@@ -62,12 +64,14 @@ class LootStep(PipelineStep):
     pocket caches.
 
     Config:
-        priors      The corpus priors; the step reads the level-0 gameplay statistics.
+        priors      The corpus priors; the step reads the level-0 gameplay statistics and
+                    each level's place content.
         seed        RNG seed.
         size        Map side length in tiles (square).
 
     inject(ctx): ``ZoneIndex`` (targets/zone_records), ``TownsIndex`` (player_zids) and
-    ``ContentPlan``, whose intents turn on the planned pockets of a level.
+    ``ContentPlan``, whose intents turn on the planned pockets of a level and whose hops
+    pick each pocket guard's level from the corpus spread.
 
     Produces: appends its objects to ``map_state.objs`` and provides ``LootResult``.
     """
@@ -101,9 +105,10 @@ class LootStep(PipelineStep):
         objs: list[PlacedObject],
         seerhut_artifacts: set[str],
         rules: Sequence[PlacementRule],
-    ) -> tuple[list[PlacedObject], dict[Tile, float]]:
+    ) -> PK.PocketFill:
         """Seer-hut quests and guarded pocket caches for ONE level. ``objs`` is the level's
-        existing objects, read only. Returns (new_objs, pocket_depth_by_tile)."""
+        existing objects, read only. Returns the new objects, the pocket depths and the
+        prize slots the pockets hold open."""
         size, seed = self.size, self.seed
         home_zids = {zid for lvl, zid in self._player_zids if lvl == level}
         targets = self._targets[level]
@@ -134,7 +139,7 @@ class LootStep(PipelineStep):
         if n_quests:
             print(f"  L{level} seer hut quests: {n_quests}")
 
-        cobjs, n_pockets, pocket_depth_by_tile = PK.place_pocket_caches(
+        fill = PK.place_pocket_caches(
             catalog,
             zone_records,
             seed=seed,
@@ -146,36 +151,42 @@ class LootStep(PipelineStep):
                 home_zids=home_zids,
                 cover=cover,
                 plan=plan,
+                guard=prize_guard(self.priors.places, self._plan, level),
+                level=level,
             ),
         )
+        cobjs = fill.objs
         targets.extend((o.x, o.y) for o in cobjs)
+        targets.extend(h.tile for h in fill.held)
         self._claims[level] = frozenset(cover.claims)
         ck = collections.Counter(o.purpose for o in cobjs)
         res, art = ck.get(Purpose.RESOURCE_PILE, 0), ck.get(Purpose.REWARD_PICKUP, 0)
         print(
-            f"  L{level} pockets: {n_pockets} found, cache res={res} "
-            + f"art={art} guard={ck.get(Purpose.GUARD, 0)}"
+            f"  L{level} pockets: {fill.n_pockets} found, cache res={res} "
+            + f"art={art} held={len(fill.held)} guard={ck.get(Purpose.GUARD, 0)}"
         )
-        return [*qobjs, *cobjs], pocket_depth_by_tile
+        return PK.PocketFill([*qobjs, *cobjs], fill.n_pockets, fill.depth, fill.held)
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         objs_by_level = map_state.objs_by_level(self._zone_records)
 
-        seerhut_artifacts: set[str] = set()
+        seerhut_artifacts = QU.set_artifacts(catalog)
         pockets_by_level: Pockets = {}
+        held: list[HeldPrize] = []
         for level in sorted(objs_by_level):
-            new_objs, depth = self._place_level_loot(
+            fill = self._place_level_loot(
                 catalog,
                 level,
                 objs_by_level[level],
                 seerhut_artifacts,
                 start_rules(map_state, level),
             )
-            for o in new_objs:
+            for o in fill.objs:
                 o.level = level
-            self.objs.extend(new_objs)
-            pockets_by_level[level] = depth
+            self.objs.extend(fill.objs)
+            pockets_by_level[level] = fill.depth
+            held.extend(fill.held)
 
         map_state.add_objs(self.objs)
-        self._ctx.provide(LootResult(pockets=pockets_by_level))
+        self._ctx.provide(LootResult(pockets=pockets_by_level, held=tuple(held)))

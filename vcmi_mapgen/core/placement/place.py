@@ -20,7 +20,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
 from vcmi_mapgen.core.placement.identity import pick_fixed_identity, pick_random_identity
-from vcmi_mapgen.core.placement.rewards import pandora_reward
+from vcmi_mapgen.core.placement.rewards import creatures_of, pandora_reward
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 
@@ -97,7 +97,7 @@ def _payload(
     if spec.purpose == Purpose.GUARD:
         return Guard()
     if ident.type in catalog.types_with(Trait.REWARD_BOX):
-        return pandora_reward(rng)
+        return pandora_reward(rng, creatures_of(catalog))
     if ident.type in catalog.types_with(Trait.SCROLL):
         return Scroll(str(ident.subtype))
     return None

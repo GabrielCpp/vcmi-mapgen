@@ -6,9 +6,9 @@ from __future__ import annotations
 import collections
 import math
 import random
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from operator import itemgetter
 from typing import Self, final
 
@@ -16,12 +16,15 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.reach import reach
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
 from vcmi_mapgen.core.placement.ground import Ground, stands
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.planning.guarding import PrizeGuard
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
+from vcmi_mapgen.core.steps.gated.result import LootAccess
 
 LOOT_ZONE_MAX_TILES = 60
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -147,12 +150,50 @@ def _passage_components(
     return _count_clusters(boundary), frozenset(boundary)
 
 
+def _neighbour_zones(
+    zr: ZoneRecord, zone_of: Mapping[Tile, ZoneRecord], blocked_ts: AbstractSet[Tile]
+) -> frozenset[int]:
+    return frozenset(
+        zone_of[nb].zid
+        for t in zr.ts - blocked_ts
+        for nb in _nbs(t)
+        if nb not in zr.ts and nb not in blocked_ts and nb in zone_of
+    )
+
+
+def _on_coast(ts: AbstractSet[Tile], blocked_ts: AbstractSet[Tile], ground: Ground) -> bool:
+    if not ground:
+        return False
+    h, w = len(ground), len(ground[0])
+    return any(
+        0 <= nx < w and 0 <= ny < h and Terrain(ground[ny][nx]).is_water
+        for t in ts - blocked_ts
+        for nx, ny in _nbs(t)
+    )
+
+
 def _anchor_clear(cand: ZoneRecord, claims: AbstractSet[Tile], t: Tile) -> bool:
     tx, ty = t
     return all(
         c not in cand.ts or (c in cand.open_set and c not in claims)
         for c in ((tx - 1, ty - 1), (tx, ty - 1), (tx - 1, ty))
     )
+
+
+def _splits(before: AbstractSet[Tile], after: AbstractSet[Tile]) -> bool:
+    label: dict[Tile, int] = {}
+    for t in sorted(after):
+        if t not in label:
+            label.update(dict.fromkeys(_reach8({t}, after), len(label)))
+    seen: set[Tile] = set()
+    for t in sorted(before):
+        if t in seen:
+            continue
+        comp = _reach8({t}, before)
+        seen |= comp
+        if len({label[c] for c in comp if c in label}) > 1:
+            return True
+    return False
 
 
 def _cheb(a: Tile, b: Tile) -> int:
@@ -204,16 +245,6 @@ class _GateAim:
 
 
 @dataclass(frozen=True, slots=True)
-class LootAccess:
-    """How a loot zone is entered: the inside tile next to the access object, the access
-    object's footprint and its visit tiles."""
-
-    entry: Tile
-    footprint: frozenset[Tile]
-    interactive: frozenset[Tile]
-
-
-@dataclass(frozen=True, slots=True)
 class _LootZone:
     zid: int
     terrain: str
@@ -236,13 +267,17 @@ class _Sited:
 class GatedLevel:
     """One level to seal: every zone record, the objects already on the level and the
     gameplay statistics per terrain, the rules every new object must pass and the level's
-    terrain grid every seal must be allowed on."""
+    terrain grid every seal must be allowed on. ``reached`` holds the tiles a home reaches on
+    foot. A loot zone and the partner outside it stand only on those, and None reads as
+    every tile."""
 
     zone_records: Sequence[ZoneRecord]
     objs: Sequence[PlacedObject]
     gameplay: GameplayStats
     rules: Sequence[PlacementRule] = ()
     ground: Ground = ()
+    guard: PrizeGuard = field(default_factory=PrizeGuard)
+    reached: AbstractSet[Tile] | None = None
 
 
 @final
@@ -259,6 +294,7 @@ class GatedPlacer:
         zone_records, objs_existing = level.zone_records, level.objs
         self.catalog = catalog
         self.gameplay = level.gameplay
+        self.guard = level.guard
         self.zone_records = list(zone_records)
         self.objs_existing = list(objs_existing)
         self.seed = seed
@@ -266,6 +302,7 @@ class GatedPlacer:
         self.town_tiles = {(o.x, o.y) for o in objs_existing if o.purpose == Purpose.TOWN}
         self.cover = CoverIndex(objs_existing, rules=level.rules)
         self.ground = level.ground
+        self.reached = level.reached
         self.all_ts: frozenset[Tile] = frozenset().union(*(zr.ts for zr in zone_records))
         self.blocked = FP.blocking_cells(objs_existing)
         self.interactive_existing = {
@@ -284,14 +321,16 @@ class GatedPlacer:
         self.objs: list[PlacedObject] = []
         self.n_placed = 0
         self.access: dict[int, LootAccess] = {}
-        self.gate_count = 0
-        self.mono_count = 0
+        self.gate_count: int = 0
+        self.mono_count: int = 0
         self._decor: dict[str, list[Identity]] = {}
 
     def run(self) -> tuple[list[PlacedObject], int, dict[int, LootAccess], frozenset[Tile]]:
         loot = self._loot_zones()
         loot_zids = {zr.zid for zr, _p in loot}
-        self.ext_any = [zr for zr in self.zone_records if zr.zid not in loot_zids]
+        self.ext_any = [
+            zr for zr in self.zone_records if zr.zid not in loot_zids and self._reached(zr)
+        ]
         self.ext_no_castle = [zr for zr in self.ext_any if not (zr.ts & self.town_tiles)]
         for zr in self.ext_any:
             self.cover.claim(zr.ts & self.blocked)
@@ -299,12 +338,18 @@ class GatedPlacer:
             self._process(zr, passage)
         return self.objs, self.n_placed, self.access, frozenset(self.cover.claims)
 
+    def _reached(self, zr: ZoneRecord) -> bool:
+        return self.reached is None or bool(zr.ts & self.reached)
+
     def _eligible(self, zr: ZoneRecord) -> bool:
         return (
             len(zr.ts) <= LOOT_ZONE_MAX_TILES
+            and self._reached(zr)
             and not (zr.ts & self.town_tiles)
             and not (zr.ts & self.purposeful)
             and bool(zr.ts - self.blocked)
+            and len(_neighbour_zones(zr, self.zone_of, self.blocked)) == 1
+            and not _on_coast(zr.ts, self.blocked, self.ground)
         )
 
     def _loot_zones(self) -> list[tuple[ZoneRecord, frozenset[Tile]]]:
@@ -338,12 +383,17 @@ class GatedPlacer:
         mark = self.cover.mark()
         n_objs = len(self.objs)
         blocked = frozenset(self.blocked)
+        counts = (self.n_placed, len(self.placed_ext_tiles), self.gate_count, self.mono_count)
+        outside = self.all_ts - zr.ts
         use_gate = rng.random() < 0.5
         order = (True, False) if use_gate else (False, True)
         for gate in order:
             ok = self._place_gate(zone, aim) if gate else self._place_monolith(zone)
-            if ok:
+            if ok and not _splits(outside - blocked, outside - self.blocked):
                 return
+            self.n_placed, n_ext, self.gate_count, self.mono_count = counts
+            del self.placed_ext_tiles[n_ext:]
+            _ = self.access.pop(zr.zid, None)
             self.cover.rollback(mark)
             del self.objs[n_objs:]
             self.blocked = set(blocked)
@@ -364,33 +414,31 @@ class GatedPlacer:
     def _find_ext_spot(
         self, ident: Identity, pools: Iterable[Sequence[ZoneRecord]]
     ) -> _Spot | None:
-        for pool in pools:
-            spot = self._find_ext_spot_in(ident, pool)
-            if spot is not None:
-                return spot
-        return None
+        return next(self._ext_spots(ident, pools), None)
 
-    def _find_ext_spot_in(self, ident: Identity, pool: Sequence[ZoneRecord]) -> _Spot | None:
+    def _ext_spots(self, ident: Identity, pools: Iterable[Sequence[ZoneRecord]]) -> Iterator[_Spot]:
         rules = CellRules(bounds=self.bounds)
-        for cand in sorted(pool, key=self._far_score, reverse=True):
-            claims = self.cover.claims
-            free = sorted(
-                cand.reach - claims, key=lambda t: (self._remoteness(*t), t), reverse=True
-            )
-            for t in free:
-                if not _anchor_clear(cand, claims, t):
-                    continue
-                if legal_cells(ident, t, cand.reach, claims, rules) is not None:
-                    return cand, t
-        return None
+        for pool in pools:
+            for cand in sorted(pool, key=self._far_score, reverse=True):
+                claims = self.cover.claims
+                free = sorted(
+                    cand.reach - claims, key=lambda t: (self._remoteness(*t), t), reverse=True
+                )
+                for t in free:
+                    if not _anchor_clear(cand, claims, t):
+                        continue
+                    if legal_cells(ident, t, cand.reach, claims, rules) is not None:
+                        yield cand, t
 
     def _in_bounds(self, cells: _Cells) -> bool:
         w, h = self.bounds if self.bounds is not None else (999, 999)
         return all(0 <= cx < w and 0 <= cy < h for cx, cy, _b in cells)
 
-    def _gate_cells_fit(self, zone: _LootZone, cells: _Cells) -> bool:
+    def _gate_cells_fit(
+        self, zone: _LootZone, cells: _Cells, interactive: AbstractSet[Tile]
+    ) -> bool:
         for cx, cy, blk in cells:
-            if not blk and (cx, cy) in self.blocked:
+            if (cx, cy) in interactive and (cx, cy) in self.blocked:
                 return False
             if blk and (cx, cy) not in zone.ts and not self._free_outside((cx, cy)):
                 return False
@@ -402,59 +450,85 @@ class GatedPlacer:
         nb_zr = self.zone_of.get(t)
         return nb_zr is None or t not in self.cover.claims
 
-    def _commit_gate(self, gate_ident: Identity, g: Tile, cells: _Cells) -> bool:
+    def _commit_gate(
+        self, gate_ident: Identity, g: Tile, cells: _Cells, interactive: AbstractSet[Tile]
+    ) -> bool:
         gate_obj = PlacedObject.at(gate_ident, g, purpose=Purpose.QUEST_GATE)
-        if not self.cover.try_claim(gate_obj, [(cx, cy) for cx, cy, _b in cells]):
+        solid = [(cx, cy) for cx, cy, blk in cells if blk or (cx, cy) in interactive]
+        if not self.cover.try_claim(gate_obj, solid):
             return False
         self.objs.append(gate_obj)
         self.blocked |= {(cx, cy) for cx, cy, blk in cells if blk}
         return True
 
-    def _site_gate(self, zone: _LootZone, aim: _GateAim, gate_ident: Identity) -> _Sited | None:
+    def _gate_sites(
+        self, zone: _LootZone, aim: _GateAim, gate_ident: Identity
+    ) -> Iterator[tuple[Tile, _Sited]]:
         for g in sorted(zone.ts, key=lambda t: (aim.score(t), t)):
             cells = list(FP.anchored_cells(gate_ident.footprint, *g))
             if not self._in_bounds(cells):
                 continue
-            interactive = FP.interactive_cells(gate_ident.footprint, *g)
+            interactive = frozenset(FP.interactive_cells(gate_ident.footprint, *g))
             if not all(c in zone.open_set for c in interactive):
                 continue
-            if not self._gate_cells_fit(zone, cells):
+            if not self._gate_cells_fit(zone, cells, interactive):
                 continue
             entry = _find_entry_tile(interactive, cells, zone.ts)
             if entry is None or _entry_tile_has_stray_leak(
                 entry, cells, zone.ts, self.all_ts, self.blocked
             ):
                 continue
-            if self._commit_gate(gate_ident, g, cells):
-                return _Sited(entry, cells, frozenset(interactive))
-        return None
+            solid = frozenset((cx, cy) for cx, cy, blk in cells if blk)
+            if self._doorstep(zone.ts, interactive, solid):
+                yield g, _Sited(entry, cells, interactive)
 
-    def _has_ext_access(self, ts: AbstractSet[Tile], interactive: AbstractSet[Tile]) -> bool:
-        blocked = FP.blocking_cells(self.objs) | self.blocked
+    def _doorstep(
+        self, ts: AbstractSet[Tile], interactive: AbstractSet[Tile], extra: AbstractSet[Tile]
+    ) -> frozenset[Tile]:
+        blocked = FP.blocking_cells(self.objs) | self.blocked | extra
         w, h = self.bounds if self.bounds is not None else (999, 999)
-        return any(
-            nb not in ts and nb not in blocked and 0 <= nb[0] < w and 0 <= nb[1] < h
+        return frozenset(
+            nb
             for c in interactive
             for nb in _nbs(c)
+            if nb not in ts
+            and nb not in blocked
+            and nb in self.all_ts
+            and 0 <= nb[0] < w
+            and 0 <= nb[1] < h
         )
 
     def _place_gate(self, zone: _LootZone, aim: _GateAim) -> bool:
         gates = self.catalog.border_gates()
         gate_ident, key_ident = gates[self.gate_count % len(gates)]
-        km_spot = self._find_ext_spot(key_ident, zone.ext_pools)
-        if km_spot is None:
+        if self._find_ext_spot(key_ident, zone.ext_pools) is None:
             return False
-        sited = self._site_gate(zone, aim, gate_ident)
-        if sited is None or not self._has_ext_access(zone.ts, sited.interactive):
+        sited = self._seal_gate(zone, aim, gate_ident)
+        if sited is None:
             return False
-        self._seal(zone, sited)
-        if not self._finish(zone, sited):
-            return False
-        if not self._place_ext_partner(zone.zid, km_spot, key_ident, Purpose.QUEST_GATE):
+        if not self._place_ext_partner(zone.zid, zone.ext_pools, key_ident, Purpose.QUEST_GATE):
             return False
         self.gate_count += 1
         self._record_access(zone.zid, sited)
         return True
+
+    def _seal_gate(self, zone: _LootZone, aim: _GateAim, gate_ident: Identity) -> _Sited | None:
+        mark = self.cover.mark()
+        n0 = len(self.objs)
+        blocked = set(self.blocked)
+        for g, sited in self._gate_sites(zone, aim, gate_ident):
+            for keep_doorstep in (True, False):
+                if self._commit_gate(gate_ident, g, sited.cells, sited.interactive):
+                    doorstep = self._doorstep(zone.ts, sited.interactive, frozenset())
+                    self._seal(zone, sited, doorstep if keep_doorstep else frozenset())
+                    if self._finish(zone, sited) and self._doorstep(
+                        zone.ts, sited.interactive, frozenset()
+                    ):
+                        return sited
+                self.cover.rollback(mark)
+                del self.objs[n0:]
+                self.blocked = set(blocked)
+        return None
 
     def _site_monolith(self, zone: _LootZone, mono_ident: Identity) -> tuple[Tile, _Sited] | None:
         walkable = zone.ts - self.blocked
@@ -510,10 +584,10 @@ class GatedPlacer:
         if not place_one(self._target(zone), spec, *int_t):
             return False
         self.blocked |= FP.blocking_cells(self.objs[n0:])
-        self._seal(zone, sited)
+        self._seal(zone, sited, frozenset())
         if not self._finish(zone, sited):
             return False
-        if not self._place_ext_partner(zone.zid, spot, mono_ident, Purpose.TRANSPORT):
+        if not self._place_ext_partner(zone.zid, zone.ext_pools, mono_ident, Purpose.TRANSPORT):
             return False
         self.mono_count += 1
         self._record_access(zone.zid, sited)
@@ -539,11 +613,12 @@ class GatedPlacer:
         self.objs.append(o)
         return True
 
-    def _seal(self, zone: _LootZone, sited: _Sited) -> None:
+    def _seal(self, zone: _LootZone, sited: _Sited, doorstep: AbstractSet[Tile]) -> None:
         footprint = {(cx, cy) for cx, cy, _b in sited.cells}
         corridor = find_entry_corridor(sited.entry, sited.cells, zone.ts, self.all_ts)
         self._seal_all_passages(zone, sited.interactive | footprint | corridor)
-        self._close_stray_leaks(zone, sited.interactive, footprint | corridor | {sited.entry})
+        keep = footprint | corridor | {sited.entry}
+        self._close_stray_leaks(zone, sited.interactive, keep, doorstep)
 
     def _seal_all_passages(self, zone: _LootZone, skip: AbstractSet[Tile]) -> None:
         ext_ts = self.all_ts - zone.ts
@@ -553,16 +628,27 @@ class GatedPlacer:
             if any(nb in ext_ts for nb in _nbs(t)):
                 _ = self._seal_tile(t, zone.terrain, zone.rng)
 
-    def _close_leak(self, zone: _LootZone, t: Tile, nb: Tile, keep: AbstractSet[Tile]) -> bool:
+    def _close_leak(
+        self,
+        zone: _LootZone,
+        t: Tile,
+        nb: Tile,
+        keep: AbstractSet[Tile],
+        doorstep: AbstractSet[Tile],
+    ) -> bool:
         nb_zr = self.zone_of.get(nb)
-        if nb_zr is not None and nb not in self.cover.claims:
+        if nb_zr is not None and nb not in self.cover.claims and nb not in doorstep:
             _ = self._seal_tile(nb, nb_zr.terrain, zone.rng)
         if nb in self.blocked or t in keep or t in self.cover.claims:
             return False
         return self._seal_tile(t, zone.terrain, zone.rng)
 
     def _close_stray_leaks(
-        self, zone: _LootZone, interactive: AbstractSet[Tile], keep: AbstractSet[Tile]
+        self,
+        zone: _LootZone,
+        interactive: AbstractSet[Tile],
+        keep: AbstractSet[Tile],
+        doorstep: AbstractSet[Tile],
     ) -> None:
         ext_ts = self.all_ts - zone.ts
         for t in sorted(zone.ts):
@@ -571,44 +657,52 @@ class GatedPlacer:
             for nb in _nbs(t):
                 if nb not in ext_ts or nb in self.blocked:
                     continue
-                if self._close_leak(zone, t, nb, keep):
+                if self._close_leak(zone, t, nb, keep, doorstep):
                     break
 
     def _finish(self, zone: _LootZone, sited: _Sited) -> bool:
         walkable = (self.all_ts - self.blocked) - sited.interactive
         return _reach8({sited.entry}, walkable) <= zone.ts
 
-    def _place_ext_partner(self, zid: int, spot: _Spot, ident: Identity, purpose: str) -> bool:
-        ext_zr, ext_t = spot
+    def _place_ext_partner(
+        self, zid: int, pools: Iterable[Sequence[ZoneRecord]], ident: Identity, purpose: str
+    ) -> bool:
         ext_rng = random.Random(self.seed ^ (zid * 131071) ^ 0xCEBF)
-        target = PlaceTarget(
-            self.catalog,
-            self.objs,
-            self.cover,
-            ext_zr.reach,
-            ext_rng,
-            self.gameplay[ext_zr.terrain],
-            bounds=self.bounds,
-        )
-        n0 = len(self.objs)
+        gident = self.catalog.guard(self.guard.level(ext_rng, zid))
         spec = PlaceSpec(purpose, None, ident=ident)
-        if not place_one(target, spec, *ext_t) and not any(
-            place_one(target, spec, *t) for t in sorted(ext_zr.reach - self.cover.claims)
-        ):
-            return False
-        self.n_placed += 1
-        self.placed_ext_tiles.append(ext_t)
-        gident = self.catalog.guard(7)
-        for clear_of in (FP.decor_blocking_cells(self.objs), None):
-            if _try_guard_ring(
-                ext_zr,
-                ext_t,
-                target,
-                PlaceSpec(Purpose.GUARD, None, ident=gident, clear_of=clear_of),
-            ):
-                break
-        self.blocked |= FP.blocking_cells(self.objs[n0:])
-        return True
+        mark = self.cover.mark()
+        n0 = len(self.objs)
+        for ext_zr, ext_t in self._ext_spots(ident, pools):
+            target = PlaceTarget(
+                self.catalog,
+                self.objs,
+                self.cover,
+                ext_zr.reach,
+                ext_rng,
+                self.gameplay[ext_zr.terrain],
+                bounds=self.bounds,
+            )
+            if place_one(target, spec, *ext_t) and self._guard_partner(ext_zr, target, n0, gident):
+                self.n_placed += 1
+                self.placed_ext_tiles.append(ext_t)
+                self.blocked |= FP.blocking_cells(self.objs[n0:])
+                return True
+            self.cover.rollback(mark)
+            del self.objs[n0:]
+        return False
+
+    def _guard_partner(
+        self, ext_zr: ZoneRecord, target: PlaceTarget, n0: int, gident: Identity
+    ) -> bool:
+        partner = self.objs[n0]
+        visit = FP.interactive_cells(partner.footprint, partner.x, partner.y)
+        return any(
+            _try_guard_ring(
+                ext_zr, t, target, PlaceSpec(Purpose.GUARD, None, ident=gident, clear_of=clear_of)
+            )
+            for clear_of in (FP.decor_blocking_cells(self.objs), None)
+            for t in visit
+        )
 
 
 def place_gated_zones(

@@ -3,9 +3,10 @@ shortest walk to a goal. A flood fill over tiles in the core goes through here. 
 with its own stop rule, or one over a grid-indexed label array, keeps its own loop."""
 
 import collections
-from collections.abc import Container, Iterable, Sequence
+from collections.abc import Container, Iterable, Mapping, Sequence
 
 from vcmi_mapgen.core.model import Tile
+from vcmi_mapgen.core.model.terrain import Terrain
 
 type Steps = Sequence[tuple[int, int]]
 
@@ -71,3 +72,37 @@ def entry_reach(passable: Container[Tile], entry: Tile) -> set[Tile]:
     if entry not in passable:
         out.discard(entry)
     return out
+
+
+def land_reach(
+    grids: Mapping[int, Sequence[Sequence[int]]],
+    gate_xy: Container[Tile],
+    starts: Iterable[tuple[int, Tile]],
+) -> set[tuple[int, int, int]]:
+    """The ``(x, y, level)`` land tiles a hero reaches on foot from ``starts`` when every
+    object is ignored, crossing between levels at the subterranean gates in ``gate_xy``. A
+    place this leaves out is cut off by water or rock, not by vegetation."""
+    reached: set[tuple[int, int, int]] = set()
+    for lvl, (sx, sy) in starts:
+        if grids.get(lvl) is not None and Terrain(grids[lvl][sy][sx]).is_land:
+            reached.add((sx, sy, lvl))
+    q = collections.deque(reached)
+    while q:
+        x, y, lvl = q.popleft()
+        if (x, y) in gate_xy:
+            for l2, g2 in grids.items():
+                if l2 != lvl and Terrain(g2[y][x]).is_land and (x, y, l2) not in reached:
+                    reached.add((x, y, l2))
+                    q.append((x, y, l2))
+        grid = grids[lvl]
+        for dx, dy in STEPS4:
+            nx, ny = x + dx, y + dy
+            if (
+                0 <= ny < len(grid)
+                and 0 <= nx < len(grid[0])
+                and Terrain(grid[ny][nx]).is_land
+                and (nx, ny, lvl) not in reached
+            ):
+                reached.add((nx, ny, lvl))
+                q.append((nx, ny, lvl))
+    return reached

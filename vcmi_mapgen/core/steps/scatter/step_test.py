@@ -5,9 +5,10 @@ import contextlib
 import io
 from typing import final
 
-from vcmi_mapgen.core.catalog import ArtifactTier, ObjectSpec, Trait
+from vcmi_mapgen.core.catalog import Crossing, HeroPace, ObjectSpec, Trait
 from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Footprint, Identity, MapState, Role, Zone
+from vcmi_mapgen.core.model.artifact import ArtifactSet, ArtifactTier
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import ProviderRegistry
@@ -76,6 +77,14 @@ class FakeCatalog:
         self.asked.append(("artifacts", tier))
         return []
 
+    def artifact_sets(self) -> list[ArtifactSet]:
+        self.asked.append(("artifact_sets",))
+        return []
+
+    def artifact(self, name: str) -> Identity | None:
+        self.asked.append(("artifact", name))
+        return None
+
     def monsters(self, level: int) -> list[str]:
         self.asked.append(("monsters", str(level)))
         return []
@@ -83,6 +92,10 @@ class FakeCatalog:
     def _role(self, *asked: str) -> Identity:
         self.asked.append(asked)
         return Identity("fakeRandom", None, "_".join(("fake", *asked)), Footprint.one(Role.VISIT))
+
+    def creature_level(self, kind: str) -> int | None:
+        self.asked.append(("creature_level", kind))
+        return None
 
     def guard(self, level: int) -> Identity:
         return self._role("guard", str(level))
@@ -118,6 +131,14 @@ class FakeCatalog:
     def thin_terrains(self) -> frozenset[Terrain]:
         self.asked.append(("thin_terrains",))
         return frozenset()
+
+    def crossing(self, kind: str) -> tuple[Crossing, int] | None:
+        self.asked.append(("crossing", kind))
+        return None
+
+    def pace(self) -> HeroPace:
+        self.asked.append(("pace",))
+        return HeroPace(land=1500, sea=1500, cost={})
 
 
 def test_scatter_step_places_only_what_the_fake_catalog_offers(priors: Priors) -> None:

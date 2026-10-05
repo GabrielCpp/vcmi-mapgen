@@ -7,7 +7,8 @@ from the editor table `objects.txt`.
 
 ## Map
 
-- `adapter.py`: `VcmiCatalog`, the production implementation of the core's `Catalog` port. The pipeline hands it to every step, and its methods delegate to `objects` and `decor`. It also answers the role queries: guards, random artifacts, towns, dwellings and resources, portals, border gates, the subterranean gate, quest givers and spell scrolls. `types_with` answers which object types carry a core `Trait`.
+- `adapter.py`: `VcmiCatalog`, the production implementation of the core's `Catalog` port. The pipeline hands it to every step, and its methods delegate to `objects` and `decor`. It also answers the role queries: guards, random artifacts, towns, dwellings and resources, portals, border gates, the subterranean gate, quest givers and spell scrolls. `types_with` answers which object types carry a core `Trait`. It takes an `EnabledSet` and drops every object, artifact, spell, creature and set it bans. With nothing banned every pool is the unfiltered one. It also takes the `ModContent` of the enabled mods: a mod object answers `identity_of`, `spec` and `allowed_on`, and joins `candidates` after the base game's pool for its purpose.
+- `adapter_test.py`: the ban filter and mod object tests.
 - `decor.py`: decoration pools, vegetation categories, `pick`, `decode_identity` and the category by terrain matrix.
 - `objects.py`: the per-object queries: `identity_of`, `mask_of`, `is_blocking`, `terrains_of`, `purpose_of_type`, the gameplay pools and the monster, spell and artifact accessors.
 - `objects_test.py`: the catalog tests.

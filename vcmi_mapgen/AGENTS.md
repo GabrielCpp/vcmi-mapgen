@@ -95,6 +95,8 @@
   that every DEF format decodes to its header size with content, and that known object
   sprites decode.
 - `renderers/sprites.py` composites real 32px H3 sprites from the local LOD files.
+  With mods enabled, `vcmi/content/sprites.py` `SpriteSource` reads a sprite the base
+  game lacks from each mod's `sprites` folder.
   `renderers/sprites_test.py` checks that every terrain tile decodes, the decode
   coverage across corpus sprites, and that rendering is deterministic.
 - All of these tests skip when the H3 LOD files are absent.

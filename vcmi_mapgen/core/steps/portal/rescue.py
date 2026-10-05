@@ -1,22 +1,22 @@
 """Portal rescue of unreachable zones and the target reachability check."""
 
-import collections
+import random
 from collections.abc import Container, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import centre_key
-from vcmi_mapgen.core.grid.reach import STEPS8, reach
+from vcmi_mapgen.core.grid.reach import STEPS8, land_reach, reach
 from vcmi_mapgen.core.model import CoverIndex, Guard, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.guards import GAP, Clearance, Fit, fits
+from vcmi_mapgen.core.planning.guarding import PrizeGuard
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord, bare_record
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
-from vcmi_mapgen.core.steps.portal.reward_zone import RewardSite, place_reward_zone
 
 MIN_AREA = 25  # matches GameplayStep's own zone floor
 
@@ -85,6 +85,7 @@ class PortalWorld:
     zone_records_by_level: Mapping[int, Sequence[ZoneRecord]]
     covers: Mapping[int, CoverIndex]
     gameplay: GameplayStats
+    guards: Mapping[int, PrizeGuard] = field(default_factory=dict[int, PrizeGuard])
 
 
 def check_reach(world: PortalWorld) -> None:
@@ -137,95 +138,59 @@ def _level_state(objs: Sequence[PlacedObject], targets: Sequence[Tile]) -> _Leve
     )
 
 
-def _terrain_reach(
-    grids: Mapping[int, Sequence[Sequence[int]]],
-    gate_xy: Container[Tile],
-    start: tuple[int, Tile],
-) -> set[tuple[int, int, int]]:
-    """BFS over LAND TERRAIN ONLY (objects deliberately ignored: an area merely sealed by
-    vegetation is g2-repairable and NOT a portal candidate — only water/rock enclosure is
-    truly unreachable), teleporting across subterranean-gate coordinates the way
-    `traverse._gate_links` pairs them. Returns the reached (x, y, level) set."""
-    lvl0, (sx, sy) = start
-    reached: set[tuple[int, int, int]] = set()
-    if grids.get(lvl0) is not None and Terrain(grids[lvl0][sy][sx]).is_land:
-        reached = {(sx, sy, lvl0)}
-    q = collections.deque(reached)
-    H = len(grids[lvl0])
-    W = len(grids[lvl0][0])
-    while q:
-        x, y, lvl = q.popleft()
-        if (x, y) in gate_xy:
-            for l2, g2 in grids.items():
-                if l2 != lvl and Terrain(g2[y][x]).is_land and (x, y, l2) not in reached:
-                    reached.add((x, y, l2))
-                    q.append((x, y, l2))
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            nx, ny = x + dx, y + dy
-            if (
-                0 <= nx < W
-                and 0 <= ny < H
-                and Terrain(grids[lvl][ny][nx]).is_land
-                and (nx, ny, lvl) not in reached
-            ):
-                reached.add((nx, ny, lvl))
-                q.append((nx, ny, lvl))
-    return reached
+@dataclass(frozen=True, slots=True)
+class Rescued:
+    """A zone a portal pair now opens: its level, its record and the tile a hero steps onto
+    when the far portal lands it there."""
+
+    level: int
+    record: ZoneRecord
+    entry: Tile
+
+
+@dataclass(frozen=True, slots=True)
+class Departure:
+    """Where the rescue walks from: the start tile with its level, the open gate tiles a hero
+    passes, and the zones an earlier step already priced, as (level, zone id)."""
+
+    start: tuple[int, Tile]
+    gate_xy: Container[Tile] = frozenset[Tile]()
+    priced: Container[tuple[int, int]] = ()
 
 
 def rescue_unreachable_zones(
-    catalog: Catalog,
-    world: PortalWorld,
-    start: tuple[int, Tile],
-    gate_xy: Container[Tile],
-    seed: int,
-) -> int:
-    """Unreachable zones become SPECIAL REWARD zones behind a guarded portal (user-mandated:
-    a portal makes a zone special) instead of dead map area. For every land zone no walking
-    path from the start town can reach (terrain-level BFS — vegetation ignored, coastal L0
-    zones exempt as boat-reachable, same policy as g2), place a two-way monolith pair: the
-    FAR end inside the zone (nearest-to-centroid legal tile), the NEAR end in the closest
-    reachable zone on the same level (pushed toward that zone's outskirts — descending
-    distance-to-town, matching the corpus value-outward gradient) with a hostile guard
-    adjacent to it, then upgrade the zone's loot via `place_reward_zone`.
+    catalog: Catalog, world: PortalWorld, departure: Departure, seed: int
+) -> list[Rescued]:
+    """Unreachable zones become portal places instead of dead map area. Every land zone no
+    walking path from the start town reaches, and no earlier step priced, gets a two-way
+    monolith pair: the far end inside the zone on the legal tile nearest its centroid, the
+    near end in the closest reachable zone on the same level, pushed toward that zone's
+    outskirts, with a hostile guard beside it. The portal
+    approaches land in ``targets``. Mutates ``objs_by_level``, ``targets_by_level`` and
+    ``covers`` in place, and returns every rescued zone for its prizes."""
 
-    Runs AFTER both levels' zone passes and BEFORE the per-level repair/finish pass: the
-    portal approaches and rewards land in `targets`, so `fill_open_islands` sees the zone's
-    open component as target-holding and leaves it alone (previously it was blindly filled
-    with decoration), and `traverse`'s monolith-network links count it reachable. Mutates
-    `objs_by_level`/`targets_by_level`/`covers` in place; returns the pair count."""
-
-    reached = _terrain_reach(world.grids, gate_xy, start)
-    cands = _candidates(catalog, world, reached)
+    reached = land_reach(world.grids, departure.gate_xy, [departure.start])
+    cands = _candidates(catalog, world, reached, departure.priced)
     if not cands:
-        return 0
+        return []
     return _PortalRescue(catalog, world, reached, seed).run(cands)
 
 
-def _is_coastal(grid: Sequence[Sequence[int]], ts: set[Tile], size: int) -> bool:
-    W = H = size
-    return any(
-        0 <= x + dx < W and 0 <= y + dy < H and grid[y + dy][x + dx] == Terrain.WATER
-        for (x, y) in ts
-        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
-    )
-
-
 def _candidates(
-    catalog: Catalog, world: PortalWorld, reached: Container[tuple[int, int, int]]
+    catalog: Catalog,
+    world: PortalWorld,
+    reached: Container[tuple[int, int, int]],
+    priced: Container[tuple[int, int]],
 ) -> list[tuple[int, int, int, str]]:
     cands: list[tuple[int, int, int, str]] = []
     for lvl in sorted(world.zones_by_level):
-        grid = world.grids[lvl]
         for zid, z in sorted(world.zones_by_level[lvl].items()):
             if z.terrain_type.is_barrier or z.area < PORTAL_MIN_AREA:
                 continue
             terrain = catalog.terrain_name(z.terrain_type)
             ts = set(z.tiles_set)
-            if any((x, y, lvl) in reached for (x, y) in ts):
+            if (lvl, zid) in priced or any((x, y, lvl) in reached for (x, y) in ts):
                 continue
-            if lvl == 0 and _is_coastal(grid, ts, world.size):
-                continue  # coastal: boat-reachable by design
             cands.append((-z.area, lvl, zid, terrain))
     cands.sort()
     return cands
@@ -304,9 +269,9 @@ class _PortalRescue:
                 return g
         return None
 
-    def run(self, cands: Sequence[tuple[int, int, int, str]]) -> int:
+    def run(self, cands: Sequence[tuple[int, int, int, str]]) -> list[Rescued]:
         n_placed = 0
-        rescued: list[str] = []
+        rescued: list[Rescued] = []
         for _na, lvl, zid, terrain in cands:
             if n_placed >= MAX_PORTALS:
                 print(
@@ -314,25 +279,28 @@ class _PortalRescue:
                     + f"{len(cands) - n_placed} unreachable zone(s) left decoration-filled"
                 )
                 break
-            label = self._rescue(lvl, zid, terrain, n_placed)
-            if label is None:
+            found = self._rescue(lvl, zid, terrain, n_placed)
+            if found is None:
                 continue
             n_placed += 1
-            rescued.append(label)
-
-        if n_placed:
-            print(
-                f"  special reward zones: {n_placed} rescued via guarded portals "
-                + f"[{', '.join(rescued)}]"
-            )
-        return n_placed
+            rescued.append(found)
+        return rescued
 
     def _far_end(self, zone: _Enclave, ident: Identity) -> tuple[Tile, Fit] | None:
+        """The far portal's anchor: spaced from every gameplay object when the zone has room,
+        else on any free ground whose approach joins the zone's walkable web."""
         st = self.state[zone.lvl]
-        for t in sorted(zone.ts, key=partial(centre_key, cx=zone.cx, cy=zone.cy)):
-            fit = fits(ident, t, zone.ts, Clearance(st.occupied, st.near, st.reserved))
-            if fit and self.cover_by[zone.lvl].accepts(_portal_end(zone.lvl, ident, t)):
-                return t, fit
+        order = sorted(zone.ts, key=partial(centre_key, cx=zone.cx, cy=zone.cy))
+        web = self._record(zone).passable
+        spaced = Clearance(st.occupied, st.near, st.reserved)
+        crowded = Clearance(st.occupied, st.occupied, st.reserved)
+        for clear, joins in ((spaced, None), (crowded, web)):
+            for t in order:
+                fit = fits(ident, t, zone.ts, clear)
+                if not fit or (joins is not None and fit[2] not in joins):
+                    continue
+                if self.cover_by[zone.lvl].accepts(_portal_end(zone.lvl, ident, t)):
+                    return t, fit
         return None
 
     def _hosts(self, zone: _Enclave) -> list[tuple[float, int, int]]:
@@ -385,31 +353,14 @@ class _PortalRescue:
                 return near
         return None
 
-    def _reward(self, zone: _Enclave, far_fit: Fit, far_appr: Tile) -> int:
-        lvl = zone.lvl
-        st = self.state[lvl]
-        W = H = self.world.size
-        # the reward upgrade: the portal makes the zone special
-        zr = self.zr_by[lvl].get(zone.zid)
-        if zr is None:  # zone skipped by the level pass (bare
-            free = frozenset(zone.ts) - st.occupied  # terrain): synth a minimal record
-            zr = bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
-        self.cover_by[lvl].claim((*far_fit[1], far_appr))  # the monolith's visit tile
-        robjs = place_reward_zone(
-            self.catalog,
-            RewardSite(zr, far_appr, self.cover_by[lvl], self.world.gameplay[zr.terrain], (W, H)),
-            seed=self.seed,
-        )
-        for o in robjs:
-            o.level = lvl
-        self.world.objs_by_level[lvl].extend(robjs)
-        self.world.targets_by_level[lvl].extend((o.x, o.y) for o in robjs)
-        st.occupied.update(
-            (cx2, cy2) for o in robjs for cx2, cy2, _b in FP.anchored_cells(o.footprint, o.x, o.y)
-        )
-        return len(robjs)
+    def _record(self, zone: _Enclave) -> ZoneRecord:
+        zr = self.zr_by[zone.lvl].get(zone.zid)
+        if zr is not None:
+            return zr
+        free = frozenset(zone.ts) - self.state[zone.lvl].occupied
+        return bare_record(zone.zid, zone.terrain, frozenset(zone.ts), free)
 
-    def _rescue(self, lvl: int, zid: int, terrain: str, n_placed: int) -> str | None:
+    def _rescue(self, lvl: int, zid: int, terrain: str, n_placed: int) -> Rescued | None:
         z = self.world.zones_by_level[lvl][zid]
         ts = set(z.tiles_set)
         st = self.state[lvl]
@@ -425,7 +376,9 @@ class _PortalRescue:
 
         hosts = self._hosts(zone)
 
-        gident = self.catalog.guard(min(7, 4 + len(ts) // 60))
+        guard_rng = random.Random(self.seed ^ (lvl * 7919) ^ (zid * 104729) ^ 0x6A4D)
+        prize_guard = self.world.guards.get(lvl, PrizeGuard())
+        gident = self.catalog.guard(prize_guard.level(guard_rng, zid))
         near = self._near_end(zone, ident, gident, hosts)
         if near is None:
             return None
@@ -445,5 +398,5 @@ class _PortalRescue:
         self.world.objs_by_level[lvl].append(guard)
         st.occupied.add(gtile)
 
-        n_robjs = self._reward(zone, far_fit, far_appr)
-        return f"L{lvl}z{zid}({len(ts)}t,{n_robjs}obj)"
+        self.cover_by[lvl].claim((*far_fit[1], far_appr))
+        return Rescued(lvl, self._record(zone), far_appr)

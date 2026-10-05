@@ -4,9 +4,15 @@ classes, the portals, the border gate colours, the subterranean gate and the spe
 `RANDOM_MONSTERS` and `RANDOM_DWELLINGS` are indexed by level 1..7. `PORTALS` are walk-on
 two-way monoliths with no blocking cells, subtypes monolith1..4. Both ends of a pair share
 the animation. Heroes III networks every end of one subtype, so a fifth portal joins an
-existing network and stays reachable. `SUBTERRANEAN_GATE` has one un-suffixed sprite."""
+existing network and stays reachable. `SUBTERRANEAN_GATE` has one un-suffixed sprite.
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Trait
+`CROSSINGS` names the object types a route passes through rather than around. A teleport's
+channel also carries its class, so a whirlpool never pairs with a monolith.
+`MONSTER_LEVELS` gives the level of each random monster class, and `MONSTER_TYPE` is the
+class of a fixed stack."""
+
+from vcmi_mapgen.core.catalog import Crossing, Trait
+from vcmi_mapgen.core.model.artifact import ArtifactTier
 
 RANDOM_MONSTERS = tuple(f"avwmon{i}" for i in range(1, 8))
 RANDOM_ARTIFACT_BY_TIER: dict[ArtifactTier, str] = {
@@ -22,6 +28,20 @@ RANDOM_DWELLINGS = tuple(f"avrcgen{i}" for i in range(1, 8))
 PORTALS = ("avxmn2g0", "avxmn2o0", "avxmn2p0", "avxmn4b0")
 BORDER_GATES = tuple((f"avxbgt{i}0", f"avxkey{i}0") for i in range(8))
 SUBTERRANEAN_GATE = "avtcave"
+CROSSINGS: dict[str, Crossing] = {
+    "borderGate": Crossing.GATE,
+    "borderGuard": Crossing.GATE,
+    "keymasterTent": Crossing.TENT,
+    "monolithTwoWay": Crossing.TELEPORT,
+    "whirlpool": Crossing.TELEPORT,
+    "monolithOneWayEntrance": Crossing.ONE_WAY_IN,
+    "monolithOneWayExit": Crossing.ONE_WAY_OUT,
+    "subterraneanGate": Crossing.UNDERGROUND,
+    "shipyard": Crossing.SHIPYARD,
+    "boat": Crossing.BOAT,
+}
+MONSTER_TYPE = "monster"
+MONSTER_LEVELS: dict[str, int] = {f"randomMonsterLevel{lv}": lv for lv in range(1, 8)}
 SPELL_SCROLL = "ava0001"
 QUEST_GIVER_TYPE = "seerHut"
 ABANDONED_MINES = frozenset({"abandoned", "mine"})

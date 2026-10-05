@@ -27,7 +27,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     `steps.py` `build_steps` builds the pipeline. The corpus and report tools sit beside
     them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
     `readings.py`, which prints the map-math 8 readings per terrain model beside the
-    corpus spread.
+    corpus spread, and `effort_report.py`, which prints each gated place's hero-days,
+    band and top prize.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
     - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
     - `catalog.py`: the `Catalog` port, the only way the core learns about objects.
@@ -43,19 +44,23 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     - `planning/`: the zone plan `VegetationStep` starts from (`zone_plan.py`), the entrance
       geometry (`entrances.py`), the one `ZoneRecord` per zone (`zone_index.py`) and the
       content intent per place, its role, hop from home, reward and guard level
-      (`content.py`).
+      (`content.py`), and the guard level in front of each prize in a cut-off place
+      (`guarding.py`).
     - `reading/`: the place reader both sides share. It infers places from a corpus or a
       generated map (`ground.py`, `places.py`), and measures them: borders, palettes
       (`palette.py`), content by role and hop (`content.py`), object value and guard
       level (`value.py`), roads, and one map's reading vector with the switch rule
-      (`vector.py`, `verdict.py`).
+      (`vector.py`, `verdict.py`). It also routes a hero over a map (`routes.py`) and
+      prices each tile in hero-days from the nearest home (`effort.py`).
     - `steps/terrain_gen/`: the terrain models. `places` is the default: it lays out a
       place graph and paints each place. `markov` paints terrain from corpus transitions
       and floods it into places. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production
-    `Catalog`, with its tables in `data/catalog/`. `formats/` reads and writes `.h3m`,
+    `Catalog`, with its tables in `data/catalog/`. `content/` resolves the enabled mods
+    and the banned names the catalog filters by. It also reads each enabled mod's
+    objects and sprites, and the header's list of the mods a map needs. `formats/` reads and writes `.h3m`,
     `.vmap`, LOD and DEF files. `tiles.py` autotiles terrain, `export.py` and `players.py`
     build a playable map, `load.py` `load_map` reads a `.vmap` back into a `MapState`
     with its roads, and
@@ -83,6 +88,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --subterrain --stop-after vegetation
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --terrain markov --stop-after roads
+uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --mods hota --ban pandoraBox angel
 uv run python -m vcmi_mapgen.cli render-vegetation --seeds 1 2 3 --vegetation field
 uv run python -m vcmi_mapgen.cli render-ontology
 uv run python -m vcmi_mapgen.cli regen-ontology
@@ -90,6 +96,7 @@ uv run python -m vcmi_mapgen.cli audit
 uv run python -m vcmi_mapgen.cli extract-vmap
 uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
 uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
+uv run python -m vcmi_mapgen.cli effort-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 make check
 make golden
 ```

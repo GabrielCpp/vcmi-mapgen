@@ -10,7 +10,7 @@ from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
-from vcmi_mapgen.core.placement.rewards import seerhut_quest
+from vcmi_mapgen.core.placement.rewards import creatures_of, seerhut_quest
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
 
@@ -126,6 +126,12 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     return True
 
 
+def set_artifacts(catalog: Catalog) -> set[str]:
+    """Every combined artifact and every part of one. The sets step deals them whole, so no
+    quest asks for one."""
+    return {n for s in catalog.artifact_sets() for n in (s.name, *s.parts)}
+
+
 def _pick_art_zone(
     env: _QuestEnv, rng: random.Random, art_zr_order: Sequence[ZoneRecord]
 ) -> tuple[ZoneRecord, Identity] | tuple[None, None]:
@@ -171,7 +177,7 @@ def _place_hut(
     st_hut = env.gameplay[hut_zr.terrain]
     hut_cands = sorted(hut_zr.reach - env.cover.claims)
     rng.shuffle(hut_cands)
-    quest = seerhut_quest(rng, art_subtype)
+    quest = seerhut_quest(rng, art_subtype, creatures_of(env.catalog))
     target = PlaceTarget(
         env.catalog, env.objs, env.cover, hut_zr.reach, rng, st_hut, bounds=env.bounds
     )

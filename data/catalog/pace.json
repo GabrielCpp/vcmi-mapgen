@@ -1,0 +1,15 @@
+{
+ "land": 1500,
+ "sea": 1500,
+ "cost": {
+  "dirt": 100,
+  "sand": 150,
+  "grass": 100,
+  "snow": 150,
+  "swamp": 175,
+  "rough": 125,
+  "subterr": 100,
+  "lava": 100,
+  "water": 100
+ }
+}

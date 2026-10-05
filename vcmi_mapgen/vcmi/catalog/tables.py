@@ -38,7 +38,7 @@ import json
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
 from vcmi_mapgen.vcmi.footprint import Mask
 
@@ -111,6 +111,54 @@ def spell_levels() -> dict[str, int]:
 @cache
 def artifact_tiers() -> dict[str, str]:
     return _load_json(DATA_DIR / "artifact_tiers.json", dict[str, str])
+
+
+class SetTable(TypedDict):
+    parts: list[str]
+    water: bool
+
+
+@cache
+def artifact_sets() -> dict[str, SetTable]:
+    """Each combined artifact's parts, hand-extracted from VCMI's `artifacts.json`
+    (`components`). `water` marks a set VCMI places only on a map with water."""
+    return _load_json(DATA_DIR / "artifact_sets.json", dict[str, SetTable])
+
+
+class PaceTable(TypedDict):
+    land: int
+    sea: int
+    cost: dict[str, int]
+
+
+@cache
+def hero_pace() -> PaceTable:
+    """The slowest starting hero's movement, hand-extracted from VCMI's `gameConfig.json`
+    (`movementPointsLand`, `movementPointsSea`) and `terrains.json` (`moveCost`)."""
+    return _load_json(DATA_DIR / "pace.json", PaceTable)
+
+
+class ModPurposeTable(TypedDict):
+    handlers: dict[str, str]
+    rewards: list[tuple[str, str]]
+    joins: list[str]
+
+
+@cache
+def mod_purposes() -> ModPurposeTable:
+    """How a mod object's config gives its purpose: the purpose per VCMI handler, the
+    purpose per reward key for a rewardable handler in the order the keys are tried, and
+    the purposes a mod object may be placed for."""
+    return _load_json(DATA_DIR / "mod_purposes.json", ModPurposeTable)
+
+
+@cache
+def vcmi_class_types() -> dict[int, str]:
+    """Class id to its VCMI object type, the first type named for it."""
+    out: dict[int, str] = {}
+    for name, cid in vcmi_type_classes().items():
+        _ = out.setdefault(cid, name)
+    return out
 
 
 # ---- canonical subtype tables (verified vs corpus subclass distributions) ----

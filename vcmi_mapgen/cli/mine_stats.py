@@ -6,11 +6,13 @@ from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.priors.markov import MarkovTables
+from vcmi_mapgen.corpus.effort import save_effort, tuned_effort
 from vcmi_mapgen.corpus.gameplay import save_gameplay
 from vcmi_mapgen.corpus.gates import save_gate_stats
 from vcmi_mapgen.corpus.macro import save_macro
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.markov import save_inside, save_tables
+from vcmi_mapgen.corpus.mine.effort import mine_effort
 from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
 from vcmi_mapgen.corpus.mine.macro import mine_macro
@@ -79,6 +81,11 @@ def _markov_places(m: MineInput) -> None:
         save_inside(m.pp_dir, level, learn_inside(level, m.maps, labels))
 
 
+def _effort(m: MineInput) -> None:
+    owners = [map_players(m.h3m_dir, name).owners for name in m.names]
+    save_effort(m.pp_dir, mine_effort(m.catalog, m.maps, owners, tuned_effort(m.pp_dir)))
+
+
 MINERS: dict[str, Callable[[MineInput], None]] = {
     "macro": _macro,
     "markov": _markov,
@@ -88,6 +95,7 @@ MINERS: dict[str, Callable[[MineInput], None]] = {
     "vegetation": _vegetation,
     "places": _places,
     "markov_places": _markov_places,
+    "effort": _effort,
 }
 
 

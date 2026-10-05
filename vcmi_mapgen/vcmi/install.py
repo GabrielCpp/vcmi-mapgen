@@ -16,6 +16,10 @@ class VcmiInstall:
     data_dir: Path
     config_dirs: tuple[Path, ...]
 
+    @property
+    def mods_dir(self) -> Path:
+        return self.home / "Mods"
+
 
 class InstallNotFoundError(RuntimeError):
     pass

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from functools import cache
 
 from vcmi_mapgen.core.model import Identity
+from vcmi_mapgen.core.model.artifact import ArtifactSet
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.vcmi import terrain as vterrain
 from vcmi_mapgen.vcmi.catalog.tables import (
@@ -25,12 +26,14 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     TERRAIN_COUPLED,
     ClassInfo,
     Taxonomy,
+    artifact_sets,
     artifact_tiers,
     class_names,
     leaf_meta,
     monster_levels,
     spell_levels,
     taxonomy,
+    vcmi_class_types,
     vcmi_type_classes,
 )
 from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, VcmiConfig
@@ -186,6 +189,15 @@ def cls_sub_of(animation: str) -> tuple[int, int] | tuple[None, None]:
     return (m.cls, m.sub) if m else (None, None)
 
 
+def static_type(animation: str) -> tuple[str | None, int | None, int | None]:
+    """The VCMI type, class id and subtype id of an animation, read from the checked-in
+    tables alone, so the answer holds with no VCMI install."""
+    cls, sub = cls_sub_of(animation)
+    if cls is None:
+        return None, None, None
+    return vcmi_class_types().get(cls), cls, sub
+
+
 def is_blocking(animation: str) -> bool:
     """True if the object's footprint blocks movement (its mask has a 'B' or 'X' cell)."""
     return any(ch in "BX" for row in mask_of(animation) for ch in row)
@@ -321,3 +333,24 @@ def purpose_of_type(type_name: str | None) -> Purpose | None:
     unknown."""
     cid = vcmi_type_classes().get(type_name) if type_name is not None else None
     return None if cid is None else Purpose(resolve(cid, 0).purpose)
+
+
+def artifact_set_table() -> list[ArtifactSet]:
+    """Every combined artifact whose parts all carry a rarity tier, by name."""
+    return [
+        ArtifactSet(name, tuple(row["parts"]), row["water"])
+        for name, row in sorted(artifact_sets().items())
+        if all(artifact_tier(p) for p in row["parts"])
+    ]
+
+
+def artifact_pickup(name: str) -> Identity | None:
+    """The pickup that places the named artifact, or ``None`` when the ontology has none."""
+    for (_terrain, purpose), anims in sorted(indexes().gameplay_by_tp.items()):
+        if purpose != "REWARD_PICKUP":
+            continue
+        for anim in anims:
+            ident = identity_of(anim)
+            if ident.subtype == name and ident.type == "artifact":
+                return ident
+    return None

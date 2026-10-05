@@ -7,9 +7,11 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Scroll, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
+from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.steps.gated.placer import GatedLevel, find_entry_corridor, place_gated_zones
 from vcmi_mapgen.core.steps.treasure.fill import (
     LOOT_HERO_STRUCTURE_MIN_SEP,
@@ -31,13 +33,19 @@ def _place(
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
 ) -> tuple[list[PlacedObject], int, set[int]]:
-    """GatedStep then TreasureStep on one level: the access objects, then the fill."""
+    """GatedStep then TreasureStep on one level: the access objects, then the fill, with each
+    held slot taking its fallback artifact as SetsStep would."""
     objs, n_placed, access, claims = place_gated_zones(catalog, gated, seed=seed, bounds=bounds)
     footprints = {zid: acc.footprint for zid, acc in access.items()}
     objs_all = [*gated.objs, *objs]
-    level = LootLevel(gated.zone_records, footprints, objs_all, gated.gameplay, claims)
-    filled, _claims = fill_loot_zones(catalog, level, seed, bounds)
-    return objs + filled, n_placed, set(access)
+    offers = {zid: EffortPriors().offer(4) for zid in access}
+    level = LootLevel(gated.zone_records, footprints, offers, objs_all, gated.gameplay, claims)
+    fill = fill_loot_zones(catalog, level, seed, bounds)
+    held = [
+        PlacedObject.at(h.fallback, h.tile, purpose=Purpose.REWARD_PICKUP)
+        for h in fill.held.values()
+    ]
+    return objs + fill.objs + held, n_placed, set(access)
 
 
 def _find_leaks(
@@ -262,6 +270,132 @@ def test_a_vegetation_wall_splitting_the_border_disqualifies_the_zone(
     )
     assert n_placed == 0
     assert zids == set()
+
+
+def test_a_zone_opening_onto_two_zones_is_not_a_dead_end(catalog: Catalog, priors: Priors) -> None:
+    ts0 = {(x, y) for x in range(8) for y in range(7)}
+    ts1 = {(x, y) for x in range(4) for y in range(7, 40)}
+    ts2 = {(x, y) for x in range(4, 40) for y in range(7, 40)}
+    zone_records = [_record(0, ts0), _record(1, ts1), _record(2, ts2)]
+    _objs, n_placed, zids = _place(
+        catalog, GatedLevel(zone_records, [], priors.gameplay[0]), seed=1, bounds=_BOUNDS
+    )
+    assert n_placed == 0
+    assert zids == set()
+
+
+def _coast_ground(water: set[Tile]) -> list[list[Terrain]]:
+    w, h = _BOUNDS
+    return [
+        [Terrain.WATER if (x, y) in water else Terrain.GRASS for x in range(w)] for y in range(h)
+    ]
+
+
+def test_a_zone_a_boat_can_land_in_is_never_gated(catalog: Catalog, priors: Priors) -> None:
+    zone_records, objs_existing = _zone_records()
+    ground = _coast_ground({(8, y) for y in range(7)})
+    _objs, n_placed, zids = _place(
+        catalog,
+        GatedLevel(zone_records, objs_existing, priors.gameplay[0], ground=ground),
+        seed=1,
+        bounds=_BOUNDS,
+    )
+    assert n_placed == 0
+    assert zids == set()
+
+
+def test_a_coast_walled_off_by_blocking_objects_keeps_the_zone_gated(
+    catalog: Catalog, priors: Priors
+) -> None:
+    zone_records, _objs_existing = _zone_records()
+    ground = _coast_ground({(8, y) for y in range(7)})
+    wall = [_blocker(7, y) for y in range(7)]
+    _objs, n_placed, zids = _place(
+        catalog,
+        GatedLevel(zone_records, wall, priors.gameplay[0], ground=ground),
+        seed=1,
+        bounds=_BOUNDS,
+    )
+    assert n_placed == 1
+    assert zids == {0}
+
+
+def test_trees_under_the_gate_sprite_top_still_let_the_gate_stand(
+    catalog: Catalog, priors: Priors
+) -> None:
+    zone_records, _objs_existing = _zone_records()
+    ts0 = zone_records[0].ts
+    trees = [_blocker(x, 5) for x in range(1, 8)]
+    gated_seeds = 0
+    for seed in range(1, 11):
+        objs, n_placed, zids = _place(
+            catalog,
+            GatedLevel(zone_records, trees, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
+        )
+        assert n_placed == 1
+        assert zids == {0}
+        gated_seeds += any(
+            o.purpose == Purpose.QUEST_GATE and (o.x, o.y) in ts0 and o.y == 6 for o in objs
+        )
+    assert gated_seeds > 0
+
+
+def _cheb(a: Tile, b: Tile) -> int:
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1]))
+
+
+def test_every_gated_zone_has_a_guarded_partner_and_an_open_step_outside_its_gate(
+    catalog: Catalog, priors: Priors
+) -> None:
+    seen_gate = False
+    for seed in range(1, 20):
+        zone_records, objs_existing = _zone_records()
+        ts0, ts1 = zone_records[0].ts, zone_records[1].ts
+        objs, n_placed, _zids = _place(
+            catalog,
+            GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
+            seed=seed,
+            bounds=_BOUNDS,
+        )
+        assert n_placed == 1
+        access = [o for o in objs if o.purpose in (Purpose.QUEST_GATE, Purpose.TRANSPORT)]
+        partner = next(o for o in access if (o.x, o.y) in ts1)
+        guards = [o for o in objs if o.purpose == Purpose.GUARD]
+        assert any(_cheb((g.x, g.y), (partner.x, partner.y)) <= 1 for g in guards), seed
+        gate = next((o for o in access if (o.x, o.y) in ts0), None)
+        if gate is None or gate.purpose != Purpose.QUEST_GATE:
+            continue
+        seen_gate = True
+        visit = FP.interactive_cells(gate.footprint, gate.x, gate.y)
+        doorstep = {(x + dx, y + dy) for x, y in visit for dx, dy in _DIRS8} & ts1
+        assert doorstep - FP.blocking_cells(objs), seed
+    assert seen_gate
+
+
+def _with_far_zone() -> tuple[list[ZoneRecord], list[PlacedObject], frozenset[Tile]]:
+    zone_records, objs_existing = _zone_records()
+    far = _record(2, {(x, y) for x in range(45, 64) for y in range(64)})
+    reached = zone_records[0].ts | zone_records[1].ts
+    return [*zone_records, far], objs_existing, reached
+
+
+def test_a_partner_stands_only_where_a_home_walks(catalog: Catalog, priors: Priors) -> None:
+    for seed in range(1, 12):
+        zone_records, objs_existing, reached = _with_far_zone()
+        gated = GatedLevel(zone_records, objs_existing, priors.gameplay[0], reached=reached)
+        objs, n_placed, _zids = _place(catalog, gated, seed=seed, bounds=_BOUNDS)
+        assert n_placed == 1
+        far = zone_records[2].ts
+        assert not [o for o in objs if (o.x, o.y) in far], seed
+
+
+def test_a_zone_no_home_walks_to_is_never_sealed(catalog: Catalog, priors: Priors) -> None:
+    zone_records, objs_existing, _reached = _with_far_zone()
+    gated = GatedLevel(zone_records, objs_existing, priors.gameplay[0], reached=zone_records[2].ts)
+    _objs, n_placed, zids = _place(catalog, gated, seed=1, bounds=_BOUNDS)
+    assert n_placed == 0 and zids == set()
 
 
 _ALLOWED_CHEST_TYPES = {"campfire", "treasureChest", "pandoraBox", "scholar", "spellScroll"}

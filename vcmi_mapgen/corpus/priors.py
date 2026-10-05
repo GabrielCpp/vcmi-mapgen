@@ -4,6 +4,7 @@ from pathlib import Path
 
 from vcmi_mapgen.core.grid.pocket_masks import parse_masks
 from vcmi_mapgen.core.priors.bundle import Priors, TerrainPriors
+from vcmi_mapgen.corpus.effort import load_effort
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 from vcmi_mapgen.corpus.gates import load_gate_stats
 from vcmi_mapgen.corpus.macro import load_macro
@@ -15,9 +16,9 @@ LEVELS = (0, 1)
 
 
 def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
-    """The terrain, gameplay and place statistics of both levels, the gate estimator, and the
-    vegetation statistics of every terrain that has them, all read from ``pp_dir``, and the
-    pocket masks drawn in ``pockets_file``."""
+    """The terrain, gameplay and place statistics of both levels, the gate estimator, the
+    vegetation statistics of every terrain that has them and the effort priors, all read
+    from ``pp_dir``, and the pocket masks drawn in ``pockets_file``."""
     return Priors(
         terrain={
             lv: TerrainPriors(
@@ -30,4 +31,5 @@ def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
         vegetation={t: load_vegetation(pp_dir, t) for t in vegetation_terrains(pp_dir)},
         pocket_masks=parse_masks(pockets_file.read_text()),
         places={lv: load_places(pp_dir, lv) for lv in LEVELS},
+        effort=load_effort(pp_dir),
     )

@@ -105,6 +105,7 @@ modules = [
     "vcmi_mapgen.core.steps.portal",
     "vcmi_mapgen.core.steps.roads",
     "vcmi_mapgen.core.steps.scatter",
+    "vcmi_mapgen.core.steps.sets",
     "vcmi_mapgen.core.steps.terrain_gen",
     "vcmi_mapgen.core.steps.treasure",
     "vcmi_mapgen.core.steps.vegetation",

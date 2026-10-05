@@ -4,8 +4,9 @@ candidate pool by a weight such as the corpus mix."""
 import random
 from collections.abc import Callable, Collection, Iterable
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, Role
+from vcmi_mapgen.core.model.artifact import ArtifactTier
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 

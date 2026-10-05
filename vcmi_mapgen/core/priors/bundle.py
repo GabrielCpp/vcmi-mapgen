@@ -4,6 +4,7 @@ step constructors."""
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.priors.gates import GateStats
 from vcmi_mapgen.core.priors.macro import MacroStats
@@ -26,8 +27,8 @@ class TerrainPriors:
 @dataclass(frozen=True, slots=True)
 class Priors:
     """Every prior a run reads: terrain, gameplay and place statistics per level (0 = surface,
-    1 = underground), the gate estimator, the vegetation statistics per terrain name, and
-    every orientation of the drawn pocket masks."""
+    1 = underground), the gate estimator, the vegetation statistics per terrain name, every
+    orientation of the drawn pocket masks, and the guard toll and effort bands."""
 
     terrain: Mapping[int, TerrainPriors]
     gameplay: Mapping[int, GameplayStats]
@@ -35,3 +36,4 @@ class Priors:
     vegetation: Mapping[str, VegetationStats]
     pocket_masks: tuple[PocketMask, ...]
     places: Mapping[int, PlaceStats]
+    effort: EffortPriors = field(default_factory=EffortPriors)

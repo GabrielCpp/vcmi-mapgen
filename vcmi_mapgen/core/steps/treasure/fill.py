@@ -6,75 +6,49 @@ import random
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
-from typing import Self
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Catalog, Trait
+from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
+from vcmi_mapgen.core.placement.prizes import (
+    HeldPrize,
+    Hold,
+    PrizePools,
+    artifact_spec,
+    fallback_specs,
+    hold_prize,
+    place_boxes,
+)
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
+from vcmi_mapgen.core.priors.effort import Offer
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 
-_LOOT_ART_W: dict[ArtifactTier, int] = {"treasure": 5, "minor": 15, "major": 35, "relic": 45}
-_LOOT_SCROLL_LEVELS = (4, 5)
 _LOOT_HERO_STRUCTURE_COUNT = 2
 LOOT_HERO_STRUCTURE_MIN_SEP = 2
-_LOOT_RARE_RESOURCE_SUBTYPES = frozenset(
-    {Resource.MERCURY, Resource.SULFUR, Resource.CRYSTAL, Resource.GEMS, Resource.GOLD}
-)
 
 
-@dataclass(frozen=True, slots=True)
-class _LootPools:
-    pool_vis: list[Identity]
-    pool_art: list[Identity]
-    pool_res: list[Identity]
-    chest_kind_pools: dict[str, list[Identity]]
-    arts_high: list[tuple[Identity, int]]
-    pool_rare: list[Identity]
-
-    @classmethod
-    def of(cls, catalog: Catalog, terrain: str) -> Self:
-        pool_vis = [
-            i
-            for i in catalog.candidates(Purpose.STAT_PERMANENT, terrain)
-            if i.type in catalog.types_with(Trait.HERO_BOOST)
-        ]
-        pool_art = [
-            i
-            for i in catalog.candidates(Purpose.REWARD_PICKUP, terrain)
-            if i.type not in catalog.types_with(Trait.MEAGER)
-        ]
-        pool_res = catalog.candidates(Purpose.RESOURCE_PILE, terrain)
-        kinds = catalog.types_with(Trait.CHEST) + catalog.types_with(Trait.ZONE_CHEST)
-        pool_chest = [i for i in pool_art if i.type in kinds]
-        chest_kind_pools = {kind: [i for i in pool_chest if i.type == kind] for kind in kinds}
-        chest_kind_pools[Trait.SCROLL] = [
-            catalog.spell_scroll(n) for lvl in _LOOT_SCROLL_LEVELS for n in catalog.spells(lvl)
-        ]
-        return cls(
-            pool_vis=pool_vis,
-            pool_art=pool_art,
-            pool_res=pool_res,
-            chest_kind_pools=chest_kind_pools,
-            arts_high=[(catalog.random_artifact(t), _LOOT_ART_W[t]) for t in ("major", "relic")],
-            pool_rare=[i for i in pool_res if i.subtype in _LOOT_RARE_RESOURCE_SUBTYPES],
-        )
+def _hero_pool(catalog: Catalog, terrain: str) -> list[Identity]:
+    return [
+        i
+        for i in catalog.candidates(Purpose.STAT_PERMANENT, terrain)
+        if i.type in catalog.types_with(Trait.HERO_BOOST)
+    ]
 
 
 @dataclass(frozen=True, slots=True)
 class FillZone:
-    """One sealed loot zone to fill: its walkable interior and the gate or monolith footprint
-    that must stay clear of decoration."""
+    """One sealed loot zone to fill: its walkable interior, the gate or monolith footprint
+    that must stay clear of decoration, and what its band offers."""
 
     terrain: str
     st: TerrainStats
     reach: frozenset[Tile]
     all_ts: AbstractSet[Tile]
     footprint: AbstractSet[Tile]
+    offer: Offer
 
     def interior(self) -> frozenset[Tile]:
         """The reach tiles with no 8-neighbour outside the reach and inside the level's zones."""
@@ -90,15 +64,15 @@ class _Walk:
     background decor, the chosen hero structure per type and the placement target."""
 
     zone: FillZone
-    pools: _LootPools
+    pools: PrizePools
     interior: frozenset[Tile]
     heroes: Mapping[str, Identity]
     target: PlaceTarget
 
 
-def _hero_choices(rng: random.Random, pools: _LootPools) -> dict[str, Identity]:
-    types = sorted({i.type for i in pools.pool_vis if i.type is not None})
-    return {k: rng.choice([i for i in pools.pool_vis if i.type == k]) for k in types}
+def _hero_choices(rng: random.Random, pool: Sequence[Identity]) -> dict[str, Identity]:
+    types = sorted({i.type for i in pool if i.type is not None})
+    return {k: rng.choice([i for i in pool if i.type == k]) for k in types}
 
 
 def _hero_type(
@@ -122,37 +96,6 @@ def _hero_type(
 def _too_close(t: Tile, placed: Sequence[Tile]) -> bool:
     return any(
         max(abs(t[0] - p[0]), abs(t[1] - p[1])) < LOOT_HERO_STRUCTURE_MIN_SEP for p in placed
-    )
-
-
-def _roll_spec(
-    rng: random.Random, pools: _LootPools, chest_kinds: Sequence[str]
-) -> PlaceSpec | None:
-    roll = rng.random()
-    if roll < 0.2 and pools.arts_high:
-        ident = rng.choices(
-            [a for a, _ in pools.arts_high], weights=[w for _, w in pools.arts_high], k=1
-        )[0]
-        return PlaceSpec(
-            Purpose.REWARD_PICKUP, pools.pool_art, ident=ident, cache=True, interactive_only=True
-        )
-    if roll < 0.6 and chest_kinds:
-        ident = rng.choice(pools.chest_kind_pools[rng.choice(chest_kinds)])
-        return PlaceSpec(
-            Purpose.REWARD_PICKUP, pools.pool_art, ident=ident, cache=True, interactive_only=True
-        )
-    return _rare_spec(rng, pools)
-
-
-def _rare_spec(rng: random.Random, pools: _LootPools) -> PlaceSpec | None:
-    if not pools.pool_rare:
-        return None
-    return PlaceSpec(
-        Purpose.RESOURCE_PILE,
-        pools.pool_res,
-        ident=rng.choice(pools.pool_rare),
-        cache=True,
-        interactive_only=True,
     )
 
 
@@ -184,15 +127,29 @@ def _hero(walk: _Walk, t: Tile, kind: str) -> bool:
 def _loot(walk: _Walk, t: Tile) -> bool:
     """The first of these that lands at `t`: the rolled loot, a rare resource, any resource,
     then a blocking decoration."""
-    rng, pools = walk.target.rng, walk.pools
-    chest_kinds = [k for k, p in pools.chest_kind_pools.items() if p]
-    specs = [
-        _roll_spec(rng, pools, chest_kinds),
-        _rare_spec(rng, pools),
-        PlaceSpec(Purpose.RESOURCE_PILE, pools.pool_res, cache=True, interactive_only=True),
-    ]
-    landed = any(spec is not None and place_one(walk.target, spec, *t) for spec in specs)
+    specs = fallback_specs(walk.target.rng, walk.pools, walk.zone.offer)
+    landed = any(place_one(walk.target, spec, *t) for spec in specs)
     return landed or _blocking_decor(walk, t)
+
+
+def _deepest(walk: _Walk, tiles: Sequence[Tile]) -> list[Tile]:
+    """``tiles`` from the farthest from the opener in."""
+
+    def depth(t: Tile) -> int:
+        return min(max(abs(t[0] - f[0]), abs(t[1] - f[1])) for f in walk.zone.footprint)
+
+    return sorted(tiles, key=lambda t: (-depth(t), t))
+
+
+def _headline(walk: _Walk, tiles: Sequence[Tile]) -> Hold | None:
+    """Hold back the free tile farthest from the opener that takes an artifact of the band's
+    basket, then stand the band's Pandora's Boxes on the deepest tiles left."""
+    spec = artifact_spec(walk.target.rng, walk.pools, walk.zone.offer.basket)
+    if spec is None or not walk.zone.footprint:
+        return None
+    held = hold_prize(walk.target, spec, _deepest(walk, tiles))
+    _ = place_boxes(walk.target, walk.pools, walk.zone.offer, _deepest(walk, tiles))
+    return held
 
 
 def fill_loot_zone(
@@ -201,15 +158,18 @@ def fill_loot_zone(
     rng: random.Random,
     cover: CoverIndex,
     bounds: tuple[int, int] | None,
-) -> list[PlacedObject]:
-    """Fill one sealed loot zone in one pass over its free tiles. A tile takes the hero
-    structure due there, or else a passable background decoration and then the first of
-    rolled loot, a resource or a blocking decoration that lands there."""
-    pools = _LootPools.of(catalog, zone.terrain)
+) -> tuple[list[PlacedObject], Hold | None]:
+    """Fill one sealed loot zone: a held slot for an artifact of its band at the back and its
+    band's Pandora's Boxes beside it, then one pass over its free tiles. A tile takes the
+    hero structure due there, or else a passable background decoration and then the first
+    of rolled loot, a resource or a blocking decoration that lands there."""
+    pools = PrizePools.of(catalog, zone.terrain)
     objs: list[PlacedObject] = []
     target = PlaceTarget(catalog, objs, cover, zone.reach, rng, zone.st, bounds=bounds)
-    walk = _Walk(zone, pools, zone.interior(), _hero_choices(rng, pools), target)
+    heroes = _hero_choices(rng, _hero_pool(catalog, zone.terrain))
+    walk = _Walk(zone, pools, zone.interior(), heroes, target)
     placed: dict[str, list[Tile]] = {k: [] for k in walk.heroes}
+    held = _headline(walk, sorted(zone.reach - cover.claims))
     tiles = sorted(zone.reach - cover.claims)
     for i, t in enumerate(tiles):
         hero = _hero_type(rng, t, len(tiles) - i, placed)
@@ -222,28 +182,39 @@ def fill_loot_zone(
                 f"  WARNING: loot zone fill left tile {t} unclaimed "
                 + f"(no fitting identity for terrain {zone.terrain!r})"
             )
-    return objs
+    return objs, held
 
 
 @dataclass(frozen=True, slots=True)
 class LootLevel:
-    """One level to fill: every zone record, the access footprint of each loot zone by zone
-    id, the objects already on the level, the gameplay statistics per terrain and the tiles
-    the level has claimed, and the rules every new object must pass."""
+    """One level to fill: every zone record, the access footprint and the band offer of each
+    loot zone by zone id, the objects already on the level, the gameplay statistics per terrain
+    and the tiles the level has claimed, and the rules every new object must pass."""
 
     zone_records: Sequence[ZoneRecord]
     footprints: Mapping[int, frozenset[Tile]]
+    offers: Mapping[int, Offer]
     objs: Sequence[PlacedObject]
     gameplay: GameplayStats
     claims: frozenset[Tile] = frozenset()
     rules: Sequence[PlacementRule] = ()
+    level: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class LootFill:
+    """What one level's fill left: the new objects, the level's claims grown by the tiles the
+    fill claimed, and the slot each loot zone held back, by zone id."""
+
+    objs: list[PlacedObject]
+    claims: frozenset[Tile]
+    held: dict[int, HeldPrize]
 
 
 def fill_loot_zones(
     catalog: Catalog, level: LootLevel, seed: int, bounds: tuple[int, int] | None
-) -> tuple[list[PlacedObject], frozenset[Tile]]:
-    """Fill every loot zone of one level. Returns the new objects and the level's claims,
-    grown by the tiles the fill claimed."""
+) -> LootFill:
+    """Fill every loot zone of one level."""
     zone_records, footprints, level_objs = level.zone_records, level.footprints, level.objs
     cover = CoverIndex(level_objs, level.claims, level.rules)
     blocked: set[Tile] = {
@@ -257,6 +228,7 @@ def fill_loot_zones(
     for zr in zone_records:
         all_ts |= zr.ts
     new: list[PlacedObject] = []
+    held: dict[int, HeldPrize] = {}
     for zr in zone_records:
         footprint = footprints.get(zr.zid)
         if footprint is None:
@@ -268,7 +240,11 @@ def fill_loot_zones(
             reach=frozenset(zr.ts - blocked - interactive),
             all_ts=all_ts,
             footprint=footprint,
+            offer=level.offers[zr.zid],
         )
         rng = random.Random(seed ^ (zr.zid * 92821) ^ 0xA117)
-        new.extend(fill_loot_zone(catalog, zone, rng, cover, bounds))
-    return new, frozenset(cover.claims)
+        objs, hold = fill_loot_zone(catalog, zone, rng, cover, bounds)
+        new.extend(objs)
+        if hold is not None:
+            held[zr.zid] = hold.at(level.level, zr.terrain)
+    return LootFill(new, frozenset(cover.claims), held)

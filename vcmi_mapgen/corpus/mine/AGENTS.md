@@ -4,6 +4,7 @@ The miners: each reads the corpus maps and returns one prior value from `core/pr
 
 ## Map
 
+- `effort.py`: `mine_effort`, the band edges and the per-class effort medians, read from the hero-days at each corpus artifact pickup.
 - `gameplay.py`: `mine_gameplay`, the per-terrain gameplay densities, mixes and mine ratios.
 - `gates.py`: `mine_gate_stats`, the Subterranean Gate counts and spacing.
 - `macro.py`: `mine_macro`, the zone areas, terrain shares, terrain adjacency and barrier fraction per level.

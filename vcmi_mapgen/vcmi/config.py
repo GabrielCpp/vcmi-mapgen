@@ -131,7 +131,7 @@ def _class_map(bases: tuple[Path, ...]) -> dict[int, tuple[str, dict[int, str]]]
 
 @cache
 def load_config(install: VcmiInstall) -> VcmiConfig:
-    bases = (*install.config_dirs, install.home / "Mods")
+    bases = (*install.config_dirs, install.mods_dir)
     return VcmiConfig(
         classes=_class_map(bases),
         creatures=_index_map(bases, "creatures"),

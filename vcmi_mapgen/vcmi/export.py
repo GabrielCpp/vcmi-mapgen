@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from vcmi_mapgen.core.model import JsonValue, MapState
+from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.vcmi.catalog import objects as OB
+from vcmi_mapgen.vcmi.content.mods import NO_MODS, ModContent
 from vcmi_mapgen.vcmi.footprint import mask_rows
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import VcmiInstall
@@ -24,38 +25,28 @@ def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
     return VM.header_template()
 
 
-def build_document(
-    state: MapState, name: str, install: VcmiInstall | None, tables: TilerTables
-) -> VM.VmapDocument:
-    """A finished MapState -> a full, writable VmapDocument: tiles each level's terrain
-    and roads with ``tables``, derives each object's VCMI
-    type and subtype from its kind, turns its payload into VCMI options, builds its
-    VCMI-charset mask/visitableFrom (a borderGate opens from every side), resolves
-    `options["sameAsTown"]` markers
-    ([x, y, l]) to the real town's instanceName, and gives every player slot a
-    starting town in reading order (surface first) so the map opens playable even
-    before `players.apply_playability` runs its own, player-order-aware wiring.
+def _identity(mods: ModContent, kind: str) -> Identity:
+    entry = mods.object(kind)
+    return OB.identity_of(kind) if entry is None else entry.identity
 
-    This computes straight from MapState -- no intermediate faithful-shaped dict:
-    that shape existed for the (now-retired) identity-rebuild engine's corpus
-    comparisons, which this export never needed (see vcmi_mapgen/AGENTS.md)."""
-    terrain = [
-        tile_strings(state.terrain[lvl], tables, state.roads.get(lvl, {}))
-        for lvl in sorted(state.terrain)
-    ]
-    height, width = len(terrain[0]), len(terrain[0][0]) if terrain[0] else 0
 
-    typed = [(o, OB.identity_of(o.kind)) for o in state.objs]
-    real = [(o, ident) for o, ident in typed if ident.type]
-    real_objs = [o for o, _ident in real]
+def _shape(
+    mods: ModContent, o: PlacedObject, ident: Identity
+) -> tuple[list[str], list[str] | None]:
+    entry = mods.object(o.kind)
+    if entry is not None and entry.visitable_from is not None:
+        return list(entry.mask), list(entry.visitable_from)
+    if entry is not None:
+        return list(entry.mask), VM.visitable_from(mask_rows(o.footprint))
+    if ident.type == "borderGate":
+        return VM.export_mask(o), list(ALL_SIDES)
+    return VM.export_mask(o), VM.visitable_from(mask_rows(o.footprint))
+
+
+def _objects(real: list[tuple[PlacedObject, Identity]], mods: ModContent) -> list[VM.VmapObject]:
     objects: list[VM.VmapObject] = []
     for o, ident in real:
-        mask = VM.export_mask(o)
-        vf = (
-            list(ALL_SIDES)
-            if ident.type == "borderGate"
-            else VM.visitable_from(mask_rows(o.footprint))
-        )
+        mask, vf = _shape(mods, o, ident)
         objects.append(
             VM.VmapObject(
                 instance_name="",
@@ -72,6 +63,40 @@ def build_document(
         )
     for n, vo in enumerate(objects, 1):
         vo.instance_name = f"{vo.type}_{n}"
+    return objects
+
+
+def build_document(
+    state: MapState,
+    name: str,
+    install: VcmiInstall | None,
+    tables: TilerTables,
+    mods: ModContent = NO_MODS,
+) -> VM.VmapDocument:
+    """A finished MapState -> a full, writable VmapDocument: tiles each level's terrain
+    and roads with ``tables``, derives each object's VCMI
+    type and subtype from its kind, turns its payload into VCMI options, builds its
+    VCMI-charset mask/visitableFrom (a borderGate opens from every side), resolves
+    `options["sameAsTown"]` markers
+    ([x, y, l]) to the real town's instanceName, and gives every player slot a
+    starting town in reading order (surface first) so the map opens playable even
+    before `players.apply_playability` runs its own, player-order-aware wiring. An object
+    from one of ``mods`` keeps its mod's mask, and the header then lists every mod the
+    map's objects come from.
+
+    This computes straight from MapState -- no intermediate faithful-shaped dict:
+    that shape existed for the (now-retired) identity-rebuild engine's corpus
+    comparisons, which this export never needed (see vcmi_mapgen/AGENTS.md)."""
+    terrain = [
+        tile_strings(state.terrain[lvl], tables, state.roads.get(lvl, {}))
+        for lvl in sorted(state.terrain)
+    ]
+    height, width = len(terrain[0]), len(terrain[0][0]) if terrain[0] else 0
+
+    typed = [(o, _identity(mods, o.kind)) for o in state.objs]
+    real = [(o, ident) for o, ident in typed if ident.type]
+    real_objs = [o for o, _ident in real]
+    objects = _objects(real, mods)
 
     # dwelling->town faction links: the generator marks `sameAsTown` with the town's
     # [x, y, l] (instance names are minted only here, above); VCMI wants the town's
@@ -106,6 +131,9 @@ def build_document(
     # header's dict order isn't guaranteed alphabetical -- see AGENTS.md's
     # determinism rule).
     doc.players.sort(key=lambda p: p.id)
+    required = mods.requirement(o.kind for o in real_objs)
+    if required:
+        doc.extra["mods"] = required
 
     # Wire each player slot to its own starting town, surface towns first, then the
     # FIRST town encountered in state.objs put first (a stand-in "main town" when

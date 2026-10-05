@@ -8,15 +8,15 @@ depends on it. `vcmi.catalog.adapter.VcmiCatalog` is the production implementati
 `s24b` loads them as values keyed by `Terrain`.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Literal, Protocol
+from typing import Protocol
 
 from vcmi_mapgen.core.model import Footprint, Identity
+from vcmi_mapgen.core.model.artifact import ArtifactSet, ArtifactTier
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-
-type ArtifactTier = Literal["treasure", "minor", "major", "relic"]
 
 
 class Trait(StrEnum):
@@ -41,6 +41,33 @@ class Trait(StrEnum):
     CHEST = "chest"
     ZONE_CHEST = "zone_chest"
     RANDOM_DWELLING = "random_dwelling"
+
+
+class Crossing(StrEnum):
+    """What an object does to a route that meets it. `GATE` lets through a hero who holds
+    the key of its channel, and `TENT` hands that key. `TELEPORT` sends the hero to another
+    end of its channel. `ONE_WAY_IN` sends the hero to a `ONE_WAY_OUT` of its channel.
+    `UNDERGROUND` joins the nearest gate on the other level. `SHIPYARD` builds a boat on the
+    water beside it, and `BOAT` is one already afloat."""
+
+    GATE = "gate"
+    TENT = "tent"
+    TELEPORT = "teleport"
+    ONE_WAY_IN = "one_way_in"
+    ONE_WAY_OUT = "one_way_out"
+    UNDERGROUND = "underground"
+    SHIPYARD = "boat_builder"
+    BOAT = "afloat"
+
+
+@dataclass(frozen=True, slots=True)
+class HeroPace:
+    """How far the slowest starting hero moves: its movement points per day on land and at
+    sea, and what one straight step costs on each terrain it can cross."""
+
+    land: int
+    sea: int
+    cost: Mapping[Terrain, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,8 +134,21 @@ class Catalog(Protocol):
         """The artifacts of one rarity tier, sorted."""
         ...
 
+    def artifact_sets(self) -> list[ArtifactSet]:
+        """The combined artifacts whose parts all carry a rarity tier, by name."""
+        ...
+
+    def artifact(self, name: str) -> Identity | None:
+        """The pickup that places one named artifact, or None when the catalog has none."""
+        ...
+
     def monsters(self, level: int) -> list[str]:
         """The creatures of one town tier, sorted."""
+        ...
+
+    def creature_level(self, kind: str) -> int | None:
+        """The level 1..7 of a monster stack, fixed or random, or None when the kind is no
+        monster or a random monster of any level."""
         ...
 
     def guard(self, level: int) -> Identity:
@@ -149,6 +189,15 @@ class Catalog(Protocol):
 
     def spell_scroll(self, spell: str) -> Identity:
         """The spell scroll that carries one spell."""
+        ...
+
+    def crossing(self, kind: str) -> tuple[Crossing, int] | None:
+        """The crossing an object kind makes and the channel that pairs its ends, or None
+        when a route walks around it."""
+        ...
+
+    def pace(self) -> HeroPace:
+        """How far the slowest starting hero moves in a day."""
         ...
 
     def thin_terrains(self) -> frozenset[Terrain]:

@@ -1,15 +1,11 @@
-import random
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.planning.content import (
-    LEVEL_MAX,
-    LEVEL_MIN,
     ContentPlan,
     ContentTable,
     HopContent,
     NoContent,
-    draw_level,
 )
 from vcmi_mapgen.core.priors.places import PlaceContent, PlaceStats
 from vcmi_mapgen.core.reading.content import UNREACHED
@@ -35,24 +31,6 @@ def _rows() -> tuple[PlaceContent, ...]:
         *(PlaceContent("middle", 2, 400, 4, 60000, (4, 4)) for _ in range(20)),
         PlaceContent("treasure", 2, 100, 2, 50000, (6,) * 10),
     )
-
-
-def test_a_whole_mean_draws_its_own_level() -> None:
-    rng = random.Random(1)
-    assert {draw_level(rng, 3.0) for _ in range(50)} == {3}
-
-
-def test_a_fractional_mean_draws_its_mean_on_average() -> None:
-    rng = random.Random(2)
-    draws = [draw_level(rng, 2.25) for _ in range(4000)]
-    assert set(draws) == {2, 3}
-    assert abs(sum(draws) / len(draws) - 2.25) < 0.05
-
-
-def test_a_level_stays_within_the_random_monster_levels() -> None:
-    rng = random.Random(3)
-    assert draw_level(rng, 0.1) == LEVEL_MIN
-    assert draw_level(rng, 11.0) == LEVEL_MAX
 
 
 def test_the_empty_plan_keeps_every_default() -> None:

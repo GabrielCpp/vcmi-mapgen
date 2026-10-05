@@ -18,8 +18,8 @@ from PIL import Image, ImageDraw
 
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.road import Road
+from vcmi_mapgen.vcmi.content.archive import ContentArchive
 from vcmi_mapgen.vcmi.formats.defs import parse_def
-from vcmi_mapgen.vcmi.formats.lod import LodIndex
 from vcmi_mapgen.vcmi.tiles import decode_tile_string
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
@@ -51,12 +51,12 @@ SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
 }
 
 
-def get_def(index: LodIndex, name: str) -> list[list[Image.Image]] | None:
+def get_def(index: ContentArchive, name: str) -> list[list[Image.Image]] | None:
     return _load_def(index, name.lower())
 
 
 @cache
-def _load_def(index: LodIndex, key: str) -> list[list[Image.Image]] | None:
+def _load_def(index: ContentArchive, key: str) -> list[list[Image.Image]] | None:
     data = index.read(key)
     if data is None:
         return None
@@ -67,7 +67,7 @@ def _load_def(index: LodIndex, key: str) -> list[list[Image.Image]] | None:
 
 
 # --------------------------------------------------------------------------- terrain tile decode
-def terr_tile_img(index: LodIndex, tile_str: str) -> Image.Image:
+def terr_tile_img(index: ContentArchive, tile_str: str) -> Image.Image:
     """tile_str e.g. 'dt15_' -> 32x32 RGBA terrain tile image."""
     tc = tile_str[:2]
     rest = tile_str[2:]
@@ -106,7 +106,7 @@ def _flipped(img: Image.Image, flip: int) -> Image.Image:
     return img
 
 
-def road_tile_img(index: LodIndex, tile_str: str) -> Image.Image | None:
+def road_tile_img(index: ContentArchive, tile_str: str) -> Image.Image | None:
     """The road sprite a tile string carries, flipped as it says, or None for no road."""
     cell = decode_tile_string(tile_str)
     if not cell.ot:
@@ -118,7 +118,7 @@ def road_tile_img(index: LodIndex, tile_str: str) -> Image.Image | None:
     return _flipped(frames[cell.od % len(frames)].convert("RGBA"), cell.om)
 
 
-def _paste_roads(canvas: Image.Image, index: LodIndex, surf: Sequence[Sequence[str]]) -> None:
+def _paste_roads(canvas: Image.Image, index: ContentArchive, surf: Sequence[Sequence[str]]) -> None:
     for y, row in enumerate(surf):
         for x, tile_str in enumerate(row):
             img = road_tile_img(index, tile_str)
@@ -130,7 +130,10 @@ def _paste_roads(canvas: Image.Image, index: LodIndex, surf: Sequence[Sequence[s
 
 
 def render_map(
-    index: LodIndex, surf: Sequence[Sequence[str]], objs: Sequence[PlacedObject], title: str = ""
+    index: ContentArchive,
+    surf: Sequence[Sequence[str]],
+    objs: Sequence[PlacedObject],
+    title: str = "",
 ) -> Image.Image:
     H, W = len(surf), len(surf[0])
     canvas = Image.new("RGB", (W * TILE, H * TILE), (0, 0, 0))

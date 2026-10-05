@@ -9,12 +9,17 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import CoverIndex, MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.start_room import start_rules
+from vcmi_mapgen.core.planning.content import ContentPlan
+from vcmi_mapgen.core.planning.guarding import prize_guard
+from vcmi_mapgen.core.planning.pricing import CutoffPlace, effort_with, prize_count
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, TownsIndex
 from vcmi_mapgen.core.steps.portal import rescue as RS
+from vcmi_mapgen.core.steps.portal.hoard import HoardPricing, fill_hoards
 from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
+from vcmi_mapgen.core.steps.treasure.result import TreasureResult
 
 
 def _find_start(
@@ -49,18 +54,23 @@ def _added(
 
 @final
 class PortalStep(PipelineStep):
-    """Portal rescue: a zone the start cannot walk to gets a portal pair.
+    """Portal rescue: a zone the start cannot walk to and no earlier step priced gets a
+    guarded portal pair, and prizes from the band of the effort to carry them home.
 
     Config:
-        priors      The corpus priors; the step reads the level-0 gameplay statistics.
+        priors      The corpus priors; the step reads the level-0 gameplay statistics, the
+                    effort priors and each level's place content.
         seed        RNG seed.
         size        Map side length in tiles (square).
 
     inject(ctx): ``ZoneIndex`` (targets and claims, mutated in place), ``Segmentation``,
-    ``TownsIndex`` (player_zids), ``GameplayResult`` (each zone's town) and ``GateResult``.
+    ``TownsIndex`` (player_zids), ``GameplayResult`` (each zone's town), ``GateResult``, the
+    ``TreasureResult`` places when present, which the step leaves alone, and the
+    ``ContentPlan`` when present, whose hops pick each portal guard's level from the corpus
+    spread.
 
-    Produces: appends the portals and their guards to ``map_state.objs`` and provides
-    ``PortalResult``.
+    Produces: appends the portals, their guards and their prizes to ``map_state.objs`` and
+    provides ``PortalResult``, each portal place's price and prizes.
     """
 
     def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
@@ -77,6 +87,8 @@ class PortalStep(PipelineStep):
         self._town_of_zone: Mapping[int, Mapping[int, PlacedObject]] = {}
         self._player_zids: list[tuple[int, int]] = []
         self._gate_objs: list[PlacedObject] = []
+        self._content = ContentPlan()
+        self._priced: set[tuple[int, int]] = set()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -89,6 +101,9 @@ class PortalStep(PipelineStep):
         self._town_of_zone = ctx.require(GameplayResult).town_of_zone
         self._player_zids = ctx.require(TownsIndex).player_zids
         self._gate_objs = ctx.require(GateResult).gate_objs
+        self._content = ctx.get(ContentPlan, ContentPlan())
+        places = ctx.get(TreasureResult, TreasureResult()).places
+        self._priced = {(lvl, zid) for lvl, found in places.items() for zid in found}
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -107,16 +122,35 @@ class PortalStep(PipelineStep):
             self._zone_records,
             covers,
             self.priors.gameplay[0],
+            {lvl: prize_guard(self.priors.places, self._content, lvl) for lvl in grids},
         )
         start = _find_start(self._player_zids, self._segmentation.zones, self._town_of_zone)
+        rescued: list[RS.Rescued] = []
         if start is not None:
             gate_xy = {(o.x, o.y) for o in self._gate_objs if o.level == 0}
-            n_portals = RS.rescue_unreachable_zones(catalog, world, start, gate_xy, self.seed)
-            if n_portals:
-                self.log.append(f"PortalStep: {n_portals} portal rescue(s) added")
+            departure = RS.Departure(start, gate_xy, self._priced)
+            rescued = RS.rescue_unreachable_zones(catalog, world, departure, self.seed)
+        places = self._prizes(catalog, map_state, world, rescued)
         for lvl, cover in covers.items():
             self._claims[lvl] = frozenset(cover.claims)
         RS.check_reach(world)
         self.objs = _added(by_level, map_state.objs)
         map_state.add_objs(self.objs)
-        self._ctx.provide(PortalResult(log=self.log))
+        if rescued:
+            self.log.append(f"PortalStep: {len(rescued)} portal rescue(s) added")
+        self._ctx.provide(PortalResult(self.log, places))
+
+    def _prizes(
+        self,
+        catalog: Catalog,
+        map_state: MapState,
+        world: RS.PortalWorld,
+        rescued: Sequence[RS.Rescued],
+    ) -> dict[int, dict[int, CutoffPlace]]:
+        if not rescued:
+            return {}
+        portals = _added(world.objs_by_level, map_state.objs)
+        em = effort_with(catalog, map_state, self.priors.effort.toll, portals)
+        counts = {lvl: prize_count(self.priors.places, lvl) for lvl in world.grids}
+        pricing = HoardPricing(em, self.priors.effort, counts)
+        return fill_hoards(catalog, world, rescued, pricing, self.seed)

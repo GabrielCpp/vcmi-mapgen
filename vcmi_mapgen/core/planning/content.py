@@ -6,7 +6,6 @@ A ``ContentPlanner`` is the role ``cli/steps.py`` picks per terrain model. ``NoC
 plans nothing, so every consumer keeps its own default. ``HopContent`` reads the planned
 places and the corpus content table of each level."""
 
-import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol, final
@@ -63,14 +62,6 @@ class ContentPlan:
         """The reward multiplier of a zone, 1.0 when it has no intent."""
         intent = self.intents.get((level, zid))
         return 1.0 if intent is None else intent.scale
-
-
-def draw_level(rng: random.Random, mean: float) -> int:
-    """A guard level with mean ``mean``: its floor, plus one with the fractional part's
-    probability, clamped to the random monster levels. One draw of ``rng``."""
-    base = int(mean)
-    level = base + (rng.random() < mean - base)
-    return max(LEVEL_MIN, min(LEVEL_MAX, level))
 
 
 def hop_bin(hop: int) -> int:

@@ -10,6 +10,7 @@ from vcmi_mapgen.core.steps import (
     PortalStep,
     RoadsStep,
     ScatterStep,
+    SetsStep,
     TerrainStep,
     TreasureStep,
     VegetationStep,
@@ -31,6 +32,7 @@ GENERATE_STOP_POINTS = (
     "treasure",
     "portal",
     "loot",
+    "sets",
     "scatter",
     "roads",
 )
@@ -90,6 +92,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
         ("treasure", TreasureStep(priors, seed, size)),
         ("portal", PortalStep(priors, seed, size)),
         ("loot", LootStep(priors, seed, size)),
+        ("sets", SetsStep(priors, seed, size)),
         ("scatter", ScatterStep(priors, seed, size)),
         ("roads", RoadsStep(priors, ROADS[config.terrain], seed)),
     ]

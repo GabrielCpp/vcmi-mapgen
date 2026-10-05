@@ -9,6 +9,7 @@ from vcmi_mapgen.conftest import corpus_tiler, find_install
 from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.content.mods_test import LAIR, fair_content
 from vcmi_mapgen.vcmi.export import build_document
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
@@ -71,3 +72,17 @@ def test_vmap_export_roundtrip(tmp_path: Path) -> None:
     )
     wired = [pl for pl in _players(header).values() if pl.get("mainTown")]
     assert wired, "a player slot must be wired to the town"
+
+
+def test_a_placed_mod_object_makes_the_map_require_its_mod() -> None:
+    mods = fair_content()
+    terrain = [[Terrain.SAND] * 8 for _ in range(8)]
+    lair = PlacedObject.at(mods.objects[LAIR].identity, (4, 4), purpose="BANK")
+    town = _town(ON.gameplay_pool("sand", "TOWN")[0], 6, 6)
+    with_lair = MapState(size=8, terrain={0: terrain}, objs=[lair, town])
+    doc = build_document(with_lair, "test", None, corpus_tiler(), mods)
+    assert [jv.as_object(m)["modId"] for m in jv.as_list(doc.extra["mods"])] == ["fair"]
+    placed = next(o for o in doc.objects if o.animation == LAIR)
+    assert (placed.type, placed.subtype, placed.mask) == ("creatureBank", "lair", ["VV", "BA"])
+    without = MapState(size=8, terrain={0: terrain}, objs=[town])
+    assert "mods" not in build_document(without, "test", None, corpus_tiler(), mods).extra

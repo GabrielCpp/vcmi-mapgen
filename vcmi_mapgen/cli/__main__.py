@@ -3,7 +3,8 @@
 Subcommands:
   generate        -> synthesize a full map via the marked-point-process pipeline
                      (CLI-selectable overlays, renderers, stop point, vegetation sampler
-                     and terrain model).
+                     and terrain model). `--mods` enables mods with their dependencies
+                     and `--ban` keeps named objects, artifacts, spells and creatures off.
   render-vegetation -> run the pipeline through vegetation and save terrain-and-vegetation
                      PNGs for a few seeds, with either vegetation sampler and terrain model.
   render-ontology -> render one sprite (+ passability mask overlay) per documented
@@ -15,6 +16,8 @@ Subcommands:
   corpus-match    -> compare generated gameplay placement to the corpus.
   readings        -> print the map-math 8 readings of generated maps per terrain model
                      beside the corpus spread, and whether a model replaces the default.
+  effort-report   -> print the opener, the effort, the band and the prize of every cut-off
+                     place on a few generated maps.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
@@ -33,6 +36,7 @@ from typing import final
 
 from vcmi_mapgen.cli.audit import audit, densities
 from vcmi_mapgen.cli.corpus_match import corpus_match
+from vcmi_mapgen.cli.effort_report import ReportOptions, effort_report
 from vcmi_mapgen.cli.extract_vmap import extract_vmap
 from vcmi_mapgen.cli.generate import (
     DEFAULT_OVERLAYS,
@@ -61,6 +65,7 @@ from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.catalog.regen import regenerate
 from vcmi_mapgen.vcmi.catalog.tables import CLUSTERS
 from vcmi_mapgen.vcmi.config import load_config
+from vcmi_mapgen.vcmi.content.enabled import ContentSetting
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 
@@ -89,12 +94,18 @@ class Args(argparse.Namespace):
     vegetation: str = DEFAULT_VEGETATION
     terrain: str = DEFAULT_TERRAIN
     terrains: Sequence[str] = ()
+    mods: Sequence[str] = ()
+    ban: Sequence[str] = ()
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
     install = open_install(settings)
     ON.use_config(load_config(install))
     return install
+
+
+def _content(args: Args) -> ContentSetting:
+    return ContentSetting(frozenset(args.mods), frozenset(args.ban))
 
 
 def cmd_render_ontology(args: Args) -> None:
@@ -104,7 +115,9 @@ def cmd_render_ontology(args: Args) -> None:
 
 
 def cmd_mine_stats(args: Args) -> None:
-    mine_stats(VcmiCatalog(), load_settings(), args.only or ())
+    settings = load_settings()
+    _ = _open_catalog(settings)
+    mine_stats(VcmiCatalog(), settings, args.only or ())
 
 
 def cmd_audit(args: Args) -> None:
@@ -135,6 +148,7 @@ def cmd_generate(args: Args) -> None:
             stop_after=args.stop_after,
             vegetation=args.vegetation,
             terrain=args.terrain,
+            content=_content(args),
         ),
     )
 
@@ -153,6 +167,7 @@ def cmd_render_vegetation(args: Args) -> None:
             overlays=args.overlays,
             vegetation=args.vegetation,
             terrain=args.terrain,
+            content=_content(args),
         ),
     )
 
@@ -172,6 +187,12 @@ def cmd_readings(args: Args) -> None:
     settings = load_settings()
     _ = _open_catalog(settings)
     readings(VcmiCatalog(), settings, args.seeds, args.size, args.terrains)
+
+
+def cmd_effort_report(args: Args) -> None:
+    settings = load_settings()
+    _ = _open_catalog(settings)
+    effort_report(VcmiCatalog(), settings, ReportOptions(args.seeds, args.size, args.terrain))
 
 
 def cmd_render_sprites(args: Args) -> None:
@@ -211,6 +232,23 @@ def _add_terrain_arg(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_TERRAIN,
         help="terrain model: 'markov' (macro zones textured by the Markov chain) or 'places' "
         + f"(a place graph laid out on land) (default: {DEFAULT_TERRAIN})",
+    )
+
+
+def _add_content_args(parser: argparse.ArgumentParser) -> None:
+    _ = parser.add_argument(
+        "--mods",
+        nargs="+",
+        default=[],
+        help="installed VCMI mods to draw objects from, with their dependencies and submods "
+        + "(default: the base game with AB and SoD)",
+    )
+    _ = parser.add_argument(
+        "--ban",
+        nargs="+",
+        default=[],
+        help="object types, subtypes or animations, or creature, artifact or spell names, "
+        + "to keep off the map",
     )
 
 
@@ -267,6 +305,14 @@ def main() -> None:
         "--terrains", choices=list(TERRAIN_MODELS), nargs="+", default=list(TERRAIN_MODELS)
     )
     _ = prd.set_defaults(func=cmd_readings)
+
+    per = sub.add_parser(
+        "effort-report", help="print the effort, band and prize of every cut-off place"
+    )
+    _ = per.add_argument("--seeds", type=int, nargs="+", default=list(range(1, 11)))
+    _ = per.add_argument("--size", type=int, default=72)
+    _add_terrain_arg(per)
+    _ = per.set_defaults(func=cmd_effort_report)
 
     prs = sub.add_parser(
         "render-sprites", help="render a .vmap with real H3 sprites to out/render/<name>_editor.png"
@@ -337,6 +383,7 @@ def main() -> None:
     )
     _add_vegetation_arg(pg)
     _add_terrain_arg(pg)
+    _add_content_args(pg)
     _ = pg.set_defaults(func=cmd_generate)
 
     prv = sub.add_parser(
@@ -359,6 +406,7 @@ def main() -> None:
     )
     _add_vegetation_arg(prv)
     _add_terrain_arg(prv)
+    _add_content_args(prv)
     _ = prv.set_defaults(func=cmd_render_vegetation)
 
     args = ap.parse_args(namespace=Args(func=cmd_render_ontology))

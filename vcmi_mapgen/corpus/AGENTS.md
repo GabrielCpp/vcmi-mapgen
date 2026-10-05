@@ -7,6 +7,7 @@ Code here reads the corpus, loads and saves the priors, and compares the corpus 
 - `maps.py`: the corpus maps: `corpus_path`, `all_map_names`, `load_corpus_map`, `named_corpus_maps` and `corpus_maps`, each map a `MapState` read through `vcmi.load.load_map`, with one `Terrain` per tile.
 - `cache.py`: `read_cache` and `write_cache`, one statistics file under `data/pp/` with its
   version and source stamp.
+- `effort.py`: `load_effort`, `save_effort` and `tuned_effort` over `data/pp/effort.json`. `tuned_effort` falls back to the defaults when the file is absent.
 - `gates.py`: `load_gate_stats` and `save_gate_stats` over `data/pp/gate_stats.json`.
 - `gameplay.py`: `load_gameplay` and `save_gameplay` over the per-level gameplay statistics.
 - `macro.py`: `load_macro` and `save_macro` over `data/pp/macro_stats.json` and its underground twin.

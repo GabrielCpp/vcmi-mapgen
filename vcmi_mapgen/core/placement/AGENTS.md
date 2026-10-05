@@ -12,8 +12,10 @@ Where an object stands and which tiles it takes. A module here reads `Footprint`
 - `identity.py`: the random class ids and the identity picks. `pick_kind` draws one fixed identity from a pool under a caller's weight, and `solo_visit_pool` lists the visitable kinds a lone pickup may be.
 - `intensity.py`: the per-tile placement intensity over edge depth, gate distance and openness, and the stochastic rounding of a density into a count.
 - `place.py`: `PlaceTarget`, `PlaceSpec` and `place_one`, the guarded placement over the open field, plus reachability.
-- `rewards.py`: the one reward builder, which draws the pandoraBox reward and the
-  seer-hut quest payout a tier apart.
+- `prizes.py`: the prizes of a cut-off place. `PrizePools` holds one terrain's artifact, resource, cache and Pandora's Box pools and the catalog's creatures by level. `artifact_spec`, `roll_spec` and `fallback_specs` draw from a band's `Offer`, and `place_prizes` places a count of them on given tiles. It holds the first artifact's tile open as a `HeldPrize`, a slot `SetsStep` fills later, then places the band's Pandora's Boxes with `place_boxes`. Each box grants a reward drawn at the band's grant.
+- `rewards.py`: the one reward builder, `draw_reward`, which draws gold, experience or a
+  creature stack of one of a tier's levels from the catalog's creatures. The open-ground
+  pandoraBox and the seer-hut quest payout draw a tier apart.
 - `site.py`: where an object may stand in a zone: the shared level field, the cover index and each zone's spot search with its `Footing` per purpose, from the `SiteZone` a zone brings to the `PlacedZone` it leaves. `ZoneSite.place` takes an optional `Footing` that overrides the purpose's own. `HOME_FOOTING` is the town footing of a planned home: its sprite overlay may reach past the zone anywhere on the map, while its body still keeps to the zone or to vegetation.
 - `start_room.py`: `StartRoomRule`, the placement rule that keeps a guard's zone of control off a player town's entrance and stops any solid object from walling in its start. `start_rules` builds it for a finished map's level.
 - `scatter.py`: `place_scatter`, the unguarded resource piles over the finished open field. A

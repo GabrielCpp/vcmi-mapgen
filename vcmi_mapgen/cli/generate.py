@@ -29,10 +29,18 @@ from vcmi_mapgen.renderers.overlays import (
     ZoneOverlay,
 )
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
+from vcmi_mapgen.vcmi.content.enabled import (
+    BASE_CONTENT,
+    ContentConflictError,
+    ContentSetting,
+    UnknownModError,
+    enable,
+)
+from vcmi_mapgen.vcmi.content.manifest import read_manifests
+from vcmi_mapgen.vcmi.content.mods import load_mods
+from vcmi_mapgen.vcmi.content.sprites import SpriteSource
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
-
-CATALOG = VcmiCatalog()
 
 # Every factory takes `pockets` (LootStep's LootResult.pockets) and `zones`
 # (TerrainStep's Segmentation.zones) uniformly, even though only a few overlays use
@@ -131,6 +139,7 @@ class GenerateOptions:
     stop_after: str | None
     vegetation: str
     terrain: str = DEFAULT_TERRAIN
+    content: ContentSetting = BASE_CONTENT
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,10 +152,29 @@ class VegetationRenderOptions:
     overlays: str
     vegetation: str
     terrain: str = DEFAULT_TERRAIN
+    content: ContentSetting = BASE_CONTENT
 
 
-def _run_pipeline(settings: Settings, config: StepConfig, stop_after: str | None) -> Pipeline:
-    pipeline = Pipeline(CATALOG, config.size)
+def open_catalog(install: VcmiInstall, setting: ContentSetting) -> VcmiCatalog:
+    """The catalog of the content the user enabled. A mod that is not installed, or two
+    enabled mods that conflict, stop generation with a message."""
+    manifests = read_manifests(install.mods_dir) if setting.mods else {}
+    try:
+        enabled = enable(setting, manifests)
+    except (UnknownModError, ContentConflictError) as e:
+        sys.exit(f"content setting refused: {e}")
+    return VcmiCatalog(enabled, load_mods(manifests, enabled))
+
+
+def sprite_source(install: VcmiInstall, catalog: VcmiCatalog) -> SpriteSource:
+    """The sprites of the base game, then of each mod the catalog holds."""
+    return SpriteSource(lod(install.data_dir), catalog.mods.archives())
+
+
+def _run_pipeline(
+    catalog: VcmiCatalog, settings: Settings, config: StepConfig, stop_after: str | None
+) -> Pipeline:
+    pipeline = Pipeline(catalog, config.size)
     for point_name, step in build_steps(
         load_priors(settings.pp_dir, settings.pockets_file), config
     ):
@@ -169,7 +197,8 @@ def render_vegetation(
     out = settings.out_dir / "render" / "vegetation"
     os.makedirs(out, exist_ok=True)
     tables = load_tiler(settings.pp_dir)
-    index = lod(install.data_dir)
+    catalog = open_catalog(install, opts.content)
+    index = sprite_source(install, catalog)
     for seed in opts.seeds:
         config = StepConfig(
             seed,
@@ -180,7 +209,7 @@ def render_vegetation(
             opts.vegetation,
             opts.terrain,
         )
-        pipeline = _run_pipeline(settings, config, "vegetation")
+        pipeline = _run_pipeline(catalog, settings, config, "vegetation")
         map_state = pipeline.map_state
         zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
         renderer = PngRenderer(index, str(out), tables, parse_overlays(opts.overlays, {}, zones))
@@ -201,7 +230,8 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.vegetation,
         opts.terrain,
     )
-    pipeline = _run_pipeline(settings, config, opts.stop_after)
+    catalog = open_catalog(install, opts.content)
+    pipeline = _run_pipeline(catalog, settings, config, opts.stop_after)
     map_state = pipeline.map_state
 
     for line in (
@@ -229,7 +259,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     stem = f"{stem}{_terrain_tag(opts.terrain)}"
 
     if "png" in renderers:
-        index = lod(install.data_dir)
+        index = sprite_source(install, catalog)
         png_renderer = PngRenderer(index, str(pp_out), tables)
         png = str(pp_out / f"{stem}.png")
         os.makedirs(os.path.dirname(png), exist_ok=True)
@@ -250,7 +280,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
             print(f"  {ov_png}")
 
     if "vmap" in renderers:
-        vmap_renderer = VmapRenderer(str(settings.out_dir / "vmap"), tables, install)
+        vmap_renderer = VmapRenderer(str(settings.out_dir / "vmap"), tables, install, catalog.mods)
         vmap = vmap_renderer.render(
             map_state,
             f"{stem}.vmap",

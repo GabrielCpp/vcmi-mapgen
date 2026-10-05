@@ -11,7 +11,7 @@ from PIL import Image
 import vcmi_mapgen.renderers.sprites as RED
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.renderers.overlays.base import MapOverlay
-from vcmi_mapgen.vcmi.formats.lod import LodIndex
+from vcmi_mapgen.vcmi.content.archive import ContentArchive
 from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
 
 
@@ -32,14 +32,14 @@ class PngRenderer:
         renderer = PngRenderer(index, out_dir, tables, [ZoneOverlay(), BlockingOverlay()])
     """
 
-    index: LodIndex
+    index: ContentArchive
     out_dir: str
     _overlays: list[MapOverlay]
     tables: TilerTables
 
     def __init__(
         self,
-        index: LodIndex,
+        index: ContentArchive,
         out_dir: str,
         tables: TilerTables,
         overlays: Iterable[MapOverlay] = (),

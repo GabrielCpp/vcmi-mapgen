@@ -7,12 +7,12 @@ by matching the object's kind against what the catalog names for them."""
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from vcmi_mapgen.core.catalog import ArtifactTier, Catalog
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model.artifact import TIERS, ArtifactTier
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.reading.ground import REWARD_PURPOSES, purpose_of
 
-TIERS: tuple[ArtifactTier, ...] = ("treasure", "minor", "major", "relic")
 ARTIFACT_VALUE: Mapping[ArtifactTier, int] = {
     "treasure": 2000,
     "minor": 5000,

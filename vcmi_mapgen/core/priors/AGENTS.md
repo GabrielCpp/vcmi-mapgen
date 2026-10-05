@@ -6,6 +6,7 @@ The corpus priors as frozen values the steps read. `corpus/` loads and saves the
 
 - `bundle.py`: `Priors`, every prior one generation run reads, the place statistics among them, and `TerrainPriors`, one
   level's macro statistics and Markov tables.
+- `effort.py`: `EffortPriors`, the guard toll per level, the band edges in hero-days and one `Offer` per band: its artifact class basket, its Pandora grant (`RewardTier`) and its box count.
 - `gates.py`: `GateStats`, the Subterranean Gate counts and spacing per map width.
 - `gameplay.py`: `TerrainStats`, the gameplay statistics per terrain, and `GameplayStats`,
   one level's statistics keyed by terrain.
