@@ -9,7 +9,8 @@ and earlier approaches. ``TownFooting`` only keeps a town off other footprints a
 approaches, and lets its cells spill out of the zone onto unwalkable land that is not water
 or rock. Under either footing the entrance and its approach are walkable and reachable from
 the web, and the blocking cells split no reachable area in two. Blocking cells may land on
-vegetation, the zone rim and the web, and the web then walks around them. Among the legal
+vegetation, the zone rim and the web, and the web then walks around them. ``SnugFooting``
+narrows a footing to the anchors where the object sits snug for its size. Among the legal
 anchors of a neighbourhood the one whose sprite top and flanks rest most against unwalkable
 tiles wins. While a level hems fewer objects than HEMMED_SHARE, a commit plants a decoration on
 each open flank it can close without cutting a path."""
@@ -28,6 +29,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
 from vcmi_mapgen.core.grid.reach import walk
+from vcmi_mapgen.core.grid.snug import snug
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
@@ -339,11 +341,15 @@ class ZoneSite:
         )
 
     def cover(self, ident: Identity, anchor: Tile) -> int:
-        """How snug a sprite at ``anchor`` sits: its back score plus FLANK_WEIGHT per closed
-        flank."""
+        """How well a sprite at ``anchor`` rests against closed tiles: its back score plus
+        FLANK_WEIGHT per closed flank."""
         cells = [t for t, _role in ident.footprint.at(*anchor)]
         back = back_score(ident.footprint, anchor, self.lf.unwalkable, self.lf.size)
         return back + FLANK_WEIGHT * closed_flanks(cells, self.lf.closed)
+
+    def snug(self, ident: Identity, anchor: Tile) -> bool:
+        """Whether a sprite at ``anchor`` sits snug for its size."""
+        return snug(ident.footprint, anchor, self.lf.closed)
 
     def set_reach(self, reach: set[Tile]) -> None:
         self.reach = reach
@@ -395,7 +401,7 @@ class ZoneSite:
         footing: Footing | None = None,
         guard: int | None = None,
     ) -> PlacedObject | None:
-        footing = FOOTINGS.get(purpose, ZONE_FOOTING) if footing is None else footing
+        footing = footing_of(purpose) if footing is None else footing
         legal = {
             t: f
             for t in footing.anchors(self, ident)
@@ -658,6 +664,25 @@ class TownFooting:
         if not all(lf.walkable(t) for t in door_cells(ident.footprint, anchor)):
             return None
         return allc, blk, approach
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class SnugFooting:
+    """Another footing's spots, kept to those where the sprite sits snug for its size."""
+
+    inner: Footing
+
+    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+        return [t for t in self.inner.anchors(site, ident) if site.snug(ident, t)]
+
+    def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
+        return self.inner.fit(site, ident, anchor)
+
+
+def footing_of(purpose: str) -> Footing:
+    """The footing an object of ``purpose`` stands on."""
+    return FOOTINGS.get(purpose, ZONE_FOOTING)
 
 
 ZONE_FOOTING = ZoneFooting()

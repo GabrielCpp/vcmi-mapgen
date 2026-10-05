@@ -12,7 +12,8 @@ code?". Where a concept matches an existing one, section 5 says so.
 **Who feels it.** A player opens a generated map and finds no crystal or gem mine anywhere
 within two weeks of travel from the starting town. Another player on the same map has
 both next door. The objects that are there look dropped on open ground. A hand-made map
-tucks them into the trees, into pockets and against cliffs, and keeps roads off them.
+tucks them into holes and corners, against trees and against cliffs, and keeps roads off
+them.
 
 **Done looks like.**
 
@@ -23,6 +24,9 @@ tucks them into the trees, into pockets and against cliffs, and keeps roads off 
   nearest mine of another.
 - No gold mine stands within 14 days of any player.
 - About 2 in 3 objects stand with closed flanks, as on the corpus.
+- Objects sit snug for their size as often as on the corpus: a one-tile object in a hole or
+  a corner, a two-tile object with its far end against something, a larger one with its
+  top against something.
 - A road crosses an object it does not lead to for at most 6% of objects, the corpus
   share. Today it does for 9.4%.
 - The map holds as many objects per walkable tile as the corpus, times a density setting
@@ -41,7 +45,7 @@ tucks them into the trees, into pockets and against cliffs, and keeps roads off 
 ## 1b. Claims
 
 Source for C1 to C24: the settled grill, 2026-10-05. Source for C25 to C28: the existing
-code.
+code. Source for C29 and C30: the user, 2026-10-05, after slice 3.
 
 1. Each player gets the six basic mines within 14 hero-days of the starting town. The
    days count travel and the guard toll on the shortest effort route. The mine may stand
@@ -87,6 +91,13 @@ code.
     reward scale.
 27. A neutral town brings two extra mines.
 28. A random dwelling takes the faction of its zone's town.
+29. A spot fits by the object's size. A one-tile object fits any hole, any corner and any
+    L-shaped corner. A two-tile object fits left or right of vegetation, with the vegetation
+    on the side away from its visit tile. A larger object fits with its top against
+    vegetation, or in an open field.
+30. There are no pockets and no mouth guards. Only mines carry a guard, in front. Mines are
+    three tiles, so they never need a nook. Every object stays reachable, so its guard can
+    stand in front.
 
 ## 2. Parts and concepts
 
@@ -100,7 +111,7 @@ code.
    field per player home. It never knows object families or targets. It hands the fields
    to Allocation and to Accounting.
 3. **Spot survey.** Where an object's shape fits snugly on the ground as it stands. It owns
-   the spots for a shape, each with its cover and whether it is a pocket. It never knows
+   the spots for a shape, each with its cover and whether it sits snug for its size. It never knows
    effort, families or which object will take the spot. It hands spots to Allocation.
 4. **Allocation.** What goes where. It owns the list of objects to place, their order, and
    the one spot each takes. It never knows how spots are found or how effort is measured.
@@ -162,8 +173,10 @@ them.
 | Shape | An object's mask: blocking cells, entrance and the tile in front | The sprite overhang |
 | Ground | The tiles a body may cover: off other bodies, off the vegetation web, off kept rooms | Which object asks |
 | Spot | An anchor where a shape fits the ground | Effort |
-| Cover | A spot's score from its back, its flanks and the hole it fills | Families |
-| Pocket | Whether a spot sits behind a single mouth, and where that mouth is | Guard levels |
+| Cover | A spot's score from its back and its flanks, the tiebreak among equal spots | Families |
+| Snug fit | Whether a shape at a spot sits snug for its size class | Effort |
+
+Snug fit replaced Pocket. See R13.
 
 The spot pool of claim C20 is not a concept here. Revised, see R1.
 
@@ -196,10 +209,8 @@ Identity pick was added. See R6. Held reach was added. See R8.
 
 Zone record and Town tie were added. See R2 and R3.
 
-Guard post is a role. Its consumer, the commit, asks "where does this guard stand and how
-strong is it". It has two variants. **Front guard** stands on the tile in front of the
-entrance. **Mouth guard** stands in the pocket mouth. Siting chooses the variant from the
-spot's pocket flag.
+Guard post stands a mine's guard on the tile in front of its entrance. It has one way to
+do it. Revised, see R13.
 
 **Road courtesy**
 
@@ -250,8 +261,8 @@ Shortfall tally moved here from Allocation. See R7.
 - F5. The guarantee must be checked in a test without running the placer twice.
 - F6. Spot scoring must be testable on a hand-drawn grid, without effort or a catalog.
 - F7. Treasure and loot find their own spots after gameplay, from the map as it stands.
-- F8. A guard stands in front of an entrance or in a pocket mouth. These two ways vary
-  with the spot.
+- F8. The snug rule varies with the object's size: a hole or a corner for one tile, a
+  closed far end for two, a closed top for three or more. Revised, see R13.
 - F9. Downstream steps read results per zone.
 
 **Between parts.**
@@ -270,7 +281,8 @@ Shortfall tally moved here from Allocation. See R7.
   after each commit. Treasure and loot may call the same functions (F7).
 - Promise check: a pure function of a finished map and its homes (F5). The same function
   reads corpus maps.
-- Guard post: a role with two variants, Front guard and Mouth guard (F8).
+- Snug fit: a pure function with one rule per size class, chosen by the body's size (F6,
+  F8). Siting asks for snug spots first and any spot second, through the same fit.
 - Zone record: a lookup from a tile to its zone (F9).
 
 **Claims.**
@@ -282,8 +294,10 @@ Shortfall tally moved here from Allocation. See R7.
 - C13: re-derived. Large and rare objects have the fewest spots, so they choose first.
 - C14: re-derived from the problem: a short map is better than a failed run.
 - C15, C16: re-derived from the corpus look. Vegetation overlaps 80% of corpus sprites.
-- C17, C18: re-derived from the corpus flank share.
-- C19: re-derived from F8.
+- C17: rejected by C29. One score cannot say what fits a one-tile object and a castle.
+  Cover stays as a tiebreak.
+- C18: re-derived from the corpus flank share.
+- C19: rejected by C30.
 - C20: kept as a rule, rejected as a stored value. Revised, see R1.
 - C21: re-derived. Seals keep a mine's front guard from being walked around.
 - C22, C23: re-derived from the road contact measure.
@@ -292,14 +306,17 @@ Shortfall tally moved here from Allocation. See R7.
 - C26: rejected by C8 and C10.
 - C27: rejected. The map-wide quota already counts the corpus rate of mines. See A6.
 - C28: kept. See R3.
+- C29: re-derived from F8 and the corpus snug share. See A11.
+- C30: re-derived. The front guard needs no second variant.
 
 **SOLID check.**
 
 - Single responsibility: every Owns reads without "and".
-- Open/closed: a third guard placement adds one variant and one line in Siting.
-- Liskov: Front guard and Mouth guard are each a Guard post, neither a kind of the other.
-- Interface segregation: Guard post declares only the tile and the level.
-- Dependency inversion: the commit's never-knows names both variants.
+- Open/closed: a fourth size class adds one rule in Snug fit and changes nothing else.
+- Liskov: no concept has variants. The snug spots are a filter over the same fit, not a
+  second kind of fit.
+- Interface segregation: Snug fit takes a shape, an anchor and a closed test only.
+- Dependency inversion: Siting asks whether a spot is snug and never knows the size rules.
 
 **Open lookups.**
 
@@ -360,6 +377,11 @@ Shortfall tally moved here from Allocation. See R7.
   mermaids stand on water before the pass, and one markov map gave the sea's player three
   more shrines near home. Siting ranks a spot by how much it changes the spread, so a spot
   that narrows a gap the sea opened ranks below zero and stands.
+- R13. Section 2, Spot survey and Standing: Pocket and Mouth guard are gone, and Snug fit
+  replaces the one-formula cover score as the first test of a spot. The user set the rule
+  by size, C29 and C30. Before the change, 22% of generated one-tile objects sat in a hole
+  or a corner against 81% on the corpus. Cover stays as a tiebreak. F8 and slice 4
+  changed with it.
 
 **Parts.**
 
@@ -388,7 +410,7 @@ Shortfall tally moved here from Allocation. See R7.
 | Ground | Exists | `LevelField` (`site.py:150`) |
 | Spot | New | `core/placement/spots.py` |
 | Cover | Reshape | `back_score` (`site.py:77`) scores the back only |
-| Pocket | Reshape | `grid/pockets.py` `find_pockets` serves loot only |
+| Snug fit | New, R13 | `grid/snug.py` holds the rule, `reading/snug.py` reads it on any map, `SnugFooting` in `placement/site.py` keeps the snug anchors |
 | Promise list | Reshape | `Ledger` (`economy.py:19`) tracks missing resources map-wide, not per player |
 | Quota | Reshape | `gameplay/quota.py`. It replaces the per-zone count of the zone draw. |
 | Band plan | New | `gameplay/bands.py` |
@@ -398,7 +420,7 @@ Shortfall tally moved here from Allocation. See R7.
 | Identity pick | Exists, R6 | `mine_variants`, `smaller`, `gameplay/pick.py` |
 | Repair | New | `allocate.py` |
 | Claim | Exists | `LevelField.claim` (`site.py:193`), `MapState.accepts` |
-| Guard post | Reshape, R4 | `_guarded_front` (`site.py:455`). Mouth guard is new. |
+| Guard post | Reshape, R4 | `_guarded_front` (`site.py:455`) |
 | Seal | Exists | `site.py:497` |
 | Flank filler | New | `core/placement/` |
 | Reach keeper | Exists | `reach_without` (`site.py:336`) |
@@ -436,7 +458,9 @@ for gated, scatter and portal at no cost.
 - C5: the code drops a mine with a warning. The design follows C5.
 - C8 to C14: the code places per zone. The design follows the claims.
 - C15 to C18: the code scores the back only. The design follows the claims.
-- C19: loot guards pocket mouths. Gameplay does not. The design follows C19.
+- C19: loot guards pocket mouths. Gameplay does not. The design rejects C19, per C30.
+- C29: the code scored back and flanks in one sum. The design follows C29.
+- C30: both follow it.
 - C20: the code follows it by order. The design keeps that, R1.
 - C21: both follow it.
 - C22, C23: the code crosses overlays freely. The design follows the claims.
@@ -464,8 +488,11 @@ the thinnest path a player can see. The miner comes when bands need targets.
    Per band, the objects of a family each player reaches differ by at most one while
    placing and at most two on the finished map (R9). Total density is within 10% of the
    corpus rate. The promise holds.
-4. **Pockets hold objects.** Pocket, Mouth guard. Done when: the share of gameplay objects
-   in pockets sits within the corpus spread. The promise holds.
+4. **Snug fit by size.** Snug fit, Siting. Revised, see R13. Siting tries the drawn object
+   on snug spots first, then on any spot, then gives way to a smaller one. Done when: on
+   nine seeds in ten of each terrain model, each size class with at least 8 objects
+   reaches the corpus p10 snug share (A11). The hemmed share stays within 10 points of
+   the corpus share on nine levels in ten. The promise holds.
 5. **Roads keep off.** Served objects, Courtesy price. Done when: road contact with
    unserved objects is at most 6% on ten seeds.
 
@@ -509,3 +536,9 @@ Each slice passes `make check`, updates the docs it renames, and is committed on
     1. **Decided:** no slice commits until the tree is clean. **Basis:** 52 modified files
     and several new modules overlap the files the slices change. `make check` passes on
     them. **If wrong:** slice commits mix in unrelated work.
+11. **Assumption:** the corpus p10 per map is the right floor for the snug share.
+    **Decided:** the floor is 61% for one tile, 58% for two and 82% for three or more.
+    **Basis:** pooled over the corpus, 81% of one-tile objects, 74% of two-tile objects and
+    92% of larger ones sit snug. Nine maps in ten reach the floor, so the sweep asks the
+    same of nine generated maps in ten. One map in ten with forest holes under tree tops
+    falls short, as hand-made maps do. **If wrong:** slice 4's done-when, Snug fit.

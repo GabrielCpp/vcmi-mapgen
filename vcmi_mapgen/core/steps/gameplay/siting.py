@@ -11,14 +11,14 @@ from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, ZoneSite
+from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, SnugFooting, ZoneSite, footing_of
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import family_purpose
 from vcmi_mapgen.core.reading.promise import doors
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.steps.gameplay.bands import Slot
 from vcmi_mapgen.core.steps.gameplay.fallback import smaller
-from vcmi_mapgen.core.steps.gameplay.pick import Picker
+from vcmi_mapgen.core.steps.gameplay.pick import Pick, Picker
 from vcmi_mapgen.core.steps.gameplay.reach import SLACK, Bands, Reach
 
 TOWN_MIN_AREA = 150
@@ -109,27 +109,51 @@ class Siting:
         return tuple(None if d is None else self.band_of(d) for d in days)
 
     def stand(self, slot: Slot) -> PlacedObject | None:
-        """Stand one object of ``slot`` on the best site that takes it, a smaller object of
-        the same family when the drawn one finds no room. A mine tries every site, any other
-        object the best few. None when no site takes any."""
+        """Stand one object of ``slot`` on the best site that takes it. The drawn object first
+        looks for a spot where it sits snug for its size, then for any spot, then gives way to
+        a smaller object of the same family. A mine tries every site, any other object the
+        best few. None when no site takes any."""
         purpose = family_purpose(slot.family)
         limit = len(self.sites) if purpose == Purpose.MINE else MAX_SITES
-        tried: Counter[Tier] = Counter()
-        for tier, site, centres in self._groups(slot, purpose):
-            if tier[0] > 0:
-                break
-            if tried[tier] >= limit:
-                continue
-            pick = self.picker.pick(slot.family, site.zone.terrain, site.st)
-            if pick is None:
-                continue
-            tried[tier] += 1
-            for ident in (pick.ident, *smaller(site, pick.pool, pick.ident)):
-                obj = site.place(purpose, ident, centres)
+        groups = [g for g in self._groups(slot, purpose) if g[0][0] == 0]
+        picks: dict[ZoneSite, Pick | None] = {}
+        for snug in (True, False):
+            tried: Counter[Tier] = Counter()
+            for tier, site, centres in groups:
+                if tried[tier] >= limit:
+                    continue
+                if site not in picks:
+                    picks[site] = self.picker.pick(slot.family, site.zone.terrain, site.st)
+                pick = picks[site]
+                if pick is None:
+                    continue
+                tried[tier] += 1
+                obj = self._try(slot.family, site, centres, pick, snug)
                 if obj is not None:
-                    self.picker.use(ident)
-                    self.track(slot.family, obj)
                     return obj
+        return None
+
+    def _try(
+        self,
+        family: str,
+        site: ZoneSite,
+        centres: list[Tile],
+        pick: Pick,
+        snug: bool,
+    ) -> PlacedObject | None:
+        purpose = family_purpose(family)
+        footing = footing_of(purpose)
+        if snug:
+            idents = [pick.ident]
+            footing = SnugFooting(footing)
+        else:
+            idents = [pick.ident, *smaller(site, pick.pool, pick.ident)]
+        for ident in idents:
+            obj = site.place(purpose, ident, centres, footing)
+            if obj is not None:
+                self.picker.use(ident)
+                self.track(family, obj)
+                return obj
         return None
 
     def _groups(self, slot: Slot, purpose: str) -> list[tuple[Tier, ZoneSite, list[Tile]]]:

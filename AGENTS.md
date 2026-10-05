@@ -54,7 +54,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       (`vector.py`, `verdict.py`). It also routes a hero over a map (`routes.py`) and
       prices each tile in hero-days from the nearest home (`effort.py`). It reads the
       small enclosed patches with their cover and content (`patches.py`), and counts the
-      objects closed on both flanks (`flanks.py`). It gives each gameplay object its
+      objects closed on both flanks (`flanks.py`) and the objects that sit snug for
+      their size (`snug.py`). It gives each gameplay object its
       family and the days from the nearest home to reach it (`families.py`).
     - `steps/terrain_gen/`: the terrain models. `places` is the default: it lays out a
       place graph and paints each place. `markov` paints terrain from corpus transitions

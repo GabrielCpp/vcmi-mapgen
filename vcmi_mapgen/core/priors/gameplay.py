@@ -26,3 +26,7 @@ type GameplayStats = Mapping[str, TerrainStats]
 HEMMED_SHARE = 0.66
 """The corpus share of towns, mines, dwellings, banks and visited objects whose sprite has a
 closed tile on both flanks."""
+
+SNUG_FLOOR: Mapping[int, float] = {1: 0.61, 2: 0.58, 3: 0.82}
+"""Per size class, the snug share nine corpus maps in ten reach: one-tile objects in a hole or
+a corner, two-tile objects backed past their far end, larger objects backed above their top."""
