@@ -2,10 +2,12 @@
 
 import random
 
+from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.priors.places import RoadStats
-from vcmi_mapgen.core.steps.roads.sites import homes_of, map_surface, visit_tile
+from vcmi_mapgen.core.steps.roads.sites import homes_of, map_surface, shy_of, visit_tile
 
 TOWN = Footprint(
     3,
@@ -20,6 +22,17 @@ TOWN = Footprint(
     ),
 )
 PILE = Footprint.one(Role.VISIT)
+SHRINE = Footprint(
+    2,
+    2,
+    (
+        (-1, -1, Role.OVERLAY),
+        (0, -1, Role.OVERLAY),
+        (-1, 0, Role.BLOCKING),
+        (0, 0, Role.ENTRANCE),
+        (0, 1, Role.APPROACH),
+    ),
+)
 
 
 def _obj(fp: Footprint, x: int, y: int) -> PlacedObject:
@@ -57,3 +70,21 @@ def test_the_map_surface_is_drawn_from_the_counts_of_every_level() -> None:
 
 def test_the_map_surface_is_dirt_without_counts() -> None:
     assert map_surface([RoadStats()], random.Random(5)) == Road.DIRT
+
+
+def test_shy_of_holds_the_walkable_sprite_of_an_object_no_road_serves(catalog: Catalog) -> None:
+    shrine = PlacedObject(5, 5, 0, Purpose.STAT_PERMANENT, "shrine", SHRINE)
+    walk = _walk({(4, 5), (5, 5)})
+    assert shy_of(catalog, [shrine], frozenset(), walk) == {(4, 4), (5, 4)}
+
+
+def test_shy_of_leaves_out_the_tile_a_road_stops_on(catalog: Catalog) -> None:
+    shrine = PlacedObject(5, 5, 0, Purpose.STAT_PERMANENT, "shrine", SHRINE)
+    walk = _walk({(4, 5)})
+    assert shy_of(catalog, [shrine], {(5, 5)}, walk) == {(4, 4), (5, 4)}
+
+
+def test_shy_of_leaves_out_decoration(catalog: Catalog) -> None:
+    tree = PlacedObject(2, 2, 0, Purpose.DECORATION, "tree", SHRINE)
+    walk = _walk({(1, 2), (2, 2)})
+    assert shy_of(catalog, [tree], frozenset(), walk) == frozenset()

@@ -106,3 +106,19 @@ def test_rules_read_the_penalty_share_and_passable_rates() -> None:
     assert rules.share == 0.2
     assert rules.rates == {"home|middle|gated": 0.25, "home|home|open": 0.75}
     assert rules.rate == 0.5
+
+
+def test_a_road_walks_around_an_object_it_does_not_serve() -> None:
+    shy = frozenset((3, y) for y in range(H - 1))
+    level = replace(_level(AdjacencyKind.OPEN), shy=shy)
+    roads = lay_network(level, _rules())
+    assert SITE in roads
+    assert not set(roads) & shy
+
+
+def test_a_road_crosses_an_unserved_object_when_no_other_way_exists() -> None:
+    shy = frozenset((3, y) for y in range(H))
+    level = replace(_level(AdjacencyKind.OPEN), shy=shy)
+    roads = lay_network(level, _rules())
+    assert SITE in roads
+    assert set(roads) & shy

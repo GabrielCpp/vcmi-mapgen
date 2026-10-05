@@ -29,8 +29,9 @@ class RoadLevel:
     covers. ``label`` is the place label grid read ``[y][x]``, -1 off land. ``kinds`` holds
     the kind of every realised pair ``(a, b)``, ``a < b``, and ``passages`` the planned
     passages across them. ``homes`` holds each player town's place and approach tile in
-    player order, ``sites`` each place's important visit tiles, towns first, and ``surface``
-    the one road surface the whole map carries."""
+    player order, ``sites`` each place's important visit tiles, towns first, ``shy`` the
+    walkable sprite tiles of the objects no road leads to, and ``surface`` the one road
+    surface the whole map carries."""
 
     walk: frozenset[Tile]
     terrain: Sequence[Sequence[Terrain]]
@@ -40,6 +41,7 @@ class RoadLevel:
     passages: Passages
     homes: tuple[tuple[int, Tile], ...] = ()
     sites: Mapping[int, tuple[Tile, ...]] = field(default_factory=dict[int, tuple[Tile, ...]])
+    shy: frozenset[Tile] = frozenset()
     surface: Road = Road.DIRT
 
 

@@ -494,7 +494,9 @@ the thinnest path a player can see. The miner comes when bands need targets.
    reaches the corpus p10 snug share (A11). The hemmed share stays within 10 points of
    the corpus share on nine levels in ten. The promise holds.
 5. **Roads keep off.** Served objects, Courtesy price. Done when: road contact with
-   unserved objects is at most 6% on ten seeds.
+   unserved objects is at most 6% on ten seeds. Measured: 4.8% on ten seeds at size 72,
+   down from 5.3%, against 6.5% on hand-made maps. The rest sits on the top rows of
+   sprites, which a hero walks under.
 
 Each slice passes `make check`, updates the docs it renames, and is committed on main.
 

@@ -23,6 +23,7 @@ SHARE = 0.1
 RATE = 0.25
 MIN_RATE = 0.01
 STUB = 4
+COURTESY = 12.0
 
 type Pair = tuple[int, int]
 
@@ -97,7 +98,8 @@ def step_cost(
     allowed: AbstractSet[int],
 ) -> StepCost:
     """The price of a road step inside the places ``allowed``, None off the walkable tiles
-    or across a border no passage opens."""
+    or across a border no passage opens. A step onto the sprite of an object the road does
+    not lead to costs COURTESY more."""
 
     def cost(u: Tile, v: Tile) -> float | None:
         if v not in level.walk:
@@ -107,7 +109,8 @@ def step_cost(
             return None
         if level.label[u[1]][u[0]] != b and not crosses(level, gate, u, v):
             return None
-        return 1.0 if level.terrain[v[1]][v[0]] == level.places[b].dominant else rules.penalty
+        base = 1.0 if level.terrain[v[1]][v[0]] == level.places[b].dominant else rules.penalty
+        return base + COURTESY if v in level.shy else base
 
     return cost
 

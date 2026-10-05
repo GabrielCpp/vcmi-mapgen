@@ -10,7 +10,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import NB8
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import MapState, PlacedObject, Role, Tile, footprint
-from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.purpose import FLANKED, Purpose
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.priors.places import RoadStats
 from vcmi_mapgen.core.reading.ground import Ground, purpose_of
@@ -76,6 +76,26 @@ def sites_of(
     return {p: tuple(t for _, t in sorted(ts)) for p, ts in sorted(by.items())}
 
 
+def shy_of(
+    catalog: Catalog,
+    objs: Sequence[PlacedObject],
+    served: AbstractSet[Tile],
+    walk: AbstractSet[Tile],
+) -> frozenset[Tile]:
+    """The walkable sprite tiles of every gameplay object, its approach and the tiles in
+    ``served`` left out, so a road reaches an object only where it stops."""
+    out: set[Tile] = set()
+    for obj in objs:
+        if purpose_of(catalog, obj) not in FLANKED:
+            continue
+        out.update(
+            t
+            for t, role in footprint(obj)
+            if role is not Role.APPROACH and t in walk and t not in served
+        )
+    return frozenset(out)
+
+
 def road_level(
     catalog: Catalog,
     ground: Ground,
@@ -87,6 +107,9 @@ def road_level(
     objects."""
     walk, players = ground.walk, map_state.player_towns
     objs = [o for o in map_state.objs if o.level == level]
+    homes = homes_of(players, level, places.label, walk)
+    sites = sites_of(catalog, objs, players, places.label, walk)
+    served = {t for _, t in homes} | {t for ts in sites.values() for t in ts}
     return RoadLevel(
         walk=walk,
         terrain=ground.terrain,
@@ -94,8 +117,9 @@ def road_level(
         places={p: RoadPlace(pl.role, pl.dominant) for p, pl in places.places.items()},
         kinds=places.kinds,
         passages=places.passages,
-        homes=homes_of(players, level, places.label, walk),
-        sites=sites_of(catalog, objs, players, places.label, walk),
+        homes=homes,
+        sites=sites,
+        shy=shy_of(catalog, objs, served, walk),
     )
 
 
