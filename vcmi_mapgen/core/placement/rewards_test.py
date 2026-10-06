@@ -39,6 +39,28 @@ def test_seer_hut_tier_pays_above_the_pandora_tier() -> None:
     assert SEERHUT_TIER.creatures[1] > PANDORA_TIER.creatures[1]
 
 
+def test_seer_hut_stack_is_worth_its_gold() -> None:
+    rng = random.Random(3)
+    creatures = {1: ["peasant"], 4: ["swordsman"], 5: ["monk"]}
+    stacks = [
+        r.creatures[0][0]
+        for r in (draw_reward(rng, SEERHUT_TIER, creatures) for _ in range(200))
+        if r.creatures
+    ]
+    assert stacks and set(stacks) == {"swordsman", "monk"}
+
+
+def test_pandora_stack_is_worth_its_gold() -> None:
+    rng = random.Random(3)
+    creatures = {1: ["peasant"], 2: ["archer"], 3: ["griffin"]}
+    stacks = [
+        r.creatures[0][0]
+        for r in (draw_reward(rng, PANDORA_TIER, creatures) for _ in range(200))
+        if r.creatures
+    ]
+    assert stacks and set(stacks) == {"archer", "griffin"}
+
+
 def test_payloads_share_one_rewardable_shape() -> None:
     pandora = pandora_reward(random.Random(1), CREATURES)
     quest = seerhut_quest(random.Random(1), "shieldOfTheDwarvenLords", CREATURES)
