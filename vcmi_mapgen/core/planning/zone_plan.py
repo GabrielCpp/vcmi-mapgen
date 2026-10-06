@@ -247,7 +247,6 @@ class _LevelPlan:
     zones: Mapping[int, Zone]
     zone_label: ZoneLabel
     passages: Passages
-    tunnel_protect: AbstractSet[Tile]
     gstats: Mapping[str, TerrainStats]
 
 
@@ -275,7 +274,7 @@ class _ZonePlanner:
                 entrances=z_entr,
                 keep_off=rim8,
             ),
-        ) | (lp.tunnel_protect & ts)
+        )
         return PlanZone(
             terrain=terrain,
             ts=frozenset(ts),
@@ -389,13 +388,12 @@ def plan_player_zones(
 @dataclass(frozen=True, slots=True)
 class PlanTerrain:
     """What a zone plan reads of the terrain: each level's zones and zone label grid, each
-    level's ``Terrain`` grid, the underground tunnel cells and each level's passages. A
+    level's ``Terrain`` grid and each level's passages. A
     level with no passages gets ``all_passages`` over its zone label."""
 
     zones: Mapping[int, Mapping[int, Zone]]
     zone_label: Mapping[int, ZoneLabel]
     grids: Mapping[int, list[list[Terrain]]]
-    tunnel_protect: frozenset[Tile]
     passages: Mapping[int, Passages] = field(default_factory=dict[int, Passages])
 
 
@@ -416,7 +414,6 @@ def plan_zones(
                 zones,
                 label,
                 all_passages(label) if passages is None else passages,
-                terrain.tunnel_protect if level == 1 else NO_TILES,
                 gameplay[level],
             )
         )

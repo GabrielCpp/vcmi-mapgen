@@ -42,7 +42,7 @@ of step, it is a sign one of two things happened:
    **Fix:** merge the two steps.
 2. **A genuinely shared, cross-step value with no map-level meaning of its own** — e.g.
    `TerrainGrids` (the tunnel-protect corridor cells, needed by
-   `VegetationStep`/`GameplayStep`) or `ZonePlan` (each zone's entrances and web, which
+   `VegetationStep`) or `ZonePlan` (each zone's entrances and web, which
    `VegetationStep` computes and the later placement steps read). This data is real and does need
    to cross steps — but the step that *computes* it also has real map-level work to do
    (`TerrainStep` writes `map_state.terrain`; `VegetationStep` writes

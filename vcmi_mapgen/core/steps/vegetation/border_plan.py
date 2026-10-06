@@ -72,8 +72,6 @@ class _Sealer:
         queue = collections.deque([around[0]])
         while queue and want:
             u = queue.popleft()
-            if len(seen) > 400:
-                return True
             for m in ((u[0] + 1, u[1]), (u[0] - 1, u[1]), (u[0], u[1] + 1), (u[0], u[1] - 1)):
                 if m == t or m in seen or m not in open_all or owner.get(m) != zid:
                     continue
@@ -83,7 +81,7 @@ class _Sealer:
         return not want
 
     def keeps_connected(self, t: Tile) -> bool:
-        open_all, avoid, web = self._open_all, self._avoid, self._web
+        open_all, web = self._open_all, self._web
         linked: set[Tile] = set()
         for nx, ny in ((t[0] + 1, t[1]), (t[0] - 1, t[1]), (t[0], t[1] + 1), (t[0], t[1] - 1)):
             n = (nx, ny)
@@ -91,13 +89,13 @@ class _Sealer:
                 continue
             seen = {n}
             queue = collections.deque([n])
-            found = n in avoid or n in web
+            found = n in web
             while queue and not found:
                 u = queue.popleft()
                 for m in ((u[0] + 1, u[1]), (u[0] - 1, u[1]), (u[0], u[1] + 1), (u[0], u[1] - 1)):
                     if m == t or m in seen or m not in open_all:
                         continue
-                    if m in avoid or m in web or m in linked:
+                    if m in web or m in linked:
                         found = True
                         break
                     seen.add(m)

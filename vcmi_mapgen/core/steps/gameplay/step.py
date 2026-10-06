@@ -59,7 +59,7 @@ from vcmi_mapgen.core.steps.gameplay.result import (
 )
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
 from vcmi_mapgen.core.steps.gameplay.siting import TOWN_MIN_AREA
-from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation, TerrainGrids
+from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
@@ -99,15 +99,13 @@ class GameplayStep(PipelineStep):
         density     The multiplier on the corpus rate of gameplay objects per tile.
 
     inject(ctx): ``ZonePlan`` (each zone's plan, the player zones and the sea objects),
-    ``VegetationResult`` (each zone's open and walkable tiles), ``TerrainGrids`` (the tunnel
-    protect set), ``Segmentation`` (the surface zones), and the ``ContentPlan`` when present:
-    a planned home's town may lay its overlay outside the zone. The ``Accents`` when present:
-    each accent patch of ``LANDMARK_FLOOR`` tiles or more takes a landmark right after the
-    towns, and the map-wide pass counts it. The patch the homes reach last takes a dragon
-    dwelling behind a level-7 guard instead. The step publishes the player zones the zone
-    plan picked, then commits the sea objects the zone plan drew. Gates stay off each player
-    town's kept room. Gates may stand on an underground tunnel. No other object's footprint
-    may, and none may strand one.
+    ``VegetationResult`` (each zone's open and walkable tiles), ``Segmentation`` (the surface
+    zones), and the ``ContentPlan`` when present: a planned home's town may lay its overlay
+    outside the zone. The ``Accents`` when present: each accent patch of ``LANDMARK_FLOOR``
+    tiles or more takes a landmark right after the towns, and the map-wide pass counts it.
+    The patch the homes reach last takes a dragon dwelling behind a level-7 guard instead.
+    The step publishes the player zones the zone plan picked, then commits the sea objects
+    the zone plan drew. Gates stay off each player town's kept room.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
 
     Each player reaches a mine of each basic resource within ``PROMISE_DAYS`` hero-days: the
@@ -141,7 +139,6 @@ class GameplayStep(PipelineStep):
         self._grids: dict[int, list[list[Terrain]]] = {}
         self._segmentation = Segmentation({}, {})
         self._player_zids: list[tuple[int, int]] = []
-        self._tunnels: frozenset[Tile] = NO_TILES
         self._starts: dict[int, StartRoomRule] = {}
         self._ways: dict[int, WayRule] = {}
         self._content = ContentPlan()
@@ -152,7 +149,6 @@ class GameplayStep(PipelineStep):
         self._ctx = ctx
         self._plan = ctx.require(ZPL.ZonePlan)
         self._veg = ctx.require(VegetationResult)
-        self._tunnels = ctx.require(TerrainGrids).tunnel_protect
         self._segmentation = ctx.require(Segmentation)
         self._content = ctx.get(ContentPlan, ContentPlan())
         self._accents = ctx.get(Accents, Accents())
@@ -279,9 +275,6 @@ class GameplayStep(PipelineStep):
         for level, idx in indexes.items():
             idx.lf.avoid = landings if level == 0 else NO_TILES
         map_state.gate_blk = gates.gate_blk
-        if 1 in indexes:
-            for site in indexes[1].sites.values():
-                site.reserved |= self._tunnels & site.ts
         return gates
 
     def _place_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:

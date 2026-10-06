@@ -158,7 +158,6 @@ class VegetationStep(PipelineStep):
             seg.zones,
             seg.zone_label,
             map_state.terrain,
-            self._terrain.tunnel_protect,
             {level: lp.passages for level, lp in self._places.levels.items()},
         )
         return ZPL.plan_player_zones(
@@ -194,7 +193,7 @@ class VegetationStep(PipelineStep):
         land: set[Tile] = set()
         bands: set[Tile] = set()
         avoid: set[Tile] = set(pl.landings.blk | pl.landings.appr)
-        web: set[Tile] = set()
+        web: set[Tile] = set(pl.landings.blk | pl.landings.appr)
         avoid |= taken
         if level == 1:
             avoid |= self._tunnel_protect
