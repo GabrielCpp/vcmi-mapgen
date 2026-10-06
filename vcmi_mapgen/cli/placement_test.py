@@ -1,6 +1,7 @@
 """The map-wide gameplay pass holds each family at the corpus rate per tile, within DENSITY_TOL,
 keeps every family's median effort inside the corpus p10 to p90, and leaves each family's
-reach per band at most REACH_GAP apart between the players."""
+reach per band at most REACH_GAP apart between the players, each object past its own guard
+unless it is a mine or a town."""
 
 import contextlib
 import io
@@ -18,7 +19,13 @@ from vcmi_mapgen.core.placement.intensity import density
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.effort import BANDS
-from vcmi_mapgen.core.reading.families import Families, family_days, unguarded
+from vcmi_mapgen.core.reading.families import (
+    Families,
+    family_days,
+    guard_levels,
+    reach_guard,
+    unguarded,
+)
 from vcmi_mapgen.core.reading.promise import doors, player_maps
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
@@ -71,11 +78,16 @@ def _density(catalog: Catalog, priors: Priors, config: StepConfig) -> float:
 def _reach_gap(catalog: Catalog, priors: Priors, config: StepConfig) -> int:
     state, _plan = _map(catalog, priors, config)
     placed = _placed(catalog, state)
+    guards = guard_levels(catalog, state.objs)
     view = unguarded(catalog, state, (o for _f, o in placed))
     maps = player_maps(catalog, view, priors.effort.toll)
     reach = Reach(len(maps))
     for f, o in placed:
-        lows = (min((e.total for d in doors(o) if (e := em.visit(d))), default=None) for em in maps)
+        least = reach_guard(catalog, guards, o)
+        lows = (
+            min((e.total for d in doors(o) if (e := em.visit(d, least))), default=None)
+            for em in maps
+        )
         reach.add(f, tuple(None if d is None else priors.effort.band(d) for d in lows))
     rows = [[reach.within(f, p) for p in range(len(maps))] for f in {f for f, _o in placed}]
     return max(

@@ -20,6 +20,7 @@ from vcmi_mapgen.core.reading.routes import Spot, route_map
 
 FAR_DAYS = 40
 TOP_LEVEL = 7
+UNGUARDED = frozenset({Purpose.MINE, Purpose.TOWN})
 
 type Key = tuple[int, int, int]
 
@@ -87,6 +88,32 @@ def unguarded(catalog: Catalog, state: MapState, objs: Iterable[PlacedObject]) -
         if not (purpose_of(catalog, o) == Purpose.GUARD and (o.level, o.x, o.y) in near)
     ]
     return replace(state, objs=keep)
+
+
+def guard_levels(catalog: Catalog, objs: Iterable[PlacedObject]) -> dict[Key, int]:
+    """The level of each guard among ``objs``, by its level and tile."""
+    return {
+        (o.level, o.x, o.y): catalog.creature_level(o.kind) or 0
+        for o in objs
+        if purpose_of(catalog, o) == Purpose.GUARD
+    }
+
+
+def reach_guard(catalog: Catalog, guards: Mapping[Key, int], obj: PlacedObject) -> int:
+    """The level of the strongest of ``guards`` next to a door of ``obj``, the guard a player
+    beats to count ``obj`` in reach. A mine or a town counts none, since its guard comes
+    with it."""
+    if purpose_of(catalog, obj) in UNGUARDED:
+        return 0
+    return max(
+        (
+            guards.get((d.level, d.x + dx, d.y + dy), 0)
+            for d in doors(obj)
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+        ),
+        default=0,
+    )
 
 
 def family_days(

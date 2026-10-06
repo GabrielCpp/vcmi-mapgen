@@ -14,7 +14,7 @@ from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.reading.effort import EffortMap
-from vcmi_mapgen.core.reading.families import Families
+from vcmi_mapgen.core.reading.families import Families, guard_levels, reach_guard
 from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.quota import RANKS, family_quota, purpose_quota
@@ -115,7 +115,8 @@ class Placement:
     ) -> Shortfall:
         """Stand every slot of ``plan`` and tally what stood against what the plan asked."""
         reach = Reach(self.demand.players)
-        siting = Siting(self.sites, picker, self.effort.band, self.rng, reach)
-        siting.held.extend(plan.standing)
+        siting = Siting(self.sites, picker, self.effort.band, self.rng, reach, self.effort.toll)
+        guards = guard_levels(self.catalog, (o for s in self.sites for o in s.objs))
+        siting.held.extend((f, o, reach_guard(self.catalog, guards, o)) for f, o in plan.standing)
         placed = place_slots(siting, plan.slots, rank, price)
         return Shortfall(Counter(s.family for s in plan.slots), placed)

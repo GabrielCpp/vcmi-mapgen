@@ -16,6 +16,10 @@ import math
 from collections.abc import Iterator, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
+from typing import cast
+
+import numpy as np
+from numpy.typing import NDArray
 
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot
 
@@ -23,6 +27,7 @@ DIAGONAL = math.sqrt(2)
 _SLACK = 1e-9
 _MATCH = 1e-6
 AROUND = 3
+UNREACHED = -1
 _STEPS = tuple(
     (dx, dy, DIAGONAL if dx and dy else 1.0) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy
 )
@@ -191,11 +196,30 @@ class EffortMap:
         total, guard, whole = min(options)
         return Effort(days=whole, guard=guard, total=total)
 
-    def visit(self, door: Spot) -> Effort | None:
+    def visit(self, door: Spot, least: int = 0) -> Effort | None:
         """The effort to visit the object whose entrance is ``door``: a hero steps on it from
-        an open tile beside it and beats the guard covering ``door`` on the way."""
-        best = self._cheapest(self._sides(door), self.flat.guard[self.flat.index(door)])
+        an open tile beside it and beats the guard covering ``door`` on the way, and a guard
+        of at least ``least``."""
+        guard = max(self.flat.guard[self.flat.index(door)], least)
+        best = self._cheapest(self._sides(door), guard)
         return None if best is None else best[0]
+
+    def visits(self, doors: Sequence[Spot], top: int) -> NDArray[np.int64]:
+        """Per guard level 0..``top`` and per door, the total days `visit` gives with that
+        level as ``least``, UNREACHED where no home reaches the door."""
+        flat = self.flat
+        shape = (len(flat.levels), flat.size, flat.size)
+        index = np.array([flat.index(d) for d in doors], dtype=np.intp)
+        toll = np.array(self.toll, dtype=np.float64)
+        door_guard = np.array(flat.guard, dtype=np.intp)[index]
+        out = np.full((top + 1, len(doors)), np.inf)
+        for ceiling, days in self.days.items():
+            near = _beside(np.array(days, dtype=np.float64).reshape(shape)).reshape(-1)[index]
+            whole = np.ceil(near - _SLACK)
+            for least in range(top + 1):
+                guard = np.maximum(np.maximum(door_guard, least), ceiling)
+                out[least] = np.minimum(cast(NDArray[np.float64], out[least]), toll[guard] + whole)
+        return np.where(np.isfinite(out), out, UNREACHED).astype(np.int64)
 
     def way(self, door: Spot) -> list[Spot]:
         """The tiles a hero walks from the nearest home to the tile beside ``door`` it visits
@@ -232,6 +256,15 @@ class EffortMap:
             return None
         total, guard, days, ceiling, tile = min(options)
         return Effort(days=days, guard=guard, total=total), ceiling, tile
+
+
+def _beside(days: NDArray[np.float64]) -> NDArray[np.float64]:
+    padded = np.pad(days, ((0, 0), (1, 1), (1, 1)), constant_values=np.inf)
+    _levels, rows, cols = days.shape
+    best = np.full(days.shape, np.inf)
+    for dx, dy, _scale in _STEPS:
+        best = np.minimum(best, padded[:, 1 + dy : 1 + dy + rows, 1 + dx : 1 + dx + cols])
+    return best
 
 
 def _around(flat: _Flat, days: list[float], ceiling: int, tile: int, shut: set[int]) -> float:

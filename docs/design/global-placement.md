@@ -98,6 +98,9 @@ code. Source for C29 and C30: the user, 2026-10-05, after slice 3.
 30. There are no pockets and no mouth guards. Only mines carry a guard, in front. Mines are
     three tiles, so they never need a nook. Every object stays reachable, so its guard can
     stand in front.
+31. A spot that would give some players more of a family than others still takes the
+    object. A stronger guard in front rebalances the odds. Source: the user, 2026-10-05,
+    after four-player maps came up short.
 
 ## 2. Parts and concepts
 
@@ -189,11 +192,13 @@ The spot pool of claim C20 is not a concept here. Revised, see R1.
 | Band plan | Per family, how many objects each player gets in each band | Spots |
 | Held reach | Per family and player, the objects that player reaches within each band | Spots |
 | Order | Which object goes next | Bands |
-| Siting | The one spot an object takes, by even reach, then band, then cover | How spots are found |
+| Siting | The one spot an object takes, by even reach, then fewest guards, then band, then cover | How spots are found |
+| Fair guard | The weakest guard level that keeps the players' reach even at a tile | Where the guard stands |
 | Identity pick | Which object of a family stands on a spot, by its terrain and its size | Effort |
 | Repair | The mine to add or swap when the promise breaks | Spot scoring |
 
-Identity pick was added. See R6. Held reach was added. See R8.
+Identity pick was added. See R6. Held reach was added. See R8. Fair guard was added. See
+R14.
 
 **Standing**
 
@@ -209,8 +214,9 @@ Identity pick was added. See R6. Held reach was added. See R8.
 
 Zone record and Town tie were added. See R2 and R3.
 
-Guard post stands a mine's guard on the tile in front of its entrance. It has one way to
-do it. Revised, see R13.
+Guard post stands a guard on the tile in front of an object's entrance: a mine's guard at
+its resource level, and a fair guard at the level Fair guard chose. It has one way to do it.
+Revised, see R13 and R14.
 
 **Road courtesy**
 
@@ -238,11 +244,15 @@ Shortfall tally moved here from Allocation. See R7.
    Promise check. Upheld by Guard post. See R10.
 4. No body covers another body, the vegetation web, or another object's entrance or front
    tile. **Owner:** Claim. Upheld by Ground and Shape.
-5. Every tile a hero could walk before a commit stays reachable after it. **Owner:** Reach
-   keeper. Upheld by Seal and Flank filler, which ask it first.
+5. Every tile a hero could walk before a commit stays reachable after it. The open tiles
+   beside a new body or a flank decoration that joined through its tiles still join
+   within two tiles of it. **Owner:** Reach keeper. Upheld by Seal and Flank filler, which
+   ask it first. See R17.
 6. Within each band, the objects of a family each player reaches differ by at most one
-   between players at the moment each object stands. **Owner:** Siting, which skips an
-   object that would break it. Upheld by Held reach. See R8 and R9.
+   between players at the moment each object stands. Each object but a mine or a town
+   counts at its effort past its own guard. **Owner:** Siting, which skips an object that
+   would break it at every guard level up to the cap. Upheld by Held reach and Fair guard.
+   See R8, R9, R14 and R16.
 7. The map never holds more objects of a family than its quota. **Owner:** Quota. Upheld by
    Siting.
 8. A road crosses an object it does not serve only where no other way exists. **Owner:**
@@ -264,6 +274,13 @@ Shortfall tally moved here from Allocation. See R7.
 - F8. The snug rule varies with the object's size: a hole or a corner for one tile, a
   closed far end for two, a closed top for three or more. Revised, see R13.
 - F9. Downstream steps read results per zone.
+- F10. Four players on a 72-tile map share most of the near ground. Most tiles fall in band
+  1 for two or three players at once, so one more object there gives those players more
+  than the rest. On seed 25 every slot that failed had 22 to 325 legal spots, and none to
+  seven of them kept the players even.
+- F11. Siting ranks every site tile for every object. On seed 25 with four players the
+  ranking takes 40 s of the 96 s gameplay pass. Ranking once per guard level multiplies
+  that.
 
 **Between parts.**
 
@@ -284,6 +301,10 @@ Shortfall tally moved here from Allocation. See R7.
 - Snug fit: a pure function with one rule per size class, chosen by the body's size (F6,
   F8). Siting asks for snug spots first and any spot second, through the same fit.
 - Zone record: a lookup from a tile to its zone (F9).
+- Fair guard: a pure function over a table of tiles by players, in days (F10, F11). It
+  ranks every tile at every guard level up to the cap in array operations, and takes each
+  tile's worst tier within 3 tiles by a sliding maximum on the level grid. A test feeds it
+  a hand-made table without a map.
 
 **Claims.**
 
@@ -307,7 +328,10 @@ Shortfall tally moved here from Allocation. See R7.
 - C27: rejected. The map-wide quota already counts the corpus rate of mines. See A6.
 - C28: kept. See R3.
 - C29: re-derived from F8 and the corpus snug share. See A11.
-- C30: re-derived. The front guard needs no second variant.
+- C30: re-derived. The front guard needs no second variant. Revised by C31: a fair guard
+  stands in the same front, so the front still has one variant.
+- C31: re-derived from F10. A guard sets the same floor on the toll for every player, so it
+  moves an object into later bands, where the players who reach it at all count it alike.
 
 **SOLID check.**
 
@@ -382,6 +406,30 @@ Shortfall tally moved here from Allocation. See R7.
   by size, C29 and C30. Before the change, 22% of generated one-tile objects sat in a hole
   or a corner against 81% on the corpus. Cover stays as a tiebreak. F8 and slice 4
   changed with it.
+- R14. Section 2, Allocation: Fair guard added, and Siting stands an object on a spot that
+  would spread the players when a guard in front evens them out. The user set the rule,
+  C31. On seed 25 with four players the map came up 30 objects short while hundreds of
+  legal spots stood empty (F10). A guard's toll counts for every player, so Held reach
+  counts the object at its effort plus that toll. Band plan keeps the effort without the
+  guard, as Home effort reading does on the corpus. Siting ranks by even reach, then by
+  the weakest guard, then by player, band and target. Invariant 6, F10, F11 and slice 6
+  changed with it.
+- R15. Section 3, invariant 6: a spot that narrows a gap stands. Slice 4 kept only spots
+  that change the spread by exactly zero, and so dropped the spots R12 ranks first.
+  Siting keeps every spot that does not widen the spread.
+- R16. Section 3, invariant 6: an object counts at its effort past its own guard, not at
+  its effort plus the guard's toll. A hero pays the toll of the strongest guard on the
+  way, so a fair guard no stronger than one the route already beats costs nothing more.
+  The ten-seed sweep found the two rules apart: Siting added the toll, the sweep measured
+  without the guard, and eleven seeds read a gap of 3 to 6. Siting and the sweep now count
+  every object but a mine or a town past its own guard, a landmark's included.
+- R17. Section 3, invariant 5: a body may not send a hero the long way round. The sweep
+  read seed 7 with a gap of 3. Three level 2 dwellings stood within 4 days of both
+  players, and a later dwelling closed the corridor to two of them. The loop round it
+  raised one player's trip to 10 days. Reach keeper refused only a cut that split an
+  area, and a loop kept the area whole. It now also refuses a body or a flank decoration
+  whose open neighbours no longer join within two tiles of it. A seal still closes a
+  front, since a guard's front must cut.
 
 **Parts.**
 
@@ -498,6 +546,14 @@ the thinnest path a player can see. The miner comes when bands need targets.
    down from 5.3%, against 6.5% on hand-made maps. The rest sits on the top rows of
    sprites, which a hero walks under.
 
+6. **Fair guards.** Fair guard, Held reach, Siting, Guard post. Siting first takes the
+   spots that keep the players even unguarded, then the spots a guard of level 1 to 4
+   evens out. Done when: seed 25 at size 72 with four players places at least 90% of its
+   quota, from 85% today. The ranking costs no more time than today's. The two-player
+   sweep still passes. Measured: 160 of 161 objects, 99%, with 29 behind a fair guard.
+   The gameplay pass takes 69 s, down from 96 s. One neutral town still finds no fair
+   spot, since towns take no fair guard.
+
 Each slice passes `make check`, updates the docs it renames, and is committed on main.
 
 ## 7. Assumptions
@@ -544,3 +600,13 @@ Each slice passes `make check`, updates the docs it renames, and is committed on
     92% of larger ones sit snug. Nine maps in ten reach the floor, so the sweep asks the
     same of nine generated maps in ten. One map in ten with forest holes under tree tops
     falls short, as hand-made maps do. **If wrong:** slice 4's done-when, Snug fit.
+12. **Assumption:** a fair guard stops at level 4, 12 days of toll. **Decided:** Fair
+    guard tries levels 1 to 4 and no higher. **Basis:** 12 days moves any band-1 object past
+    the 8-day band edge for every player. A level 5 guard costs 18 days, which puts a
+    temporary bonus behind a monster no player would fight for it. **If wrong:** Fair guard,
+    slice 6's done-when.
+13. **Assumption:** the corpus measures an object's effort without its own guard, so the
+    fair guard leaves the object's band in Band plan alone. **Decided:** Siting ranks band
+    and target by the effort without the guard, and Held reach counts it past the guard.
+    **Basis:** Home effort reading strips the guards beside an object's doors on the corpus
+    and on generated maps alike. **If wrong:** Siting's band rank, Target band.

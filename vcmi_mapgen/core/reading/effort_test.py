@@ -1,3 +1,5 @@
+from typing import cast
+
 from vcmi_mapgen.core.reading.effort import Effort, effort_map
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot
 
@@ -140,3 +142,21 @@ def test_an_object_closing_the_corridor_shuts_the_spot() -> None:
 def test_the_guard_on_the_spot_adds_its_toll() -> None:
     effort = effort_map(grid_route(["." * 16]), [_at(0, 0)], TOLL)
     assert effort.beside(_at(15, 0), 1, set()) == Effort(days=1, guard=1, total=4)
+
+
+def test_a_guard_no_stronger_than_the_way_costs_nothing_more() -> None:
+    rows = ["." * 60, "." + "#" * 58 + ".", "." * 60]
+    effort = effort_map(grid_route(rows, guard={(0, 1): 1}), [_at(0, 0)], TOLL)
+    assert effort.visit(_at(0, 2), 1) == Effort(days=1, guard=1, total=4)
+    assert effort.visit(_at(0, 2), 2) == Effort(days=1, guard=2, total=6)
+
+
+def test_visits_price_every_door_as_visit_does() -> None:
+    rows = ["." * 20, "." + "#" * 18 + ".", "....~~~~~~~~........", "#" * 19 + "."]
+    route = grid_route(rows, guard={(0, 1): 1, (19, 1): 3}, docks=frozenset({_at(3, 2)}))
+    effort = effort_map(route, [_at(0, 0)], TOLL)
+    doors = [_at(x, y) for y in range(20) for x in range(20)]
+    table = cast(list[list[int]], effort.visits(doors, 4).tolist())
+    for least in range(5):
+        expect = [-1 if (e := effort.visit(d, least)) is None else e.total for d in doors]
+        assert table[least] == expect

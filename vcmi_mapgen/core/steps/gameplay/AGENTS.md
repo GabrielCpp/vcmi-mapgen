@@ -9,7 +9,8 @@
 - `quota.py`: how many objects of each family the whole map holds, at the corpus rate per tile times `--density`.
 - `bands.py`: the slot of each object: the player and effort band it serves and its target in days, and the order the slots are placed in.
 - `reach.py`: `Reach`, the objects of each family each player reaches within each band, and how far one more would spread the players.
-- `siting.py`: where each slot stands. It ranks every site tile by the spread it would cause, then by its player's band and target, and skips an object that would spread the players beyond one.
+- `siting.py`: where each slot stands. It ranks every site tile by the spread it would cause under its weakest fair guard, then by its player's band and target, and skips an object that would spread the players beyond one.
+- `fair_guard.py`: `fair_guard`, the weakest guard from level 1 to 4 that keeps the players' reach even at each tile, and `TileGrid`, which takes each tile's worst code within a few tiles. Both work on plain arrays, so the tests draw their grids in ASCII. Towns and mines take no fair guard.
 - `pick.py`: `Picker`, which object of a family stands on a site's terrain.
 - `fallback.py`: `smaller`, the smaller objects of a pool to try when the drawn one finds no room.
 - `economy.py`: the basic mine resources, the mine variants and the dwellings tied to a town.

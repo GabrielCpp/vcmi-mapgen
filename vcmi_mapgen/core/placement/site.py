@@ -8,12 +8,13 @@ footprints, with its blocking cells GAP tiles away from theirs, and off the entr
 and earlier approaches. ``TownFooting`` only keeps a town off other footprints and earlier
 approaches, and lets its cells spill out of the zone onto unwalkable land that is not water
 or rock. Under either footing the entrance and its approach are walkable and reachable from
-the web, and the blocking cells split no reachable area in two. Blocking cells may land on
-vegetation, the zone rim and the web, and the web then walks around them. ``SnugFooting``
-narrows a footing to the anchors where the object sits snug for its size. Among the legal
-anchors of a neighbourhood the one whose sprite top and flanks rest most against unwalkable
-tiles wins. While a level hems fewer objects than HEMMED_SHARE, a commit plants a decoration on
-each open flank it can close without cutting a path."""
+the web, and the blocking cells split no reachable area in two nor part the open tiles
+beside them that joined through them. Blocking cells may land on vegetation, the zone rim
+and the web, and the web then walks around them. ``SnugFooting`` narrows a footing to the
+anchors where the object sits snug for its size. Among the legal anchors of a neighbourhood
+the one whose sprite top and flanks rest most against unwalkable tiles wins. While a level
+hems fewer objects than HEMMED_SHARE, a commit plants a decoration on each open flank it can
+close without cutting a path."""
 
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from typing import Protocol, final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
+from vcmi_mapgen.core.grid.detour import detours
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
 from vcmi_mapgen.core.grid.reach import walk
 from vcmi_mapgen.core.grid.snug import snug
@@ -373,6 +375,9 @@ class ZoneSite:
             return None
         return left - stranded
 
+    def detours(self, blk: Iterable[Tile]) -> bool:
+        return detours(blk, lambda t: not self.lf.closed(t))
+
     def block(self, blk: Iterable[Tile], reach: set[Tile]) -> None:
         cut = set(blk)
         self.stranded |= self.reach - cut - reach
@@ -435,7 +440,7 @@ class ZoneSite:
         obj = PlacedObject.at(
             ident, anchor, level=self.lf.level, purpose=purpose, payload=payload_for(purpose)
         )
-        if not self.lf.accepts(obj):
+        if not self.lf.accepts(obj) or self.detours(fit[1]):
             return None
         reach = self.reach_without(fit[1])
         if reach is None:
@@ -488,7 +493,7 @@ class ZoneSite:
         if not pool:
             return False
         plant = PlacedObject.at(self.rng.choice(pool), t, level=self.lf.level, purpose="")
-        if not self.lf.accepts(plant):
+        if not self.lf.accepts(plant) or self.detours([t]):
             return False
         reach = self.reach_without([t])
         if reach is None:

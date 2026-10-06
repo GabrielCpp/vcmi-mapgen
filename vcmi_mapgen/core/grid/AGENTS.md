@@ -7,6 +7,7 @@ registry.
 ## Map
 
 - `components.py`: 4-connected components of a tile set, and `open_islands`, the open ground walled off from every anchor.
+- `detour.py`: `detours`, whether closing a few tiles parts open tiles beside them that joined through them, within `MARGIN` tiles, so a hero must go the long way round.
 - `flanks.py`: `flank_tiles`, the tile left and the tile right of each row of a sprite, and `closed_flanks`, how many of the two sides hold a closed tile.
 - `geometry.py`: the 4- and 8-neighbourhoods, edge distance, the open run-length statistic
   and `centre_key`, the nearest-to-a-point sort key.
