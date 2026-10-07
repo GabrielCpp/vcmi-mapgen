@@ -136,7 +136,10 @@ class OpenZonePlacer:
         demand = Demand(0)
         placement = Placement(self.catalog, [site], self.effort, demand, rng)
         _ = placement.place(placement.plan(homes, [], []), Picker(self.catalog, rng), list)
-        tie_dwellings(self.catalog, site.objs)
+        size = max(w, h)
+        grid = [[Terrain.GRASS] * size for _ in range(size)]
+        state = MapState(size=size, terrain={0: grid}, objs=list(site.objs))
+        tie_dwellings(self.catalog, state, self.effort.toll)
         return site.placed()
 
 

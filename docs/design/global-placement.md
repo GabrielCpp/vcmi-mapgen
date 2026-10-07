@@ -90,7 +90,8 @@ code. Source for C29 and C30: the user, 2026-10-05, after slice 3.
 26. Each zone draws its own count from its area, its terrain's densities and its planned
     reward scale.
 27. A neutral town brings two extra mines.
-28. A random dwelling takes the faction of its zone's town.
+28. A random dwelling takes the faction of the town, neutral or not, a hero reaches it
+    from in the fewest days.
 29. A spot fits by the object's size. A one-tile object fits any hole, any corner and any
     L-shaped corner. A two-tile object fits left or right of vegetation, with the vegetation
     on the side away from its visit tile. A larger object fits with its top against

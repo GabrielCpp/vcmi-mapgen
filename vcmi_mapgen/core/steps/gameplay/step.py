@@ -372,7 +372,6 @@ class GameplayStep(PipelineStep):
             zones[level] = {}
             town_of_zone[level] = {}
             for zid, site in sorted(idx.sites.items()):
-                tie_dwellings(catalog, site.objs)
                 zones[level][zid] = site.placed()
                 self.objs.extend(site.objs)
                 zone_towns = [o for o in site.objs if o.purpose == Purpose.TOWN]
@@ -386,6 +385,7 @@ class GameplayStep(PipelineStep):
             landings[level] = ZPL.Landings(frozenset(blk), frozenset(appr))
         map_state.add_objs(self.objs)
         map_state.player_towns = self._player_towns(towns)
+        tie_dwellings(catalog, map_state, self.priors.effort.toll)
         self._ctx.provide(GameplayResult(zones, landings, town_of_zone))
 
     def _player_towns(self, towns: dict[tuple[int, int], list[PlacedObject]]) -> list[PlacedObject]:
