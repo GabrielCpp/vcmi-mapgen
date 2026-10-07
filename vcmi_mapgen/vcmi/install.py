@@ -20,6 +20,10 @@ class VcmiInstall:
     def mods_dir(self) -> Path:
         return self.home / "Mods"
 
+    @property
+    def maps_dir(self) -> Path:
+        return self.home / "Maps"
+
 
 class InstallNotFoundError(RuntimeError):
     pass

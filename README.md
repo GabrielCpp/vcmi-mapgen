@@ -77,6 +77,11 @@ uv run python -m vcmi_mapgen.cli generate \
 # 4 players in two teams
 uv run python -m vcmi_mapgen.cli generate \
     --seed 5 --size 108 --players 4 --teams 2v2
+
+# Named "Twin Lakes" and copied into the VCMI install's Maps/pp-gen/ folder,
+# so it shows in the game's map list
+uv run python -m vcmi_mapgen.cli generate \
+    --seed 9 --size 72 --name "Twin Lakes" --install
 ```
 
 `generate` reads its corpus statistics from `data/pp/` and never loads a corpus map. After a

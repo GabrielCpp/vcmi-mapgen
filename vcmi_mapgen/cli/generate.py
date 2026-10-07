@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.cli.steps import DEFAULT_TERRAIN, DEFAULT_VEGETATION, StepConfig, build_steps
@@ -97,6 +100,7 @@ OVERLAY_FACTORIES: dict[str, Callable[[Pockets, Zones], MapOverlay]] = {
 DEFAULT_OVERLAYS = "zone,blocking,guard,pocket,grid"
 RENDERER_CHOICES = ("png", "vmap")
 DEFAULT_RENDERERS = "png,vmap"
+INSTALL_FOLDER = "pp-gen"
 
 
 def parse_overlays(spec: str, pockets: Pockets, zones: Zones) -> list[MapOverlay]:
@@ -141,6 +145,8 @@ class GenerateOptions:
     terrain: str = DEFAULT_TERRAIN
     content: ContentSetting = BASE_CONTENT
     density: float = 1.0
+    name: str | None = None
+    install: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,7 +227,34 @@ def render_vegetation(
             print(f"  {renderer.save(map_state, name, level=level)}")
 
 
+def file_stem(name: str) -> str:
+    """The file name a map title gives, with the characters a file system refuses replaced."""
+    stem = re.sub(r'[\\/:*?"<>|]', "_", name).strip(" .")
+    if not stem:
+        sys.exit(f"map name {name!r} gives no usable file name")
+    return stem
+
+
+def install_map(vmap: str, install: VcmiInstall) -> Path:
+    """Copy a written .vmap into the install's ``Maps/pp-gen`` folder, where VCMI lists it."""
+    folder = install.maps_dir / INSTALL_FOLDER
+    folder.mkdir(parents=True, exist_ok=True)
+    return Path(shutil.copy2(vmap, folder / Path(vmap).name))
+
+
+def _stem(opts: GenerateOptions) -> str:
+    if opts.name is not None:
+        return file_stem(opts.name)
+    stem = f"ppmap_s{opts.seed}"
+    if opts.vegetation != DEFAULT_VEGETATION:
+        stem = f"{stem}_{opts.vegetation}"
+    return f"{stem}{_terrain_tag(opts.terrain)}"
+
+
 def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
+    renderers = _parse_renderers(opts.renderers)
+    if opts.install and "vmap" not in renderers:
+        sys.exit("--install needs the vmap renderer")
     config = StepConfig(
         opts.seed,
         opts.size,
@@ -252,13 +285,9 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         + f"towns={len(player_zids)}"
     )
 
-    renderers = _parse_renderers(opts.renderers)
     tables = load_tiler(settings.pp_dir)
     pp_out = settings.out_dir / "render" / "pp"
-    stem = f"ppmap_s{opts.seed}"
-    if opts.vegetation != DEFAULT_VEGETATION:
-        stem = f"{stem}_{opts.vegetation}"
-    stem = f"{stem}{_terrain_tag(opts.terrain)}"
+    stem = _stem(opts)
 
     if "png" in renderers:
         index = sprite_source(install, catalog)
@@ -286,9 +315,11 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         vmap = vmap_renderer.render(
             map_state,
             f"{stem}.vmap",
-            name=f"pp-map s{opts.seed}",
+            name=opts.name or f"pp-map s{opts.seed}",
             teams_spec=opts.teams,
         )
         if map_state.player_towns:
             print(f"  playable: {len(map_state.player_towns)} players, victory=defeat-all")
         print(f"  {vmap}")
+        if opts.install:
+            print(f"  installed: {install_map(vmap, install)}")

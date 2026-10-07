@@ -45,6 +45,7 @@ from vcmi_mapgen.cli.extract_vmap import extract_vmap
 from vcmi_mapgen.cli.generate import (
     DEFAULT_OVERLAYS,
     DEFAULT_RENDERERS,
+    INSTALL_FOLDER,
     OVERLAY_FACTORIES,
     RENDERER_CHOICES,
     GenerateOptions,
@@ -113,6 +114,8 @@ class Args(argparse.Namespace):
     h3m_dir: str | None = None
     out_dir: str | None = None
     png_dir: str | None = None
+    name: str | None = None
+    install: bool = False
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
@@ -167,6 +170,8 @@ def cmd_generate(args: Args) -> None:
             terrain=args.terrain,
             content=_content(args),
             density=args.density,
+            name=args.name,
+            install=args.install,
         ),
     )
 
@@ -440,6 +445,17 @@ def main() -> None:
         dest="stop_after",
         help="stop the pipeline early, right after the named step (debug), "
         + "instead of running the full pipeline through RoadsStep",
+    )
+    _ = pg.add_argument(
+        "--name",
+        default=None,
+        help="the map's title in VCMI, also its file name (default: 'pp-map s<seed>' in "
+        + "ppmap_s<seed>.vmap)",
+    )
+    _ = pg.add_argument(
+        "--install",
+        action="store_true",
+        help=f"also copy the .vmap into the VCMI install's Maps/{INSTALL_FOLDER}/ folder",
     )
     _add_vegetation_arg(pg)
     _add_terrain_arg(pg)
