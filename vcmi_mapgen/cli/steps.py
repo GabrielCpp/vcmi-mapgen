@@ -57,8 +57,9 @@ DEFAULT_WATER = "topology"
 @dataclass(frozen=True, slots=True)
 class StepConfig:
     """What one generation asks for: the seed, the map side, the player count, the
-    SURFACE_FORMS entry that draws the water, whether the map has an underground level
-    and which SAMPLERS entry grows the vegetation."""
+    SURFACE_FORMS entry that draws the water, whether the map has an underground level,
+    which SAMPLERS entry grows the vegetation, and the team of each player, empty when every
+    player plays alone."""
 
     seed: int
     size: int
@@ -67,6 +68,7 @@ class StepConfig:
     subterrain: bool = False
     vegetation: str = DEFAULT_VEGETATION
     density: float = 1.0
+    teams: tuple[int, ...] = ()
 
 
 def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineStep]]:
@@ -80,7 +82,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     return [
         ("terrain", TerrainStep(priors, model, seed, terrain)),
         ("vegetation", VegetationStep(priors, sampler, seed, players, HopContent())),
-        ("doors", DoorsStep(priors, seed)),
+        ("doors", DoorsStep(priors, seed, config.teams)),
         ("gameplay", GameplayStep(priors, seed, players, subterrain, config.density)),
         ("gated", GatedStep(priors, seed, size)),
         ("treasure", TreasureStep(priors, seed, size)),

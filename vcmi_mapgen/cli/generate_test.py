@@ -20,6 +20,9 @@ from vcmi_mapgen.cli.generate import (
     write_run,
     write_topology,
 )
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role
+from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.steps.doors.result import DoorGuard, DoorGuards, Shortfall, ShortPair
 from vcmi_mapgen.core.steps.terrain_gen.result import (
     LevelPlaces,
     PlaceMap,
@@ -123,25 +126,36 @@ def test_run_json_records_every_flag(tmp_path: Path) -> None:
     assert set(record) == set(GenerateOptions.__dataclass_fields__)
 
 
-def test_topology_json_holds_the_early_graph_the_territories_and_the_doors(
+def test_topology_json_holds_the_early_graph_the_territories_the_doors_and_the_rivals(
     tmp_path: Path,
 ) -> None:
     door = PlannedDoor((0, 1), (0, 1), (2, None), ((3, 4), (4, 4)))
     plan = TerritoryPlan({0: 0, 1: 1}, (2, None), (door,))
     places = PlaceMap({0: LevelPlaces(((0, 1),), {}, frozenset({(0, 1)}), territories=plan)})
-    record = cast(dict[str, object], json.loads(write_topology(tmp_path, places).read_text()))
+    obj = PlacedObject(4, 4, 0, Purpose.GUARD, "", Footprint.one(Role.BLOCKING))
+    guards = DoorGuards(
+        (DoorGuard(0, (0, 1), (4, 4), 5, obj, raised=2),),
+        (ShortPair((0, 1), 5, Shortfall.SEA),),
+    )
+    record = cast(
+        dict[str, object], json.loads(write_topology(tmp_path, places, guards).read_text())
+    )
     assert record == {
-        "0": {
-            "early_graph": [[0, 1]],
-            "territories": {"0": 0, "1": 1},
-            "owners": [2, None],
-            "doors": [
-                {
-                    "zones": [0, 1],
-                    "territories": [0, 1],
-                    "owners": [2, None],
-                    "tiles": [[3, 4], [4, 4]],
-                }
-            ],
-        }
+        "levels": {
+            "0": {
+                "early_graph": [[0, 1]],
+                "territories": {"0": 0, "1": 1},
+                "owners": [2, None],
+                "doors": [
+                    {
+                        "zones": [0, 1],
+                        "territories": [0, 1],
+                        "owners": [2, None],
+                        "tiles": [[3, 4], [4, 4]],
+                        "guard": {"tile": [4, 4], "level": 5, "raised": 2},
+                    }
+                ],
+            }
+        },
+        "rivals": [{"players": [0, 1], "days": 5, "reason": "sea"}],
     }

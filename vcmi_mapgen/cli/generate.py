@@ -14,10 +14,11 @@ from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
+from vcmi_mapgen.core.steps.doors.result import DoorGuard, DoorGuards
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, TownsIndex
 from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
-from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, PlannedDoor, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 from vcmi_mapgen.corpus.priors import load_priors
 from vcmi_mapgen.corpus.tiler import load_tiler
@@ -45,6 +46,7 @@ from vcmi_mapgen.vcmi.content.mods import load_mods
 from vcmi_mapgen.vcmi.content.sprites import SpriteSource
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
+from vcmi_mapgen.vcmi.players import parse_teams
 
 # Every factory takes `pockets` (LootStep's LootResult.pockets) and `zones`
 # (TerrainStep's Segmentation.zones) uniformly, even though only a few overlays use
@@ -277,32 +279,44 @@ def write_run(folder: Path, opts: GenerateOptions) -> Path:
     return path
 
 
-def topology_record(places: PlaceMap) -> dict[str, object]:
+def topology_record(places: PlaceMap, guards: DoorGuards) -> dict[str, object]:
     """Each level's planned topology: the early place graph, the territory of each zone, the
-    owner of each territory, and each door with its zones, territories, owners and tiles."""
+    owner of each territory, and each door with its zones, territories, owners, tiles and
+    guard. Then the enemy pairs the rival cut left under a week apart."""
     return {
-        str(level): {
-            "early_graph": [list(pair) for pair in sorted(lp.adjacency)],
-            "territories": {str(z): t for z, t in sorted(lp.territories.zones.items())},
-            "owners": list(lp.territories.owners),
-            "doors": [
-                {
-                    "zones": list(d.zones),
-                    "territories": list(d.territories),
-                    "owners": list(d.owners),
-                    "tiles": [list(t) for t in d.tiles],
-                }
-                for d in lp.territories.doors
-            ],
-        }
-        for level, lp in sorted(places.levels.items())
+        "levels": {
+            str(level): {
+                "early_graph": [list(pair) for pair in sorted(lp.adjacency)],
+                "territories": {str(z): t for z, t in sorted(lp.territories.zones.items())},
+                "owners": list(lp.territories.owners),
+                "doors": [_door_record(d, guards.on(level)) for d in lp.territories.doors],
+            }
+            for level, lp in sorted(places.levels.items())
+        },
+        "rivals": [
+            {"players": list(p.players), "days": p.days, "reason": str(p.reason)}
+            for p in guards.short
+        ],
     }
 
 
-def write_topology(folder: Path, places: PlaceMap) -> Path:
+def _door_record(door: PlannedDoor, guards: Sequence[DoorGuard]) -> dict[str, object]:
+    guard = next((g for g in guards if g.tile in door.tiles), None)
+    return {
+        "zones": list(door.zones),
+        "territories": list(door.territories),
+        "owners": list(door.owners),
+        "tiles": [list(t) for t in door.tiles],
+        "guard": None
+        if guard is None
+        else {"tile": list(guard.tile), "level": guard.guard_level, "raised": guard.raised},
+    }
+
+
+def write_topology(folder: Path, places: PlaceMap, guards: DoorGuards) -> Path:
     """Write ``topology.json`` into the map's folder and return its path."""
     path = folder / "topology.json"
-    _ = path.write_text(json.dumps(topology_record(places), indent=2) + "\n")
+    _ = path.write_text(json.dumps(topology_record(places, guards), indent=2) + "\n")
     return path
 
 
@@ -318,6 +332,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.subterrain,
         opts.vegetation,
         opts.density,
+        tuple(parse_teams(opts.teams, opts.players)),
     )
     catalog = open_catalog(install, opts.content)
     pipeline = _run_pipeline(catalog, settings, config, opts.stop_after)
@@ -345,7 +360,8 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     folder = fresh_folder(settings.out_dir, stem)
     print(f"  {write_run(folder, opts)}")
     if (places := pipeline.ctx.get(PlaceMap)) is not None:
-        print(f"  {write_topology(folder, places)}")
+        guards = pipeline.ctx.get(DoorGuards, DoorGuards())
+        print(f"  {write_topology(folder, places, guards)}")
 
     if "png" in renderers:
         index = sprite_source(install, catalog)

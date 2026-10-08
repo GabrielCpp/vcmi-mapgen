@@ -92,9 +92,12 @@ uv run python -m vcmi_mapgen.cli generate \
 
 `generate` empties the map's folder before it writes, so a rerun leaves no file from an
 earlier run. `run.json` records the seed, the size and every flag of the run.
-`topology.json` records each level's planned topology: the early place graph, the territory
-of each zone, the owner of each territory, and each door with its zones, territories, owners
-and tiles.
+`topology.json` records each level's planned topology under `levels`: the early place graph,
+the territory of each zone, the owner of each territory, and each door with its zones,
+territories, owners and tiles. Each door also records its guard: the tile, the creature level
+and the levels the rival cut raised it by. `rivals` lists the enemy pairs the cut left closer
+than seven hero-days, with their days and the reason: sea, portal, no land door, a capped
+door or a door at the top level. `--teams` decides who counts as an enemy.
 
 `generate` reads its corpus statistics from `data/pp/` and never loads a corpus map. After a
 change to `data/corpus/vmap/` or to a statistic's code, rebuild the files:

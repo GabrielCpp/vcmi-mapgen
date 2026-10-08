@@ -12,7 +12,8 @@ tile and the eight around it that share its ground, land or water.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
 
 from vcmi_mapgen.core.catalog import Catalog, Crossing, HeroPace
 from vcmi_mapgen.core.model import MapState, PlacedObject
@@ -203,3 +204,14 @@ def route_map(catalog: Catalog, map_state: MapState) -> RouteMap:
         docks=_docks(ends, water),
         jumps=_jumps([e for e in ends if e.crossing in _JUMPS | {Crossing.ONE_WAY_OUT}]),
     )
+
+
+def with_guards(route: RouteMap, monsters: Iterable[tuple[Spot, int]]) -> RouteMap:
+    """``route`` with the zones of ``monsters`` added, each one a spot and its creature
+    level."""
+    extra = _guard(route.water, list(monsters))
+    guard = {
+        level: [list(map(max, row, more)) for row, more in zip(grid, extra[level], strict=True)]
+        for level, grid in route.guard.items()
+    }
+    return replace(route, guard=guard)

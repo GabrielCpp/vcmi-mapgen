@@ -107,8 +107,9 @@ walkable web in
 `VegetationStep` provides the `ZonePlan` (`core/planning/zone_plan.py`), each zone's
 entrances, web and town room. It also provides `VegetationResult`, each zone's open and
 walkable tiles, and `LootZones`, the zones a seal will close. `DoorsStep` posts a guard on
-one tile of every planned door and provides `DoorGuards`, each door with its tile, its
-creature level and its guard. `GameplayStep` provides `GameplayResult`, one `PlacedZone`
+one tile of every planned door, raises the guards that leave two enemies under a week
+apart, and provides `DoorGuards`: each door with its tile, its creature level, its guard
+and the levels the rival cut added, and the enemy pairs the cut left short. `GameplayStep` provides `GameplayResult`, one `PlacedZone`
 per zone.
 `GatedStep` builds the `ZoneIndex` from those values. A producer provides a value once, and every consumer requires it.
 No step creates a value for a later step to fill in.
