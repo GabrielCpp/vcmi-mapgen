@@ -131,12 +131,15 @@ class VcmiCatalog:
         return self._kept(OB.monsters_by_level(level))
 
     def creature_level(self, kind: str) -> int | None:
-        type_name, _, _ = OB.static_type(kind)
+        type_name, _, sub = OB.static_type(kind)
         if type_name in RO.MONSTER_LEVELS:
             return RO.MONSTER_LEVELS[type_name]
         if type_name != RO.MONSTER_TYPE:
             return None
-        level = TB.monster_levels().get(OB.identity_of(kind).subtype or "", 0)
+        creature = OB.identity_of(kind).subtype or TB.creature_ids().get(
+            sub if sub is not None else -1, ""
+        )
+        level = TB.monster_levels().get(creature, 0)
         return min(7, level) if level >= 1 else None
 
     def dwelling_level(self, kind: str) -> int | None:

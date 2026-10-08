@@ -507,6 +507,14 @@ def vcmi_type_classes() -> dict[str, int]:
 
 
 @cache
+def creature_ids() -> dict[int, str]:
+    """VCMI creature id to its creature name, from ``data/catalog/creature_ids.json``."""
+    with open(table_path("creature_ids.json")) as fh:
+        raw = cast(dict[str, str], json.load(fh))
+    return {int(cid): name for cid, name in raw.items()}
+
+
+@cache
 def leaf_meta() -> dict[str, LeafMeta]:
     """Per-animation placement metadata from ``data/catalog/leaf_meta.json``."""
     with open(table_path("leaf_meta.json")) as fh:

@@ -1,6 +1,9 @@
+from vcmi_mapgen.conftest import find_install
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
+from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, load_config
 from vcmi_mapgen.vcmi.content.enabled import EnabledSet
 from vcmi_mapgen.vcmi.content.mods_test import LAIR, TENT, fair_content
 
@@ -64,3 +67,15 @@ def test_a_dragon_dwelling_reads_its_creature_level_unclamped() -> None:
     assert catalog.dwelling_level("avgfdrg") == 8
     assert catalog.dwelling_level("avgtrog0") == 1
     assert catalog.dwelling_level(catalog.random_dwelling(3).kind) is None
+
+
+def test_a_fixed_monster_reads_its_creature_level_without_an_install() -> None:
+    install = find_install()
+    ON.use_config(EMPTY_CONFIG)
+    try:
+        catalog = VcmiCatalog()
+        assert catalog.creature_level("AVWunic0") == 6
+        assert catalog.creature_level("AVWddrx0") == 7
+        assert catalog.creature_level("AVWbehl0") == 3
+    finally:
+        ON.use_config(load_config(install) if install is not None else EMPTY_CONFIG)

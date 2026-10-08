@@ -351,10 +351,19 @@ def write_type_classes(config: VcmiConfig) -> None:
     )
 
 
+def write_creature_ids(config: VcmiConfig) -> None:
+    """Write VCMI's creature id to creature name table, which names a fixed monster's creature."""
+    _ = table_path("creature_ids.json").write_text(
+        json.dumps({str(cid): name for cid, name in sorted(config.creatures.items())}, indent=1)
+        + "\n"
+    )
+
+
 def regenerate(index: LodIndex, config: VcmiConfig) -> Taxonomy:
     """Derive the taxonomy + per-animation placement metadata from objects.txt and the type
-    table from VCMI's config, and rewrite the three JSON tables."""
+    and creature tables from VCMI's config, and rewrite the four JSON tables."""
     tree = _derive_taxonomy(index)
     write_tables(tree, _derive_leaf_meta(index))
     write_type_classes(config)
+    write_creature_ids(config)
     return tree
