@@ -42,11 +42,44 @@ class PlannedPlace:
 
 
 @dataclass(frozen=True, slots=True)
+class PlannedDoor:
+    """One door the terrain model planned: the zone pair ``(a, b)``, ``a < b``, it crosses,
+    the territory and the owner on each side in the same order, and its tile on each side."""
+
+    zones: tuple[int, int]
+    territories: tuple[int, int]
+    owners: tuple[int | None, int | None]
+    tiles: tuple[Tile, Tile]
+
+    def player_side(self) -> int | None:
+        """The zone on the side of a player territory, the first when both sides are a
+        player's, None between two neutral territories."""
+        for zone, owner in zip(self.zones, self.owners, strict=True):
+            if owner is not None:
+                return zone
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class TerritoryPlan:
+    """One level's planned territories: the territory of each zone, the player each
+    territory belongs to, None when it is neutral, and every door between two territories.
+    Every other border between two territories is walled."""
+
+    zones: Mapping[int, int] = field(default_factory=dict[int, int])
+    owners: tuple[int | None, ...] = ()
+    doors: tuple[PlannedDoor, ...] = ()
+
+    def zones_of(self, territory: int) -> tuple[int, ...]:
+        return tuple(sorted(z for z, t in self.zones.items() if t == territory))
+
+
+@dataclass(frozen=True, slots=True)
 class LevelPlaces:
     """One level's places: the label grid read ``[y][x]`` with -1 off land, each place by
     its label, the planned adjacency as pairs ``(a, b)`` with ``a < b``, the tiles of every
     transition band Paint graded, empty when the level was not painted, the kind of every
-    realised pair, and the passages across them."""
+    realised pair, the passages across them, and its territories."""
 
     label: ZoneLabel
     places: Mapping[int, PlannedPlace]
@@ -56,6 +89,7 @@ class LevelPlaces:
         default_factory=dict[tuple[int, int], AdjacencyKind]
     )
     passages: Passages = field(default_factory=lambda: Passages({}))
+    territories: TerritoryPlan = field(default_factory=TerritoryPlan)
 
     @property
     def passable(self) -> frozenset[tuple[int, int]]:

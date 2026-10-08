@@ -24,7 +24,8 @@ from vcmi_mapgen.core.reading.effort import Effort, effort_map
 from vcmi_mapgen.core.reading.ground import TownKey, purpose_of
 from vcmi_mapgen.core.reading.places import infer_places, owners_of
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot, route_map
-from vcmi_mapgen.core.reading.territories import PlannedTopology
+from vcmi_mapgen.core.reading.territories import NONE, PlannedTopology
+from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlaceMap
 from vcmi_mapgen.corpus.maps import all_map_names, load_corpus_map
 from vcmi_mapgen.corpus.mine.places import map_players
 from vcmi_mapgen.vcmi.load import load_map, map_owners
@@ -100,7 +101,23 @@ def from_seed(catalog: Catalog, priors: Priors, config: StepConfig) -> Loaded:
         _ = pipeline.add_step(step)
     with contextlib.redirect_stdout(io.StringIO()):
         state = pipeline.run()
-    return Loaded(f"seed {config.seed} size {config.size}", state, owners_of(state))
+    planned = {
+        level: planned_topology(lp)
+        for level, lp in pipeline.ctx.get(PlaceMap, PlaceMap({})).levels.items()
+    }
+    return Loaded(f"seed {config.seed} size {config.size}", state, owners_of(state), planned)
+
+
+def planned_topology(places: LevelPlaces) -> PlannedTopology:
+    """The territories the terrain step planned on one level, with both tiles of each
+    door."""
+    plan = places.territories
+    labels = tuple(
+        tuple(plan.zones.get(z, NONE) if z >= 0 else NONE for z in row) for row in places.label
+    )
+    owners = tuple(() if o is None else (o,) for o in plan.owners)
+    doors = tuple(t for d in plan.doors for t in d.tiles)
+    return PlannedTopology(labels, owners, doors)
 
 
 def parse_tile(text: str) -> Tile:

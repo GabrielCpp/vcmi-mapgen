@@ -7,7 +7,7 @@ from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import open_islands
-from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
@@ -28,11 +28,13 @@ from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 NO_TILES: frozenset[Tile] = frozenset()
 
 
-def _check_islands(map_state: MapState, level: int, pl: ZPL.PlanLevel) -> None:
-    land: set[Tile] = set()
+def _land(zones: Mapping[int, Zone]) -> set[Tile]:
+    return {t for z in zones.values() if not z.terrain_type.is_barrier for t in z.tiles_set}
+
+
+def _check_islands(map_state: MapState, level: int, pl: ZPL.PlanLevel, land: set[Tile]) -> None:
     anchors: set[Tile] = set(pl.landings.blk | pl.landings.appr)
     for zone in pl.zones.values():
-        land |= zone.ts
         anchors |= zone.prot
     blocking = {
         (cx, cy)
@@ -41,7 +43,8 @@ def _check_islands(map_state: MapState, level: int, pl: ZPL.PlanLevel) -> None:
         for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
-    islands = open_islands(land, blocking, anchors)
+    unreached = {t for island in open_islands(land, set(), anchors) for t in island}
+    islands = open_islands(land - unreached, blocking, anchors)
     if islands:
         first = min(min(c) for c in islands)
         raise ValueError(
@@ -49,9 +52,16 @@ def _check_islands(map_state: MapState, level: int, pl: ZPL.PlanLevel) -> None:
         )
 
 
-def _taken(map_state: MapState, level: int, pl: ZPL.PlanLevel) -> frozenset[Tile]:
+def _taken(
+    map_state: MapState, level: int, pl: ZPL.PlanLevel, doors: frozenset[Tile]
+) -> frozenset[Tile]:
     sea = frozenset(t for lvl, t in index_of(list(pl.sea)) if lvl == level)
-    return map_state.taken_tiles(level) | sea
+    return map_state.taken_tiles(level) | sea | doors
+
+
+def _doors(places: PlaceMap, level: int) -> frozenset[Tile]:
+    lp = places.levels.get(level)
+    return frozenset(t for d in lp.territories.doors for t in d.tiles) if lp else NO_TILES
 
 
 def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
@@ -126,7 +136,10 @@ class VegetationStep(PipelineStep):
         patches = _patches(catalog, map_state, plan)
         terrains = sorted({name for lp in patches.values() for zp in lp.values() for name in zp})
         models = vegetation_models(catalog, self.priors.vegetation, plan, terrains)
-        pre_taken = {lvl: _taken(map_state, lvl, pl) for lvl, pl in plan.levels.items()}
+        pre_taken = {
+            lvl: _taken(map_state, lvl, pl, _doors(self._places, lvl))
+            for lvl, pl in plan.levels.items()
+        }
         grown = {
             level: grow_level(
                 models,
@@ -145,7 +158,7 @@ class VegetationStep(PipelineStep):
             veg[level] = {
                 zid: _sealed(v, sealed & pl.zones[zid].ts) for zid, v in grown[level].zones.items()
             }
-            _check_islands(map_state, level, pl)
+            _check_islands(map_state, level, pl, _land(self._segmentation.zones[level]))
         self._ctx.provide(content)
         self._ctx.provide(plan)
         self._ctx.provide(VegetationResult(log=tuple(self.log), zones=veg))
@@ -190,16 +203,17 @@ class VegetationStep(PipelineStep):
         pl: ZPL.PlanLevel,
         taken: frozenset[Tile],
     ) -> frozenset[Tile]:
-        land: set[Tile] = set()
+        land = _land(self._segmentation.zones[level])
         bands: set[Tile] = set()
         avoid: set[Tile] = set(pl.landings.blk | pl.landings.appr)
-        web: set[Tile] = set(pl.landings.blk | pl.landings.appr)
+        web: set[Tile] = set(pl.landings.blk | pl.landings.appr) | _doors(self._places, level)
         avoid |= taken
         if level == 1:
             avoid |= self._tunnel_protect
+        ends: set[tuple[Tile, int]] = set()
         for zone in pl.zones.values():
-            land |= zone.ts
             bands |= zone.ent_bands
+            ends |= {(t, e.other) for e in zone.entrances for t in e.band}
             web |= zone.prot
             avoid |= zone.town.clear
         level_objs = [o for o in [*pl.sea, *map_state.objs] if o.level == level]
@@ -213,6 +227,7 @@ class VegetationStep(PipelineStep):
                 web,
                 map_state.terrain.get(level, ()),
                 pl.open_pairs,
+                ends,
             ),
             level_objs,
             self.seed,

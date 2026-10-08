@@ -7,10 +7,11 @@ steps.
 ## Map
 
 - `borders.py`: `zone_owner`, `cross_pairs` and `closing_pairs`, the zone border geometry that the vegetation
-  border plan reads. `closing_pairs` leaves out the crossings of an open pair.
+  border plan reads. `closing_pairs` leaves out the crossings of an open pair. `cross_pairs` spares a crossing only where a band leads toward the zone across it.
 - `entrances.py`: each zone's fronts, its `Gate` values and the planned entrances. `Passages`
   holds each zone's entrances and the open pairs. `plan_passages` gives a gated pair one or two
-  entrances, an open pair its whole front and a closed pair none. `all_passages` plans every
+  entrances, an open pair its whole front and a closed pair none. A door pair gets its count
+  of doors, each one tile wide. `all_passages` plans every
   pair as gated. Every function reads the zone label grid, never the zones dict.
 - `web.py`: `protected_web`, one zone's spanning backbone and rim gate bands, which the zone
   plan and the vegetation sampler keep free of blocking objects.

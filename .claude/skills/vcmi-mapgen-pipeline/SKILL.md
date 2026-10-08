@@ -97,8 +97,11 @@ Order matters for `MapState` writes, for `ZoneIndex` mutation and for RNG determ
 
 ## Placement steps hand each other frozen values
 
-`TerrainStep` provides the `PlaceMap`: each level's places, the kind of each border and
-its `Passages`. The places model draws one kind per border: closed, gated or open. The passage plan drives the walkable web in
+`TerrainStep` provides the `PlaceMap`: each level's places, the kind of each border, its
+`Passages` and its `TerritoryPlan`. The places model splits each level into territories
+joined by one-tile doors and walls every other border between two territories. Inside a
+territory it draws one kind per border: closed, gated or open. The passage plan drives the
+walkable web in
 `VegetationStep` and the entrances of the `ZonePlan`.
 
 `VegetationStep` provides the `ZonePlan` (`core/planning/zone_plan.py`), each zone's

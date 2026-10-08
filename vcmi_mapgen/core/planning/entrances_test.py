@@ -108,3 +108,13 @@ def test_a_closed_or_unknown_pair_gets_no_passage() -> None:
     passages = ZF.plan_passages(label, {(0, 1): AdjacencyKind.CLOSED})
     assert all(not ents for ents in passages.entrances.values())
     assert set(passages.entrances) == {0, 1, 2}
+
+
+def test_a_door_pair_gets_its_count_of_one_tile_doors() -> None:
+    label = [[x // 8 for x in range(24)] for _y in range(30)]
+    kinds = {(0, 1): AdjacencyKind.GATED, (1, 2): AdjacencyKind.GATED}
+    passages = ZF.plan_passages(label, kinds, doors={(0, 1): 2}, gated_w=1)
+    doors = [e for e in passages.entrances[0] if e.other == 1]
+    assert len(doors) == 2 and all(len(e.band) == ZF.DOOR_W for e in doors)
+    gated = [e for e in passages.entrances[1] if e.other == 2]
+    assert gated and all(len(e.band) == 1 for e in gated)

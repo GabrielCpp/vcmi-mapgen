@@ -14,6 +14,7 @@ ENTRANCE_W = 3  # entrance band width in front tiles per side (hero + guard fit 
 LONG_FRONT = 20  # a zone-pair front at least this long earns a second entrance
 MAX_ENTRANCES = 2  # "a few" — hard cap on planned crossings per zone pair
 MIN_ENTRANCE_SEP = 12  # Chebyshev floor between two entrances of the same pair
+DOOR_W = 1
 OPEN_FRAC = 0.5
 MIN_W = 3
 
@@ -225,12 +226,16 @@ def all_passages(zone_label: ZoneLabel, entrance_w: int = ENTRANCE_W) -> Passage
 def plan_passages(
     zone_label: ZoneLabel,
     kinds: Mapping[tuple[int, int], AdjacencyKind],
+    doors: Mapping[tuple[int, int], int] | None = None,
+    gated_w: int = ENTRANCE_W,
 ) -> Passages:
     """The passages of each touching pair by its kind in ``kinds``: across a gated border
-    the entrances ``plan_entrances`` plans, across an open border one entrance whose band is
-    the whole front on each side, and none across a closed border or a pair ``kinds`` leaves
-    out."""
+    the entrances ``plan_entrances`` plans with bands ``gated_w`` tiles wide, across an open
+    border one entrance whose band is the whole front on each side, and none across a closed
+    border or a pair ``kinds`` leaves out. A gated pair in ``doors`` gets up to its count of
+    doors instead, each ``DOOR_W`` tiles wide, the second only where the front has room."""
     fronts = _pair_fronts(zone_label)
+    doors = doors or {}
     out: dict[int, list[Entrance]] = {zid: [] for zid in _zids(zone_label)}
     opened: set[tuple[int, int]] = set()
     for a, b in sorted(fronts):
@@ -239,7 +244,12 @@ def plan_passages(
         Ta, Tb = sorted(fronts[(a, b)]), sorted(fronts.get((b, a), ()))
         if not Ta or not Tb:
             continue
-        crossings = _gated(Ta, Tb, EntranceGeometry())
+        geometry = (
+            EntranceGeometry(entrance_w=DOOR_W, max_entrances=doors[(a, b)])
+            if (a, b) in doors
+            else EntranceGeometry(entrance_w=gated_w)
+        )
+        crossings = _gated(Ta, Tb, geometry)
         if kinds[(a, b)] == AdjacencyKind.OPEN:
             ra, _ba, rb, _bb = crossings[0]
             crossings = [(ra, frozenset(Ta), rb, frozenset(Tb))]

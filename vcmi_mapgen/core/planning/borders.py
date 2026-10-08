@@ -26,12 +26,13 @@ def zone_owner(
 def cross_pairs(
     open_all: Collection[Tile],
     owner: Mapping[Tile, int],
-    bands: Container[Tile],
+    bands: Container[tuple[Tile, int]],
     skip_tiles: Container[Tile] = (),
 ) -> tuple[list[tuple[Tile, Tile]], list[tuple[Tile, Tile]]]:
-    """8-adjacent open pairs across a zone border, each unordered pair once.
+    """8-adjacent open pairs across a zone border, each unordered pair once. ``bands`` holds
+    each entrance band tile with the zone its entrance leads to.
 
-    Returns (plain pairs, pairs touching an entrance band)."""
+    Returns (plain pairs, pairs whose tile on either side is a band toward the other)."""
     pairs: list[tuple[Tile, Tile]] = []
     band_pairs: list[tuple[Tile, Tile]] = []
     for t in sorted(open_all):
@@ -44,7 +45,7 @@ def cross_pairs(
                 continue
             b = owner.get(n)
             if b is not None and b != a:
-                if t in bands or n in bands:
+                if (t, b) in bands or (n, a) in bands:
                     band_pairs.append((t, n))
                 else:
                     pairs.append((t, n))

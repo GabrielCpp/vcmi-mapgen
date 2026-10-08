@@ -13,6 +13,7 @@ from vcmi_mapgen.cli.inspect_map import (
     near_lines,
     parse_end,
     parse_tile,
+    planned_topology,
     route_lines,
     tile_lines,
 )
@@ -23,6 +24,8 @@ from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.reading.routes import Spot
+from vcmi_mapgen.core.reading.territories import NONE
+from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlannedDoor, TerritoryPlan
 
 SIZE = 8
 MONSTER = "avwmon3"
@@ -145,3 +148,13 @@ def test_territories_split_at_the_monster_and_draw_its_door(catalog: Catalog) ->
 
 def test_territories_of_a_missing_level_say_so(catalog: Catalog) -> None:
     assert territory_lines(catalog, _walled(catalog), 1) == ["no level 1 on walled"]
+
+
+def test_planned_topology_reads_the_territories_the_terrain_step_drew() -> None:
+    door = PlannedDoor((0, 1), (0, 1), (2, None), ((0, 0), (1, 0)))
+    plan = TerritoryPlan({0: 0, 1: 1}, (2, None), (door,))
+    places = LevelPlaces(((0, 1, -1),), {}, frozenset({(0, 1)}), territories=plan)
+    topology = planned_topology(places)
+    assert topology.labels == ((0, 1, NONE),)
+    assert topology.owners == ((2,), ())
+    assert topology.doors == ((0, 0), (1, 0))

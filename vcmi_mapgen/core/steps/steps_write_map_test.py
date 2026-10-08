@@ -30,7 +30,7 @@ from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 SIZE = 48
 SEED = 7
 PLAYERS = 2
-VEGETATION_TOUCH_FLOOR = 0.8
+VEGETATION_TOUCH_FLOOR = 0.75
 
 
 @dataclass(frozen=True, slots=True)

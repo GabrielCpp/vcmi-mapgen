@@ -7,7 +7,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 
 ## Map
 
-- `terrain_gen/`: `TerrainStep`, the terrain of both levels drawn by the `TerrainModel` it is given, and its place map. `cli/steps.py` gives it the places model, the only one.
+- `terrain_gen/`: `TerrainStep`, the terrain of both levels drawn by the `TerrainModel` it is given, and its place map split into territories joined by one-tile doors. `cli/steps.py` gives it the places model, the only one.
 - `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers. It also plans each place's content with the `ContentPlanner` it is given, `HopContent` by default, and provides the `ContentPlan` that gameplay and loot read.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
