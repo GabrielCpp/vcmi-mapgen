@@ -35,12 +35,14 @@ from vcmi_mapgen.core.planning.pricing import effort_with
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import Families, unguarded
+from vcmi_mapgen.core.reading.homes import town_homes
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.promise import (
     player_maps,
     promise_from,
     promise_ways,
 )
+from vcmi_mapgen.core.reading.routes import route_map
 from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
@@ -58,7 +60,8 @@ from vcmi_mapgen.core.steps.gameplay.result import (
     PromisedWays,
     TownsIndex,
 )
-from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
+from vcmi_mapgen.core.steps.gameplay.sea_links import SeaLinks, sea_way
+from vcmi_mapgen.core.steps.gameplay.shipyards import Link, Shore, place_link, place_shipyards
 from vcmi_mapgen.core.steps.gameplay.siting import TOWN_MIN_AREA
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import LootZones, VegetationResult
@@ -115,11 +118,16 @@ class GameplayStep(PipelineStep):
     the zone plan drew. Gates stay off each player town's kept room.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
 
-    Each player reaches a mine of each basic resource within ``PROMISE_DAYS`` hero-days: the
-    promised mines stand before the map-wide pass, and a repair pass after it adds any mine a
-    player lost. The pass spreads each family evenly between the players band by band, and
-    ``density`` multiplies its corpus rate. From the promised mines on, no object closes a
-    player's way to its nearest mine of each resource.
+    A player apart from a rival by land gets a shipyard whose sea lands on that rival's land,
+    right after the shipyards of the zone plan, and the step warns when none fits. From then
+    on no object closes the land tiles of its way to the rival town.
+
+    Each player should reach a mine of each basic resource within ``PROMISE_DAYS``
+    hero-days, and the step warns when one does not: the promised mines stand before the
+    map-wide pass, and a repair pass after it adds any mine a player lost. The pass spreads
+    each family evenly between the players band by band, and ``density`` multiplies its
+    corpus rate. From the promised mines on, no object closes a player's way to its nearest
+    mine of each resource.
 
     Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
     ``map_state.player_towns``. Into ctx: ``TownsIndex``, ``GateResult``, ``GameplayResult``
@@ -152,6 +160,7 @@ class GameplayStep(PipelineStep):
         self._content = ContentPlan()
         self._accents = Accents()
         self._loot = LootZones()
+        self._sea_ways: dict[int, frozenset[Tile]] = {}
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -176,6 +185,7 @@ class GameplayStep(PipelineStep):
         self._place_player_towns(catalog, indexes)
         if 0 in indexes:
             self._place_shipyards(indexes[0], map_state, catalog)
+            self._link_starts(catalog, indexes, map_state)
         self._place_landmarks(catalog, indexes, map_state)
         for line in self._keep_promise(catalog, indexes, map_state).warnings:
             print(f"  WARNING: mine promise: {line}")
@@ -193,7 +203,9 @@ class GameplayStep(PipelineStep):
         for line in promise_from(catalog, map_state.objs, maps, BASIC_MINE_RES).broken():
             print(f"  WARNING: mine promise broken: {line}")
         ways = promise_ways(catalog, map_state.objs, maps, BASIC_MINE_RES)
-        self._ctx.provide(PromisedWays(ways))
+        sea = self._sea_ways
+        kept = {lv: ways.get(lv, NO_TILES) | sea.get(lv, NO_TILES) for lv in {*ways, *sea}}
+        self._ctx.provide(PromisedWays(kept))
 
     def _place_landmarks(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
@@ -362,14 +374,80 @@ class GameplayStep(PipelineStep):
         zones = self._plan.levels[level].zones
         return frozenset[Tile]().union(*(zones[zid].ts for zid in self._loot.on(level)))
 
-    def _place_shipyards(self, idx: SiteIndex, map_state: MapState, catalog: Catalog) -> None:
+    def _shore(self, idx: SiteIndex, map_state: MapState) -> Shore:
         objs = [o for o in map_state.objs if o.level == 0 and o.purpose]
         objs += [o for site in idx.sites.values() for o in site.objs]
-        shore = Shore(self._grids[0], self._segmentation.zones[0], objs)
+        return Shore(self._grids[0], self._segmentation.zones[0], objs)
+
+    def _place_shipyards(self, idx: SiteIndex, map_state: MapState, catalog: Catalog) -> None:
         avoid, idx.lf.avoid = idx.lf.avoid, NO_TILES
-        n = place_shipyards(idx, shore, self.seed, catalog)
+        n = place_shipyards(idx, self._shore(idx, map_state), self.seed, catalog)
         idx.lf.avoid = avoid
         print(f"  L0 seaport guarantee: {n} shipyard(s) added")
+
+    def _link_starts(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
+    ) -> None:
+        idx = indexes[0]
+        links = self._sea_links(catalog, indexes, map_state)
+        for a, b in links.unlinked():
+            if links.joined(a, b) or links.linked(a, b):
+                continue
+            if self._link(catalog, idx, map_state, links, (a, b)) is None:
+                print(f"  WARNING: player {a} has no shipyard that sails to player {b}")
+                continue
+            links = self._sea_links(catalog, indexes, map_state)
+        self._keep_sea_ways(catalog, indexes, map_state, links)
+
+    def _sea_links(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
+    ) -> SeaLinks:
+        view = self._view(indexes, map_state)
+        return SeaLinks(route_map(catalog, view), town_homes(view))
+
+    def _link(
+        self,
+        catalog: Catalog,
+        idx: SiteIndex,
+        map_state: MapState,
+        links: SeaLinks,
+        pair: tuple[int, int],
+    ) -> PlacedObject | None:
+        a, b = pair
+        avoid, idx.lf.avoid = idx.lf.avoid, NO_TILES
+        placed = None
+        for ceiling in (0, None):
+            home = links.land(a, ceiling)
+            tiles = {(s.x, s.y) for s in home if s.level == 0}
+            shore = self._shore(idx, map_state)
+            placed = place_link(idx, shore, self.seed, catalog, Link(tiles, links.fit(b, home)))
+            if placed is not None:
+                break
+        idx.lf.avoid = avoid
+        return placed
+
+    def _keep_sea_ways(
+        self,
+        catalog: Catalog,
+        indexes: dict[int, SiteIndex],
+        map_state: MapState,
+        links: SeaLinks,
+    ) -> None:
+        apart = links.apart()
+        if not apart:
+            return
+        view = self._view(indexes, map_state)
+        maps = player_maps(catalog, view, self.priors.effort.toll)
+        route = links.route
+        ways: dict[int, set[Tile]] = {}
+        for a, b in apart:
+            for s in sea_way(maps[a], links.homes[b]):
+                if not route.water[s.level][s.y][s.x]:
+                    ways.setdefault(s.level, set()).add((s.x, s.y))
+        for level, tiles in ways.items():
+            if level in self._ways:
+                self._ways[level].keep(tiles)
+        self._sea_ways = {level: frozenset(tiles) for level, tiles in ways.items()}
 
     def _finish(
         self,

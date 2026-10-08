@@ -42,8 +42,9 @@ class GameplayResult:
 @dataclass(frozen=True, slots=True)
 class PromisedWays:
     """Per level, the tiles each player's hero walks from its town to its nearest mine of each
-    basic resource. Every later placement step keeps them open with ``kept_rules``. A run
-    stopped before GameplayStep reads the empty default."""
+    basic resource, and the land tiles of its way by sea to a rival town. Every later
+    placement step keeps them open with ``kept_rules``. A run stopped before GameplayStep
+    reads the empty default."""
 
     tiles: Mapping[int, frozenset[Tile]] = field(default_factory=dict[int, frozenset[Tile]])
 

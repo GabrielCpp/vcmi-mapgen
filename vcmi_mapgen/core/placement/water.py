@@ -176,6 +176,21 @@ def ensure_water_seaports(
     return _SeaportPlanner(sea, water_tiles, objs, seed, catalog).run()
 
 
+def seaport_on(
+    sea: SeaMap,
+    objs: list[PlacedObject],
+    seed: int,
+    catalog: Catalog,
+    land: AbstractSet[Tile],
+) -> PlacedObject | None:
+    water_tiles = {
+        (x, y) for y in range(sea.H) for x in range(sea.W) if sea.grid[y][x] == Terrain.WATER
+    }
+    if not water_tiles:
+        return None
+    return _SeaportPlanner(sea, water_tiles, objs, seed, catalog).place_on(land)
+
+
 def _land_zone_of(zones: Mapping[int, Zone]) -> dict[Tile, int]:
     land_zone_of: dict[Tile, int] = {}
     for zid, z in zones.items():
@@ -516,6 +531,18 @@ class _SeaportPlanner:
             )
             return False
         return True
+
+    def place_on(self, land: AbstractSet[Tile]) -> PlacedObject | None:
+        zids = sorted({self.land_zone_of[t] for t in land if t in self.land_zone_of})
+        ident = self._shore_shipyard(zids)
+        if ident is None:
+            return None
+        ts_set: set[Tile] = set()
+        for zid in zids:
+            ts_set |= set(self.sea.zones[zid].tiles_set)
+        near_coastal = _expand_inland(self._coastal_set(land), ts_set)
+        label = f"link {min(land)}" if land else "link"
+        return self._try_place(ts_set, sorted(near_coastal), label, ident)
 
     def _serve_shores(self, comp: AbstractSet[Tile], t0: Tile) -> None:
         zones = self.sea.zones
