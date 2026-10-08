@@ -8,6 +8,7 @@ import random
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
+from dataclasses import dataclass
 
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.priors.territories import TerritoryStats
@@ -17,7 +18,7 @@ from vcmi_mapgen.core.steps.terrain_gen.result import PlannedDoor, PlannedPlace,
 DEFAULT_DOOR_LEVEL = 3
 TOP_LEVEL = 7
 PLAYER_DOOR_TRAVEL = 4
-HOME_ROOM = 400
+HOME_ROOM = 600
 
 
 def _strongest(toll: Sequence[int], days: float) -> int:
@@ -72,17 +73,32 @@ def door_caps(
     return caps
 
 
+@dataclass(frozen=True, slots=True)
+class DoorSpread:
+    """The door levels one corpus map gives a generated level: those of its doors out of a
+    player territory and those of its doors between neutral ones."""
+
+    player: tuple[int, ...] = ()
+    neutral: tuple[int, ...] = ()
+
+    @classmethod
+    def draw(cls, stats: TerritoryStats, rng: random.Random) -> DoorSpread:
+        """The player doors of one corpus map and the neutral doors of one, each drawn
+        among the maps that have such doors."""
+        player = rng.choice(stats.player_doors_by_map) if stats.player_doors_by_map else ()
+        neutral = rng.choice(stats.neutral_doors_by_map) if stats.neutral_doors_by_map else ()
+        return cls(player, neutral)
+
+
 def door_level(
-    stats: TerritoryStats, door: PlannedDoor, rng: random.Random, cap: int = TOP_LEVEL
+    spread: DoorSpread, door: PlannedDoor, rng: random.Random, cap: int = TOP_LEVEL
 ) -> int:
-    """The creature level of a door's guard up to ``cap``, drawn from the corpus doors out
-    of a player territory when one side is a player's, from the doors between neutral ones
+    """The creature level of a door's guard up to ``cap``, drawn from the map's doors out
+    of a player territory when one side is a player's, from its doors between neutral ones
     otherwise, and ``DEFAULT_DOOR_LEVEL`` within the cap when that spread holds no level it
     allows."""
-    spread = (
-        stats.player_door_levels if door.player_side() is not None else stats.neutral_door_levels
-    )
-    levels = [n for n in spread if 1 <= n <= cap]
+    levels = spread.player if door.player_side() is not None else spread.neutral
+    levels = [n for n in levels if 1 <= n <= cap]
     return rng.choice(levels) if levels else min(DEFAULT_DOOR_LEVEL, cap)
 
 

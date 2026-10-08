@@ -5,6 +5,7 @@ from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.doors.guards import (
     DEFAULT_DOOR_LEVEL,
+    DoorSpread,
     door_caps,
     door_level,
     door_tile,
@@ -16,15 +17,26 @@ from vcmi_mapgen.core.steps.terrain_gen.result import PlannedDoor, PlannedPlace,
 
 PLAYER_DOOR = PlannedDoor((0, 1), (0, 1), (0, None), ((4, 2), (5, 2)))
 NEUTRAL_DOOR = PlannedDoor((1, 2), (1, 2), (None, None), ((9, 2), (9, 3)))
-STATS = TerritoryStats(player_door_levels=(2, 2), neutral_door_levels=(0, 6, 9))
+SPREAD = DoorSpread(player=(2, 2), neutral=(0, 6, 9))
 
 
 def test_a_door_out_of_a_player_territory_draws_from_the_player_doors() -> None:
-    assert door_level(STATS, PLAYER_DOOR, random.Random(1)) == 2
+    assert door_level(SPREAD, PLAYER_DOOR, random.Random(1)) == 2
 
 
 def test_a_door_between_neutral_territories_draws_a_level_from_1_to_7() -> None:
-    assert door_level(STATS, NEUTRAL_DOOR, random.Random(1)) == 6
+    assert door_level(SPREAD, NEUTRAL_DOOR, random.Random(1)) == 6
+
+
+def test_a_level_draws_all_its_doors_from_one_corpus_map() -> None:
+    stats = TerritoryStats(player_doors_by_map=((1, 1), (5, 5)), neutral_doors_by_map=((3,),))
+    spread = DoorSpread.draw(stats, random.Random(4))
+    assert spread.player in ((1, 1), (5, 5))
+    assert spread.neutral == (3,)
+
+
+def test_a_corpus_without_doors_draws_an_empty_spread() -> None:
+    assert DoorSpread.draw(TerritoryStats(), random.Random(1)) == DoorSpread()
 
 
 TOLL = (0, 3, 5, 8, 12, 18, 28, 45)
@@ -40,13 +52,13 @@ CHAIN = TerritoryPlan(
 
 
 def test_a_door_draws_no_level_past_its_cap() -> None:
-    stats = TerritoryStats(player_door_levels=(2, 5, 6, 7))
-    assert door_level(stats, PLAYER_DOOR, random.Random(1), cap=3) == 2
+    spread = DoorSpread(player=(2, 5, 6, 7))
+    assert door_level(spread, PLAYER_DOOR, random.Random(1), cap=3) == 2
 
 
 def test_the_home_reach_stops_once_the_land_holds_the_room() -> None:
-    assert home_reach(0, CHAIN.doors, {0: 100, 1: 100, 2: 300, 3: 900}) == (2, (0, 1))
-    assert home_reach(0, CHAIN.doors, {0: 500}) == (0, ())
+    assert home_reach(0, CHAIN.doors, {0: 100, 1: 100, 2: 500, 3: 900}) == (2, (0, 1))
+    assert home_reach(0, CHAIN.doors, {0: 700}) == (0, ())
 
 
 def test_a_roomy_home_caps_its_door_so_one_toll_leaves_the_travel_days() -> None:
@@ -54,7 +66,7 @@ def test_a_roomy_home_caps_its_door_so_one_toll_leaves_the_travel_days() -> None
 
 
 def test_a_cramped_home_shares_the_days_between_the_doors_it_crosses() -> None:
-    assert door_caps(CHAIN, {0: 100, 1: 100, 2: 300}, TOLL, 14) == {0: 2, 1: 2}
+    assert door_caps(CHAIN, {0: 100, 1: 100, 2: 500}, TOLL, 14) == {0: 2, 1: 2}
 
 
 def test_the_areas_count_each_territory_tiles() -> None:
@@ -62,7 +74,7 @@ def test_the_areas_count_each_territory_tiles() -> None:
 
 
 def test_an_empty_spread_falls_back_to_the_default_level() -> None:
-    assert door_level(TerritoryStats(), PLAYER_DOOR, random.Random(1)) == DEFAULT_DOOR_LEVEL
+    assert door_level(DoorSpread(), PLAYER_DOOR, random.Random(1)) == DEFAULT_DOOR_LEVEL
 
 
 def test_loot_zones_and_dead_end_treasure_places_stay_open() -> None:

@@ -19,6 +19,7 @@ from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS
 from vcmi_mapgen.core.steps.doors.guards import (
     TOP_LEVEL,
+    DoorSpread,
     door_caps,
     door_level,
     door_tile,
@@ -82,7 +83,7 @@ class DoorsStep(PipelineStep):
         lp: LevelPlaces,
         rng: random.Random,
     ) -> list[DoorGuard]:
-        stats = self.priors.territories.get(level, TerritoryStats())
+        spread = DoorSpread.draw(self.priors.territories.get(level, TerritoryStats()), rng)
         plan = lp.territories
         skip = open_zones(lp.places, self._loot.on(level), plan.doors)
         areas = territory_areas(lp.label, plan.zones)
@@ -92,7 +93,7 @@ class DoorsStep(PipelineStep):
         for i, door in enumerate(plan.doors):
             if any(z in skip for z in door.zones):
                 continue
-            strength = door_level(stats, door, rng, caps.get(i, TOP_LEVEL))
+            strength = door_level(spread, door, rng, caps.get(i, TOP_LEVEL))
             ident = catalog.guard(strength)
             tile = door_tile(door, partial(post.fits, ident))
             if tile is None:
