@@ -200,9 +200,28 @@ def territory_plan(
     return TerritoryPlan(dict(enumerate(territory)), tuple(owners), tuple(planned))
 
 
-def stranded(plan: TerritoryPlan) -> list[int]:
-    """The players whose territory holds no door while the level has other territories."""
+def _doorless(plan: TerritoryPlan, realised: Iterable[Pair], walled: bool) -> list[int]:
     if len(plan.owners) < 2:
         return []
     opened = {t for d in plan.doors for t in d.territories}
-    return [owner for t, owner in enumerate(plan.owners) if owner is not None and t not in opened]
+    near: set[int] = set()
+    for a, b in realised:
+        ta, tb = plan.zones[a], plan.zones[b]
+        if ta != tb:
+            near |= {ta, tb}
+    return [
+        owner
+        for t, owner in enumerate(plan.owners)
+        if owner is not None and t not in opened and (t in near) == walled
+    ]
+
+
+def stranded(plan: TerritoryPlan, realised: Iterable[Pair]) -> list[int]:
+    """The players whose territory borders another over ``realised`` yet holds no door."""
+    return _doorless(plan, realised, walled=True)
+
+
+def islanded(plan: TerritoryPlan, realised: Iterable[Pair]) -> list[int]:
+    """The players whose territory holds no door because water parts it from every other
+    territory: it borders none over ``realised``."""
+    return _doorless(plan, realised, walled=False)

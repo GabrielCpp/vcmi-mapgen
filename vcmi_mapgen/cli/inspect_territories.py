@@ -17,6 +17,7 @@ from vcmi_mapgen.core.reading.territories import (
     Territories,
     Territory,
     disagreements,
+    islands,
     territories_from,
 )
 
@@ -77,12 +78,15 @@ def territory_lines(catalog: Catalog, loaded: Loaded, level: int) -> list[str]:
         + f"{_count(len(read.doors), 'door')} and {_count(len(read.links), 'link')} "
         + f"on level {level} of {loaded.name}"
     ]
+    alone = islands(read, route.water[level])
     for i, t in enumerate(read.territories):
         zones = ", ".join(f"{z} {places[z].role}" for z in t.zones) or "none"
         lines.append(
             f"  {symbol(i)} {_owner(t)}: {t.area} tiles, {_count(t.towns, 'town')}, zones {zones}"
         )
-        lines += [_door(d, i) for d in read.doors if i in d.territories]
+        lines += [_door(d, i) for d in read.doors if i in d.territories] or [
+            "     no door: " + ("water parts it from the rest" if i in alone else "walled in")
+        ]
     lines += [f"  link {symbol(a)}-{symbol(b)}" for a, b in read.links]
     lines += [f"map ({LEGEND}):", *_rows(read, route)]
     planned = loaded.planned.get(level)

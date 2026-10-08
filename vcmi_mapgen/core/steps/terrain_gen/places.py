@@ -44,6 +44,7 @@ from vcmi_mapgen.core.steps.terrain_gen.territories import (
     draw_doors,
     draw_partition,
     group_neutral,
+    islanded,
     settle,
     stranded,
     territory_plan,
@@ -214,8 +215,8 @@ def underground_places(
 
 
 def territory_line(plan: LevelPlaces, name: str = "territories") -> str:
-    """How many territories each kind of owner holds, their doors, and the homes no door
-    opens."""
+    """How many territories each kind of owner holds, their doors, the homes no door opens
+    on a land border, and the homes water parts from every other territory."""
     tp = plan.territories
     players = sum(o is not None for o in tp.owners)
     walls = sum(
@@ -223,11 +224,13 @@ def territory_line(plan: LevelPlaces, name: str = "territories") -> str:
         for (a, b), kind in plan.kinds.items()
         if kind == AdjacencyKind.CLOSED and tp.zones[a] != tp.zones[b]
     )
-    lost = stranded(tp)
+    realised = label_adjacency(plan.label)
+    lost, islands = stranded(tp, realised), islanded(tp, realised)
     return (
         f"  {name}: {len(tp.owners)}, {players} player, {len(tp.owners) - players} "
         + f"neutral, {len(tp.doors)} doors, {walls} walled borders"
         + (f", stranded players {lost}" if lost else "")
+        + (f", players alone on their land {islands}" if islands else "")
     )
 
 

@@ -6,12 +6,14 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, MapState, PlacedObject, Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.reading.routes import route_map
 from vcmi_mapgen.core.reading.territories import (
     NONE,
     BarrierKind,
     PlannedTopology,
     Territories,
     disagreements,
+    islands,
     read_territories,
     territory_reading,
 )
@@ -153,3 +155,14 @@ def test_one_planned_territory_over_two_read_ones_is_a_split(catalog: Catalog) -
     planned = PlannedTopology(labels, ((0,),), ())
     found = disagreements(planned, read)
     assert "planned 0 splits into read 0, 1" in found
+
+
+def test_a_territory_water_parts_from_the_rest_is_an_island(catalog: Catalog) -> None:
+    grid = [[Terrain.GRASS] * SIZE for _ in range(SIZE)]
+    for row in grid:
+        row[WALL_X] = Terrain.WATER
+    state = MapState(size=SIZE, terrain={0: grid}, objs=[])
+    read = read_territories(catalog, state, 0, {})
+    assert read is not None
+    assert islands(read, route_map(catalog, state).water[0]) == [0, 1]
+    assert islands(_read(catalog, _wall(gap=False), {}), [[False] * SIZE] * SIZE) == []

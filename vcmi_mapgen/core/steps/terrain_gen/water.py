@@ -2,12 +2,13 @@
 from the place geometry by the fitted odds, steered to one corpus map's water target."""
 
 import random
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import cast
 
 import numpy as np
 
+from vcmi_mapgen.core.grid.paths import geodesic_path
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.water import WaterPriors, WaterTarget
 from vcmi_mapgen.core.reading.places import PlaceRole
@@ -94,6 +95,41 @@ def strait_tiles(mass_grid: Labels) -> Mask:
     return cut
 
 
+def _widen(mask: Mask) -> Mask:
+    h, w = mask.shape
+    pad = np.pad(mask, 1)
+    out = np.zeros((h, w), dtype=np.bool_)
+    for dy in range(3):
+        for dx in range(3):
+            out |= pad[dy : dy + h, dx : dx + w]
+    return out
+
+
+def bridge_tiles(
+    label: Labels,
+    anchors: Sequence[tuple[int, int]],
+    edges: Iterable[tuple[int, int]],
+    mass: Sequence[int],
+    forced: Mask,
+) -> Mask:
+    """The land every planned pair on one mass keeps: the shortest walk between the two
+    anchors inside the pair's places and off ``forced``, widened by one tile inside them."""
+    out = np.zeros(label.shape, dtype=np.bool_)
+    for a, b in sorted(edges):
+        if mass[a] != mass[b]:
+            continue
+        inside = cast("Mask", ((label == a) | (label == b)) & ~forced)
+        ys, xs = np.nonzero(inside)
+        tiles = set(
+            zip(cast("list[int]", xs.tolist()), cast("list[int]", ys.tolist()), strict=True)
+        )
+        walk = np.zeros(label.shape, dtype=np.bool_)
+        for x, y in geodesic_path(anchors[a], anchors[b], tiles):
+            walk[y, x] = True
+        out |= _widen(walk) & inside
+    return out
+
+
 def _grid(h: int, w: int) -> tuple[Labels, Labels]:
     ys = np.repeat(np.arange(h, dtype=np.int64), w).reshape(h, w)
     xs = np.tile(np.arange(w, dtype=np.int64), h).reshape(h, w)
@@ -134,7 +170,13 @@ def sample_water(
     return water
 
 
-def _pins(layout: Layout, mass_grid: Labels, k: int, gates: Sequence[tuple[int, int]]) -> Pins:
+def _pins(
+    graph: PlaceGraph,
+    layout: Layout,
+    mass: tuple[Sequence[int], Labels, int],
+    gates: Sequence[tuple[int, int]],
+) -> Pins:
+    masses, mass_grid, k = mass
     h, w = mass_grid.shape
     gy, gx = _grid(h, w)
     pull: Floats = np.zeros((h, w))
@@ -144,6 +186,8 @@ def _pins(layout: Layout, mass_grid: Labels, k: int, gates: Sequence[tuple[int, 
         protect[y, x] = True
     forced = strait_tiles(mass_grid) if k > 1 else np.zeros((h, w), dtype=np.bool_)
     protect &= ~forced
+    label = np.array(layout.label, dtype=np.int64)
+    protect |= bridge_tiles(label, layout.anchors, graph.edges, masses, forced)
     for x, y in gates:
         protect[y, x] = True
         forced[y, x] = False
@@ -172,7 +216,12 @@ class TopologyForm:
         places = water_places(layout.label, mass_grid)
         static = static_features((size, size), places, homes, target.edge)
         gates = gate_site_tiles(gate_anchor_points(size, size, seed), size)
-        pins = _pins(layout, mass_grid, target.masses, list(gates) if options.subterrain else [])
+        pins = _pins(
+            graph,
+            layout,
+            (mass, mass_grid, target.masses),
+            list(gates) if options.subterrain else [],
+        )
         water = sample_water(static, priors.water, target, pins, rng)
         wet = cast("list[list[bool]]", water.tolist())
         label = [

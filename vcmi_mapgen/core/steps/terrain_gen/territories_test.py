@@ -107,8 +107,11 @@ def test_a_door_names_its_player_side() -> None:
     assert PlannedDoor((2, 5), (1, 3), (None, None), ((0, 0), (1, 0))).player_side() is None
 
 
-def test_stranded_names_the_players_no_door_opens() -> None:
+def test_a_doorless_home_is_stranded_on_a_land_border_and_islanded_across_water() -> None:
     door = PlannedDoor((0, 1), (0, 1), (0, None), ((0, 0), (1, 0)))
     plan = TerritoryPlan({0: 0, 1: 1, 2: 2}, (0, None, 1), (door,))
-    assert TR.stranded(plan) == [1]
-    assert TR.stranded(TerritoryPlan({0: 0}, (0,), ())) == []
+    assert TR.stranded(plan, [(0, 1), (1, 2)]) == [1]
+    assert TR.islanded(plan, [(0, 1), (1, 2)]) == []
+    assert TR.stranded(plan, [(0, 1)]) == []
+    assert TR.islanded(plan, [(0, 1)]) == [1]
+    assert TR.stranded(TerritoryPlan({0: 0}, (0,), ()), []) == []

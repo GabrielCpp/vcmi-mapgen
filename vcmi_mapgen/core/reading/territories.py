@@ -307,6 +307,19 @@ def territories_from(
     )
 
 
+def islands(read: Territories, water: Sequence[Sequence[bool]]) -> list[int]:
+    """The territories with no door whose land, every tile off ``water`` they reach over
+    the eight neighbours, holds no other territory."""
+    land = frozenset((x, y) for y, row in enumerate(water) for x, wet in enumerate(row) if not wet)
+    held: dict[int, set[int]] = collections.defaultdict(set)
+    for mass in _components(land):
+        found = {read.at(t) for t in mass} - {NONE}
+        for t in found:
+            held[t] = found
+    opened = {t for d in read.doors for t in d.territories}
+    return [t for t in range(len(read.territories)) if t not in opened and held[t] == {t}]
+
+
 def read_territories(
     catalog: Catalog, map_state: MapState, level: int, owners: Mapping[TownKey, int]
 ) -> Territories | None:
