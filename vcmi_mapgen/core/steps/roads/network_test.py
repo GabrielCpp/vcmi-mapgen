@@ -1,4 +1,4 @@
-"""Tests for the places terrain's road network."""
+"""Tests for the road network."""
 
 from dataclasses import replace
 

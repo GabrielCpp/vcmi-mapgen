@@ -3,7 +3,7 @@ it hands over and the road tiles it gets back."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol, final
+from typing import Protocol
 
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import Tile
@@ -50,12 +50,3 @@ class RoadLayer(Protocol):
         """The road surface of every road tile of ``level``, read against the corpus road
         statistics ``stats`` of its level."""
         ...
-
-
-@final
-class NoRoads:
-    """The markov terrain's layer: it lays no road."""
-
-    def lay(self, stats: RoadStats, level: RoadLevel) -> Mapping[Tile, Road]:
-        _ = stats, level
-        return {}

@@ -2,11 +2,11 @@
 
 Subcommands:
   generate        -> synthesize a full map via the marked-point-process pipeline
-                     (CLI-selectable overlays, renderers, stop point, vegetation sampler
-                     and terrain model). `--mods` enables mods with their dependencies
-                     and `--ban` keeps named objects, artifacts, spells and creatures off.
+                     (CLI-selectable overlays, renderers, stop point and vegetation
+                     sampler). `--mods` enables mods with their dependencies and `--ban`
+                     keeps named objects, artifacts, spells and creatures off.
   render-vegetation -> run the pipeline through vegetation and save terrain-and-vegetation
-                     PNGs for a few seeds, with either vegetation sampler and terrain model.
+                     PNGs for a few seeds, with either vegetation sampler.
   render-ontology -> render one sprite (+ passability mask overlay) per documented
                      ontology item — a documentation/debug tool, not part of the pipeline.
   mine-stats      -> mine every corpus statistic into data/pp/*.json.
@@ -15,8 +15,8 @@ Subcommands:
   extract-vmap    -> regenerate data/corpus/vmap/ from the .h3m corpus, or convert another
                      folder of .h3m maps, HotA ones with `--mods hota`, and render them.
   corpus-match    -> compare generated gameplay placement to the corpus.
-  readings        -> print the map-math 8 readings of generated maps per terrain model
-                     beside the corpus spread, and whether a model replaces the default.
+  readings        -> print the map-math 8 readings of generated maps beside the corpus
+                     spread.
   effort-report   -> print the opener, the effort, the band and the prize of every cut-off
                      place on a few generated maps.
   patch-report    -> compare how the corpus and generated maps dress their small enclosed
@@ -62,13 +62,11 @@ from vcmi_mapgen.cli.render_sprites import render_sprites
 from vcmi_mapgen.cli.render_vmaps import render_vmaps
 from vcmi_mapgen.cli.settings import Settings, load_settings, open_install
 from vcmi_mapgen.cli.steps import (
-    DEFAULT_TERRAIN,
     DEFAULT_VEGETATION,
     DEFAULT_WATER,
     GENERATE_STOP_POINTS,
     SAMPLERS,
     SURFACE_FORMS,
-    TERRAIN_MODELS,
 )
 from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.renderers import PngRenderer
@@ -107,8 +105,6 @@ class Args(argparse.Namespace):
     level: int | None = None
     densities: bool = False
     vegetation: str = DEFAULT_VEGETATION
-    terrain: str = DEFAULT_TERRAIN
-    terrains: Sequence[str] = ()
     mods: Sequence[str] = ()
     ban: Sequence[str] = ()
     h3m_dir: str | None = None
@@ -167,7 +163,6 @@ def cmd_generate(args: Args) -> None:
             renderers=args.renderers,
             stop_after=args.stop_after,
             vegetation=args.vegetation,
-            terrain=args.terrain,
             content=_content(args),
             density=args.density,
             name=args.name,
@@ -189,7 +184,6 @@ def cmd_render_vegetation(args: Args) -> None:
             subterrain=args.subterrain,
             overlays=args.overlays,
             vegetation=args.vegetation,
-            terrain=args.terrain,
             content=_content(args),
         ),
     )
@@ -218,13 +212,13 @@ def cmd_corpus_match(args: Args) -> None:
 def cmd_readings(args: Args) -> None:
     settings = load_settings()
     _ = _open_catalog(settings)
-    readings(VcmiCatalog(), settings, args.seeds, args.size, args.terrains)
+    readings(VcmiCatalog(), settings, args.seeds, args.size)
 
 
 def cmd_effort_report(args: Args) -> None:
     settings = load_settings()
     _ = _open_catalog(settings)
-    effort_report(VcmiCatalog(), settings, ReportOptions(args.seeds, args.size, args.terrain))
+    effort_report(VcmiCatalog(), settings, ReportOptions(args.seeds, args.size))
 
 
 def cmd_patch_report(args: Args) -> None:
@@ -260,16 +254,6 @@ def _add_vegetation_arg(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_VEGETATION,
         help="vegetation sampler: 'gibbs' (the marked point process) or 'field' (the cellular "
         + f"field) (default: {DEFAULT_VEGETATION})",
-    )
-
-
-def _add_terrain_arg(parser: argparse.ArgumentParser) -> None:
-    _ = parser.add_argument(
-        "--terrain",
-        choices=list(TERRAIN_MODELS),
-        default=DEFAULT_TERRAIN,
-        help="terrain model: 'markov' (macro zones textured by the Markov chain) or 'places' "
-        + f"(a place graph laid out on land) (default: {DEFAULT_TERRAIN})",
     )
 
 
@@ -348,13 +332,10 @@ def main() -> None:
     _ = pcm.set_defaults(func=cmd_corpus_match)
 
     prd = sub.add_parser(
-        "readings", help="print the map-math 8 readings per terrain model beside the corpus"
+        "readings", help="print the map-math 8 readings of generated maps beside the corpus"
     )
     _ = prd.add_argument("--seeds", type=int, nargs="+", default=list(range(1, 11)))
     _ = prd.add_argument("--size", type=int, default=72)
-    _ = prd.add_argument(
-        "--terrains", choices=list(TERRAIN_MODELS), nargs="+", default=list(TERRAIN_MODELS)
-    )
     _ = prd.set_defaults(func=cmd_readings)
 
     per = sub.add_parser(
@@ -362,7 +343,6 @@ def main() -> None:
     )
     _ = per.add_argument("--seeds", type=int, nargs="+", default=list(range(1, 11)))
     _ = per.add_argument("--size", type=int, default=72)
-    _add_terrain_arg(per)
     _ = per.set_defaults(func=cmd_effort_report)
 
     ppr = sub.add_parser(
@@ -458,7 +438,6 @@ def main() -> None:
         help=f"also copy the .vmap into the VCMI install's Maps/{INSTALL_FOLDER}/ folder",
     )
     _add_vegetation_arg(pg)
-    _add_terrain_arg(pg)
     _add_content_args(pg)
     _ = pg.set_defaults(func=cmd_generate)
 
@@ -481,7 +460,6 @@ def main() -> None:
         + "(default: none)",
     )
     _add_vegetation_arg(prv)
-    _add_terrain_arg(prv)
     _add_content_args(prv)
     _ = prv.set_defaults(func=cmd_render_vegetation)
 

@@ -15,7 +15,6 @@ from vcmi_mapgen.core.priors.gameplay import HEMMED_SHARE
 from vcmi_mapgen.core.reading.flanks import read_hemmed
 
 HEMMED_SPREAD = 0.1
-MODELS = ("places", "markov")
 SWEEP_SEEDS = range(1, 11)
 
 
@@ -34,18 +33,16 @@ def _off(shares: list[float]) -> list[float]:
     return [s for s in shares if abs(s - HEMMED_SHARE) > HEMMED_SPREAD]
 
 
-@pytest.mark.parametrize("model", MODELS)
-def test_a_small_map_hems_its_objects(catalog: Catalog, priors: Priors, model: str) -> None:
-    shares = _shares(catalog, priors, StepConfig(3, 48, terrain=model))
+def test_a_small_map_hems_its_objects(catalog: Catalog, priors: Priors) -> None:
+    shares = _shares(catalog, priors, StepConfig(3, 48))
     assert shares
     assert _off(shares) == []
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("model", MODELS)
-def test_nine_levels_in_ten_hem_their_objects(catalog: Catalog, priors: Priors, model: str) -> None:
+def test_nine_levels_in_ten_hem_their_objects(catalog: Catalog, priors: Priors) -> None:
     shares: list[float] = []
     for seed in SWEEP_SEEDS:
-        config = StepConfig(seed, 72, terrain=model, subterrain=seed % 2 == 0)
+        config = StepConfig(seed, 72, subterrain=seed % 2 == 0)
         shares += _shares(catalog, priors, config)
     assert len(_off(shares)) <= len(shares) // 10, _off(shares)

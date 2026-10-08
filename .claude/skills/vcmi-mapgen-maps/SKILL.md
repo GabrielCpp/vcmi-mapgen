@@ -19,10 +19,8 @@ metadata:
   `core.reading`, `core.placement`, `core.grid`, `core.catalog` with `core.priors`, and
   `core.model`. A module imports only from the layers below its own. `core/reading/`
   sits below `core/planning/` because `planning/content.py` counts hops with it.
-- `cli/steps.py` holds the variant tables. `TERRAIN_MODELS` names the terrain models and
-  `SAMPLERS` the vegetation samplers. `CONTENTS` picks the content planner and `ROADS`
-  the road layer, both keyed by terrain model. `DEFAULT_TERRAIN` is `places` and
-  `DEFAULT_VEGETATION` is `field`.
+- `cli/steps.py` holds the variant tables. `SAMPLERS` names the vegetation samplers,
+  `SURFACE_FORMS` the surface forms per water mode, and `DEFAULT_VEGETATION` is `field`.
 
 ## Formats and identifiers
 
@@ -80,16 +78,16 @@ metadata:
 ## Segmentation
 
 - `TerrainStep` provides `Segmentation(zones, zone_label)` from `terrain_gen/result.py`,
-  one zone per place of the `PlaceMap` the terrain model draws.
+  one zone per place of the `PlaceMap` the places model draws.
   `terrain_gen/levels.py` `segment_places` builds it through
   `core.grid.segment.zones_of_labels`.
 - `zone_label` is a `ZoneLabel` grid read `[y][x]`. The entrance and gate geometry in
   `core/planning/entrances.py` reads it. `label_zones(zones)` rebuilds one from
   hand-built zones in tests.
-- Under the places model, the default, the segmentation comes from the place map: each zone is one
+- On the surface, the segmentation comes from the place map: each zone is one
   place of the laid-out place graph. Two adjacent places stay two zones even when they
   share a terrain.
-- Under the markov model, `terrain_gen/place_map.py` `flood_places` makes the places, so
+- On the underground, `terrain_gen/place_map.py` `flood_places` makes the places, so
   the segmentation is a 4-connected flood fill by terrain type. Water and rock are
   barriers (`Terrain.is_barrier`), with `zone_label` set to -1.
   `core.grid.segment.segment_level(level)` is the same flood fill, which the corpus

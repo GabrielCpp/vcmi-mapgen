@@ -5,7 +5,7 @@
 - `pickups.py`: the pocket caches. Under a `PocketPlan` every pocket is filled, a deep
   pocket where a guard fits gets one over an artifact or a Pandora's box, and
   every other pocket gets resource piles or chests. A guarded pocket's artifact tile is held open as a prize slot for `SetsStep`. Without a plan every filled pocket
-  takes a guard, as markov maps do.
+  takes a guard.
 - `pocket_plan.py`: the pure pocket decisions: shallow or deep, which places the plan
   covers, and the ward's artifact tier its guard level earns. The guard level itself comes
   from `core/planning/guarding.py`.

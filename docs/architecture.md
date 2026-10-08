@@ -83,7 +83,7 @@ map renders **pixel-identical** to the source (the identity guarantee at the pix
 | Record / replay / stretch | `zone_engine.py` (the CLI), `obj_resolve.py`, `ontology.py` |
 | Emit | `faithful.py`, `vmapwrite.py` |
 | Render & inspect | `render_editor.py`, `render.py`, `render_editor_test.py` |
-| Terrain generation | `core/steps/terrain_gen/` (`places.py`, the default place-first model, and `markov.py`, the Markov chain model behind `--terrain markov`) |
+| Terrain generation | `core/steps/terrain_gen/` (`places.py`, the place-first model) |
 | Corpus statistics | `mine_stats.py`, run as `cli mine-stats`, writes `data/pp/*.json`; `cli audit` checks them |
 
 The `.h3m` corpus is in `data/corpus/h3m/`; the format reference is in `vcmi-h3m-format-reference/`

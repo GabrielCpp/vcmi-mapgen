@@ -98,8 +98,7 @@ Order matters for `MapState` writes, for `ZoneIndex` mutation and for RNG determ
 ## Placement steps hand each other frozen values
 
 `TerrainStep` provides the `PlaceMap`: each level's places, the kind of each border and
-its `Passages`. The places model draws one kind per border: closed, gated or open. The
-markov model gates every pair. The passage plan drives the walkable web in
+its `Passages`. The places model draws one kind per border: closed, gated or open. The passage plan drives the walkable web in
 `VegetationStep` and the entrances of the `ZonePlan`.
 
 `VegetationStep` provides the `ZonePlan` (`core/planning/zone_plan.py`), each zone's
@@ -127,10 +126,7 @@ it through `build_steps` to measure maps, and write none. `readings` reads each 
 `core/reading/vector.py`. `generate` alone takes `--renderers` and `--stop-after`.
 `render-vegetation` always stops after `vegetation` and writes one terrain-and-vegetation
 PNG per seed and level to `out/render/vegetation/`. Both take `--vegetation`, which picks
-a sampler from `SAMPLERS` in `cli/steps.py`, and `--terrain`, which picks a model from
-`TERRAIN_MODELS`. `places` is the default. The terrain model also picks the content
-planner from `CONTENTS` and the `RoadLayer` from `ROADS`, so `RoadsStep` lays passage
-roads under places and nothing under markov. A second algorithm for part of a step is a
+a sampler from `SAMPLERS` in `cli/steps.py`. A second algorithm for part of a step is a
 variant of a role the step takes in its constructor, as `VegetationStep` takes a
 `Sampler`. The step stays one class and publishes the same values, so the later steps
 never know which variant ran. Never subclass a step to swap an algorithm.

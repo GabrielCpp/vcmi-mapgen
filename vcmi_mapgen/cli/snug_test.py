@@ -17,7 +17,6 @@ from vcmi_mapgen.core.priors.gameplay import SNUG_FLOOR
 from vcmi_mapgen.core.reading.snug import Snug, read_snug
 
 MIN_OBJECTS = 8
-MODELS = ("places", "markov")
 SWEEP_SEEDS = range(1, 11)
 
 
@@ -44,21 +43,17 @@ def _short(snug: Snug) -> dict[int, float]:
     }
 
 
-@pytest.mark.parametrize("model", MODELS)
-def test_a_small_map_tucks_its_objects_in(catalog: Catalog, priors: Priors, model: str) -> None:
-    snug = _snug(catalog, priors, StepConfig(3, 48, terrain=model))
+def test_a_small_map_tucks_its_objects_in(catalog: Catalog, priors: Priors) -> None:
+    snug = _snug(catalog, priors, StepConfig(3, 48))
     assert sum(snug.objects.values()) > 0
     assert _short(snug) == {}
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("model", MODELS)
-def test_nine_seeds_in_ten_tuck_their_objects_in(
-    catalog: Catalog, priors: Priors, model: str
-) -> None:
+def test_nine_seeds_in_ten_tuck_their_objects_in(catalog: Catalog, priors: Priors) -> None:
     short: dict[int, dict[int, float]] = {}
     for seed in SWEEP_SEEDS:
-        config = StepConfig(seed, 72, terrain=model, subterrain=seed % 2 == 0)
+        config = StepConfig(seed, 72, subterrain=seed % 2 == 0)
         if s := _short(_snug(catalog, priors, config)):
             short[seed] = s
     assert len(short) <= len(SWEEP_SEEDS) // 10, short

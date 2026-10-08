@@ -7,8 +7,8 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 
 ## Map
 
-- `terrain_gen/`: `TerrainStep`, the terrain of both levels drawn by the `TerrainModel` it is given, and its place map. `cli/steps.py` `TERRAIN_MODELS` names the markov and the places models, and places is the default.
-- `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers. It also plans each place's content with the `ContentPlanner` that `cli/steps.py` `CONTENTS` picks per terrain model, and provides the `ContentPlan` that gameplay and loot read.
+- `terrain_gen/`: `TerrainStep`, the terrain of both levels drawn by the `TerrainModel` it is given, and its place map. `cli/steps.py` gives it the places model, the only one.
+- `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers. It also plans each place's content with the `ContentPlanner` it is given, `HopContent` by default, and provides the `ContentPlan` that gameplay and loot read.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
 - `treasure/`: `TreasureStep`, the treasure inside each sealed loot zone and on each island, priced by its effort in hero-days. It provides `TreasureResult`.
@@ -16,7 +16,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 - `loot/`: `LootStep`, the seer-hut quests and the pocket caches, guarded only in a deep pocket.
 - `sets/`: `SetsStep`, the combined artifact sets. The treasure, portal and loot steps each hold one prize slot open per place, and this step deals whole sets onto the slots in the top two effort bands, then fills every other slot. It provides `SetsResult`.
 - `scatter/`: `ScatterStep`, the free resource piles placed last.
-- `roads/`: `RoadsStep`, the last step. It lays each level's roads into `map_state.roads` with the `RoadLayer` that `cli/steps.py` `ROADS` picks per terrain model. It runs after every object, so it routes over the tiles no blocking cell or gate covers and no later object can stand on a road.
+- `roads/`: `RoadsStep`, the last step. It lays each level's roads into `map_state.roads` with the `RoadLayer` it is given, `PassageRoads` from `cli/steps.py`. It runs after every object, so it routes over the tiles no blocking cell or gate covers and no later object can stand on a road.
 
 ## What a step must do
 

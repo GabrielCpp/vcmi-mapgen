@@ -9,8 +9,9 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import GameplayStep, TerrainStep, VegetationStep
-from vcmi_mapgen.core.steps.terrain_gen.markov import MarkovTerrain
+from vcmi_mapgen.core.steps.terrain_gen.coastline import NoiseForm
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
+from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 
 
@@ -21,7 +22,10 @@ def _run_towns(catalog: Catalog, priors: Priors, seed: int, players: int = 2) ->
         pipeline = Pipeline(catalog, size)
         _ = pipeline.add_step(
             TerrainStep(
-                priors, MarkovTerrain(), seed, TerrainOptions(size, "normal", True, players)
+                priors,
+                PlacesTerrain(NoiseForm()),
+                seed,
+                TerrainOptions(size, "normal", True, players),
             )
         )
         _ = pipeline.add_step(VegetationStep(priors, GibbsSampler(), seed, players))

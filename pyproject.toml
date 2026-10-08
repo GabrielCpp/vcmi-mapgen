@@ -21,7 +21,6 @@ dev = [
 
 # Everything else is the Python standard library. Run via uv, e.g.:
 #   uv run python -m vcmi_mapgen.zone_engine run "All for One"
-#   uv run python -m vcmi_mapgen.markov_terrain
 #   uv run pytest
 [tool.uv]
 package = false

@@ -21,8 +21,9 @@ from vcmi_mapgen.core.steps import (
     TreasureStep,
     VegetationStep,
 )
-from vcmi_mapgen.core.steps.terrain_gen.markov import MarkovTerrain
+from vcmi_mapgen.core.steps.terrain_gen.coastline import NoiseForm
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
+from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
 
@@ -63,7 +64,9 @@ STEP_NAMES = (
 
 def pipeline_steps(priors: Priors, seed: int = SEED) -> list[tuple[str, PipelineStep]]:
     steps: list[PipelineStep] = [
-        TerrainStep(priors, MarkovTerrain(), seed, TerrainOptions(SIZE, "normal", True, PLAYERS)),
+        TerrainStep(
+            priors, PlacesTerrain(NoiseForm()), seed, TerrainOptions(SIZE, "normal", True, PLAYERS)
+        ),
         VegetationStep(priors, GibbsSampler(), seed, PLAYERS),
         GameplayStep(priors, seed, PLAYERS, True),
         GatedStep(priors, seed, SIZE),

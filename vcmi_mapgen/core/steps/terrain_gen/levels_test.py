@@ -1,23 +1,11 @@
-"""Tests for the per-level macro grids and their segmentation."""
+"""Tests for the segmentation of each terrain level."""
 
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.places import PlaceRole
-from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
-from vcmi_mapgen.core.steps.terrain_gen.levels import level_accents, raw_levels, segment_places
+from vcmi_mapgen.core.steps.terrain_gen.levels import level_accents, segment_places
 from vcmi_mapgen.core.steps.terrain_gen.place_map import flood_places, front_cells
 from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlaceMap, PlannedPlace
-
-
-def test_raw_levels_add_an_underground_with_protected_tunnels(priors: Priors) -> None:
-    surface = raw_levels(priors.terrain, 48, 5, MTOPO.MacroOptions(), subterrain=False)
-    both = raw_levels(priors.terrain, 48, 5, MTOPO.MacroOptions(), subterrain=True)
-    assert set(surface.grids) == {0}
-    assert not surface.tunnel_protect
-    assert set(both.grids) == {0, 1}
-    assert both.tunnel_protect
-    assert both == raw_levels(priors.terrain, 48, 5, MTOPO.MacroOptions(), subterrain=True)
 
 
 def test_segment_places_warns_on_a_sliver_unless_it_holds_a_tunnel() -> None:

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from vcmi_mapgen.cli.settings import Settings
-from vcmi_mapgen.cli.steps import DEFAULT_TERRAIN, DEFAULT_VEGETATION, StepConfig, build_steps
+from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
@@ -142,7 +142,6 @@ class GenerateOptions:
     renderers: str
     stop_after: str | None
     vegetation: str
-    terrain: str = DEFAULT_TERRAIN
     content: ContentSetting = BASE_CONTENT
     density: float = 1.0
     name: str | None = None
@@ -158,7 +157,6 @@ class VegetationRenderOptions:
     subterrain: bool
     overlays: str
     vegetation: str
-    terrain: str = DEFAULT_TERRAIN
     content: ContentSetting = BASE_CONTENT
 
 
@@ -192,10 +190,6 @@ def _run_pipeline(
     return pipeline
 
 
-def _terrain_tag(terrain: str) -> str:
-    return "" if terrain == DEFAULT_TERRAIN else f"_{terrain}"
-
-
 def render_vegetation(
     install: VcmiInstall, settings: Settings, opts: VegetationRenderOptions
 ) -> None:
@@ -214,7 +208,6 @@ def render_vegetation(
             opts.water_mode,
             opts.subterrain,
             opts.vegetation,
-            opts.terrain,
         )
         pipeline = _run_pipeline(catalog, settings, config, "vegetation")
         map_state = pipeline.map_state
@@ -223,7 +216,7 @@ def render_vegetation(
         print(f"vegetation s{seed} ({opts.vegetation}): {len(map_state.objs)} objects")
         for level in sorted(map_state.terrain):
             suffix = "" if level == 0 else f"_L{level}"
-            name = f"veg_s{seed}_{opts.vegetation}{_terrain_tag(opts.terrain)}{suffix}.png"
+            name = f"veg_s{seed}_{opts.vegetation}{suffix}.png"
             print(f"  {renderer.save(map_state, name, level=level)}")
 
 
@@ -248,7 +241,7 @@ def _stem(opts: GenerateOptions) -> str:
     stem = f"ppmap_s{opts.seed}"
     if opts.vegetation != DEFAULT_VEGETATION:
         stem = f"{stem}_{opts.vegetation}"
-    return f"{stem}{_terrain_tag(opts.terrain)}"
+    return stem
 
 
 def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
@@ -262,7 +255,6 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.water_mode,
         opts.subterrain,
         opts.vegetation,
-        opts.terrain,
         opts.density,
     )
     catalog = open_catalog(install, opts.content)

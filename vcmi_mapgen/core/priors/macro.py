@@ -1,4 +1,4 @@
-"""The corpus macro terrain statistics the macro terrain model draws from."""
+"""The corpus macro terrain statistics the macro zone growth draws from."""
 
 from dataclasses import dataclass
 

@@ -1,6 +1,6 @@
-"""The places terrain's road layer (map-math 5.4): a greedy forest of legs from each home's
-town through the planned passages toward its neighbouring places and their sites, laid on
-walkable tiles only and drawn against the corpus road statistics."""
+"""The road layer (map-math 5.4): a greedy forest of legs from each home's town through the
+planned passages toward its neighbouring places and their sites, laid on walkable tiles
+only and drawn against the corpus road statistics."""
 
 import collections
 import heapq
@@ -272,7 +272,7 @@ def lay_network(level: RoadLevel, rules: RoadRules) -> dict[Tile, Road]:
 
 @final
 class PassageRoads:
-    """The places terrain's layer: the greedy forest of ``lay_network``."""
+    """The road layer: the greedy forest of ``lay_network``."""
 
     def lay(self, stats: RoadStats, level: RoadLevel) -> Mapping[Tile, Road]:
         return lay_network(level, rules_of(stats))

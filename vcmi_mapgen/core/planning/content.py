@@ -2,9 +2,8 @@
 and for every place its role, its hop count from the nearest home, how much reward it holds
 against the map's mean and the mean level of its guards.
 
-A ``ContentPlanner`` is the role ``cli/steps.py`` picks per terrain model. ``NoContent``
-plans nothing, so every consumer keeps its own default. ``HopContent`` reads the planned
-places and the corpus content table of each level."""
+A ``ContentPlanner`` plans the content of a map. ``HopContent`` reads the planned places
+and the corpus content table of each level."""
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -128,17 +127,6 @@ class ContentPlanner(Protocol):
         ...
 
 
-@final
-class NoContent:
-    """The markov terrain's planner: it plans nothing."""
-
-    def plan(
-        self, stats: Mapping[int, PlaceStats], levels: Mapping[int, PlaceGraph]
-    ) -> ContentPlan:
-        _ = stats, levels
-        return ContentPlan()
-
-
 def level_intents(table: ContentTable, graph: PlaceGraph) -> dict[int, PlaceIntent]:
     """Each place's intent, its hop count read over the borders that are not closed from the
     owned homes of its level."""
@@ -163,8 +151,8 @@ def owned_homes(levels: Mapping[int, PlaceGraph]) -> tuple[ZoneKey, ...]:
 
 @final
 class HopContent:
-    """The places terrain's planner: the owned homes, each place's intent read off the
-    corpus content table of its level by its role and its hop count from home."""
+    """The owned homes, and each place's intent read off the corpus content table of its
+    level by its role and its hop count from home."""
 
     def plan(
         self, stats: Mapping[int, PlaceStats], levels: Mapping[int, PlaceGraph]

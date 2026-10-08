@@ -30,7 +30,6 @@ from vcmi_mapgen.core.reading.promise import doors, player_maps
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
 
-MODELS = ("places", "markov")
 SWEEP_SEEDS = range(1, 11)
 DENSITY_TOL = 0.1
 REACH_GAP = 2
@@ -112,11 +111,10 @@ def test_a_small_map_keeps_each_family_even_between_players(
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("model", MODELS)
 def test_every_seed_holds_the_corpus_rate_and_effort_evenly(
-    catalog: Catalog, priors: Priors, model: str
+    catalog: Catalog, priors: Priors
 ) -> None:
-    configs = [StepConfig(seed, 72, terrain=model) for seed in SWEEP_SEEDS]
+    configs = [StepConfig(seed, 72) for seed in SWEEP_SEEDS]
     sparse = [
         (c.seed, round(r, 2))
         for c in configs

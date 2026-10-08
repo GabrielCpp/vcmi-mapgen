@@ -26,8 +26,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
   - `cli/`: the CLI. `__main__.py` holds the subcommands, `generate.py` runs one map and
     `steps.py` `build_steps` builds the pipeline. The corpus and report tools sit beside
     them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
-    `readings.py`, which prints the map-math 8 readings per terrain model beside the
-    corpus spread, `effort_report.py`, which prints each gated place's hero-days,
+    `readings.py`, which prints the map-math 8 readings beside the corpus spread, `effort_report.py`, which prints each gated place's hero-days,
     band and top prize, and `patch_report.py`, which prints how the corpus and
     generated maps dress their small enclosed patches.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
@@ -50,16 +49,15 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     - `reading/`: the place reader both sides share. It infers places from a corpus or a
       generated map (`ground.py`, `places.py`), and measures them: borders, palettes
       (`palette.py`), content by role and hop (`content.py`), object value and guard
-      level (`value.py`), roads, and one map's reading vector with the switch rule
-      (`vector.py`, `verdict.py`). It also routes a hero over a map (`routes.py`) and
+      level (`value.py`), roads, and one map's reading vector beside the corpus
+      spread (`vector.py`, `spread.py`). It also routes a hero over a map (`routes.py`) and
       prices each tile in hero-days from the nearest home (`effort.py`). It reads the
       small enclosed patches with their cover and content (`patches.py`), and counts the
       objects closed on both flanks (`flanks.py`) and the objects that sit snug for
       their size (`snug.py`). It gives each gameplay object its
       family and the days from the nearest home to reach it (`families.py`).
-    - `steps/terrain_gen/`: the terrain models. `places` is the default: it lays out a
-      place graph and paints each place. `markov` paints terrain from corpus transitions
-      and floods it into places. `palette.py` groups the places of the places model into
+    - `steps/terrain_gen/`: the places terrain model. It lays out a place graph and
+      paints each place. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production
@@ -92,7 +90,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 ```bash
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --subterrain --stop-after vegetation
-uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --terrain markov --stop-after roads
+uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --stop-after roads
 uv run python -m vcmi_mapgen.cli generate --seed 3 --size 72 --mods hota --ban pandoraBox angel
 uv run python -m vcmi_mapgen.cli render-vegetation --seeds 1 2 3 --vegetation field
 uv run python -m vcmi_mapgen.cli render-ontology

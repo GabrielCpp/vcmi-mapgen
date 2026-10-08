@@ -26,11 +26,10 @@ from vcmi_mapgen.corpus.priors import load_priors
 
 @dataclass(frozen=True, slots=True)
 class ReportOptions:
-    """The maps the report generates: their seeds, side length and terrain model."""
+    """The maps the report generates: their seeds and side length."""
 
     seeds: Sequence[int]
     size: int
-    terrain: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +110,7 @@ def _rows(
     set_rows: list[SetRow] = []
     for seed in report.seeds:
         pipeline = Pipeline(catalog, report.size)
-        config = StepConfig(seed, report.size, subterrain=seed % 2 == 0, terrain=report.terrain)
+        config = StepConfig(seed, report.size, subterrain=seed % 2 == 0)
         for name, step in build_steps(priors, config):
             _ = pipeline.add_step(step)
             if name == "sets":

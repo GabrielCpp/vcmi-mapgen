@@ -16,7 +16,6 @@ from vcmi_mapgen.core.reading.promise import PROMISE_DAYS, promise_of
 from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES
 
 GOLD = "goldMine"
-MODELS = ("places", "markov")
 SWEEP_SEEDS = range(1, 11)
 
 
@@ -37,15 +36,11 @@ def _breaches(catalog: Catalog, priors: Priors, config: StepConfig) -> list[str]
     return basic + near
 
 
-@pytest.mark.parametrize("model", MODELS)
-def test_a_small_map_keeps_the_mine_promise(catalog: Catalog, priors: Priors, model: str) -> None:
-    assert _breaches(catalog, priors, StepConfig(3, 48, terrain=model)) == []
+def test_a_small_map_keeps_the_mine_promise(catalog: Catalog, priors: Priors) -> None:
+    assert _breaches(catalog, priors, StepConfig(3, 48)) == []
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("seed", SWEEP_SEEDS)
-@pytest.mark.parametrize("model", MODELS)
-def test_every_seed_keeps_the_mine_promise(
-    catalog: Catalog, priors: Priors, model: str, seed: int
-) -> None:
-    assert _breaches(catalog, priors, StepConfig(seed, 72, terrain=model)) == []
+def test_every_seed_keeps_the_mine_promise(catalog: Catalog, priors: Priors, seed: int) -> None:
+    assert _breaches(catalog, priors, StepConfig(seed, 72)) == []

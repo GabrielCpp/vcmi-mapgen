@@ -1,5 +1,4 @@
-"""Golden oracle: two generated maps per terrain model hash to the values recorded in
-data/golden.json. The keys without a model suffix use the default model.
+"""Golden oracle: two generated maps hash to the values recorded in data/golden.json.
 
 `make golden` runs it. `make golden-update` re-records the hashes, which only a
 behaviour change may do."""
@@ -29,8 +28,6 @@ GOLDEN = SETTINGS.root / "data" / "golden.json"
 MAPS = (
     ("s1_48", StepConfig(1, 48)),
     ("s3_72_sub", StepConfig(3, 72, subterrain=True)),
-    ("s1_48_markov", StepConfig(1, 48, terrain="markov")),
-    ("s3_72_sub_markov", StepConfig(3, 72, subterrain=True, terrain="markov")),
 )
 
 

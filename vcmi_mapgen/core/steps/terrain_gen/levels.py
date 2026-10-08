@@ -1,18 +1,14 @@
-"""The raw macro grid of each terrain level, and the segmentation of each despeckled level
-into one zone per place."""
+"""The segmentation of each despeckled terrain level into one zone per place, with the
+tunnel cells, the sliver warnings and the accents of each level."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.segment import ZoneLabel, zones_of_labels
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.priors.bundle import TerrainPriors
 from vcmi_mapgen.core.reading.paint import Accent, accents
-from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
-from vcmi_mapgen.core.steps.terrain_gen.gate_sites import carve_gate_sites, gate_anchor_points
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, PlaceMap, Segmentation
 
 NO_TILES: frozenset[Tile] = frozenset()
@@ -21,38 +17,9 @@ MIN_ZONE_AREA = 25
 """A zone smaller than this draws a warning. Hardcoded, not mined."""
 
 
-@dataclass(frozen=True, slots=True)
-class RawLevels:
-    """Each level's macro grid of terrain ids, and the tunnel cells despeckle must keep."""
-
-    grids: Mapping[int, list[list[int]]]
-    tunnel_protect: frozenset[Tile]
-
-
 def level_protect(level: int, tunnel_protect: frozenset[Tile]) -> frozenset[Tile]:
     """The tunnel cells on ``level``: the underground keeps them, the surface has none."""
     return tunnel_protect if level == 1 else NO_TILES
-
-
-def raw_levels(
-    priors: Mapping[int, TerrainPriors],
-    size: int,
-    seed: int,
-    options: MTOPO.MacroOptions,
-    subterrain: bool,
-) -> RawLevels:
-    """The surface grid from ``options``, and with ``subterrain`` an underground grid from
-    its own seed, with the Subterranean Gate sites carved open on both levels. ``priors``
-    holds each level's terrain priors."""
-    grid0 = MTOPO.generate(size, seed, priors[0], options)
-    if not subterrain:
-        return RawLevels({0: grid0}, frozenset())
-    protect: set[Tile] = set()
-    grid1 = MTOPO.generate(
-        size, seed ^ 0x51E9, priors[1], MTOPO.MacroOptions(level=1), protect_out=protect
-    )
-    protect |= carve_gate_sites(grid0, grid1, gate_anchor_points(size, size, seed), seed)
-    return RawLevels({0: grid0, 1: grid1}, frozenset(protect))
 
 
 def sliver_warnings(

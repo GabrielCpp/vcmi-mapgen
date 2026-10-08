@@ -2,10 +2,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.planning.content import (
-    ContentPlan,
     ContentTable,
     HopContent,
-    NoContent,
 )
 from vcmi_mapgen.core.priors.places import PlaceContent, PlaceStats
 from vcmi_mapgen.core.reading.content import UNREACHED
@@ -52,11 +50,6 @@ def test_value_and_guards_grow_with_hops_from_home() -> None:
     home, one, two = (table.intent(r, h) for r, h in (("home", 0), ("middle", 1), ("middle", 2)))
     assert home.guard < one.guard < two.guard
     assert one.scale < two.scale
-
-
-def test_no_content_plans_nothing() -> None:
-    graph = _Graph({0: _Place(PlaceRole.HOME, 0)}, frozenset())
-    assert NoContent().plan({0: PlaceStats(content=_rows())}, {0: graph}) == ContentPlan()
 
 
 def test_hop_content_reads_each_place_by_its_role_and_its_hops_from_home() -> None:

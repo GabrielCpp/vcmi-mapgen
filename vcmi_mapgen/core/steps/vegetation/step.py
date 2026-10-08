@@ -12,7 +12,7 @@ from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning import zone_plan as ZPL
-from vcmi_mapgen.core.planning.content import ContentPlan, ContentPlanner, NoContent
+from vcmi_mapgen.core.planning.content import ContentPlan, ContentPlanner, HopContent
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
@@ -102,7 +102,7 @@ class VegetationStep(PipelineStep):
         self.sampler: Sampler = sampler
         self.seed: int = seed
         self.players: int = players
-        self.content: ContentPlanner = NoContent() if content is None else content
+        self.content: ContentPlanner = HopContent() if content is None else content
         self.objs: list[PlacedObject] = []
         self.log: list[str] = []
         self._ctx: ProviderRegistry = ProviderRegistry()

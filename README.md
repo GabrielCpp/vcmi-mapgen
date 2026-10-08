@@ -30,9 +30,7 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    pairs are optional.
 2. **Terrain.** Each palette region of places takes one dominant terrain, and
    corpus-learned transition bands and accents paint it so coastlines and
-   terrain borders look hand-drawn. `--terrain markov` picks the older model,
-   which grows macro zones, textures their borders with a corpus Markov chain
-   and floods the terrain into places.
+   terrain borders look hand-drawn.
 3. **Vegetation.** A cellular field covered with corpus-weighted trees, rocks
    and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
    point process instead. A protected walkable web keeps every planned passage
@@ -106,9 +104,8 @@ uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 `audit` lists the corpus objects the generator cannot reproduce, and exits non-zero when there
 is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
 `data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
-objects sit in corpus zones and in generated zones. `readings` generates maps with each
-terrain model and prints the map-math 8 readings beside the corpus median and quartiles,
-then says whether a model would replace the default.
+objects sit in corpus zones and in generated zones. `readings` generates maps and prints
+the map-math 8 readings beside the corpus median and quartiles.
 
 ## Map
 
