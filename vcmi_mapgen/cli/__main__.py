@@ -21,9 +21,9 @@ Subcommands:
                      place on a few generated maps.
   patch-report    -> compare how the corpus and generated maps dress their small enclosed
                      patches: cover, landmark rate, purpose mix and dragon dwellings.
-  inspect         -> print one tile, the objects near a tile, or the cheapest hero route
-                     between two tiles or two players, on a .vmap, a corpus map or a seed
-                     generated in memory.
+  inspect         -> print one tile, the objects near a tile, the cheapest hero route
+                     between two tiles or two players, or the territories of one level, on
+                     a .vmap, a corpus map or a seed generated in memory.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
@@ -71,6 +71,7 @@ from vcmi_mapgen.cli.inspect_map import (
     route_lines,
     tile_lines,
 )
+from vcmi_mapgen.cli.inspect_territories import territory_lines
 from vcmi_mapgen.cli.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.cli.patch_report import patch_report
 from vcmi_mapgen.cli.readings import readings
@@ -287,6 +288,8 @@ def cmd_inspect(args: Args) -> None:
         lines = tile_lines(catalog, loaded, Spot(level, *args.at))
     elif args.view == "near":
         lines = near_lines(catalog, loaded, Spot(level, *args.at), args.radius)
+    elif args.view == "territories":
+        lines = territory_lines(catalog, loaded, level)
     else:
         first, second = args.ends
         ask = RouteAsk((first, second), level, args.verbose)
@@ -502,7 +505,8 @@ def main() -> None:
 
     pin = sub.add_parser(
         "inspect",
-        help="print one tile, the objects near a tile, or the cheapest hero route on one map",
+        help="print one tile, the objects near a tile, the cheapest hero route or the "
+        + "territories of one map",
     )
     source = pin.add_mutually_exclusive_group(required=True)
     _ = source.add_argument("--vmap", help="a .vmap from any folder")
@@ -538,6 +542,12 @@ def main() -> None:
     )
     _ = prt.add_argument("--level", type=int, default=0, help="the level of a tile end")
     _ = prt.add_argument("--verbose", action="store_true", help="also list the route's tiles")
+    pte = views.add_parser(
+        "territories",
+        help="each territory's owners, size, zones and doors, an ASCII map, and where the "
+        + "planned territories part from the read ones",
+    )
+    _ = pte.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
     _ = pin.set_defaults(func=cmd_inspect)
 
     prv = sub.add_parser(

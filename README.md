@@ -110,7 +110,9 @@ uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
 `data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
 objects sit in corpus zones and in generated zones. `readings` generates maps and prints
-the map-math 8 readings beside the corpus median and quartiles.
+the map-math 8 readings beside the corpus median and quartiles. Its territory rows
+compare the zones per player and per neutral territory, the doors per territory pair
+and the guard level at a door.
 
 `inspect` prints what the readers see on one map. The map is a `.vmap` from any folder
 (`--vmap`), a corpus map by name (`--corpus`), or a seed generated in memory with the
@@ -126,6 +128,9 @@ uv run python -m vcmi_mapgen.cli inspect --vmap "out/Twin Lakes/Twin Lakes.vmap"
 # The cheapest hero route from Red's home town to Blue's, its hero-days and every
 # guard on the way; --verbose lists the tiles
 uv run python -m vcmi_mapgen.cli inspect --seed 25 --size 72 route P0 P1 --verbose
+
+# Each territory with its owner, zones and doors, the links, and an ASCII map
+uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" territories
 ```
 
 A route end is a tile `x,y` or a player `P0`, `P1` and so on, which stands for that

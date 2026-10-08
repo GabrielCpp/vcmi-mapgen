@@ -1,5 +1,6 @@
 """One map's reading vector (map-math 8): the scalar readings the ``readings`` subcommand
-compares between generated maps and the corpus, all read from the surface level."""
+compares between generated maps and the corpus, all read from the surface level, with the
+territory readings of slice 4 of ``docs/plans/territories-and-doors.md``."""
 
 import statistics
 from collections.abc import Mapping, Sequence
@@ -13,6 +14,11 @@ from vcmi_mapgen.core.reading.ground import Ground, TownKey, read_ground
 from vcmi_mapgen.core.reading.measures import home_separation, raw_cut_share, soft_borders
 from vcmi_mapgen.core.reading.palette import palette_regions, same_share
 from vcmi_mapgen.core.reading.places import InferredPlaces, PlaceRole, read_places
+from vcmi_mapgen.core.reading.territories import (
+    TerritoryReading,
+    read_territories,
+    territory_reading,
+)
 
 HOP_CAP = 4
 LEVEL = 0
@@ -49,6 +55,26 @@ def by_hop(rows: Sequence[PlaceContent]) -> dict[str, float]:
         levels = [lv for c in group for lv in c.guards]
         if levels:
             out[f"guard_hop{h}"] = statistics.mean(levels)
+    return out
+
+
+def _mean(values: Sequence[int]) -> float | None:
+    return statistics.mean(values) if values else None
+
+
+def _median(values: Sequence[int]) -> float | None:
+    return float(statistics.median(values)) if values else None
+
+
+def territory_vector(reading: TerritoryReading) -> Vector:
+    """The mean zones per player and per neutral territory, the mean doors per bordering
+    pair, and the median door level out of a player territory and between neutral ones."""
+    out: Vector = {}
+    _put(out, "zones_player_terr", _mean(reading.player_zones))
+    _put(out, "zones_neutral_terr", _mean(reading.neutral_zones))
+    _put(out, "doors_per_pair", _mean(reading.pair_doors))
+    _put(out, "door_level_player", _median(reading.player_door_levels))
+    _put(out, "door_level_neutral", _median(reading.neutral_door_levels))
     return out
 
 
@@ -96,4 +122,8 @@ def map_vector(catalog: Catalog, map_state: MapState, owners: Mapping[TownKey, i
         return {}
     inferred = read_places(ground, owners)
     content = _content(catalog, map_state, inferred)
-    return ground_vector(ground, inferred, content, map_state.roads.get(LEVEL, {}))
+    out = ground_vector(ground, inferred, content, map_state.roads.get(LEVEL, {}))
+    territories = read_territories(catalog, map_state, LEVEL, owners)
+    if territories is not None:
+        out.update(territory_vector(territory_reading(territories)))
+    return out

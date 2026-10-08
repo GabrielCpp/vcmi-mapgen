@@ -16,6 +16,7 @@ from vcmi_mapgen.cli.inspect_map import (
     route_lines,
     tile_lines,
 )
+from vcmi_mapgen.cli.inspect_territories import territory_lines
 from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
@@ -125,3 +126,22 @@ def test_a_corpus_name_and_its_vmap_path_load_the_same_map(settings: Settings) -
     assert by_name.state.size == by_path.state.size
     assert len(by_name.state.objs) == len(by_path.state.objs)
     assert {0, 1} <= set(by_name.owners.values())
+
+
+def test_territories_split_at_the_monster_and_draw_its_door(catalog: Catalog) -> None:
+    lines = territory_lines(catalog, _walled(catalog), 0)
+    assert lines[0] == "2 territories, 1 door and 0 links on level 0 of walled"
+    assert lines.count("     door to B: level 3 at 4,4") == 1
+    assert lines.count("     door to A: level 3 at 4,4") == 1
+    assert lines[-6:] == [
+        "AAA!!!AA",
+        "####!###",
+        "BBB!!!BB",
+        "BBBBBBBB",
+        "BBBBBBBB",
+        "planned: none published",
+    ]
+
+
+def test_territories_of_a_missing_level_say_so(catalog: Catalog) -> None:
+    assert territory_lines(catalog, _walled(catalog), 1) == ["no level 1 on walled"]

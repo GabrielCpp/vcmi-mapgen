@@ -1,4 +1,5 @@
-"""The reading vector on a small literal map and on literal content rows."""
+"""The reading vector on a small literal map, on literal content rows and on a literal
+territory reading."""
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, MapState, PlacedObject, Role
@@ -7,7 +8,8 @@ from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.places import PlaceContent
 from vcmi_mapgen.core.reading.content import UNREACHED
-from vcmi_mapgen.core.reading.vector import by_hop, map_vector
+from vcmi_mapgen.core.reading.territories import TerritoryReading
+from vcmi_mapgen.core.reading.vector import by_hop, map_vector, territory_vector
 
 WIDTH = 15
 HEIGHT = 7
@@ -69,3 +71,13 @@ def test_a_narrow_gap_reads_as_one_palette_and_a_gated_border(catalog: Catalog) 
 
 def test_a_map_without_land_reads_empty(catalog: Catalog) -> None:
     assert map_vector(catalog, _state(Terrain.WATER), {}) == {}
+
+
+def test_territory_readings_take_means_of_counts_and_medians_of_levels() -> None:
+    reading = TerritoryReading((1, 2), (1, 1, 4), (1, 2), (2, 3, 7), ())
+    assert territory_vector(reading) == {
+        "zones_player_terr": 1.5,
+        "zones_neutral_terr": 2,
+        "doors_per_pair": 1.5,
+        "door_level_player": 3,
+    }

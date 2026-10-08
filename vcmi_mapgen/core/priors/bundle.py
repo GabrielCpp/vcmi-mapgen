@@ -11,6 +11,7 @@ from vcmi_mapgen.core.priors.macro import MacroStats
 from vcmi_mapgen.core.priors.markov import MarkovTables, empty_tables
 from vcmi_mapgen.core.priors.places import PlaceStats
 from vcmi_mapgen.core.priors.pocket_masks import PocketMask
+from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.priors.vegetation import VegetationStats
 from vcmi_mapgen.core.priors.water import WaterPriors
 
@@ -29,8 +30,8 @@ class TerrainPriors:
 class Priors:
     """Every prior a run reads: terrain, gameplay and place statistics per level (0 = surface,
     1 = underground), the gate estimator, the vegetation statistics per terrain name, every
-    orientation of the drawn pocket masks, the guard toll and effort bands, and the fitted
-    odds of surface water with the corpus water targets."""
+    orientation of the drawn pocket masks, the guard toll and effort bands, the fitted odds
+    of surface water with the corpus water targets, and the territory spread per level."""
 
     terrain: Mapping[int, TerrainPriors]
     gameplay: Mapping[int, GameplayStats]
@@ -40,3 +41,4 @@ class Priors:
     places: Mapping[int, PlaceStats]
     effort: EffortPriors = field(default_factory=EffortPriors)
     water: WaterPriors = field(default_factory=WaterPriors)
+    territories: Mapping[int, TerritoryStats] = field(default_factory=dict[int, TerritoryStats])

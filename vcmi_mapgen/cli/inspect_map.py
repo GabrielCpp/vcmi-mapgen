@@ -1,5 +1,6 @@
 """Print what the shared readers see on one map: one tile, the objects near a tile, or the
-cheapest hero route between two tiles or two players. The map is a `.vmap` from any folder,
+cheapest hero route between two tiles or two players. ``inspect_territories`` prints the
+territories. The map is a `.vmap` from any folder,
 a corpus map by name, or a seed generated in memory, and all three go through the same
 readers."""
 
@@ -9,7 +10,7 @@ import argparse
 import contextlib
 import io
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from vcmi_mapgen.cli.settings import Settings
@@ -23,6 +24,7 @@ from vcmi_mapgen.core.reading.effort import Effort, effort_map
 from vcmi_mapgen.core.reading.ground import TownKey, purpose_of
 from vcmi_mapgen.core.reading.places import infer_places, owners_of
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot, route_map
+from vcmi_mapgen.core.reading.territories import PlannedTopology
 from vcmi_mapgen.corpus.maps import all_map_names, load_corpus_map
 from vcmi_mapgen.corpus.mine.places import map_players
 from vcmi_mapgen.vcmi.load import load_map, map_owners
@@ -40,11 +42,13 @@ _MASK = {
 
 @dataclass(frozen=True, slots=True)
 class Loaded:
-    """One map open for inspection: its name, its state and the owner of each owned town."""
+    """One map open for inspection: its name, its state, the owner of each owned town, and
+    the territories its generator planned per level, empty when none were published."""
 
     name: str
     state: MapState
     owners: Mapping[TownKey, int]
+    planned: Mapping[int, PlannedTopology] = field(default_factory=dict[int, PlannedTopology])
 
 
 @dataclass(frozen=True, slots=True)

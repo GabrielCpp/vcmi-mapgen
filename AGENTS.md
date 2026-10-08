@@ -30,7 +30,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     band and top prize, and `patch_report.py`, which prints how the corpus and
     generated maps dress their small enclosed patches. `inspect_map.py` prints one tile,
     the objects near a tile, or the cheapest hero route between two tiles or two players,
-    on a `.vmap`, a corpus map or a seed generated in memory.
+    on a `.vmap`, a corpus map or a seed generated in memory. `inspect_territories.py`
+    prints the same map's territories, their doors and an ASCII map of them.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
     - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
     - `catalog.py`: the `Catalog` port, the only way the core learns about objects.
@@ -57,7 +58,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       small enclosed patches with their cover and content (`patches.py`), and counts the
       objects closed on both flanks (`flanks.py`) and the objects that sit snug for
       their size (`snug.py`). It gives each gameplay object its
-      family and the days from the nearest home to reach it (`families.py`).
+      family and the days from the nearest home to reach it (`families.py`). It splits
+      the walkable land into territories at the guards and gates, with the doors
+      between them and the players that own them (`territories.py`).
     - `steps/terrain_gen/`: the places terrain model. It lays out a place graph and
       paints each place. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.
@@ -105,6 +108,7 @@ uv run python -m vcmi_mapgen.cli effort-report --seeds 1 2 3 4 5 6 7 8 9 10 --si
 uv run python -m vcmi_mapgen.cli patch-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 uv run python -m vcmi_mapgen.cli inspect --seed 25 --size 72 route P0 P1 --verbose
 uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" tile 23,8
+uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" territories
 uv run python -m vcmi_mapgen.cli inspect --vmap out/ppmap_s7_72/ppmap_s7_72.vmap near 30,30 --radius 4
 make check
 make golden
