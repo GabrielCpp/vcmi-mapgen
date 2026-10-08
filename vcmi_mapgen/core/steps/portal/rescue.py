@@ -240,19 +240,20 @@ class _PortalRescue:
         return approach
 
     def _guard_spot(
-        self, lvl: int, appr: Tile, own_cells: Container[Tile], gident: Identity
+        self, lvl: int, visit: Tile, appr: Tile, own_cells: Container[Tile], gident: Identity
     ) -> Tile | None:
-        """First legal tile Chebyshev-1 from the near end's visitable cell (a monster's
-        zone of control covers all 8 neighbours, so stepping INTO the portal forces the
-        fight); None when the surroundings can't seat one."""
+        """First legal tile Chebyshev-1 from the near end's visitable cell, off its approach
+        (a monster's zone of control covers all 8 neighbours, so stepping INTO the portal or
+        out of it forces the fight); None when the surroundings can't seat one."""
         grid = self.world.grids[lvl]
         st = self.state[lvl]
         W = H = self.world.size
         for dx, dy in ((0, 1), (1, 0), (0, -1), (-1, 0), (1, 1), (-1, 1), (1, -1), (-1, -1)):
-            g = (appr[0] + dx, appr[1] + dy)
+            g = (visit[0] + dx, visit[1] + dy)
             if (
                 not (0 <= g[0] < W and 0 <= g[1] < H)
                 or Terrain(grid[g[1]][g[0]]).is_barrier
+                or g == appr
                 or g in st.occupied
                 or g in own_cells
                 or g in st.reserved
@@ -334,7 +335,8 @@ class _PortalRescue:
             fit = fits(ident, t, hts, Clearance(st.occupied, st.near, st.reserved))
             if fit is None or not self.cover_by[lvl].accepts(_portal_end(lvl, ident, t)):
                 continue
-            g = self._guard_spot(lvl, fit[2], set(fit[0]), gident)
+            visit = FP.interactive_cells(ident.footprint, t[0], t[1])[0]
+            g = self._guard_spot(lvl, visit, fit[2], set(fit[0]), gident)
             if g is None:  # a portal must be guardable — skip
                 continue  # candidates with no room for the guard
             return t, fit, g
