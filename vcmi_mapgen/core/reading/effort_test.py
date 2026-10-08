@@ -160,3 +160,15 @@ def test_visits_price_every_door_as_visit_does() -> None:
     for least in range(5):
         expect = [-1 if (e := effort.visit(d, least)) is None else e.total for d in doors]
         assert table[least] == expect
+
+
+def test_the_path_ends_on_the_tile_itself() -> None:
+    effort = effort_map(grid_route(["." * 6]), [_at(0, 0)], TOLL)
+    assert effort.path(_at(5, 0)) == [_at(x, 0) for x in range(6)]
+
+
+def test_the_path_pays_a_cheap_guard_over_a_long_detour() -> None:
+    rows = ["." * 60, "." + "#" * 58 + ".", "." * 60]
+    route = grid_route(rows, guard={(0, 1): 1})
+    path = effort_map(route, [_at(0, 0)], TOLL).path(_at(0, 2))
+    assert path == [_at(0, 0), _at(0, 1), _at(0, 2)]

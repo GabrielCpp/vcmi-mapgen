@@ -6,6 +6,7 @@ from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.reading.ground import TownKey
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.footprint import footprint_of
 from vcmi_mapgen.vcmi.formats import vmap as VM
@@ -46,3 +47,16 @@ def load_map(path: str) -> MapState:
         for o in doc.objects
     ]
     return state
+
+
+def map_owners(path: str) -> dict[TownKey, int]:
+    """Town position ``(x, y, level)`` -> owner for every owned town of a `.vmap`. A player's
+    index is its colour's rank among the header's colours sorted by name, the order export
+    wires the player towns in, so a generated map reads back the owners it was built with."""
+    doc = VM.read(path)
+    ids = sorted(p.id for p in doc.players)
+    return {
+        (o.x, o.y, o.level): ids.index(owner)
+        for o in doc.objects
+        if isinstance(owner := (o.options or {}).get("owner"), str) and owner in ids
+    }

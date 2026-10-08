@@ -7,9 +7,9 @@ from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
 from vcmi_mapgen.vcmi.footprint import footprint_of
-from vcmi_mapgen.vcmi.formats.vmap.document import VmapDocument, VmapObject
+from vcmi_mapgen.vcmi.formats.vmap.document import PlayerSlot, VmapDocument, VmapObject
 from vcmi_mapgen.vcmi.formats.vmap.writer import write
-from vcmi_mapgen.vcmi.load import load_map
+from vcmi_mapgen.vcmi.load import load_map, map_owners
 from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
 
 
@@ -92,3 +92,30 @@ def test_load_map_reads_back_each_road_and_its_type(tmp_path: Path) -> None:
     m = load_map(write(doc, os.path.join(tmp_path, "roads.vmap")))
     assert m.roads[0] == roads
     assert m.terrain[0][2][2] == Terrain.GRASS
+
+
+def test_map_owners_ranks_each_owner_among_the_sorted_colours(tmp_path: Path) -> None:
+    def town(x: int, owner: str | None) -> VmapObject:
+        return VmapObject(
+            instance_name=f"t_{x}",
+            type="town",
+            subtype="castle",
+            level=0,
+            x=x,
+            y=3,
+            animation="avctowx0",
+            mask=["A"],
+            options={"owner": owner} if owner else None,
+        )
+
+    doc = VmapDocument(
+        name="fixture",
+        width=12,
+        height=5,
+        two_level=False,
+        terrain=[[["gr0_"] * 12] * 5],
+        objects=[town(4, "red"), town(8, "blue"), town(11, None)],
+        players=[PlayerSlot(id="red"), PlayerSlot(id="blue")],
+    )
+    path = write(doc, os.path.join(tmp_path, "fixture.vmap"))
+    assert map_owners(path) == {(8, 3, 0): 0, (4, 3, 0): 1}

@@ -225,7 +225,14 @@ class EffortMap:
         """The tiles a hero walks from the nearest home to the tile beside ``door`` it visits
         from, home first, under the guard ceiling `visit` prices. Empty when no home reaches
         ``door``."""
-        best = self._cheapest(self._sides(door), self.flat.guard[self.flat.index(door)])
+        return self._walk(self._cheapest(self._sides(door), self.flat.guard[self.flat.index(door)]))
+
+    def path(self, spot: Spot) -> list[Spot]:
+        """The tiles a hero walks from the nearest home to ``spot``, home first, under the
+        guard ceiling `at` prices. Empty when no home reaches ``spot``."""
+        return self._walk(self._cheapest([self.flat.index(spot)], 0))
+
+    def _walk(self, best: tuple[Effort, int, int] | None) -> list[Spot]:
         if best is None:
             return []
         _effort, ceiling, tile = best

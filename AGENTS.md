@@ -28,7 +28,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
     `readings.py`, which prints the map-math 8 readings beside the corpus spread, `effort_report.py`, which prints each gated place's hero-days,
     band and top prize, and `patch_report.py`, which prints how the corpus and
-    generated maps dress their small enclosed patches.
+    generated maps dress their small enclosed patches. `inspect_map.py` prints one tile,
+    the objects near a tile, or the cheapest hero route between two tiles or two players,
+    on a `.vmap`, a corpus map or a seed generated in memory.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
     - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
     - `catalog.py`: the `Catalog` port, the only way the core learns about objects.
@@ -101,6 +103,9 @@ uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
 uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 uv run python -m vcmi_mapgen.cli effort-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 uv run python -m vcmi_mapgen.cli patch-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
+uv run python -m vcmi_mapgen.cli inspect --seed 25 --size 72 route P0 P1 --verbose
+uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" tile 23,8
+uv run python -m vcmi_mapgen.cli inspect --vmap out/ppmap_s7_72/ppmap_s7_72.vmap near 30,30 --radius 4
 make check
 make golden
 ```

@@ -112,6 +112,25 @@ is one. `--densities` prints the per-terrain gameplay densities instead. `extrac
 objects sit in corpus zones and in generated zones. `readings` generates maps and prints
 the map-math 8 readings beside the corpus median and quartiles.
 
+`inspect` prints what the readers see on one map. The map is a `.vmap` from any folder
+(`--vmap`), a corpus map by name (`--corpus`), or a seed generated in memory with the
+`generate` flags (`--seed`), which writes no file.
+
+```bash
+# The terrain, objects, place and guard of one tile, and whether a hero may stand on it
+uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" tile 23,8
+
+# Every object within 4 tiles, with its mask and its visit tiles
+uv run python -m vcmi_mapgen.cli inspect --vmap "out/Twin Lakes/Twin Lakes.vmap" near 30,30 --radius 4
+
+# The cheapest hero route from Red's home town to Blue's, its hero-days and every
+# guard on the way; --verbose lists the tiles
+uv run python -m vcmi_mapgen.cli inspect --seed 25 --size 72 route P0 P1 --verbose
+```
+
+A route end is a tile `x,y` or a player `P0`, `P1` and so on, which stands for that
+player's home town. `--level 1` reads the underground.
+
 ## Map
 
 - `vcmi_mapgen/`: the Python package. It generates, renders and reads maps, and extracts the corpus.

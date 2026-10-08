@@ -21,6 +21,9 @@ Subcommands:
                      place on a few generated maps.
   patch-report    -> compare how the corpus and generated maps dress their small enclosed
                      patches: cover, landmark rate, purpose mix and dragon dwellings.
+  inspect         -> print one tile, the objects near a tile, or the cheapest hero route
+                     between two tiles or two players, on a .vmap, a corpus map or a seed
+                     generated in memory.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
@@ -55,6 +58,19 @@ from vcmi_mapgen.cli.generate import (
     render_vegetation,
     sprite_source,
 )
+from vcmi_mapgen.cli.inspect_map import (
+    End,
+    Loaded,
+    RouteAsk,
+    from_corpus,
+    from_seed,
+    from_vmap,
+    near_lines,
+    parse_end,
+    parse_tile,
+    route_lines,
+    tile_lines,
+)
 from vcmi_mapgen.cli.mine_stats import MINERS, mine_stats
 from vcmi_mapgen.cli.patch_report import patch_report
 from vcmi_mapgen.cli.readings import readings
@@ -67,7 +83,11 @@ from vcmi_mapgen.cli.steps import (
     GENERATE_STOP_POINTS,
     SAMPLERS,
     SURFACE_FORMS,
+    StepConfig,
 )
+from vcmi_mapgen.core.model import Tile
+from vcmi_mapgen.core.reading.routes import Spot
+from vcmi_mapgen.corpus.priors import load_priors
 from vcmi_mapgen.corpus.tiler import load_tiler
 from vcmi_mapgen.renderers import PngRenderer
 from vcmi_mapgen.renderers.ontology_render import render_ontology
@@ -112,6 +132,12 @@ class Args(argparse.Namespace):
     png_dir: str | None = None
     name: str | None = None
     install: bool = False
+    corpus: str | None = None
+    view: str = ""
+    at: Tile = (0, 0)
+    radius: int = 3
+    ends: Sequence[End] = ()
+    verbose: bool = False
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
@@ -233,6 +259,39 @@ def cmd_render_sprites(args: Args) -> None:
     if args.vmap is None:
         raise SystemExit("render-sprites needs a .vmap path")
     render_sprites(install, settings, args.vmap, args.compare, args.out)
+
+
+def cmd_inspect(args: Args) -> None:
+    settings = load_settings()
+    catalog = open_catalog(_open_catalog(settings), _content(args))
+    priors = load_priors(settings.pp_dir, settings.pockets_file)
+    loaded: Loaded
+    if args.vmap is not None:
+        loaded = from_vmap(Path(args.vmap))
+    elif args.corpus is not None:
+        loaded = from_corpus(settings, args.corpus)
+    else:
+        water = args.water_mode or ("none" if args.no_water else DEFAULT_WATER)
+        config = StepConfig(
+            args.seed,
+            args.size,
+            args.players,
+            water,
+            args.subterrain,
+            args.vegetation,
+            args.density,
+        )
+        loaded = from_seed(catalog, priors, config)
+    level = args.level or 0
+    if args.view == "tile":
+        lines = tile_lines(catalog, loaded, Spot(level, *args.at))
+    elif args.view == "near":
+        lines = near_lines(catalog, loaded, Spot(level, *args.at), args.radius)
+    else:
+        first, second = args.ends
+        ask = RouteAsk((first, second), level, args.verbose)
+        lines = route_lines(catalog, loaded, ask, priors.effort.toll)
+    print("\n".join(lines))
 
 
 def cmd_regen_ontology(_args: Args) -> None:
@@ -440,6 +499,46 @@ def main() -> None:
     _add_vegetation_arg(pg)
     _add_content_args(pg)
     _ = pg.set_defaults(func=cmd_generate)
+
+    pin = sub.add_parser(
+        "inspect",
+        help="print one tile, the objects near a tile, or the cheapest hero route on one map",
+    )
+    source = pin.add_mutually_exclusive_group(required=True)
+    _ = source.add_argument("--vmap", help="a .vmap from any folder")
+    _ = source.add_argument("--corpus", help="a corpus map by name, such as 'All for One'")
+    _ = source.add_argument(
+        "--seed", type=int, help="generate the map in memory with this seed and the flags below"
+    )
+    _ = pin.add_argument("--size", type=int, default=72, help="W=H of the generated map")
+    _ = pin.add_argument("--players", type=int, default=2)
+    _ = pin.add_argument("--density", type=float, default=1.0)
+    _ = pin.add_argument(
+        "--water-mode", choices=list(SURFACE_FORMS), default=None, dest="water_mode"
+    )
+    _ = pin.add_argument("--no-water", action="store_true", dest="no_water")
+    _ = pin.add_argument("--subterrain", action="store_true")
+    _add_vegetation_arg(pin)
+    _add_content_args(pin)
+    views = pin.add_subparsers(dest="view", required=True)
+    pit = views.add_parser(
+        "tile", help="the terrain, objects, place and guard of one tile, and whether it blocks"
+    )
+    _ = pit.add_argument("at", type=parse_tile, help="the tile, x,y")
+    _ = pit.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
+    pnr = views.add_parser("near", help="every object near a tile, with its mask and visit tiles")
+    _ = pnr.add_argument("at", type=parse_tile, help="the tile, x,y")
+    _ = pnr.add_argument("--radius", type=int, default=3)
+    _ = pnr.add_argument("--level", type=int, default=0, help="0=surface, 1=underground")
+    prt = views.add_parser(
+        "route", help="the cheapest hero route between two ends, its hero-days and its guards"
+    )
+    _ = prt.add_argument(
+        "ends", type=parse_end, nargs=2, help="each end is a tile x,y or a player P0, P1 ..."
+    )
+    _ = prt.add_argument("--level", type=int, default=0, help="the level of a tile end")
+    _ = prt.add_argument("--verbose", action="store_true", help="also list the route's tiles")
+    _ = pin.set_defaults(func=cmd_inspect)
 
     prv = sub.add_parser(
         "render-vegetation",
