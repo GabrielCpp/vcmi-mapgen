@@ -62,13 +62,15 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
 ## Generate maps
 
 ```bash
-# One 72x72 two-player island map -> PNG render in out/render/pp/, playable
-# .vmap in out/vmap/ (each player slot is wired to its own starting town, so
-# the map is playable immediately — victory: defeat all)
+# One 72x72 two-player island map -> out/ppmap_s7_72/ holds the playable
+# ppmap_s7_72.vmap, surface.png, overlays.png and run.json (each player slot is
+# wired to its own starting town, so the map is playable immediately — victory:
+# defeat all)
 uv run python -m vcmi_mapgen.cli generate \
     --seed 7 --size 72 --water-mode islands --players 2
 
-# Two levels: surface + underground, linked by subterranean gates
+# Two levels: surface + underground, linked by subterranean gates; the folder
+# also holds underground.png
 uv run python -m vcmi_mapgen.cli generate \
     --seed 3 --size 72 --subterrain
 
@@ -76,11 +78,14 @@ uv run python -m vcmi_mapgen.cli generate \
 uv run python -m vcmi_mapgen.cli generate \
     --seed 5 --size 108 --players 4 --teams 2v2
 
-# Named "Twin Lakes" and copied into the VCMI install's Maps/pp-gen/ folder,
-# so it shows in the game's map list
+# Named "Twin Lakes", written to out/Twin Lakes/ and copied into the VCMI
+# install's Maps/pp-gen/ folder, so it shows in the game's map list
 uv run python -m vcmi_mapgen.cli generate \
     --seed 9 --size 72 --name "Twin Lakes" --install
 ```
+
+`generate` empties the map's folder before it writes, so a rerun leaves no file from an
+earlier run. `run.json` records the seed, the size and every flag of the run.
 
 `generate` reads its corpus statistics from `data/pp/` and never loads a corpus map. After a
 change to `data/corpus/vmap/` or to a statistic's code, rebuild the files:

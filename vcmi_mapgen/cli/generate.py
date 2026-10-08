@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from vcmi_mapgen.cli.settings import Settings
@@ -235,13 +236,45 @@ def install_map(vmap: str, install: VcmiInstall) -> Path:
     return Path(shutil.copy2(vmap, folder / Path(vmap).name))
 
 
-def _stem(opts: GenerateOptions) -> str:
+def map_folder(opts: GenerateOptions) -> str:
+    """The name of the folder that holds one map's files, and of its .vmap: the map name
+    when the user gave one, otherwise the seed, the size and a vegetation tag when the
+    sampler is not the default."""
     if opts.name is not None:
         return file_stem(opts.name)
-    stem = f"ppmap_s{opts.seed}"
+    stem = f"ppmap_s{opts.seed}_{opts.size}"
     if opts.vegetation != DEFAULT_VEGETATION:
         stem = f"{stem}_{opts.vegetation}"
     return stem
+
+
+def fresh_folder(out_dir: Path, name: str) -> Path:
+    """The folder ``out_dir/name``, emptied of every file an earlier run left. A name that
+    leads outside ``out_dir`` stops generation with a message."""
+    folder = out_dir / name
+    if folder.resolve().parent != out_dir.resolve():
+        sys.exit(f"map folder {name!r} is not directly under {out_dir}")
+    if folder.exists():
+        shutil.rmtree(folder)
+    folder.mkdir(parents=True)
+    return folder
+
+
+def run_record(opts: GenerateOptions) -> dict[str, object]:
+    """The seed, the size and every generate flag, enough to rebuild the same map."""
+    record: dict[str, object] = asdict(opts)
+    record["content"] = {
+        "mods": sorted(opts.content.mods),
+        "banned": sorted(opts.content.banned),
+    }
+    return record
+
+
+def write_run(folder: Path, opts: GenerateOptions) -> Path:
+    """Write ``run.json`` into the map's folder and return its path."""
+    path = folder / "run.json"
+    _ = path.write_text(json.dumps(run_record(opts), indent=2, sort_keys=True) + "\n")
+    return path
 
 
 def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
@@ -278,32 +311,25 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     )
 
     tables = load_tiler(settings.pp_dir)
-    pp_out = settings.out_dir / "render" / "pp"
-    stem = _stem(opts)
+    stem = map_folder(opts)
+    folder = fresh_folder(settings.out_dir, stem)
+    print(f"  {write_run(folder, opts)}")
 
     if "png" in renderers:
         index = sprite_source(install, catalog)
-        png_renderer = PngRenderer(index, str(pp_out), tables)
-        png = str(pp_out / f"{stem}.png")
-        os.makedirs(os.path.dirname(png), exist_ok=True)
-        png_renderer.render(map_state, level=0).save(png)
-        print(f"  {png}")
+        png_renderer = PngRenderer(index, str(folder), tables)
+        print(f"  {png_renderer.save(map_state, 'surface.png', level=0)}")
         if opts.subterrain and 1 in map_state.terrain:
-            png1 = png_renderer.save(map_state, f"{stem}_L1.png", level=1)
-            print(f"  {png1}")
+            print(f"  {png_renderer.save(map_state, 'underground.png', level=1)}")
 
         zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
         overlays = parse_overlays(opts.overlays, loot_result.pockets, zones)
         if overlays:
-            overlay_renderer = PngRenderer(index, str(pp_out), tables, overlays)
-            ov_img = overlay_renderer.render(map_state, level=0)
-            ov_png = str(pp_out / f"{stem}_overlays.png")
-            os.makedirs(os.path.dirname(ov_png), exist_ok=True)
-            ov_img.save(ov_png)
-            print(f"  {ov_png}")
+            overlay_renderer = PngRenderer(index, str(folder), tables, overlays)
+            print(f"  {overlay_renderer.save(map_state, 'overlays.png', level=0)}")
 
     if "vmap" in renderers:
-        vmap_renderer = VmapRenderer(str(settings.out_dir / "vmap"), tables, install, catalog.mods)
+        vmap_renderer = VmapRenderer(str(folder), tables, install, catalog.mods)
         vmap = vmap_renderer.render(
             map_state,
             f"{stem}.vmap",

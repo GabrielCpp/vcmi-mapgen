@@ -9,7 +9,7 @@ arguments in `__main__.py` and calls one module per subcommand.
 - `audit.py`: the `audit` subcommand. It reports the corpus objects the generator cannot reproduce, or prints the gameplay densities.
 - `corpus_match.py`: the `corpus-match` subcommand. It generates maps from `build_steps` and prints the corpus comparison.
 - `extract_vmap.py`: the `extract-vmap` subcommand. It regenerates `data/corpus/vmap/` from the `.h3m` corpus. `--h3m-dir` and `--out-dir` convert another folder, `--mods` enables mods such as `hota`, whose map format renames the objects of a HotA map, and `--png-dir` renders each converted map.
-- `generate.py`: the `generate` subcommand: pipeline run, overlays and renderers.
+- `generate.py`: the `generate` subcommand: pipeline run, overlays and renderers. It writes each map into its own folder, `out/<name>/`, which holds `<name>.vmap`, `surface.png`, `underground.png`, `overlays.png` and `run.json`. A rerun empties the folder first.
 - `mine_stats.py`: the `mine-stats` subcommand: which corpus statistics exist and the one
   pass that rebuilds every `data/pp/` file.
 - `macro_preview.py`: prints the macro statistics and renders one macro terrain grid to a PNG.

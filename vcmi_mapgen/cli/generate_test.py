@@ -1,16 +1,39 @@
-"""Reliability tests for cli.generate overlay selection (parse_overlays)."""
+"""Tests for cli.generate: overlay selection, the map's folder and its run record."""
 
+import json
+from dataclasses import replace
 from pathlib import Path
+from typing import cast
+
+import pytest
 
 from vcmi_mapgen.cli.generate import (
     DEFAULT_OVERLAYS,
     INSTALL_FOLDER,
+    GenerateOptions,
     file_stem,
+    fresh_folder,
     install_map,
+    map_folder,
     parse_overlays,
+    write_run,
 )
 from vcmi_mapgen.renderers.overlays import ZoneOverlay
+from vcmi_mapgen.vcmi.content.enabled import ContentSetting
 from vcmi_mapgen.vcmi.install import VcmiInstall
+
+OPTS = GenerateOptions(
+    seed=3,
+    size=72,
+    players=2,
+    teams="",
+    water_mode="topology",
+    subterrain=False,
+    overlays="none",
+    renderers="png,vmap",
+    stop_after=None,
+    vegetation="field",
+)
 
 
 def test_zone_label_composites_last_regardless_of_requested_order() -> None:
@@ -55,3 +78,38 @@ def test_install_map_copies_into_the_pp_gen_folder(tmp_path: Path) -> None:
     installed = install_map(str(vmap), install)
     assert installed == tmp_path / "vcmi" / "Maps" / INSTALL_FOLDER / "Twin Lakes.vmap"
     assert installed.read_bytes() == b"map"
+
+
+def test_map_folder_names_the_seed_and_the_size() -> None:
+    assert map_folder(OPTS) == "ppmap_s3_72"
+
+
+def test_map_folder_tags_a_sampler_other_than_the_default() -> None:
+    assert map_folder(replace(OPTS, vegetation="gibbs")) == "ppmap_s3_72_gibbs"
+
+
+def test_map_folder_takes_the_map_name() -> None:
+    assert map_folder(replace(OPTS, name="Twin: Lakes")) == "Twin_ Lakes"
+
+
+def test_fresh_folder_empties_what_an_earlier_run_left(tmp_path: Path) -> None:
+    old = tmp_path / "ppmap_s3_72" / "nested" / "stale.png"
+    old.parent.mkdir(parents=True)
+    _ = old.write_bytes(b"old")
+    folder = fresh_folder(tmp_path, "ppmap_s3_72")
+    assert folder == tmp_path / "ppmap_s3_72"
+    assert list(folder.iterdir()) == []
+
+
+def test_fresh_folder_refuses_a_name_outside_the_out_folder(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        _ = fresh_folder(tmp_path / "out", "../elsewhere")
+
+
+def test_run_json_records_every_flag(tmp_path: Path) -> None:
+    opts = replace(OPTS, content=ContentSetting(frozenset({"hota"}), frozenset({"angel"})))
+    record = cast(dict[str, object], json.loads(write_run(tmp_path, opts).read_text()))
+    assert record["seed"] == 3
+    assert record["size"] == 72
+    assert record["content"] == {"banned": ["angel"], "mods": ["hota"]}
+    assert set(record) == set(GenerateOptions.__dataclass_fields__)

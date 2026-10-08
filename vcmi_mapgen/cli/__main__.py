@@ -429,8 +429,8 @@ def main() -> None:
     _ = pg.add_argument(
         "--name",
         default=None,
-        help="the map's title in VCMI, also its file name (default: 'pp-map s<seed>' in "
-        + "ppmap_s<seed>.vmap)",
+        help="the map's title in VCMI, also the name of its folder in out/ and of its .vmap "
+        + "(default: 'pp-map s<seed>' in out/ppmap_s<seed>_<size>/)",
     )
     _ = pg.add_argument(
         "--install",
