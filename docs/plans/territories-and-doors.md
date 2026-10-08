@@ -161,5 +161,28 @@ Enemies sit at least a week apart: seven hero-days home to home on the effort ma
 tolls included. Allies may meet earlier.
 
 The door step runs the cut after drawing door levels. While an enemy pair is under seven
-days, it raises the weakest door on their cheapest route by one level. When every door on
-that route is at the top level, it warns and moves on.
+days, it raises the strongest door on their cheapest route by one level, then routes them
+again. The route reader charges a hero only for the strongest guard on a route, so raising
+a weaker door would not lengthen it. When that door is already at the top level, the step
+warns and moves on.
+
+The cut counts land doors only. A hero who sails to an enemy spends a day boarding and a
+day landing. A hero who steps through a portal meets the guard posted beside it. Both
+routes may bring enemies together inside the week.
+
+### Every start reaches the rest of the map
+
+A player whose land reaches no rival gets a shipyard in its home territory. Its boat water
+must belong to a sea that touches the rival's land, and a hero must board from a walkable
+tile beside it. A shipyard whose boat water touches only closed land does not count. The
+step keeps open the land tiles of each such way by sea, so later guards and objects leave
+every landing free. When no shipyard fits, the step warns.
+
+A town's own shipyard does not count, because the route reader does not model it.
+
+### The mine promise is a target
+
+Each player should reach a mine of each basic resource within 14 hero-days. The gameplay
+step warns when one does not, and the seed sweep prints each breach instead of failing.
+The door caps stay: on a small map without them, a player waits 48 days for its first
+alchemist's lab.
