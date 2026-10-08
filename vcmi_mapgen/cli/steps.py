@@ -4,6 +4,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep
 from vcmi_mapgen.core.planning.content import HopContent
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import (
+    DoorsStep,
     GameplayStep,
     GatedStep,
     LootStep,
@@ -27,6 +28,7 @@ from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 GENERATE_STOP_POINTS = (
     "terrain",
     "vegetation",
+    "doors",
     "gameplay",
     "gated",
     "treasure",
@@ -78,6 +80,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     return [
         ("terrain", TerrainStep(priors, model, seed, terrain)),
         ("vegetation", VegetationStep(priors, sampler, seed, players, HopContent())),
+        ("doors", DoorsStep(priors, seed)),
         ("gameplay", GameplayStep(priors, seed, players, subterrain, config.density)),
         ("gated", GatedStep(priors, seed, size)),
         ("treasure", TreasureStep(priors, seed, size)),

@@ -14,7 +14,7 @@ metadata:
 
 The generator is one procedural pipeline. `cli/steps.py` builds it in `build_steps`, and
 that list is the source of truth for which steps run and in what order. At the time of
-writing it runs `terrain -> vegetation -> gameplay -> gated -> treasure ->
+writing it runs `terrain -> vegetation -> doors -> gameplay -> gated -> treasure ->
 portal -> loot -> sets -> scatter -> roads`.
 
 Two hand-written files hold the rest of the contract. Read them before changing a step:
@@ -106,7 +106,10 @@ walkable web in
 
 `VegetationStep` provides the `ZonePlan` (`core/planning/zone_plan.py`), each zone's
 entrances, web and town room. It also provides `VegetationResult`, each zone's open and
-walkable tiles. `GameplayStep` provides `GameplayResult`, one `PlacedZone` per zone.
+walkable tiles, and `LootZones`, the zones a seal will close. `DoorsStep` posts a guard on
+one tile of every planned door and provides `DoorGuards`, each door with its tile, its
+creature level and its guard. `GameplayStep` provides `GameplayResult`, one `PlacedZone`
+per zone.
 `GatedStep` builds the `ZoneIndex` from those values. A producer provides a value once, and every consumer requires it.
 No step creates a value for a later step to fill in.
 

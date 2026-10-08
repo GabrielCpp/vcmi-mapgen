@@ -1,5 +1,6 @@
 """Map-generation pipeline steps."""
 
+from vcmi_mapgen.core.steps.doors.step import DoorsStep
 from vcmi_mapgen.core.steps.gameplay.step import GameplayStep
 from vcmi_mapgen.core.steps.gated.step import GatedStep
 from vcmi_mapgen.core.steps.loot.step import LootStep
@@ -12,6 +13,7 @@ from vcmi_mapgen.core.steps.treasure.step import TreasureStep
 from vcmi_mapgen.core.steps.vegetation.step import VegetationStep
 
 __all__ = [
+    "DoorsStep",
     "GameplayStep",
     "GatedStep",
     "LootStep",

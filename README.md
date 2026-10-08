@@ -35,16 +35,20 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
    point process instead. A protected walkable web keeps every planned passage
    reachable.
-4. **Gameplay.** Gates, towns, mines, shipyards, dwellings, banks and shrines
+4. **Doors.** A monster stands in every door between two territories, its
+   level drawn from the corpus door guards. The doors near a home stay weak
+   enough that each player still reaches its mines within 14 days. A door into a
+   sealed loot room or a dead-end treasure place stays open.
+5. **Gameplay.** Gates, towns, mines, shipyards, dwellings, banks and shrines
    settle with their backs against the vegetation. The whole map holds objects
    at the corpus rate per tile, and `--density` scales it. Every player reaches
    a mine of each basic resource within 14 hero-days. Each kind of object sits
    at the corpus effort from home, and the players reach the same count of it
    band by band, within one or two. Reward value and guard level follow each
    place's hop count from home.
-5. **Loot.** Unguarded scatter along routes, and guarded caches in pockets with a
+6. **Loot.** Unguarded scatter along routes, and guarded caches in pockets with a
    monster on the mouth. Guard level scales with the guarded value.
-6. **Roads.** Roads link the towns through the planned passages.
+7. **Roads.** Roads link the towns through the planned passages.
 
 ## Requirements
 

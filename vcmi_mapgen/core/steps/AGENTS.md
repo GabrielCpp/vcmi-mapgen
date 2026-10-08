@@ -1,6 +1,6 @@
 # core/steps/ — the PipelineStep contract
 
-One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
+One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `doors/`, `gameplay/`,
 `gated/`, `treasure/`, `portal/`, `loot/`, `sets/`, `scatter/`, `roads/`), each holding a `step.py` with one `PipelineStep` subclass. `VegetationStep` first calls `core/planning/zone_plan.py`, which builds each zone's entrances, walkable web and the sea plan. See
 `vcmi-mapgen-pipeline` for `PipelineStep`/`Pipeline`/`ProviderRegistry` themselves
 (in `core/pipeline.py`); this file is the contract a new or changed step must satisfy.
@@ -9,6 +9,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 
 - `terrain_gen/`: `TerrainStep`, the terrain of both levels drawn by the `TerrainModel` it is given, and its place map split into territories joined by one-tile doors. `cli/steps.py` gives it the places model, the only one.
 - `vegetation/`: `VegetationStep`, the corpus-fitted trees, rocks and lakes, grown zone by zone by the `Sampler` it is given. `cli/steps.py` `SAMPLERS` names the Gibbs and the field samplers. It also plans each place's content with the `ContentPlanner` it is given, `HopContent` by default, and provides the `ContentPlan` that gameplay and loot read. Once the trees stand it chooses the loot zones with `core/planning/loot_zones.py` `choose_loot_zones` and provides `LootZones`: the doors step leaves their doors open, gameplay places nothing in them and the gated step seals them.
+- `doors/`: `DoorsStep`, a random monster on one tile of every planned door, so its zone of control closes the door. `guards.py` holds the decisions: `door_level` draws the creature level from the corpus door levels of the level's `TerritoryStats`, below a cap from `door_caps`. A player crosses doors until its land holds `HOME_ROOM` tiles, and the cap keeps the tolls of those doors within the mine promise. `open_zones` leaves the loot zones and the dead-end treasure places open, and `door_tile` picks the tile. It provides `DoorGuards`, and gameplay keeps its own guards clear of them because they stand in `map_state.objs` as guards.
 - `gameplay/`: `GameplayStep`, the player zones, sea objects, gates, towns, mines, shipyards, dwellings, banks and visitables.
 - `gated/`: `GatedStep`, which seals small one-passage zones behind a Border Gate or a monolith pair.
 - `treasure/`: `TreasureStep`, the treasure inside each sealed loot zone and on each island, priced by its effort in hero-days. It provides `TreasureResult`.
