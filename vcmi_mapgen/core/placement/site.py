@@ -33,6 +33,7 @@ from vcmi_mapgen.core.grid.detour import detours
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
 from vcmi_mapgen.core.grid.reach import walk
 from vcmi_mapgen.core.grid.snug import sided, snug
+from vcmi_mapgen.core.grid.splits import MIN_AREA, splits
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
@@ -54,7 +55,9 @@ from vcmi_mapgen.core.placement.guards import (
     Clearance,
     Fit,
     fits,
+    guard_zoc,
     inflate_gap,
+    zoc_of,
 )
 from vcmi_mapgen.core.placement.place import web_dist
 from vcmi_mapgen.core.priors.gameplay import HEMMED_SHARE, TerrainStats
@@ -157,7 +160,8 @@ class LevelField:
     """What every zone of one level shares. ``unwalkable`` is water, rock and every blocking
     cell on the level, vegetation included. ``occupied`` holds gameplay footprints and
     ``near`` their blocking cells inflated by GAP. ``ground`` is the level's terrain grid
-    every solid cell must be allowed on."""
+    every solid cell must be allowed on. ``held`` is every tile some guard's zone of
+    control takes."""
 
     level: int
     size: tuple[int, int]
@@ -170,6 +174,7 @@ class LevelField:
     ground: Ground = ()
     hemmed: int = 0
     flanked: int = 0
+    held: set[Tile] = field(default_factory=set)
 
     @classmethod
     def build(
@@ -196,7 +201,17 @@ class LevelField:
                 inflate_gap(near, (t for t, ch in tiles if ch in ("B", "X")))
         size = (len(grid[0]) if grid else 0, len(grid))
         covers = CoverIndex(objs, rules=rules)
-        return cls(level, size, unwalkable, occupied, near, covers, barrier=barrier, ground=grid)
+        return cls(
+            level,
+            size,
+            unwalkable,
+            occupied,
+            near,
+            covers,
+            barrier=barrier,
+            ground=grid,
+            held=guard_zoc(objs),
+        )
 
     def claim(self, obj: PlacedObject, cells: Iterable[Tile], blk: Iterable[Tile]) -> None:
         cells = list(cells)
@@ -230,6 +245,18 @@ class LevelField:
     def on_map(self, t: Tile) -> bool:
         w, h = self.size
         return 0 <= t[0] < w and 0 <= t[1] < h
+
+    def parts(self, guard: Tile, closing: Iterable[Tile] = ()) -> bool:
+        """Whether a guard at ``guard``, with ``closing`` shut too, parts the free land
+        into two territories a reader would tell apart."""
+        shut = set(closing)
+
+        def free(t: Tile) -> bool:
+            return (
+                self.on_map(t) and t not in self.unwalkable and t not in self.held and t not in shut
+            )
+
+        return splits(zoc_of(guard), free, MIN_AREA)
 
     def spillable(self, t: Tile) -> bool:
         """A body may cover ``t`` outside its zone: on the map, unwalkable, not water or
@@ -447,6 +474,9 @@ class ZoneSite:
         )
         if not self.lf.accepts(obj) or self.detours(fit[1]):
             return None
+        guarded = purpose == Purpose.MINE or guard is not None
+        if guarded and self.lf.parts(self.guard_tile(ident, fit[2]), fit[1]):
+            return None
         reach = self.reach_without(fit[1])
         if reach is None:
             return None
@@ -532,6 +562,7 @@ class ZoneSite:
         )
         self.lf.covers.add(guard)
         self.lf.occupied.add(tile)
+        self.lf.held.update(zoc_of(tile))
         self.objs.append(guard)
         self.cells.add(tile)
         return guard

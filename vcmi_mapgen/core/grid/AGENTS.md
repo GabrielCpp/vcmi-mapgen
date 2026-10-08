@@ -15,6 +15,7 @@ registry.
 - `paths.py`: `geodesic_path` inside a tile set, `farthest_points` sampling and the backbone `SPACING`.
 - `pocket_masks.py`: `parse_masks`, which reads the drawn pocket shapes of `data/pockets.txt` into every distinct rotation and mirror.
 - `pockets.py`: `find_pockets`, which slides those masks over the walkable tiles with the map edge read as wall, `find_rooms`, which takes every dead end of at most 16 tiles behind a one-tile mouth whatever its shape, each pocket tile's depth from its guard, `dedupe_pockets`, and the `Pockets` type.
+- `splits.py`: `splits`, whether closing a few tiles leaves two or more open pieces of at least a given size beside them, the way a guard's zone of control parts one territory into two.
 - `snug.py`: `snug`, whether a sprite sits snug for its size class: a one-tile body in a hole or a corner, a two-tile body with the tile past its far end closed, a larger body with a closed tile above its top. `sided` asks whether a closed tile stands beside the body. A corner contact alone never counts. `size_class` gives the class and `solid_cells` the body cells.
 - `reach.py`: the one BFS family over tile sets: `distances`, `reach` and `walk`, with
   `STEPS4` and `STEPS8`, `entry_reach` from one entry tile, and `land_reach`, the land

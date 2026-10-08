@@ -17,13 +17,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from vcmi_mapgen.core.catalog import Catalog, Crossing
+from vcmi_mapgen.core.grid.splits import MIN_AREA
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.reading.ground import TownKey, purpose_of, read_ground
 from vcmi_mapgen.core.reading.places import read_places
 from vcmi_mapgen.core.reading.routes import RouteMap, route_map
 
-MIN_AREA = 15
 NONE = -1
 
 type Grid = tuple[tuple[int, ...], ...]

@@ -84,7 +84,7 @@ class _GatePlacer:
             self.blk[site.lf.level].update(fit[1])
             self.objs.append(obj)
         self.cache.clear()
-        if self.rng.random() < GUARD_P and b[0].guard_ok(b[1][2]):
+        if self.rng.random() < GUARD_P and b[0].guard_ok(b[1][2]) and not b[0].lf.parts(b[1][2]):
             self.objs.append(b[0].add_guard(self.catalog.guard(3), b[1][2]))
         return True
 

@@ -55,6 +55,11 @@ def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:
 GUARD_SPACING = 2
 
 
+def zoc_of(t: Tile) -> set[Tile]:
+    """The zone of control of a guard standing on ``t``: the tile and its 8 neighbours."""
+    return {(t[0] + dx, t[1] + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+
+
 def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
     """Every tile inside some guard's zone of control: the interactive cell plus its 8
     neighbours. A hero stepping on one of them fights the guard."""
@@ -62,9 +67,8 @@ def guard_zoc(objs: Sequence[PlacedObject]) -> set[Tile]:
     for o in objs:
         if o.purpose != Purpose.GUARD or not o.footprint.cells:
             continue
-        for ix, iy in FP.interactive_cells(o.footprint, o.x, o.y):
-            zoc.add((ix, iy))
-            zoc.update((ix + dx, iy + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+        for t in FP.interactive_cells(o.footprint, o.x, o.y):
+            zoc |= zoc_of(t)
     return zoc
 
 
