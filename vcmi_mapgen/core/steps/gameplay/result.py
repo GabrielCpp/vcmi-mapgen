@@ -30,11 +30,13 @@ class TownsIndex:
 @dataclass(frozen=True, slots=True)
 class GameplayResult:
     """Each zone after placement by level and zid, each level's seaport landings recomputed
-    from the placed shipyards, and the first town each zone received."""
+    from the placed shipyards, the first town each zone received, and diagnostic log lines
+    for the CLI to print."""
 
     zones: Mapping[int, Mapping[int, PlacedZone]]
     landings: Mapping[int, Landings]
     town_of_zone: Mapping[int, Mapping[int, PlacedObject]]
+    log: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

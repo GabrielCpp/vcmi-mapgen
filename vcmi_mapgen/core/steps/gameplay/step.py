@@ -133,6 +133,7 @@ class GameplayStep(PipelineStep):
         self.subterrain = subterrain
         self.density = density
         self.objs: list[PlacedObject] = []
+        self._log: list[str] = []
         self._ctx = ProviderRegistry()
         self._plan = ZPL.ZonePlan({}, ())
         self._veg = VegetationResult()
@@ -216,8 +217,7 @@ class GameplayStep(PipelineStep):
         has_water = any(Terrain.WATER in row for grid in self._grids.values() for row in grid)
         picker = Picker(catalog, rng, has_water, self.subterrain)
         short = placement.place(plan, picker, price)
-        for line in short.lines():
-            print(f"  WARNING: gameplay shortfall: {line}")
+        self._log += [f"WARNING: gameplay shortfall: {line}" for line in short.lines()]
 
     def _keep_promise(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
@@ -386,7 +386,7 @@ class GameplayStep(PipelineStep):
         map_state.add_objs(self.objs)
         map_state.player_towns = self._player_towns(towns)
         tie_dwellings(catalog, map_state, self.priors.effort.toll)
-        self._ctx.provide(GameplayResult(zones, landings, town_of_zone))
+        self._ctx.provide(GameplayResult(zones, landings, town_of_zone, tuple(self._log)))
 
     def _player_towns(self, towns: dict[tuple[int, int], list[PlacedObject]]) -> list[PlacedObject]:
         out = [towns[k][0] for k in self._player_zids if k in towns]

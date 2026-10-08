@@ -14,7 +14,7 @@ from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
 from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.pipeline import Pipeline
-from vcmi_mapgen.core.steps.gameplay.result import TownsIndex
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, TownsIndex
 from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
 from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
@@ -296,6 +296,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
 
     for line in (
         *pipeline.ctx.get(VegetationResult, VegetationResult()).log,
+        *(r.log if (r := pipeline.ctx.get(GameplayResult)) is not None else ()),
         *pipeline.ctx.get(PortalResult, PortalResult()).log,
     ):
         print(f"  {line}")
