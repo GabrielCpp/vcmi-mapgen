@@ -1,8 +1,9 @@
 """The ground a hero crosses on the way to a reward, read from a generated or a corpus map.
 
 A tile is open when its terrain lets a hero stand and no lasting object blocks it. An object
-whose footprint is one entrance cell, a pickup or a monster, leaves when the hero meets it,
-so its tile stays open. Water is open only to a hero afloat. A crossing changes what the hero
+the catalog calls vanishing, a pickup or a monster, leaves when the hero meets it, so its
+tiles stay open. A lasting object closes its visit tile, and a hero visits it from a
+neighbouring tile. Water is open only to a hero afloat. A crossing changes what the hero
 holds or where it stands: a tent hands its key, a gate lets through only that key, a
 teleport, a one-way monolith or a subterranean gate moves the hero to its twin, and the
 water beside a shipyard or under a boat is where the hero boards. A monster guards its own
@@ -14,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.catalog import Catalog, Crossing, HeroPace
-from vcmi_mapgen.core.model import MapState, PlacedObject, Role
+from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.terrain import Terrain
 
 _JUMPS = frozenset({Crossing.TELEPORT, Crossing.ONE_WAY_IN, Crossing.UNDERGROUND})
@@ -68,11 +69,6 @@ def _interactive(obj: PlacedObject) -> tuple[Spot, ...]:
     return tuple(Spot(obj.level, x, y) for x, y in cells or [(obj.x, obj.y)])
 
 
-def _fleeting(obj: PlacedObject) -> bool:
-    cells = obj.footprint.solid().cells
-    return len(cells) == 1 and cells[0][2] is Role.ENTRANCE
-
-
 def _ring(spot: Spot) -> list[Spot]:
     return [Spot(spot.level, spot.x + dx, spot.y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)]
 
@@ -123,9 +119,12 @@ def _cost(pace: HeroPace, grid: list[list[Terrain]]) -> list[list[float | None]]
 
 
 def _close(
-    grid: list[list[bool]], obj: PlacedObject, crossing: tuple[Crossing, int] | None
+    catalog: Catalog,
+    grid: list[list[bool]],
+    obj: PlacedObject,
+    crossing: tuple[Crossing, int] | None,
 ) -> None:
-    if _fleeting(obj):
+    if catalog.is_vanish(obj.kind):
         return
     size = len(grid)
     passed = crossing is not None and crossing[0] in _PASSED
@@ -187,7 +186,7 @@ def route_map(catalog: Catalog, map_state: MapState) -> RouteMap:
         level = catalog.creature_level(obj.kind)
         if level is not None:
             monsters.extend((spot, level) for spot in _interactive(obj))
-        _close(open_[obj.level], obj, crossing)
+        _close(catalog, open_[obj.level], obj, crossing)
     passed = {s for e in ends if e.crossing in _PASSED for s in e.tiles}
     for level, grid in open_.items():
         for x, y in map_state.gate_blk.get(level, frozenset()):

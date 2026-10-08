@@ -1,4 +1,5 @@
 from vcmi_mapgen.conftest import find_install
+from vcmi_mapgen.core.model import Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
@@ -79,3 +80,17 @@ def test_a_fixed_monster_reads_its_creature_level_without_an_install() -> None:
         assert catalog.creature_level("AVWbehl0") == 3
     finally:
         ON.use_config(load_config(install) if install is not None else EMPTY_CONFIG)
+
+
+def test_a_pickup_or_a_monster_vanishes_and_a_sign_or_a_school_lasts() -> None:
+    catalog = VcmiCatalog()
+    assert catalog.is_vanish("avtgold0")
+    assert catalog.is_vanish("avwmon3")
+    assert catalog.is_vanish(catalog.random_artifact("minor").kind)
+    assert not catalog.is_vanish("avxsndg0")
+    assert not catalog.is_vanish("avsschm0")
+
+
+def test_a_lasting_walk_on_object_visits_through_an_entrance() -> None:
+    sign = VcmiCatalog().identity_of("avxsndg0")
+    assert {role for _dx, _dy, role in sign.footprint.cells} == {Role.ENTRANCE}

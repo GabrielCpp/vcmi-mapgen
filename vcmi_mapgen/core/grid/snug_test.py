@@ -1,6 +1,6 @@
 """Snug fit by size class on literal sprites."""
 
-from vcmi_mapgen.core.grid.snug import size_class, snug
+from vcmi_mapgen.core.grid.snug import sided, size_class, snug
 from vcmi_mapgen.core.model import Footprint, Role
 
 ONE = Footprint.one(Role.VISIT)
@@ -40,3 +40,13 @@ def test_a_larger_object_is_backed_above_its_body() -> None:
     assert snug(WIDE, (5, 5), lambda t: t == (3, 4))
     assert not snug(WIDE, (5, 5), lambda t: t == (2, 5))
     assert not snug(WIDE, (5, 5), lambda t: t == (6, 5))
+
+
+def test_one_closed_side_makes_a_sprite_sided() -> None:
+    assert sided(ONE, (5, 5), lambda t: t == (5, 6))
+    assert sided(PAIR, (5, 5), lambda t: t == (4, 4))
+    assert not sided(ONE, (5, 5), lambda t: t == (6, 6))
+
+
+def test_a_corner_contact_alone_never_makes_a_sprite_sided() -> None:
+    assert not sided(PAIR, (5, 5), lambda t: t in {(3, 4), (6, 4), (3, 6), (6, 6)})

@@ -191,6 +191,10 @@ class VcmiCatalog:
             footprint=Footprint.one(Role.VISIT),
         )
 
+    def is_vanish(self, kind: str) -> bool:
+        entry = self.mods.object(kind)
+        return OB.is_vanish_type(OB.static_type(kind)[0] if entry is None else entry.identity.type)
+
     def crossing(self, kind: str) -> tuple[Crossing, int] | None:
         type_name, cls, sub = OB.static_type(kind)
         crossing = RO.CROSSINGS.get(type_name or "")

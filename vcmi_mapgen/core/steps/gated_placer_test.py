@@ -4,7 +4,7 @@ steps.treasure.fill loot-zone content restrictions."""
 import collections
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Scroll, Tile
+from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Scroll, Tile, footprint
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.resource import Resource
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -457,9 +457,9 @@ def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog, priors: P
     The doorway/corridor tiles excavated for guaranteed access are NOT exempt (s7-z4
     third occurrence, 2026-09: they used to be reserved as a permanently-empty hallway,
     leaving several genuinely reachable tiles right behind the gate unfilled forever)
-    -- loot fill places walk-on ('A'-mask) objects, so a resource pile or structure
-    sitting in the corridor never blocks the hero's path through it. Asserts ZERO gap
-    tiles."""
+    -- a pickup sitting in the corridor vanishes once taken, so it never blocks the
+    hero's path through it. A lasting structure's approach tile stays open, because a
+    hero visits the structure from it. Asserts ZERO other gap tiles."""
     ts0 = _zone_records()[0][0].ts
     ran_at_least_once = False
     for seed in range(1, 8):
@@ -475,6 +475,7 @@ def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog, priors: P
         ran_at_least_once = True
         claimed: set[Tile] = set()
         access_interactive: set[Tile] = set()
+        approaches = {t for o in objs for t, role in footprint(o) if role is Role.APPROACH}
         for o in objs:
             if (o.x, o.y) not in ts0 and not any(
                 (cx, cy) in ts0 for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y)
@@ -488,7 +489,7 @@ def test_loot_zone_fill_claims_every_non_access_tile(catalog: Catalog, priors: P
                 access_interactive |= {
                     (cx, cy + 1) for cx, cy in FP.interactive_cells(o.footprint, o.x, o.y)
                 } & ts0
-        gap = ts0 - claimed - access_interactive
+        gap = ts0 - claimed - access_interactive - approaches
         assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
     assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
 
@@ -516,6 +517,7 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(
         ran_at_least_once = True
         claimed: set[Tile] = set()
         access_interactive: set[Tile] = set()
+        approaches = {t for o in objs for t, role in footprint(o) if role is Role.APPROACH}
         for o in objs:
             if (o.x, o.y) not in ts0 and not any(
                 (cx, cy) in ts0 for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y)
@@ -529,7 +531,7 @@ def test_loot_zone_fill_claims_every_tile_of_a_multi_tile_corridor(
                 access_interactive |= {
                     (cx, cy + 1) for cx, cy in FP.interactive_cells(o.footprint, o.x, o.y)
                 } & ts0
-        gap = ts0 - claimed - access_interactive
+        gap = ts0 - claimed - access_interactive - approaches
         assert not gap, f"seed {seed}: unclaimed loot-zone tiles {sorted(gap)}"
     assert ran_at_least_once, "fixture assumption broke: no seed produced a loot zone"
 
@@ -569,7 +571,7 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
     _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
     saw_two_of_a_type = False
     for seed in range(1, 20):
-        zone_records, objs_existing = _rect_zone_records(5, 4)
+        zone_records, objs_existing = _rect_zone_records(6, 5)
         objs, n_placed, _zids = _place(
             catalog,
             GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
@@ -595,10 +597,8 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
 
 def _rect_zone_records(w: int, h: int) -> tuple[list[ZoneRecord], list[PlacedObject]]:
     """A wxh rectangular zone (zid 0) with a single boundary along its bottom edge to a
-    large neighbour (zid 1) -- a plain single-entrance loot-zone fixture. Sized 5x4 (20
-    tiles) it makes the old 30%-of-free-tiles cap bind: far more than 5 tiles stay free
-    after sealing/access overhead, but the cap stopped hero-structure placement at 3 of
-    the 5 whitelisted types."""
+    large neighbour (zid 1) -- a plain single-entrance loot-zone fixture. Sized 6x5 (30
+    tiles) it leaves room for two of each hero structure with its open approach tile."""
     ts0 = {(x, y) for x in range(w) for y in range(h)}
     ts1 = {(x, y) for x in range(40) for y in range(h, h + 30)}
     zr0 = _record(0, ts0)
@@ -615,7 +615,7 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
     least one seed."""
     counts: list[int] = []
     for seed in range(1, 20):
-        zone_records, objs_existing = _rect_zone_records(5, 4)
+        zone_records, objs_existing = _rect_zone_records(6, 5)
         objs, n_placed, _zids = _place(
             catalog,
             GatedLevel(zone_records, objs_existing, priors.gameplay[0]),

@@ -55,4 +55,7 @@ def export_mask(o: PlacedObject) -> list[str]:
     table and a map instance legitimately disagree for a handful of corpus dwellings)."""
     inst = vcmi_mask(mask_rows(o.footprint))
     vm = ON.vmap_mask_of(o.kind)
-    return list(vm) if vm and _trim_v(vm) == _trim_v(inst) else inst
+    if vm is None:
+        return inst
+    known = (_trim_v(vm), _trim_v(vcmi_mask(ON.mask_of(o.kind))))
+    return list(vm) if _trim_v(inst) in known else inst

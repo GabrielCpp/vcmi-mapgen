@@ -36,7 +36,15 @@
   are in `vcmi-h3m-format-reference/`.
 - A visitable object's template needs `visitableFrom`, the 3x3 approach grid, or the
   editor warns "no visitable directions". `vcmi.formats.vmap.terrain.visitable_from` derives it
-  from the mask, and `vcmi/export.py` sets it on every exported object.
+  from the mask, and `vcmi/export.py` sets it on every exported object. It reads the
+  ontology's mask before sealing, so a lasting walk-on object keeps all its directions.
+- Vanishing and lasting objects: `Catalog.is_vanish(kind)` is true for a type that leaves
+  the map once a hero takes it. `vcmi.catalog.roles.VANISH_TYPES` lists them from VCMI's
+  `removable` and `removeObject` configs: pickups, monsters, guards, boats, heroes and the
+  scholar. Every other type lasts. `vcmi.catalog.objects.mask_of` seals a lasting
+  object's walk-on `'A'` cells with `vcmi.footprint.sealed`, so its visit tile blocks and a
+  hero visits it from the tile below. The corpus loads through the same `mask_of`, so
+  placement, roads, routes and the corpus readings share one blocking view.
 - Footprints: the core never sees a mask string. `core.model.Footprint` holds an object's
   cells as offsets from its bottom-right anchor, each with a `Role`: blocking, entrance,
   visit or overlay. `vcmi.footprint.footprint_of(rows)` decodes the `'B'`, `'X'`, `'A'`

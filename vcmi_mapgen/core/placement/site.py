@@ -11,7 +11,8 @@ or rock. Under either footing the entrance and its approach are walkable and rea
 the web, and the blocking cells split no reachable area in two nor part the open tiles
 beside them that joined through them. Blocking cells may land on vegetation, the zone rim
 and the web, and the web then walks around them. ``SnugFooting`` narrows a footing to the
-anchors where the object sits snug for its size. Among the legal anchors of a neighbourhood
+anchors where the object sits snug for its size, and ``SidedFooting`` to the anchors with
+at least one closed side. Among the legal anchors of a neighbourhood
 the one whose sprite top and flanks rest most against unwalkable tiles wins. While a level
 hems fewer objects than HEMMED_SHARE, a commit plants a decoration on each open flank it can
 close without cutting a path."""
@@ -31,7 +32,7 @@ from vcmi_mapgen.core.grid.components import components
 from vcmi_mapgen.core.grid.detour import detours
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
 from vcmi_mapgen.core.grid.reach import walk
-from vcmi_mapgen.core.grid.snug import snug
+from vcmi_mapgen.core.grid.snug import sided, snug
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Footprint,
@@ -352,6 +353,10 @@ class ZoneSite:
     def snug(self, ident: Identity, anchor: Tile) -> bool:
         """Whether a sprite at ``anchor`` sits snug for its size."""
         return snug(ident.footprint, anchor, self.lf.closed)
+
+    def sided(self, ident: Identity, anchor: Tile) -> bool:
+        """Whether a sprite at ``anchor`` has at least one closed side."""
+        return sided(ident.footprint, anchor, self.lf.closed)
 
     def set_reach(self, reach: set[Tile]) -> None:
         self.reach = reach
@@ -680,6 +685,20 @@ class SnugFooting:
 
     def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
         return [t for t in self.inner.anchors(site, ident) if site.snug(ident, t)]
+
+    def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
+        return self.inner.fit(site, ident, anchor)
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class SidedFooting:
+    """Another footing's spots, kept to those where the sprite has at least one closed side."""
+
+    inner: Footing
+
+    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+        return [t for t in self.inner.anchors(site, ident) if site.sided(ident, t)]
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         return self.inner.fit(site, ident, anchor)

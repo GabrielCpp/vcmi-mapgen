@@ -14,6 +14,7 @@ from vcmi_mapgen.core.model import Identity
 from vcmi_mapgen.core.model.artifact import ArtifactSet
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.vcmi import terrain as vterrain
+from vcmi_mapgen.vcmi.catalog import roles as RO
 from vcmi_mapgen.vcmi.catalog.tables import (
     DECOR_NAMES,
     FACTION,
@@ -37,7 +38,7 @@ from vcmi_mapgen.vcmi.catalog.tables import (
     vcmi_type_classes,
 )
 from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, VcmiConfig
-from vcmi_mapgen.vcmi.footprint import Mask, footprint_of
+from vcmi_mapgen.vcmi.footprint import Mask, footprint_of, sealed
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,14 +168,23 @@ def mask_of(animation: str) -> Mask:
     the last column, `tx = ax - (ww - 1 - c)`; case-insensitive), V-padded to the sprite's full
     tile extent (see :func:`_decode_mask_full`) — the same extent AND column order `.vmap`
     export uses (see :func:`vmap_mask_of`), so gameplay placement never lands another object
-    (or a guard's own approach) on a tile the sprite visually covers."""
+    (or a guard's own approach) on a tile the sprite visually covers. A lasting object's
+    walk-on 'A' cells come back sealed (`vcmi.footprint.sealed`), so its visit tile blocks."""
     m = leaf_meta().get((animation or "").lower())
-    return m.mask if m else ("B",)
+    if not m:
+        return ("B",)
+    return m.mask if is_vanish_type(static_type(animation)[0]) else sealed(m.mask)
+
+
+def is_vanish_type(type_name: str | None) -> bool:
+    """True when objects of a VCMI type leave the map once a hero takes them."""
+    return type_name in RO.VANISH_TYPES
 
 
 def vmap_mask_of(animation: str) -> Mask | None:
     """The VCMI-charset (` 0VBHAT`) template mask for .vmap export (case-insensitive):
-    `mask_of` with 'X' entrance cells translated to VCMI's 'A' (VISIBLE|BLOCKED|VISITABLE) —
+    the ontology's mask before sealing, with 'X' entrance cells translated to VCMI's 'A'
+    (VISIBLE|BLOCKED|VISITABLE) —
     same column order, no reversal (see :func:`mask_of`); this is the exact charset/order real
     VCMI RMG `.vmap` templates use (verified byte-for-byte against 30 real sawmill instances).
     None when the ontology does not know the animation."""

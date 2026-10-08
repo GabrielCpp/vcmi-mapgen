@@ -144,6 +144,10 @@ class FakeCatalog:
         self.asked.append(("crossing", kind))
         return None
 
+    def is_vanish(self, kind: str) -> bool:
+        self.asked.append(("is_vanish", kind))
+        return kind == PILE.kind
+
     def pace(self) -> HeroPace:
         self.asked.append(("pace",))
         return HeroPace(land=1500, sea=1500, cost={})

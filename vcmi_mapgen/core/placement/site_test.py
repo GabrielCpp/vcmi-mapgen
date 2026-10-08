@@ -1,7 +1,14 @@
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.placement.site import LevelField, SiteZone, TownFooting, ZoneFooting, ZoneSite
+from vcmi_mapgen.core.placement.site import (
+    LevelField,
+    SidedFooting,
+    SiteZone,
+    TownFooting,
+    ZoneFooting,
+    ZoneSite,
+)
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 _TOWN = Identity(
@@ -36,6 +43,7 @@ _TALL = Identity(
         ),
     ),
 )
+_ROCK = Identity("rock", "rock", "rock", Footprint(1, 1, ((0, 0, Role.BLOCKING),)))
 _ST = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
 
 
@@ -103,3 +111,10 @@ def test_a_home_town_overlay_may_lie_on_open_land_outside_its_zone(catalog: Cata
 def test_a_home_town_body_still_stays_on_its_zone_or_vegetation(catalog: Catalog) -> None:
     site = _open_top(catalog)
     assert TownFooting(loose_overlay=True).fit(site, _TALL, (5, 3)) is None
+
+
+def test_sided_footing_keeps_the_spots_beside_a_closed_tile(catalog: Catalog) -> None:
+    site = _site(catalog, Terrain.GRASS, vegetated=True)
+    anchors = SidedFooting(ZoneFooting()).anchors(site, _ROCK)
+    assert (9, 5) in anchors
+    assert (5, 5) not in anchors

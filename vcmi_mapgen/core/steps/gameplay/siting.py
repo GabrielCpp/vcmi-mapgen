@@ -18,6 +18,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import (
     NEIGHBOURHOOD,
     Footing,
+    SidedFooting,
     SnugFooting,
     ZoneFooting,
     ZoneSite,
@@ -48,6 +49,14 @@ type Days = tuple[int | None, ...]
 type Key = tuple[int, int, int]
 type Tier = tuple[int, int, int]
 type Group = tuple[Tier, ZoneSite, list[Tile]]
+type Shape = Callable[[Footing], Footing]
+
+PASSES: tuple[tuple[bool, Shape], ...] = (
+    (False, SnugFooting),
+    (False, SidedFooting),
+    (True, SnugFooting),
+    (True, SidedFooting),
+)
 
 
 def owner(days: Days) -> int | None:
@@ -160,14 +169,15 @@ class Siting:
 
     def stand(self, slot: Slot) -> PlacedObject | None:
         """Stand one object of ``slot`` on the best site that takes it. The drawn object first
-        looks for a spot where it sits snug for its size, then for any spot, then gives way to
-        a smaller object of the same family. A mine tries every site, any other object the
-        best few. None when no site takes any."""
+        looks for a spot where it sits snug for its size, then for a spot with one closed
+        side. It then gives way to a smaller object of the same family, which looks for the
+        same spots in the same order. A mine tries every site, any other object the best few.
+        None when no site takes any, and nothing stands."""
         purpose = family_purpose(slot.family)
         limit = len(self.sites) if purpose == Purpose.MINE else MAX_SITES
         groups = self._groups(slot, purpose)
         picks: dict[ZoneSite, Pick | None] = {}
-        for snug in (True, False):
+        for fallback, shape in PASSES:
             tried: Counter[Tier] = Counter()
             for tier, site, centres in groups:
                 if tried[tier] >= limit:
@@ -178,7 +188,7 @@ class Siting:
                 if pick is None:
                     continue
                 tried[tier] += 1
-                obj = self._try(slot.family, site, centres, pick, (snug, tier[1]))
+                obj = self._try(slot.family, site, centres, pick, (fallback, shape, tier[1]))
                 if obj is not None:
                     return obj
         return None
@@ -189,16 +199,12 @@ class Siting:
         site: ZoneSite,
         centres: list[Tile],
         pick: Pick,
-        how: tuple[bool, int],
+        how: tuple[bool, Shape, int],
     ) -> PlacedObject | None:
-        snug, guard = how
+        fallback, shape, guard = how
         purpose = family_purpose(family)
-        footing: Footing = ZoneFooting(mine=True) if guard else footing_of(purpose)
-        if snug:
-            idents = [pick.ident]
-            footing = SnugFooting(footing)
-        else:
-            idents = [pick.ident, *smaller(site, pick.pool, pick.ident)]
+        footing = shape(ZoneFooting(mine=True) if guard else footing_of(purpose))
+        idents = smaller(site, pick.pool, pick.ident) if fallback else [pick.ident]
         for ident in idents:
             obj = site.place(purpose, ident, centres, footing, guard or None)
             if obj is not None:

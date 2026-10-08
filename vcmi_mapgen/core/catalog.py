@@ -205,6 +205,11 @@ class Catalog(Protocol):
         when a route walks around it."""
         ...
 
+    def is_vanish(self, kind: str) -> bool:
+        """True when an object kind leaves the map once a hero takes it. A kind that lasts
+        blocks its visit tile, and a hero visits it from a neighbouring tile."""
+        ...
+
     def pace(self) -> HeroPace:
         """How far the slowest starting hero moves in a day."""
         ...

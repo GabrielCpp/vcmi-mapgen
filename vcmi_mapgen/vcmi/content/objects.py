@@ -11,7 +11,7 @@ from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.catalog import tables as TB
 from vcmi_mapgen.vcmi.content.archive import ContentArchive, open_archive
 from vcmi_mapgen.vcmi.content.manifest import ModManifest
-from vcmi_mapgen.vcmi.footprint import footprint_of
+from vcmi_mapgen.vcmi.footprint import footprint_of, sealed
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 REWARDS = "REWARDS"
@@ -103,7 +103,8 @@ def _entry(kind: _Kind, template: dict[str, JsonValue]) -> ModObject | None:
     visits = any(ch in _VISIT for row in mask for ch in row)
     joins = kind.purpose is not None and kind.purpose in TB.mod_purposes()["joins"]
     placed = visits and joins and kind.price is not None
-    footprint = footprint_of(_engine_mask(mask))
+    engine = _engine_mask(mask)
+    footprint = footprint_of(engine if OB.is_vanish_type(kind.type) else sealed(engine))
     from_ = jv.opt_str_list(template.get("visitableFrom"))
     return ModObject(
         kind.mod_id,

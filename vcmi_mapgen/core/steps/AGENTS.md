@@ -16,7 +16,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `gameplay/`,
 - `loot/`: `LootStep`, the seer-hut quests and the pocket caches, guarded only in a deep pocket.
 - `sets/`: `SetsStep`, the combined artifact sets. The treasure, portal and loot steps each hold one prize slot open per place, and this step deals whole sets onto the slots in the top two effort bands, then fills every other slot. It provides `SetsResult`.
 - `scatter/`: `ScatterStep`, the free resource piles placed last.
-- `roads/`: `RoadsStep`, the last step. It lays each level's roads into `map_state.roads` with the `RoadLayer` it is given, `PassageRoads` from `cli/steps.py`. It runs after every object, so it routes over the tiles no blocking cell or gate covers and no later object can stand on a road.
+- `roads/`: `RoadsStep`, the last step. It lays each level's roads into `map_state.roads` with the `RoadLayer` it is given, `PassageRoads` from `cli/steps.py`. It runs after every object, so it routes over the tiles no blocking cell or gate covers and no later object can stand on a road. A lasting object's visit tile is a blocking entrance, so no road runs over it.
 
 ## What a step must do
 

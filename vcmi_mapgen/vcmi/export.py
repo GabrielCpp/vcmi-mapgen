@@ -40,7 +40,7 @@ def _shape(
         return list(entry.mask), VM.visitable_from(mask_rows(o.footprint))
     if ident.type == "borderGate":
         return VM.export_mask(o), list(ALL_SIDES)
-    return VM.export_mask(o), VM.visitable_from(mask_rows(o.footprint))
+    return VM.export_mask(o), VM.visitable_from(OB.vmap_mask_of(o.kind) or mask_rows(o.footprint))
 
 
 def _objects(real: list[tuple[PlacedObject, Identity]], mods: ModContent) -> list[VM.VmapObject]:

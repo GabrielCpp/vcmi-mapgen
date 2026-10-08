@@ -11,7 +11,9 @@ the blocking `BORDER` sentinel outside the map), `taken_tiles(level)`, `conflict
 `place` and `add_objs`. Those methods answer questions about tiles and objects that are
 already on the map. They never search or score. Every placement step writes its objects
 through `add_objs(new)`, which refuses an object that covers another object's
-visit, entrance or approach tile. A guard may stand on an approach tile, and any overlay
+visit, entrance or approach tile. The catalog seals a lasting object's visit tile into an
+entrance (`Catalog.is_vanish` is false), so that tile blocks and the tile below it is its
+approach. A guard may stand on an approach tile, and any overlay
 may sit over a resource pile or reward pickup. A placer never relies on that refusal. It
 asks a `CoverIndex` before each placement and skips the spot. A `CoverIndex` built with
 `rules` also asks each `PlacementRule` in turn. `StartRoomRule` is the one rule today: it

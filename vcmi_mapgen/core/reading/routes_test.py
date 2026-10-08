@@ -11,6 +11,8 @@ TENT = "avxkey00"
 SHIPYARD = "avxshyd0"
 MONOLITH = "avxmn2g0"
 CAVE = "avtcave"
+SIGN = "avxsndg0"
+GOLD = "avtgold0"
 
 
 def _put(catalog: Catalog, kind: str, x: int, y: int) -> PlacedObject:
@@ -75,3 +77,14 @@ def test_a_subterranean_gate_keeps_its_entrance_open_on_both_levels(catalog: Cat
     assert route.open[0][3][3] and route.open[1][3][3]
     assert not route.open[0][2][2]
     assert route.jumps[Spot(0, 3, 3)] == (Spot(1, 3, 3),)
+
+
+def test_a_sign_lasts_and_closes_its_visit_tile(catalog: Catalog) -> None:
+    route = route_map(catalog, _state([_put(catalog, SIGN, 4, 3)]))
+    assert not route.open[0][3][4]
+    assert route.open[0][4][4]
+
+
+def test_a_resource_vanishes_and_leaves_its_tile_open(catalog: Catalog) -> None:
+    route = route_map(catalog, _state([_put(catalog, GOLD, 4, 3)]))
+    assert route.open[0][3][4]
