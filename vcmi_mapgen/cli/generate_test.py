@@ -1,4 +1,5 @@
-"""Tests for cli.generate: overlay selection, the map's folder and its run record."""
+"""Tests for cli.generate: overlay selection, the map's folder, its run record and its
+planned topology."""
 
 import json
 from dataclasses import replace
@@ -17,6 +18,13 @@ from vcmi_mapgen.cli.generate import (
     map_folder,
     parse_overlays,
     write_run,
+    write_topology,
+)
+from vcmi_mapgen.core.steps.terrain_gen.result import (
+    LevelPlaces,
+    PlaceMap,
+    PlannedDoor,
+    TerritoryPlan,
 )
 from vcmi_mapgen.renderers.overlays import ZoneOverlay
 from vcmi_mapgen.vcmi.content.enabled import ContentSetting
@@ -113,3 +121,27 @@ def test_run_json_records_every_flag(tmp_path: Path) -> None:
     assert record["size"] == 72
     assert record["content"] == {"banned": ["angel"], "mods": ["hota"]}
     assert set(record) == set(GenerateOptions.__dataclass_fields__)
+
+
+def test_topology_json_holds_the_early_graph_the_territories_and_the_doors(
+    tmp_path: Path,
+) -> None:
+    door = PlannedDoor((0, 1), (0, 1), (2, None), ((3, 4), (4, 4)))
+    plan = TerritoryPlan({0: 0, 1: 1}, (2, None), (door,))
+    places = PlaceMap({0: LevelPlaces(((0, 1),), {}, frozenset({(0, 1)}), territories=plan)})
+    record = cast(dict[str, object], json.loads(write_topology(tmp_path, places).read_text()))
+    assert record == {
+        "0": {
+            "early_graph": [[0, 1]],
+            "territories": {"0": 0, "1": 1},
+            "owners": [2, None],
+            "doors": [
+                {
+                    "zones": [0, 1],
+                    "territories": [0, 1],
+                    "owners": [2, None],
+                    "tiles": [[3, 4], [4, 4]],
+                }
+            ],
+        }
+    }

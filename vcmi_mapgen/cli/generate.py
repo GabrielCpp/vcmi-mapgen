@@ -17,7 +17,7 @@ from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, TownsIndex
 from vcmi_mapgen.core.steps.loot.result import LootResult
 from vcmi_mapgen.core.steps.portal.result import PortalResult
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
 from vcmi_mapgen.corpus.priors import load_priors
 from vcmi_mapgen.corpus.tiler import load_tiler
@@ -277,6 +277,35 @@ def write_run(folder: Path, opts: GenerateOptions) -> Path:
     return path
 
 
+def topology_record(places: PlaceMap) -> dict[str, object]:
+    """Each level's planned topology: the early place graph, the territory of each zone, the
+    owner of each territory, and each door with its zones, territories, owners and tiles."""
+    return {
+        str(level): {
+            "early_graph": [list(pair) for pair in sorted(lp.adjacency)],
+            "territories": {str(z): t for z, t in sorted(lp.territories.zones.items())},
+            "owners": list(lp.territories.owners),
+            "doors": [
+                {
+                    "zones": list(d.zones),
+                    "territories": list(d.territories),
+                    "owners": list(d.owners),
+                    "tiles": [list(t) for t in d.tiles],
+                }
+                for d in lp.territories.doors
+            ],
+        }
+        for level, lp in sorted(places.levels.items())
+    }
+
+
+def write_topology(folder: Path, places: PlaceMap) -> Path:
+    """Write ``topology.json`` into the map's folder and return its path."""
+    path = folder / "topology.json"
+    _ = path.write_text(json.dumps(topology_record(places), indent=2) + "\n")
+    return path
+
+
 def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) -> None:
     renderers = _parse_renderers(opts.renderers)
     if opts.install and "vmap" not in renderers:
@@ -315,6 +344,8 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     stem = map_folder(opts)
     folder = fresh_folder(settings.out_dir, stem)
     print(f"  {write_run(folder, opts)}")
+    if (places := pipeline.ctx.get(PlaceMap)) is not None:
+        print(f"  {write_topology(folder, places)}")
 
     if "png" in renderers:
         index = sprite_source(install, catalog)

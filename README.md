@@ -63,7 +63,7 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
 
 ```bash
 # One 72x72 two-player island map -> out/ppmap_s7_72/ holds the playable
-# ppmap_s7_72.vmap, surface.png, overlays.png and run.json (each player slot is
+# ppmap_s7_72.vmap, surface.png, overlays.png, run.json and topology.json (each player slot is
 # wired to its own starting town, so the map is playable immediately — victory:
 # defeat all)
 uv run python -m vcmi_mapgen.cli generate \
@@ -86,6 +86,9 @@ uv run python -m vcmi_mapgen.cli generate \
 
 `generate` empties the map's folder before it writes, so a rerun leaves no file from an
 earlier run. `run.json` records the seed, the size and every flag of the run.
+`topology.json` records each level's planned topology: the early place graph, the territory
+of each zone, the owner of each territory, and each door with its zones, territories, owners
+and tiles.
 
 `generate` reads its corpus statistics from `data/pp/` and never loads a corpus map. After a
 change to `data/corpus/vmap/` or to a statistic's code, rebuild the files:
