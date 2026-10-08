@@ -19,6 +19,7 @@ from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, GateResult, P
 from vcmi_mapgen.core.steps.gated.loot_zones import mark_loot_zones, walk_targets
 from vcmi_mapgen.core.steps.gated.placer import GatedLevel, place_gated_zones
 from vcmi_mapgen.core.steps.gated.result import GatedResult
+from vcmi_mapgen.core.steps.vegetation.result import LootZones
 
 
 def _reached(map_state: MapState, gate_xy: set[Tile]) -> dict[int, frozenset[Tile]] | None:
@@ -56,7 +57,8 @@ class GatedStep(PipelineStep):
     placement and the recomputed seaport landings), ``GateResult`` (the subterranean gates a
     hero walks through between levels) and the ``ContentPlan`` when present, whose hops pick
     the level of each partner guard from the corpus spread. A zone no home reaches on foot
-    is never sealed and never holds a partner.
+    is never sealed and never holds a partner. The ``LootZones`` when present name the
+    zones to seal, otherwise the step chooses them over the map as it stands.
 
     Produces: appends the gates, monoliths, partners, guards and seals to ``map_state.objs``,
     and provides ``ZoneIndex`` and ``GatedResult``.
@@ -73,6 +75,7 @@ class GatedStep(PipelineStep):
         self._content = ContentPlan()
         self._gate_xy: set[Tile] = set()
         self._ways = PromisedWays()
+        self._loot: LootZones | None = None
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -81,6 +84,7 @@ class GatedStep(PipelineStep):
         self._plan = ctx.require(ZonePlan)
         self._gameplay = ctx.require(GameplayResult)
         self._content = ctx.get(ContentPlan, ContentPlan())
+        self._loot = ctx.get(LootZones)
         self._gate_xy = {(o.x, o.y) for o in ctx.require(GateResult).gate_objs if o.level == 0}
 
     @override
@@ -100,6 +104,7 @@ class GatedStep(PipelineStep):
                     map_state.terrain.get(level, ()),
                     prize_guard(self.priors.places, self._content, level),
                     None if reached is None else reached[level],
+                    None if self._loot is None else self._loot.on(level),
                 ),
                 seed=self.seed,
                 bounds=(self.size, self.size),

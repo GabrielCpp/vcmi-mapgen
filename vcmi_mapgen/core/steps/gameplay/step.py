@@ -18,6 +18,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.guards import inflate_gap
+from vcmi_mapgen.core.placement.keep_out import KeepOutRule
 from vcmi_mapgen.core.placement.site import (
     HOME_FOOTING,
     LevelField,
@@ -60,14 +61,19 @@ from vcmi_mapgen.core.steps.gameplay.result import (
 from vcmi_mapgen.core.steps.gameplay.shipyards import Shore, place_shipyards
 from vcmi_mapgen.core.steps.gameplay.siting import TOWN_MIN_AREA
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation
-from vcmi_mapgen.core.steps.vegetation.result import VegetationResult
+from vcmi_mapgen.core.steps.vegetation.result import LootZones, VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
 PLACER_SALT = 0x61A7
 
 
-def _sites(indexes: dict[int, SiteIndex]) -> list[ZoneSite]:
-    return [s for _l, idx in sorted(indexes.items()) for _z, s in sorted(idx.sites.items())]
+def _sites(indexes: dict[int, SiteIndex], loot: LootZones) -> list[ZoneSite]:
+    return [
+        s
+        for level, idx in sorted(indexes.items())
+        for zid, s in sorted(idx.sites.items())
+        if zid not in loot.on(level)
+    ]
 
 
 def _town_hosts(sites: Sequence[ZoneSite]) -> list[ZoneSite]:
@@ -104,6 +110,7 @@ class GameplayStep(PipelineStep):
     outside the zone. The ``Accents`` when present: each accent patch of ``LANDMARK_FLOOR``
     tiles or more takes a landmark right after the towns, and the map-wide pass counts it.
     The patch the homes reach last takes a dragon dwelling behind a level-7 guard instead.
+    The ``LootZones`` when present: no object stands in a zone chosen to be sealed.
     The step publishes the player zones the zone plan picked, then commits the sea objects
     the zone plan drew. Gates stay off each player town's kept room.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
@@ -144,6 +151,7 @@ class GameplayStep(PipelineStep):
         self._ways: dict[int, WayRule] = {}
         self._content = ContentPlan()
         self._accents = Accents()
+        self._loot = LootZones()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -153,6 +161,7 @@ class GameplayStep(PipelineStep):
         self._segmentation = ctx.require(Segmentation)
         self._content = ctx.get(ContentPlan, ContentPlan())
         self._accents = ctx.get(Accents, Accents())
+        self._loot = ctx.get(LootZones, LootZones())
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -199,7 +208,7 @@ class GameplayStep(PipelineStep):
     def _place_all(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> None:
-        sites = _sites(indexes)
+        sites = _sites(indexes, self._loot)
         homes = self._view(indexes, map_state).player_towns
         demand = Demand(len(homes), self.density)
         rng = random.Random(self.seed ^ PLACER_SALT)
@@ -222,7 +231,7 @@ class GameplayStep(PipelineStep):
     def _keep_promise(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> Kept:
-        sites = _sites(indexes)
+        sites = _sites(indexes, self._loot)
         kept = keep_promise(
             sites, site_variants(catalog), lambda: self._survey(catalog, indexes, map_state)
         )
@@ -293,7 +302,7 @@ class GameplayStep(PipelineStep):
         self._move_player_towns(catalog, indexes)
 
     def _move_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:
-        sites = _sites(indexes)
+        sites = _sites(indexes, self._loot)
         need = self.players - sum(1 for s in sites if s.town_center is not None)
         ident = catalog.random_town()
         for site in _town_hosts(sites):
@@ -335,7 +344,7 @@ class GameplayStep(PipelineStep):
             level,
             self._grids[level],
             [o for o in map_state.objs if o.level == level],
-            rules=(self._starts[level], self._ways[level]),
+            rules=(self._starts[level], self._ways[level], KeepOutRule(self._loot_tiles(level))),
         )
         idx = SiteIndex(lf)
         vegetated = self._veg.zones[level]
@@ -348,6 +357,10 @@ class GameplayStep(PipelineStep):
             idx.sites[zid] = ZoneSite(catalog, zid, site, lf, self.seed)
             idx.zone_of.update(dict.fromkeys(zone.ts, zid))
         return idx
+
+    def _loot_tiles(self, level: int) -> frozenset[Tile]:
+        zones = self._plan.levels[level].zones
+        return frozenset[Tile]().union(*(zones[zid].ts for zid in self._loot.on(level)))
 
     def _place_shipyards(self, idx: SiteIndex, map_state: MapState, catalog: Catalog) -> None:
         objs = [o for o in map_state.objs if o.level == 0 and o.purpose]

@@ -6,7 +6,7 @@ from __future__ import annotations
 import collections
 import math
 import random
-from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterable, Iterator, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from operator import itemgetter
@@ -16,17 +16,16 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.reach import reach
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, PlacementRule, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import CellRules, legal_cells
 from vcmi_mapgen.core.placement.ground import Ground, stands
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.planning.guarding import PrizeGuard
+from vcmi_mapgen.core.planning.loot_zones import choose_loot_zones, passage
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.gated.result import LootAccess
 
-LOOT_ZONE_MAX_TILES = 60
 _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
 
 type _Cells = Sequence[tuple[int, int, bool]]
@@ -130,48 +129,6 @@ def find_entry_corridor(
     return corridor
 
 
-def _count_clusters(boundary: AbstractSet[Tile]) -> int:
-    seen: set[Tile] = set()
-    n = 0
-    for t in sorted(boundary):
-        if t in seen:
-            continue
-        n += 1
-        seen |= _reach8({t}, boundary)
-    return n
-
-
-def _passage_components(
-    zr: ZoneRecord, all_ts: AbstractSet[Tile], blocked_ts: AbstractSet[Tile]
-) -> tuple[int, frozenset[Tile]]:
-    ts = zr.ts - blocked_ts
-    ext_ts = (all_ts - zr.ts) - blocked_ts
-    boundary = {t for t in ts if any(nb in ext_ts for nb in _nbs(t))}
-    return _count_clusters(boundary), frozenset(boundary)
-
-
-def _neighbour_zones(
-    zr: ZoneRecord, zone_of: Mapping[Tile, ZoneRecord], blocked_ts: AbstractSet[Tile]
-) -> frozenset[int]:
-    return frozenset(
-        zone_of[nb].zid
-        for t in zr.ts - blocked_ts
-        for nb in _nbs(t)
-        if nb not in zr.ts and nb not in blocked_ts and nb in zone_of
-    )
-
-
-def _on_coast(ts: AbstractSet[Tile], blocked_ts: AbstractSet[Tile], ground: Ground) -> bool:
-    if not ground:
-        return False
-    h, w = len(ground), len(ground[0])
-    return any(
-        0 <= nx < w and 0 <= ny < h and Terrain(ground[ny][nx]).is_water
-        for t in ts - blocked_ts
-        for nx, ny in _nbs(t)
-    )
-
-
 def _anchor_clear(cand: ZoneRecord, claims: AbstractSet[Tile], t: Tile) -> bool:
     tx, ty = t
     return all(
@@ -269,7 +226,8 @@ class GatedLevel:
     gameplay statistics per terrain, the rules every new object must pass and the level's
     terrain grid every seal must be allowed on. ``reached`` holds the tiles a home reaches on
     foot. A loot zone and the partner outside it stand only on those, and None reads as
-    every tile."""
+    every tile. ``loot`` holds the zones chosen to seal, and None reads as the zones
+    ``choose_loot_zones`` picks over the level as it stands."""
 
     zone_records: Sequence[ZoneRecord]
     objs: Sequence[PlacedObject]
@@ -278,6 +236,7 @@ class GatedLevel:
     ground: Ground = ()
     guard: PrizeGuard = field(default_factory=PrizeGuard)
     reached: AbstractSet[Tile] | None = None
+    loot: AbstractSet[int] | None = None
 
 
 @final
@@ -315,6 +274,11 @@ class GatedPlacer:
             for cx, cy, _b in FP.anchored_cells(o.footprint, o.x, o.y)
         }
         self.zone_of = {t: zr for zr in zone_records for t in zr.ts}
+        self.chosen = (
+            choose_loot_zones({zr.zid: zr.ts for zr in zone_records}, self.blocked, self.ground)
+            if level.loot is None
+            else level.loot
+        )
         self.ext_no_castle: list[ZoneRecord] = []
         self.ext_any: list[ZoneRecord] = []
         self.placed_ext_tiles: list[Tile] = []
@@ -334,8 +298,8 @@ class GatedPlacer:
         self.ext_no_castle = [zr for zr in self.ext_any if not (zr.ts & self.town_tiles)]
         for zr in self.ext_any:
             self.cover.claim(zr.ts & self.blocked)
-        for zr, passage in sorted(loot, key=lambda p: p[0].zid):
-            self._process(zr, passage)
+        for zr, way in sorted(loot, key=lambda p: p[0].zid):
+            self._process(zr, way)
         return self.objs, self.n_placed, self.access, frozenset(self.cover.claims)
 
     def _reached(self, zr: ZoneRecord) -> bool:
@@ -343,13 +307,10 @@ class GatedPlacer:
 
     def _eligible(self, zr: ZoneRecord) -> bool:
         return (
-            len(zr.ts) <= LOOT_ZONE_MAX_TILES
+            zr.zid in self.chosen
             and self._reached(zr)
             and not (zr.ts & self.town_tiles)
             and not (zr.ts & self.purposeful)
-            and bool(zr.ts - self.blocked)
-            and len(_neighbour_zones(zr, self.zone_of, self.blocked)) == 1
-            and not _on_coast(zr.ts, self.blocked, self.ground)
         )
 
     def _loot_zones(self) -> list[tuple[ZoneRecord, frozenset[Tile]]]:
@@ -357,7 +318,7 @@ class GatedPlacer:
         for zr in self.zone_records:
             if not self._eligible(zr):
                 continue
-            n, boundary = _passage_components(zr, self.all_ts, self.blocked)
+            n, boundary = passage(zr.ts, self.all_ts, self.blocked)
             if n == 1:
                 out.append((zr, boundary))
         return out

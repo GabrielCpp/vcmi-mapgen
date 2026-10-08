@@ -13,6 +13,7 @@ from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan, ContentPlanner, HopContent
+from vcmi_mapgen.core.planning.loot_zones import choose_loot_zones
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
@@ -22,7 +23,7 @@ from vcmi_mapgen.core.steps.vegetation.grow import (
     grow_level,
     vegetation_models,
 )
-from vcmi_mapgen.core.steps.vegetation.result import VegetatedZone, VegetationResult
+from vcmi_mapgen.core.steps.vegetation.result import LootZones, VegetatedZone, VegetationResult
 from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 
 NO_TILES: frozenset[Tile] = frozenset()
@@ -68,6 +69,21 @@ def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
     return VegetatedZone(zone.open_set - mine, zone.passable - mine)
 
 
+def _loot_zones(map_state: MapState, plan: ZPL.ZonePlan) -> LootZones:
+    homes = {lvl: {zid for lv, zid in plan.player_zids if lv == lvl} for lvl in plan.levels}
+    return LootZones(
+        {
+            lvl: choose_loot_zones(
+                {zid: z.ts for zid, z in pl.zones.items()},
+                FP.blocking_cells([o for o in [*pl.sea, *map_state.objs] if o.level == lvl]),
+                map_state.terrain.get(lvl, ()),
+                homes[lvl],
+            )
+            for lvl, pl in plan.levels.items()
+        }
+    )
+
+
 def _patches(
     catalog: Catalog, map_state: MapState, plan: ZPL.ZonePlan
 ) -> dict[int, dict[int, dict[str, frozenset[Tile]]]]:
@@ -96,8 +112,9 @@ class VegetationStep(PipelineStep):
 
     Produces: extends ``map_state.objs`` with this step's own new vegetation objects
     (``self.objs`` keeps just the new ones, for callers that want that distinction). Into ctx:
-    the ``ContentPlan``, the ``ZonePlan`` and ``VegetationResult``, which holds each zone's
-    open and passable tiles.
+    the ``ContentPlan``, the ``ZonePlan``, ``VegetationResult``, which holds each zone's
+    open and passable tiles, and ``LootZones``, the zones ``choose_loot_zones`` picks to be
+    sealed once the trees stand.
     """
 
     def __init__(
@@ -162,6 +179,7 @@ class VegetationStep(PipelineStep):
         self._ctx.provide(content)
         self._ctx.provide(plan)
         self._ctx.provide(VegetationResult(log=tuple(self.log), zones=veg))
+        self._ctx.provide(_loot_zones(map_state, plan))
 
     def _zone_plan(
         self, catalog: Catalog, map_state: MapState, content: ContentPlan

@@ -26,3 +26,14 @@ class VegetationResult:
     zones: Mapping[int, Mapping[int, VegetatedZone]] = field(
         default_factory=dict[int, Mapping[int, VegetatedZone]]
     )
+
+
+@dataclass(frozen=True, slots=True)
+class LootZones:
+    """The zones a gate or a monolith pair will seal, by level. No door guard stands at
+    their door and no gameplay object stands in them."""
+
+    levels: Mapping[int, frozenset[int]] = field(default_factory=dict[int, frozenset[int]])
+
+    def on(self, level: int) -> frozenset[int]:
+        return self.levels.get(level, frozenset())
