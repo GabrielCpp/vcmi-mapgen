@@ -14,6 +14,7 @@ from vcmi_mapgen.core.planning.guarding import prize_guard
 from vcmi_mapgen.core.planning.pricing import CutoffPlace, effort_with, prize_count
 from vcmi_mapgen.core.planning.zone_index import ZoneIndex, ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.steps.doors.result import DoorGuards
 from vcmi_mapgen.core.steps.gameplay.result import (
     GameplayResult,
     GateResult,
@@ -23,7 +24,7 @@ from vcmi_mapgen.core.steps.gameplay.result import (
 from vcmi_mapgen.core.steps.portal import rescue as RS
 from vcmi_mapgen.core.steps.portal.hoard import HoardPricing, fill_hoards
 from vcmi_mapgen.core.steps.portal.result import PortalResult
-from vcmi_mapgen.core.steps.terrain_gen.result import Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation
 from vcmi_mapgen.core.steps.treasure.result import TreasureResult
 
 
@@ -72,7 +73,8 @@ class PortalStep(PipelineStep):
     ``TownsIndex`` (player_zids), ``GameplayResult`` (each zone's town), ``GateResult``, the
     ``TreasureResult`` places when present, which the step leaves alone, and the
     ``ContentPlan`` when present, whose hops pick each portal guard's level from the corpus
-    spread.
+    spread, the ``PlaceMap`` territories, which no pair joins two player ones of, and the
+    ``DoorGuards`` spreads, which a pair between two territories draws its guard from.
 
     Produces: appends the portals, their guards and their prizes to ``map_state.objs`` and
     provides ``PortalResult``, each portal place's price and prizes.
@@ -95,6 +97,8 @@ class PortalStep(PipelineStep):
         self._content = ContentPlan()
         self._priced: set[tuple[int, int]] = set()
         self._ways = PromisedWays()
+        self._places = PlaceMap({})
+        self._doors = DoorGuards()
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -111,6 +115,8 @@ class PortalStep(PipelineStep):
         self._content = ctx.get(ContentPlan, ContentPlan())
         places = ctx.get(TreasureResult, TreasureResult()).places
         self._priced = {(lvl, zid) for lvl, found in places.items() for zid in found}
+        self._places = ctx.get(PlaceMap, PlaceMap({}))
+        self._doors = ctx.get(DoorGuards, DoorGuards())
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -132,6 +138,8 @@ class PortalStep(PipelineStep):
             covers,
             self.priors.gameplay[0],
             {lvl: prize_guard(self.priors.places, self._content, lvl) for lvl in grids},
+            {lvl: lp.territories for lvl, lp in self._places.levels.items()},
+            self._doors.spreads,
         )
         start = _find_start(self._player_zids, self._segmentation.zones, self._town_of_zone)
         rescued: list[RS.Rescued] = []

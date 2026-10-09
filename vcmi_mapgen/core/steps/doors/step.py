@@ -17,14 +17,13 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.ground import stands
 from vcmi_mapgen.core.placement.guards import guard_spaced
+from vcmi_mapgen.core.planning.door_levels import TOP_LEVEL, DoorSpread
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.steps.doors.guards import (
-    TOP_LEVEL,
-    DoorSpread,
     door_caps,
     door_level,
     door_tile,
@@ -58,7 +57,8 @@ class DoorsStep(PipelineStep):
     inject(ctx): ``PlaceMap`` (each level's planned doors and places), ``ZonePlan`` (each
     player's home and the room kept for its town) and ``LootZones`` when present.
 
-    Produces: appends the guards to ``map_state.objs`` and provides ``DoorGuards``.
+    Produces: appends the guards to ``map_state.objs`` and provides ``DoorGuards``, with
+    the door spread each level drew.
     """
 
     def __init__(self, priors: Priors, seed: int = 3, teams: Sequence[int] = ()) -> None:
@@ -70,6 +70,7 @@ class DoorsStep(PipelineStep):
         self._places = PlaceMap({})
         self._plan = ZonePlan({}, ())
         self._loot = LootZones()
+        self._spreads: dict[int, DoorSpread] = {}
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -93,7 +94,7 @@ class DoorsStep(PipelineStep):
         map_state.add_objs([d.obj for d in posted])
         for line in self.log:
             print(f"  WARNING: {line}")
-        self._ctx.provide(DoorGuards(tuple(posted), cut.short))
+        self._ctx.provide(DoorGuards(tuple(posted), cut.short, self._spreads))
 
     def _homes(self) -> dict[int, Spot]:
         homes: dict[int, Spot] = {}
@@ -112,6 +113,7 @@ class DoorsStep(PipelineStep):
         rng: random.Random,
     ) -> list[tuple[DoorGuard, int]]:
         spread = DoorSpread.draw(self.priors.territories.get(level, TerritoryStats()), rng)
+        self._spreads[level] = spread
         plan = lp.territories
         skip = open_zones(lp.places, self._loot.on(level), plan.doors)
         areas = territory_areas(lp.label, plan.zones)

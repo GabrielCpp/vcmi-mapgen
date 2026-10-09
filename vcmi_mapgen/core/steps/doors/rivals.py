@@ -10,9 +10,9 @@ import itertools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from vcmi_mapgen.core.planning.door_levels import TOP_LEVEL
 from vcmi_mapgen.core.reading.effort import effort_map
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot, with_guards
-from vcmi_mapgen.core.steps.doors.guards import TOP_LEVEL
 from vcmi_mapgen.core.steps.doors.result import Shortfall, ShortPair
 
 RIVAL_DAYS = 7

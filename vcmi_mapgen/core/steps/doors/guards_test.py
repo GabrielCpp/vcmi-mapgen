@@ -1,11 +1,9 @@
 import random
 
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.priors.territories import TerritoryStats
+from vcmi_mapgen.core.planning.door_levels import DEFAULT_DOOR_LEVEL, DoorSpread
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.doors.guards import (
-    DEFAULT_DOOR_LEVEL,
-    DoorSpread,
     door_caps,
     door_level,
     door_tile,
@@ -26,17 +24,6 @@ def test_a_door_out_of_a_player_territory_draws_from_the_player_doors() -> None:
 
 def test_a_door_between_neutral_territories_draws_a_level_from_1_to_7() -> None:
     assert door_level(SPREAD, NEUTRAL_DOOR, random.Random(1)) == 6
-
-
-def test_a_level_draws_all_its_doors_from_one_corpus_map() -> None:
-    stats = TerritoryStats(player_doors_by_map=((1, 1), (5, 5)), neutral_doors_by_map=((3,),))
-    spread = DoorSpread.draw(stats, random.Random(4))
-    assert spread.player in ((1, 1), (5, 5))
-    assert spread.neutral == (3,)
-
-
-def test_a_corpus_without_doors_draws_an_empty_spread() -> None:
-    assert DoorSpread.draw(TerritoryStats(), random.Random(1)) == DoorSpread()
 
 
 TOLL = (0, 3, 5, 8, 12, 18, 28, 45)

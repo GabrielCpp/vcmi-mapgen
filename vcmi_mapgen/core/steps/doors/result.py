@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.planning.door_levels import DoorSpread
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,11 +46,13 @@ class ShortPair:
 
 @dataclass(frozen=True, slots=True)
 class DoorGuards:
-    """Every guard DoorsStep posted, a class apart from the prize guards, and the enemy
-    pairs the rival cut left under a week apart."""
+    """Every guard DoorsStep posted, a class apart from the prize guards, the enemy pairs
+    the rival cut left under a week apart, and the door spread each level drew, which a
+    portal between two territories draws its guard from."""
 
     doors: tuple[DoorGuard, ...] = ()
     short: tuple[ShortPair, ...] = ()
+    spreads: Mapping[int, DoorSpread] = field(default_factory=dict[int, DoorSpread])
 
     def on(self, level: int) -> tuple[DoorGuard, ...]:
         return tuple(d for d in self.doors if d.level == level)
