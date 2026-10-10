@@ -280,7 +280,7 @@ class Siting:
             assert tiles is not None
             days = cast(Codes, tiles.days[level])
             bands = np.where(days >= 0, self._band[np.maximum(days, 0)], 0)
-            rows, back = np.unique(bands, axis=0, return_inverse=True)
+            rows, back = _unique_rows(bands)
             self._rows[level] = (
                 [
                     tuple(None if b == 0 else b for b in row)
@@ -289,6 +289,19 @@ class Siting:
                 back.reshape(-1),
             )
         return self._rows[level]
+
+
+def _unique_rows(rows: Codes) -> tuple[Codes, NDArray[np.intp]]:
+    """``np.unique(rows, axis=0, return_inverse=True)`` for rows of small non-negative codes,
+    each row read as one number so the sort runs over a single column."""
+    base = int(cast(int, rows.max(initial=0))) + 1
+    if base ** rows.shape[1] >= 2**62:
+        return np.unique(rows, axis=0, return_inverse=True)
+    key: Codes = np.zeros(rows.shape[0], dtype=np.int64)
+    for j in range(rows.shape[1]):
+        key = np.add(np.multiply(key, base), rows[:, j])
+    _keys, first, back = np.unique(key, return_index=True, return_inverse=True)
+    return rows[first], back
 
 
 def place_slots(
