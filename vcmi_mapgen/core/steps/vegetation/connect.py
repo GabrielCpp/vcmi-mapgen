@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen.core.steps.vegetation.jit import njit
+from vcmi_mapgen.core.jit import njit
 
 _STEPS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 _CLOSED, _OPEN, _WEB = 0, 1, 2

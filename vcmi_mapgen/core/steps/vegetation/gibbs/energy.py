@@ -3,7 +3,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen.core.steps.vegetation.jit import njit
+from vcmi_mapgen.core.jit import njit
 from vcmi_mapgen.core.steps.vegetation.model import RINT
 
 KW = 2 * RINT + 1

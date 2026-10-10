@@ -21,8 +21,6 @@
   compiled local interaction energy.
 - `grow.py`: `grow_level`, one level's vegetation grown zone by zone with the `Sampler` it is
   given, and `vegetation_models`, one fitted model per terrain.
-- `jit.py`: `njit`, the numba compiler with an on-disk cache. Every compiled kernel must give
-  the same bits as the Python it replaced, so a seed keeps its map.
 - `mix.py`: `ZoneMix`, a zone's corpus-expected category counts and the category and identity
   draws both samplers make from them.
 - `model.py`: `VegModel`, the per-terrain model both samplers read, and `build_model`. `RINT`
