@@ -3,6 +3,7 @@ terrain the object's identity allows, by the catalog's terrain coupling. A solid
 or is visited. Overlay cells and cells past the map edge stand on nothing."""
 
 from collections.abc import Sequence
+from functools import cache
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, Tile
@@ -19,7 +20,12 @@ def allowed_terrains(catalog: Catalog, kind: str) -> frozenset[Terrain]:
 def solid_tiles(footprint: Footprint, anchor: Tile) -> list[Tile]:
     """The cells of `footprint` anchored at `anchor` that block or are visited."""
     x, y = anchor
-    return [t for t, role in footprint.at(x, y) if role.blocks or role.interactive]
+    return [(x + dx, y + dy) for dx, dy in _solid(footprint)]
+
+
+@cache
+def _solid(footprint: Footprint) -> tuple[Tile, ...]:
+    return tuple(t for t, role in footprint.at(0, 0) if role.blocks or role.interactive)
 
 
 def on_ground(catalog: Catalog, kind: str, tiles: Sequence[Tile], ground: Ground) -> bool:

@@ -79,6 +79,11 @@ MINE_GUARD_LVL = {
 
 SITE_SALT = 0xA77A
 NEIGHBOURHOOD = 3
+_WINDOW = tuple(
+    (dx, dy)
+    for dx in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1)
+    for dy in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1)
+)
 FLANK_WEIGHT = 2
 MIN_WEIGHT = 1e-300
 
@@ -443,11 +448,7 @@ class ZoneSite:
         rejected: set[Tile] = set()
         covers: dict[Tile, int] = {}
         for c in centres:
-            window = [
-                (c[0] + dx, c[1] + dy)
-                for dx in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1)
-                for dy in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1)
-            ]
+            window = [(c[0] + dx, c[1] + dy) for dx, dy in _WINDOW]
             for t in window:
                 if t not in legal:
                     legal[t] = spot(self, footing, ident, t)

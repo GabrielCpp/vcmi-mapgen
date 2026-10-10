@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement import footprint as FP
-from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.footprint import cell_offsets
 
 NO_TILES: frozenset[Tile] = frozenset()
 
@@ -32,17 +32,24 @@ def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -
     footprint (`near` = existing cells inflated by GAP), no squatting on an earlier object's
     approach tile (`reserved`), own approach tile in-zone and standable. No cell and no
     approach may touch `avoid`, the ground a later object has claimed."""
-    allc, blk, approach = footprint_cells(ident.footprint, anchor[0], anchor[1])
-    if approach is None:
+    allo, blko, appro = cell_offsets(ident.footprint)
+    if appro is None:
         return None
-    for cell in allc:
+    ax, ay = anchor
+    for dx, dy in allo:
+        cell = (ax + dx, ay + dy)
         if cell not in ts or cell in clear.near or cell in clear.reserved or cell in clear.avoid:
             return None
-    if approach not in ts or approach in clear.occupied or approach in blk:
+    approach = (ax + appro[0], ay + appro[1])
+    if approach not in ts or approach in clear.occupied or appro in blko:
         return None
     if approach in clear.avoid:
         return None
-    return allc, blk, approach
+    return (
+        [(ax + dx, ay + dy) for dx, dy in allo],
+        [(ax + dx, ay + dy) for dx, dy in blko],
+        approach,
+    )
 
 
 def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:

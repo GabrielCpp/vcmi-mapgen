@@ -78,7 +78,7 @@ def front_tiles(fp: Footprint, x: int, y: int) -> set[Tile]:
 def footprint_cells(fp: Footprint, ax: int, ay: int) -> tuple[list[Tile], list[Tile], Tile | None]:
     """(all_cells, blocking_cells, approach) of a footprint anchored at (ax, ay); approach is
     the tile a hero stands on to visit: below an entrance, or a visit cell itself."""
-    allc, blk, approach = _offsets(fp)
+    allc, blk, approach = cell_offsets(fp)
     return (
         [(ax + dx, ay + dy) for dx, dy in allc],
         [(ax + dx, ay + dy) for dx, dy in blk],
@@ -87,7 +87,8 @@ def footprint_cells(fp: Footprint, ax: int, ay: int) -> tuple[list[Tile], list[T
 
 
 @cache
-def _offsets(fp: Footprint) -> tuple[tuple[Tile, ...], tuple[Tile, ...], Tile | None]:
+def cell_offsets(fp: Footprint) -> tuple[tuple[Tile, ...], tuple[Tile, ...], Tile | None]:
+    """``footprint_cells`` of ``fp`` anchored at the origin."""
     allc: list[Tile] = []
     blk: list[Tile] = []
     approach: Tile | None = None
