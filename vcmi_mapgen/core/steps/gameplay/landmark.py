@@ -106,10 +106,11 @@ class PatchFooting:
     patch: frozenset[Tile]
     mine: bool = False
 
-    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
         fw, fh = ident.footprint.width, ident.footprint.height
-        near = {(x + dx, y + dy) for x, y in self.patch for dx in range(fw) for dy in range(fh)}
-        return sorted(near & site.ts)
+        x, y = anchor
+        near = any((x - dx, y - dy) in self.patch for dx in range(fw) for dy in range(fh))
+        return near and anchor in site.ts
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         if not all(t in self.patch for t in door_cells(ident.footprint, anchor)):

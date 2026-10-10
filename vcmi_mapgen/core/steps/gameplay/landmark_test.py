@@ -3,7 +3,7 @@ import random
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
-from vcmi_mapgen.core.placement.site import LevelField, SiteZone, ZoneSite, door_cells
+from vcmi_mapgen.core.placement.site import LevelField, SiteZone, ZoneSite, door_cells, spot
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.effort import Effort
 from vcmi_mapgen.core.reading.paint import Accent
@@ -54,8 +54,8 @@ def test_patch_footing_keeps_every_door_on_the_patch(catalog: Catalog) -> None:
     site = _site(catalog)
     ident = landmark_pool(catalog, KINDS[2], "lava")[0]
     footing = PatchFooting(_PATCH)
-    for anchor in footing.anchors(site, ident):
-        if footing.fit(site, ident, anchor) is not None:
+    for anchor in sorted(site.ts):
+        if spot(site, footing, ident, anchor) is not None:
             assert all(t in _PATCH for t in door_cells(ident.footprint, anchor))
     assert footing.fit(site, ident, (1, 1)) is None
 

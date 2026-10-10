@@ -97,9 +97,8 @@ def test_zone_footing_keeps_the_body_inside_the_zone(catalog: Catalog) -> None:
 
 def test_town_anchors_reach_past_the_zone_by_the_footprint(catalog: Catalog) -> None:
     site = _site(catalog, Terrain.GRASS, vegetated=True)
-    anchors = TownFooting().anchors(site, _TOWN)
-    assert (11, 10) in anchors
-    assert (12, 5) not in anchors
+    assert TownFooting().admits(site, _TOWN, (11, 10))
+    assert not TownFooting().admits(site, _TOWN, (12, 5))
 
 
 def test_a_home_town_overlay_may_lie_on_open_land_outside_its_zone(catalog: Catalog) -> None:
@@ -115,6 +114,5 @@ def test_a_home_town_body_still_stays_on_its_zone_or_vegetation(catalog: Catalog
 
 def test_sided_footing_keeps_the_spots_beside_a_closed_tile(catalog: Catalog) -> None:
     site = _site(catalog, Terrain.GRASS, vegetated=True)
-    anchors = SidedFooting(ZoneFooting()).anchors(site, _ROCK)
-    assert (9, 5) in anchors
-    assert (5, 5) not in anchors
+    assert SidedFooting(ZoneFooting()).admits(site, _ROCK, (9, 5))
+    assert not SidedFooting(ZoneFooting()).admits(site, _ROCK, (5, 5))

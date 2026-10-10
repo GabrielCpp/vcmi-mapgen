@@ -439,28 +439,27 @@ class ZoneSite:
         guard: int | None = None,
     ) -> PlacedObject | None:
         footing = footing_of(purpose) if footing is None else footing
-        legal = {
-            t: f
-            for t in footing.anchors(self, ident)
-            if (f := footing.fit(self, ident, t)) is not None
-        }
+        legal: dict[Tile, Fit | None] = {}
         rejected: set[Tile] = set()
         covers: dict[Tile, int] = {}
         for c in centres:
-            if len(rejected) == len(legal):
-                return None
             window = [
                 (c[0] + dx, c[1] + dy)
                 for dx in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1)
                 for dy in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1)
             ]
-            near = [t for t in window if t in legal and t not in rejected]
+            for t in window:
+                if t not in legal:
+                    legal[t] = spot(self, footing, ident, t)
+            near = [t for t in window if legal[t] is not None and t not in rejected]
             for t in near:
                 if t not in covers:
                     covers[t] = self.cover(ident, t)
             near.sort(key=lambda t: (-covers[t], cheb(t, c), t))
             for t in near:
-                obj = self.try_commit(purpose, ident, t, legal[t], guard)
+                fit = legal[t]
+                assert fit is not None
+                obj = self.try_commit(purpose, ident, t, fit, guard)
                 if obj is not None:
                     return obj
                 rejected.add(t)
@@ -645,9 +644,9 @@ class SiteIndex:
 
 
 class Footing(Protocol):
-    """Which anchors a zone site tries for an object, and whether its body may stand on one."""
+    """Whether a zone site tries an anchor for an object, and whether its body may stand there."""
 
-    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]: ...
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool: ...
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None: ...
 
@@ -659,9 +658,9 @@ class ZoneFooting:
 
     mine: bool = False
 
-    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
         _ = ident
-        return sorted(site.ts)
+        return anchor in site.ts
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         return site.fit(ident, anchor, self.mine)
@@ -678,11 +677,10 @@ class TownFooting:
 
     loose_overlay: bool = False
 
-    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
         fw, fh = ident.footprint.width, ident.footprint.height
-        return sorted(
-            {(x + dx, y + dy) for x, y in site.ts for dx in range(fw) for dy in range(fh)}
-        )
+        x, y = anchor
+        return any((x - dx, y - dy) in site.ts for dx in range(fw) for dy in range(fh))
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         lf = site.lf
@@ -714,8 +712,8 @@ class SnugFooting:
 
     inner: Footing
 
-    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
-        return [t for t in self.inner.anchors(site, ident) if site.snug(ident, t)]
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
+        return self.inner.admits(site, ident, anchor) and site.snug(ident, anchor)
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         return self.inner.fit(site, ident, anchor)
@@ -728,11 +726,17 @@ class SidedFooting:
 
     inner: Footing
 
-    def anchors(self, site: ZoneSite, ident: Identity) -> list[Tile]:
-        return [t for t in self.inner.anchors(site, ident) if site.sided(ident, t)]
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
+        return self.inner.admits(site, ident, anchor) and site.sided(ident, anchor)
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         return self.inner.fit(site, ident, anchor)
+
+
+def spot(site: ZoneSite, footing: Footing, ident: Identity, anchor: Tile) -> Fit | None:
+    """The fit of ``ident`` at ``anchor`` under ``footing``, None when the footing does not
+    try that anchor or the body does not stand there."""
+    return footing.fit(site, ident, anchor) if footing.admits(site, ident, anchor) else None
 
 
 def footing_of(purpose: str) -> Footing:
