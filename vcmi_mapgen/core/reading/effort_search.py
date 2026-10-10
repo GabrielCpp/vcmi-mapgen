@@ -1,0 +1,110 @@
+# pyright: reportAny=false
+
+import heapq
+import math
+from typing import NamedTuple
+
+import numpy as np
+from numpy.typing import NDArray
+
+from vcmi_mapgen.core.jit import njit
+
+DIAGONAL = math.sqrt(2)
+SLACK = 1e-9
+STEPS = tuple(
+    (dx, dy, DIAGONAL if dx and dy else 1.0) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy
+)
+
+
+class Grid(NamedTuple):
+    """The route map flattened to one array per field, a tile at ``(level * size + y) * size +
+    x``. The jumps from a tile land on ``jump_to[jump_at[tile] : jump_at[tile + 1]]``."""
+
+    size: int
+    cost: NDArray[np.float64]
+    open: NDArray[np.bool_]
+    water: NDArray[np.bool_]
+    guard: NDArray[np.int64]
+    gate: NDArray[np.int64]
+    tent: NDArray[np.int64]
+    dock: NDArray[np.bool_]
+    jump_at: NDArray[np.int64]
+    jump_to: NDArray[np.int64]
+
+
+class _Run(NamedTuple):
+    best: NDArray[np.float64]
+    ceiling: int
+    colour: int
+
+
+@njit
+def _passable(grid: Grid, run: _Run, tile: int, key: int) -> bool:
+    if not grid.open[tile] or grid.guard[tile] > run.ceiling:
+        return False
+    return grid.gate[tile] < 0 or (key == 1 and grid.gate[tile] == run.colour)
+
+
+@njit
+def _arrive(grid: Grid, at: tuple[float, int, int], tile: int, scale: float) -> float:
+    days, here, boat = at
+    if boat == int(grid.water[tile]):
+        return days + grid.cost[here] * scale
+    if boat == 1 or grid.dock[tile]:
+        return math.floor(days + SLACK) + 1.0
+    return -1.0
+
+
+@njit
+def _reach(
+    grid: Grid, run: _Run, heap: list[tuple[float, int]], at: tuple[float, int, int]
+) -> None:
+    days, tile, key = at
+    if grid.tent[tile] == run.colour:
+        key = 1
+    state = tile * 4 + key * 2 + int(grid.water[tile])
+    if days < run.best[state]:
+        run.best[state] = days
+        heapq.heappush(heap, (days, state))
+
+
+@njit
+def _expand(grid: Grid, run: _Run, heap: list[tuple[float, int]], days: float, state: int) -> None:
+    tile, key, boat = state >> 2, (state >> 1) & 1, state & 1
+    rest, x = divmod(tile, grid.size)
+    base, y = divmod(rest, grid.size)
+    for dx, dy, scale in STEPS:
+        nx, ny = x + dx, y + dy
+        if not (0 <= nx < grid.size and 0 <= ny < grid.size):
+            continue
+        n = (base * grid.size + ny) * grid.size + nx
+        if not _passable(grid, run, n, key):
+            continue
+        arrive = _arrive(grid, (days, tile, boat), n, scale)
+        if arrive < 0.0:
+            continue
+        _reach(grid, run, heap, (arrive, n, key))
+        for j in range(grid.jump_at[n], grid.jump_at[n + 1]):
+            far = grid.jump_to[j]
+            if grid.guard[far] <= run.ceiling:
+                _reach(grid, run, heap, (arrive, far, key))
+
+
+@njit
+def search(grid: Grid, homes: NDArray[np.int64], ceiling: int, colour: int) -> NDArray[np.float64]:
+    """The best travel days from ``homes`` to every search state, four per tile for the key
+    and the boat. The search never enters a tile a guard stronger than ``ceiling`` covers. It
+    passes the gates of ``colour`` once it reaches that colour's tent."""
+    tiles = grid.cost.shape[0]
+    run = _Run(np.full(tiles * 4, np.inf), ceiling, colour)
+    heap = [(0.0, homes[0] * 4)]
+    _ = heap.pop()
+    for tile in homes:
+        run.best[tile * 4] = 0.0
+        heap.append((0.0, tile * 4))
+    heapq.heapify(heap)
+    while heap:
+        days, state = heapq.heappop(heap)
+        if days <= run.best[state]:
+            _expand(grid, run, heap, days, state)
+    return run.best
