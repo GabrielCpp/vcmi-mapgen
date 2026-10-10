@@ -253,6 +253,7 @@ def terrains_of(animation: str) -> set[str]:
     return set(indexes().anim_terrains.get((animation or "").lower(), ()))
 
 
+@cache
 def allowed_on(animation: str, terrain: str | int) -> bool:
     """True if the animation may stand on a terrain. Terrain-specific tags beat the generic
     'land' tag, which admits any non-water terrain. An animation the ontology does not know is

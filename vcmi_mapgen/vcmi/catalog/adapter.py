@@ -35,6 +35,7 @@ class VcmiCatalog:
     def __init__(self, enabled: EnabledSet = BASE_GAME, mods: ModContent = NO_MODS) -> None:
         self.enabled = enabled
         self.mods = mods
+        self._specs: dict[str, ObjectSpec | None] = {}
 
     def _kept[T: Identity | str](self, items: list[T]) -> list[T]:
         if not self.enabled.banned:
@@ -57,6 +58,11 @@ class VcmiCatalog:
         return OB.identity_of(animation) if entry is None else entry.identity
 
     def spec(self, kind: str) -> ObjectSpec | None:
+        if kind not in self._specs:
+            self._specs[kind] = self._spec(kind)
+        return self._specs[kind]
+
+    def _spec(self, kind: str) -> ObjectSpec | None:
         entry = self.mods.object(kind)
         if entry is not None:
             return self._mod_spec(entry) if self._allows(entry.identity) else None

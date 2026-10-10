@@ -8,6 +8,7 @@ from vcmi_mapgen.core.placement.site import (
     TownFooting,
     ZoneFooting,
     ZoneSite,
+    spot,
 )
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
@@ -43,7 +44,7 @@ _TALL = Identity(
         ),
     ),
 )
-_ROCK = Identity("rock", "rock", "rock", Footprint(1, 1, ((0, 0, Role.BLOCKING),)))
+_ART = Identity("artifact", "x", "ava0001", Footprint.one(Role.VISIT))
 _ST = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
 
 
@@ -114,5 +115,6 @@ def test_a_home_town_body_still_stays_on_its_zone_or_vegetation(catalog: Catalog
 
 def test_sided_footing_keeps_the_spots_beside_a_closed_tile(catalog: Catalog) -> None:
     site = _site(catalog, Terrain.GRASS, vegetated=True)
-    assert SidedFooting(ZoneFooting()).admits(site, _ROCK, (9, 5))
-    assert not SidedFooting(ZoneFooting()).admits(site, _ROCK, (5, 5))
+    assert spot(site, SidedFooting(ZoneFooting()), _ART, (9, 5)) is not None
+    assert spot(site, SidedFooting(ZoneFooting()), _ART, (5, 5)) is None
+    assert spot(site, ZoneFooting(), _ART, (5, 5)) is not None

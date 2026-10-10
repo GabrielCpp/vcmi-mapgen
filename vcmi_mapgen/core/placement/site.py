@@ -713,10 +713,11 @@ class SnugFooting:
     inner: Footing
 
     def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
-        return self.inner.admits(site, ident, anchor) and site.snug(ident, anchor)
+        return self.inner.admits(site, ident, anchor)
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
-        return self.inner.fit(site, ident, anchor)
+        fit = self.inner.fit(site, ident, anchor)
+        return fit if fit is not None and site.snug(ident, anchor) else None
 
 
 @final
@@ -727,10 +728,11 @@ class SidedFooting:
     inner: Footing
 
     def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
-        return self.inner.admits(site, ident, anchor) and site.sided(ident, anchor)
+        return self.inner.admits(site, ident, anchor)
 
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
-        return self.inner.fit(site, ident, anchor)
+        fit = self.inner.fit(site, ident, anchor)
+        return fit if fit is not None and site.sided(ident, anchor) else None
 
 
 def spot(site: ZoneSite, footing: Footing, ident: Identity, anchor: Tile) -> Fit | None:
