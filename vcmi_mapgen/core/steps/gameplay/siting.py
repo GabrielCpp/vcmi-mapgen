@@ -145,6 +145,9 @@ class Siting:
     )
     maps: Sequence[EffortMap] = ()
     _band: Codes = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
+    _rows: dict[int, tuple[list[Bands], NDArray[np.intp]]] = field(
+        default_factory=dict[int, tuple[list[Bands], NDArray[np.intp]]]
+    )
 
     def price(self, maps: Sequence[EffortMap]) -> None:
         """Price every site tile for each player from ``maps``, as the effort to visit an
@@ -152,6 +155,7 @@ class Siting:
         self.tiles = Tiles.of(self.sites, maps, min(FAIR_GUARD, len(self.toll) - 1))
         top = max(cast(list[int], self.tiles.days.ravel().tolist()), default=0) + 1
         self._band = np.array([self.band_of(d) for d in range(top)], dtype=np.int64)
+        self._rows = {}
         self.maps = maps
         self.reach.clear()
         for family, obj, guard in self.held:
@@ -255,16 +259,25 @@ class Siting:
         return [(tier, self.sites[i], centres) for (tier, i), centres in groups.items()]
 
     def _spreads(self, family: str, level: int) -> Codes:
-        tiles = self.tiles
-        assert tiles is not None
-        days = cast(Codes, tiles.days[level])
-        bands = np.where(days >= 0, self._band[np.maximum(days, 0)], 0)
-        rows, back = np.unique(bands, axis=0, return_inverse=True)
-        cost = [
-            self.reach.cost(family, tuple(None if b == 0 else b for b in row), SLACK)
-            for row in cast(list[list[int]], rows.tolist())
-        ]
-        return np.array(cost, dtype=np.int64)[back.reshape(-1)]
+        rows, back = self._patterns(level)
+        cost = [self.reach.cost(family, row, SLACK) for row in rows]
+        return np.array(cost, dtype=np.int64)[back]
+
+    def _patterns(self, level: int) -> tuple[list[Bands], NDArray[np.intp]]:
+        if level not in self._rows:
+            tiles = self.tiles
+            assert tiles is not None
+            days = cast(Codes, tiles.days[level])
+            bands = np.where(days >= 0, self._band[np.maximum(days, 0)], 0)
+            rows, back = np.unique(bands, axis=0, return_inverse=True)
+            self._rows[level] = (
+                [
+                    tuple(None if b == 0 else b for b in row)
+                    for row in cast(list[list[int]], rows.tolist())
+                ],
+                back.reshape(-1),
+            )
+        return self._rows[level]
 
 
 def place_slots(
