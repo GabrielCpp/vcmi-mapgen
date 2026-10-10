@@ -214,3 +214,25 @@ def beside(
             if best[0] < 0 or option < best:
                 best = option
     return best
+
+
+@njit
+def besides(
+    grid: Grid,
+    ceilings: Ceilings,
+    tiles: NDArray[np.int64],
+    least: int,
+    shut: tuple[NDArray[np.int64], NDArray[np.int64]],
+) -> NDArray[np.int64]:
+    """`beside` for each of ``tiles``, one row of total, guard level and travel days each.
+    The tiles shut around ``tiles[i]`` are ``shut[1][shut[0][i] : shut[0][i + 1]]``."""
+    shut_at, shut_to = shut
+    out = np.empty((tiles.shape[0], 3), dtype=np.int64)
+    for i in range(tiles.shape[0]):
+        total, guard, whole = beside(
+            grid, ceilings, tiles[i], least, shut_to[shut_at[i] : shut_at[i + 1]]
+        )
+        out[i, 0] = total
+        out[i, 1] = guard
+        out[i, 2] = whole
+    return out

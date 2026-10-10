@@ -13,13 +13,13 @@ that leaves it behind."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.placement.footprint import footprint_cells
+from vcmi_mapgen.core.placement.footprint import cell_offsets
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS, PROMISE_GAP
@@ -67,6 +67,16 @@ class Pricer:
             )
         return self.seen[key]
 
+    def prime(self, level: int, wants: Iterable[tuple[Spot, frozenset[Spot]]]) -> None:
+        todo = [w for w in dict.fromkeys(wants) if (w[0], level, w[1]) not in self.seen]
+        spots = [spot for spot, _shut in todo]
+        shuts = [shut for _spot, shut in todo]
+        rows = [em.besides(spots, level, shuts) for em in self.maps]
+        for i, (spot, shut) in enumerate(todo):
+            self.seen[spot, level, shut] = tuple(
+                None if (e := row[i]) is None else e.total for row in rows
+            )
+
 
 Survey = Callable[[], tuple[Pricer, Mapping[str, Days]]]
 
@@ -86,16 +96,24 @@ def offers(
 ) -> Iterator[Offer]:
     """Every anchor where a mine of ``res`` may stand, before its fit is checked."""
     level = promised_guard(res)
+    found: list[tuple[ZoneSite, Identity, Tile, Spot, frozenset[Spot]]] = []
     for site in sites:
+        lv = site.lf.level
+        anchors = sorted(site.ts)
         for ident in variants(site, res):
-            for anchor in sorted(site.ts):
-                _cells, blocked, approach = footprint_cells(ident.footprint, *anchor)
-                if approach is None or approach not in site.reach:
+            _cells, blocked, offset = cell_offsets(ident.footprint)
+            if offset is None:
+                continue
+            for ax, ay in anchors:
+                approach = (ax + offset[0], ay + offset[1])
+                if approach not in site.reach:
                     continue
                 guard = ZoneSite.guard_tile(ident, approach)
-                shut = frozenset(Spot(site.lf.level, x, y) for x, y in blocked)
-                days = pricer.days(Spot(site.lf.level, *guard), level, shut)
-                yield Offer(site, ident, anchor, days)
+                shut = frozenset(Spot(lv, ax + dx, ay + dy) for dx, dy in blocked)
+                found.append((site, ident, (ax, ay), Spot(lv, *guard), shut))
+    pricer.prime(level, ((spot, shut) for _site, _ident, _anchor, spot, shut in found))
+    for site, ident, anchor, spot, shut in found:
+        yield Offer(site, ident, anchor, pricer.days(spot, level, shut))
 
 
 def _merge(a: int | None, b: int | None) -> int | None:
@@ -143,13 +161,32 @@ def rank(offer: Offer, best: Days, res: str, player: int = 0) -> tuple[int, ...]
     """The sort key of ``offer`` given each player's ``best`` days so far: lower is better. A
     wood or ore offer serves ``player`` alone, a rare one every player it brings in time and
     within the gap."""
-    tail = (offer.site.lf.level, offer.site.zid, *offer.anchor)
+    return (*_merit(offer.days, best, res, player), *_tail(offer))
+
+
+def _merit(days: Days, best: Days, res: str, player: int) -> tuple[int, ...]:
     if res in OWN_GUARD:
-        after = _with(best, offer.days, [player])
-        return (_excess(after), _miss(offer.days[player], 0), *tail)
-    after = _with(best, offer.days, range(len(best)))
-    miss = sum(_miss(offer.days[p], RARE_TARGET) for p in _behind(best))
-    return (-_served(offer.days, best), _excess(after), miss, *tail)
+        after = _with(best, days, [player])
+        return (_excess(after), _miss(days[player], 0))
+    after = _with(best, days, range(len(best)))
+    miss = sum(_miss(days[p], RARE_TARGET) for p in _behind(best))
+    return (-_served(days, best), _excess(after), miss)
+
+
+def _tail(offer: Offer) -> tuple[int, ...]:
+    return (offer.site.lf.level, offer.site.zid, *offer.anchor)
+
+
+def _order(pool: list[Offer], best: Days, res: str, player: int = 0) -> None:
+    merits: dict[Days, tuple[int, ...]] = {}
+
+    def key(offer: Offer) -> tuple[int, ...]:
+        merit = merits.get(offer.days)
+        if merit is None:
+            merit = merits[offer.days] = _merit(offer.days, best, res, player)
+        return (*merit, *_tail(offer))
+
+    pool.sort(key=key)
 
 
 def _stand(offer: Offer, res: str) -> bool:
@@ -175,7 +212,7 @@ class Kept:
 
 def _own(pool: list[Offer], best: Days, res: str, kept: _Ledger) -> None:
     for player in _behind(best):
-        pool.sort(key=lambda o: rank(o, best, res, player))
+        _order(pool, best, res, player)
         taken = next((o for o in pool if _stand(o, res)), None)
         if taken is None:
             kept.warnings.append(f"{res}: no spot for player {player}")
@@ -189,7 +226,7 @@ def _own(pool: list[Offer], best: Days, res: str, kept: _Ledger) -> None:
 
 def _shared(pool: list[Offer], best: Days, res: str, kept: _Ledger) -> None:
     while behind := _behind(best):
-        pool.sort(key=lambda o: rank(o, best, res))
+        _order(pool, best, res)
         useful = pool if _waiting(best) else [o for o in pool if _served(o.days, best) > 0]
         taken = next((o for o in useful if _stand(o, res)), None)
         if taken is None:

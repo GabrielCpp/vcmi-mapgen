@@ -48,7 +48,7 @@ REPRICE = 12
 type Days = tuple[int | None, ...]
 type Key = tuple[int, int, int]
 type Tier = tuple[int, int, int]
-type Group = tuple[Tier, ZoneSite, list[Tile]]
+type Group = tuple[Tier, ZoneSite, NDArray[np.intp]]
 type Shape = Callable[[Footing], Footing]
 
 PASSES: tuple[tuple[bool, Shape], ...] = (
@@ -104,16 +104,13 @@ class Tiles:
     site: NDArray[np.intp]
     days: Codes
     grid: TileGrid
+    spots: Sequence[Spot] = ()
 
     @staticmethod
-    def of(sites: Sequence[ZoneSite], maps: Sequence[EffortMap], top: int) -> Tiles:
+    def laid(sites: Sequence[ZoneSite]) -> Tiles:
+        """The site tiles, not yet priced."""
         keys = [(s.lf.level, x, y) for s in sites for x, y in sorted(s.ts)]
         site = [i for i, s in enumerate(sites) for _t in s.ts]
-        spots = [Spot(*k) for k in keys]
-        days = [em.visits(spots, top) for em in maps]
-        table = (
-            np.stack(days, axis=-1) if days else np.zeros((top + 1, len(keys), 0), dtype=np.int64)
-        )
         levels = sorted({k[0] for k in keys})
         size = max((max(x, y) for _lv, x, y in keys), default=0) + 1
         grid = TileGrid(
@@ -124,7 +121,18 @@ class Tiles:
                 np.array([k[1] for k in keys], dtype=np.intp),
             ),
         )
-        return Tiles(keys, np.array(site, dtype=np.intp), table, grid)
+        days = np.zeros((0, len(keys), 0), dtype=np.int64)
+        return Tiles(keys, np.array(site, dtype=np.intp), days, grid, [Spot(*k) for k in keys])
+
+    def priced(self, maps: Sequence[EffortMap], top: int) -> Tiles:
+        """These tiles, each priced for each player from ``maps``."""
+        days = [em.visits(self.spots, top) for em in maps]
+        table = (
+            np.stack(days, axis=-1)
+            if days
+            else np.zeros((top + 1, len(self.keys), 0), dtype=np.int64)
+        )
+        return Tiles(self.keys, self.site, table, self.grid, self.spots)
 
 
 @dataclass(slots=True)
@@ -152,7 +160,8 @@ class Siting:
     def price(self, maps: Sequence[EffortMap]) -> None:
         """Price every site tile for each player from ``maps``, as the effort to visit an
         entrance there, and count again what each player reaches."""
-        self.tiles = Tiles.of(self.sites, maps, min(FAIR_GUARD, len(self.toll) - 1))
+        laid = Tiles.laid(self.sites) if self.tiles is None else self.tiles
+        self.tiles = laid.priced(maps, min(FAIR_GUARD, len(self.toll) - 1))
         top = max(cast(list[int], self.tiles.days.ravel().tolist()), default=0) + 1
         self._band = np.array([self.band_of(d) for d in range(top)], dtype=np.int64)
         self._rows = {}
@@ -183,7 +192,7 @@ class Siting:
         picks: dict[ZoneSite, Pick | None] = {}
         for fallback, shape in PASSES:
             tried: Counter[Tier] = Counter()
-            for tier, site, centres in groups:
+            for tier, site, rows in groups:
                 if tried[tier] >= limit:
                     continue
                 if site not in picks:
@@ -192,6 +201,7 @@ class Siting:
                 if pick is None:
                     continue
                 tried[tier] += 1
+                centres = self._centres(rows)
                 obj = self._try(slot.family, site, centres, pick, (fallback, shape, tier[1]))
                 if obj is not None:
                     return obj
@@ -255,7 +265,7 @@ class Siting:
         step = np.concatenate(([0], np.any(np.not_equal(tier[:, 1:], tier[:, :-1]), axis=0)))
         key = np.cumsum(step) * len(self.sites) + tiles.site[kept]
         _keys, first, member = np.unique(key, return_index=True, return_inverse=True)
-        by = np.argsort(member, kind="stable")
+        by = kept[np.argsort(member, kind="stable")]
         counts = np.bincount(member)
         starts = cast(list[int], (np.cumsum(counts) - counts).tolist())
         sizes = cast(list[int], np.minimum(counts, CENTRES).tolist())
@@ -263,11 +273,14 @@ class Siting:
         tiers = cast(list[list[int]], tier[:, first].T.tolist())
         groups: list[Group] = []
         for g in cast(list[int], np.argsort(first).tolist()):
-            ks = cast(list[int], kept[by[starts[g] : starts[g] + sizes[g]]].tolist())
-            centres = [(tiles.keys[k][1], tiles.keys[k][2]) for k in ks]
             s, gd, o = tiers[g]
-            groups.append(((s, gd, o), self.sites[heads[g]], centres))
+            groups.append(((s, gd, o), self.sites[heads[g]], by[starts[g] : starts[g] + sizes[g]]))
         return groups
+
+    def _centres(self, rows: NDArray[np.intp]) -> list[Tile]:
+        tiles = self.tiles
+        assert tiles is not None
+        return [(tiles.keys[k][1], tiles.keys[k][2]) for k in cast(list[int], rows.tolist())]
 
     def _spreads(self, family: str, level: int) -> Codes:
         rows, back = self._patterns(level)

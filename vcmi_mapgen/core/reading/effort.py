@@ -20,7 +20,7 @@ from typing import cast
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen.core.reading.effort_search import SLACK, STEPS, Ceilings, Grid, beside, search
+from vcmi_mapgen.core.reading.effort_search import SLACK, STEPS, Ceilings, Grid, besides, search
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot
 
 _MATCH = 1e-6
@@ -51,7 +51,8 @@ class _Flat:
         return self.grid.size
 
     def index(self, spot: Spot) -> int:
-        return (self.levels.index(spot.level) * self.size + spot.y) * self.size + spot.x
+        size = self.grid.size
+        return (self.levels.index(spot.level) * size + spot.y) * size + spot.x
 
     def spot(self, tile: int) -> Spot:
         rest, x = divmod(tile, self.size)
@@ -134,13 +135,25 @@ class EffortMap:
         """The effort to reach ``spot`` once an object blocks ``shut``, beating a guard of at
         least ``least`` on the way. The tiles within ``AROUND`` steps of ``spot`` are walked
         again around ``shut``. The days beyond them stand."""
-        blocked = np.array(
-            [self.flat.index(s) for s in shut if s.level == spot.level], dtype=np.int64
-        )
-        total, guard, whole = beside(
-            self.flat.grid, self.ceilings, self.flat.index(spot), least, blocked
-        )
-        return None if total < 0 else Effort(days=whole, guard=guard, total=total)
+        return self.besides([spot], least, [shut])[0]
+
+    def besides(
+        self, spots: Sequence[Spot], least: int, shuts: Sequence[AbstractSet[Spot]]
+    ) -> list[Effort | None]:
+        """`beside` for each of ``spots``, with ``shuts[i]`` blocked around ``spots[i]``."""
+        index = self.flat.index
+        blocked = [
+            [index(s) for s in shut if s.level == spot.level]
+            for spot, shut in zip(spots, shuts, strict=True)
+        ]
+        counts = np.array([0, *(len(b) for b in blocked)], dtype=np.int64)
+        shut_to = np.array([t for b in blocked for t in b], dtype=np.int64)
+        tiles = np.array([index(s) for s in spots], dtype=np.int64)
+        rows = besides(self.flat.grid, self.ceilings, tiles, least, (np.cumsum(counts), shut_to))
+        return [
+            None if total < 0 else Effort(days=whole, guard=guard, total=total)
+            for total, guard, whole in cast(list[list[int]], rows.tolist())
+        ]
 
     def visit(self, door: Spot, least: int = 0) -> Effort | None:
         """The effort to visit the object whose entrance is ``door``: a hero steps on it from

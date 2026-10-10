@@ -36,21 +36,20 @@ class TileGrid:
         grid[self.cells] = values
         grid = np.where(present, grid, low)
         for axis in (2, 1):
-            grid = np.where(present, _slide(grid, axis, r), low)
+            grid = np.where(present, _slide(grid, axis, r, low), low)
         return np.where(counted, grid[self.cells], values)
 
 
-def _slide(a: Codes, axis: int, r: int) -> Codes:
-    best = a.copy()
+def _slide(a: Codes, axis: int, r: int, low: int) -> Codes:
     n = a.shape[axis]
-    for d in range(1, min(r, n - 1) + 1):
-        near = [slice(None)] * 3
-        far = [slice(None)] * 3
-        near[axis] = slice(0, n - d)
-        far[axis] = slice(d, n)
-        lo, hi = tuple(near), tuple(far)
-        best[lo] = np.maximum(best[lo], a[hi])
-        best[hi] = np.maximum(best[hi], a[lo])
+    pad = [(0, 0)] * 3
+    pad[axis] = (r, r)
+    padded = np.pad(a, pad, constant_values=low)
+    best = a.copy()
+    for d in range(2 * r + 1):
+        window = [slice(None)] * 3
+        window[axis] = slice(d, d + n)
+        _ = np.maximum(best, padded[tuple(window)], out=best)
     return best
 
 
