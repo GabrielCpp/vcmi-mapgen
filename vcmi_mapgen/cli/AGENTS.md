@@ -16,7 +16,7 @@ arguments in `__main__.py` and calls one module per subcommand.
   pass that rebuilds every `data/pp/` file.
 - `macro_preview.py`: prints the macro statistics and renders one macro terrain grid to a PNG.
 - `patch_report.py`: the `patch-report` subcommand. It generates maps, reads their small enclosed patches and those of every corpus map with `core/reading/patches.py`, and prints the cover, the share of patches with a counted object, the purpose mix and the maps with a dragon dwelling side by side.
-- `readings.py`: the `readings` subcommand. It generates maps, reads them and the corpus maps of the same side with `core/reading/vector.py`, and prints each reading's corpus spread from `core/reading/spread.py` beside the generated median.
+- `readings.py`: the `readings` subcommand. It generates maps, reads them and the corpus maps of the same side with `core/reading/vector.py`, and prints each reading's corpus spread from `core/reading/spread.py` beside the generated median. It first prints each generated map's resource mine count beside the corpus mine curve, and both join the table.
 - `render_vmaps.py`: renders every `.vmap` of a folder to PNGs, each level with the map's own tile strings, for `extract-vmap --png-dir`.
 - `render_sprites.py`: the `render-sprites` subcommand. It renders one `.vmap` with the real H3 sprites.
 - `settings.py`: `Settings`, the one place that reads `os.environ` and `sys.platform`, and `open_install`, which finds the VCMI install or exits naming `VCMI_HOME`.
