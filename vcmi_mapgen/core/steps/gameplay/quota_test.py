@@ -12,10 +12,12 @@ from vcmi_mapgen.core.steps.gameplay.quota import (
     RateRule,
     family_quota,
     group_rules,
+    paired,
     split,
 )
 
 ORE, WOOD, MILL = mine_family("orePit"), mine_family("sawmill"), mine_family("windmill")
+GEMS, SULFUR = mine_family("gemPond"), mine_family("sulfurDune")
 
 
 def _stats(tiles: int, counts: dict[str, int]) -> TerrainStats:
@@ -53,17 +55,36 @@ def test_split_shares_evenly_when_every_weight_is_zero() -> None:
 
 
 def test_resource_mines_follow_the_curve_and_split_by_corpus_count() -> None:
-    corpus = {ORE: [3, 3], WOOD: [1, 1]}
-    count = MapCount([], MapMeasure(64, 1), ["orePit", "sawmill"], corpus)
+    corpus = {GEMS: [3, 3], SULFUR: [1, 1]}
+    count = MapCount([], MapMeasure(64, 1), ["gemPond", "sulfurDune"], corpus)
     groups = group_rules(MineCurve(0.0, 0.5, 0.0), count)
     quota = family_quota(groups, corpus, 1.0, 0, random.Random(1))
-    assert (quota[ORE], quota[WOOD]) == (6, 2)
+    assert (quota[GEMS], quota[SULFUR]) == (6, 2)
+
+
+def test_the_town_pair_stays_out_of_the_mine_quota() -> None:
+    corpus = {ORE: [3], WOOD: [3], GEMS: [3]}
+    count = MapCount([], MapMeasure(64, 1), ["orePit", "sawmill", "gemPond"], corpus)
+    groups = group_rules(MineCurve(0.0, 0.5, 0.0), count)
+    quota = family_quota(groups, corpus, 1.0, 0, random.Random(1))
+    assert (ORE in quota, WOOD in quota, quota[GEMS]) == (False, False, 8)
+
+
+def test_each_town_takes_its_pair_off_the_mine_quota() -> None:
+    groups = [Group((GEMS,), CurveRule(MineCurve(0.0, 0.5, 0.0), MapMeasure(64, 1)), 2)]
+    assert family_quota(groups, {}, 1.0, 3, random.Random(1))[GEMS] == 2
+
+
+def test_the_paired_families_are_the_ones_towns_take_off() -> None:
+    corpus = {ORE: [3], GEMS: [3], MILL: [1]}
+    count = MapCount([], MapMeasure(64, 1), ["orePit", "gemPond", "windmill"], corpus)
+    assert paired(group_rules(MineCurve(), count)) == {GEMS}
 
 
 def test_producers_take_the_mine_rate_times_their_corpus_share() -> None:
     st = _stats(100, {Purpose.MINE: 10})
-    corpus = {ORE: [3], MILL: [1]}
-    count = MapCount([(200, st)], MapMeasure(200, 2), ["orePit", "windmill"], corpus)
+    corpus = {GEMS: [3], MILL: [1]}
+    count = MapCount([(200, st)], MapMeasure(200, 2), ["gemPond", "windmill"], corpus)
     groups = group_rules(MineCurve(), count)
-    assert [g.families for g in groups[1:3]] == [(ORE,), (MILL,)]
+    assert [g.families for g in groups[1:3]] == [(GEMS,), (MILL,)]
     assert groups[2].rule.expected() == 5

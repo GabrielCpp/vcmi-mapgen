@@ -1,6 +1,7 @@
 """The one map-wide pass over the neutral towns, mines, dwellings, banks and visitables. The
 map holds each family at the count its group rule gives, the players share each family band
-by band, and each object stands where its player reaches it at its target effort."""
+by band, and each object stands where its player reaches it at its target effort. Each
+neutral town takes its own sawmill and ore pit right after the towns, before any mine."""
 
 from __future__ import annotations
 
@@ -11,17 +12,30 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.effort import EffortMap
-from vcmi_mapgen.core.reading.families import Families, guard_levels, reach_guard
+from vcmi_mapgen.core.reading.families import (
+    Families,
+    family_purpose,
+    guard_levels,
+    reach_guard,
+)
 from vcmi_mapgen.core.reading.mines import MapMeasure
 from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
-from vcmi_mapgen.core.steps.gameplay.quota import RANKS, MapCount, family_quota, group_rules
+from vcmi_mapgen.core.steps.gameplay.quota import (
+    RANKS,
+    MapCount,
+    family_quota,
+    group_rules,
+    paired,
+)
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
 from vcmi_mapgen.core.steps.gameplay.siting import Siting, place_slots, standing_cell
+from vcmi_mapgen.core.steps.gameplay.supply import Supply
 
 VISIT_RANK = 4
 
@@ -42,11 +56,12 @@ class Demand:
 
 @dataclass(frozen=True, slots=True)
 class Plan:
-    """The slots still to place in placing order, and the objects already standing on the
-    sites by family."""
+    """The slots still to place in placing order, the objects already standing on the
+    sites by family, and the families each new town's own objects count against."""
 
     slots: Sequence[Slot]
     standing: Sequence[tuple[str, PlacedObject]]
+    paired: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +85,19 @@ def map_resources(catalog: Catalog, sites: Sequence[ZoneSite]) -> list[str]:
         r for s in sites for r, ids in catalog.mines_by_resource(s.zone.terrain).items() if ids
     }
     return sorted(found)
+
+
+def trim(slots: Sequence[Slot], families: Collection[str], k: int) -> tuple[list[Slot], int]:
+    """``slots`` less ``k`` slots of ``families``, each the last slot of the family with
+    the most slots left, then the count it found no slot for."""
+    left = list(slots)
+    for taken in range(k):
+        counts = Counter(s.family for s in left if s.family in families)
+        if not counts:
+            return left, k - taken
+        family = min(counts, key=lambda f: (-counts[f], f))
+        del left[max(i for i, s in enumerate(left) if s.family == family)]
+    return left, 0
 
 
 def rank(purpose: str) -> int:
@@ -117,15 +145,34 @@ class Placement:
             cells = [standing_cell(o, maps, band_of) for o in standing.get(family, [])]
             start = i % demand.players if demand.players else 0
             slots += plan.slots(family, n, cells, start)
-        return Plan(slot_order(slots, RANKS), held)
+        return Plan(slot_order(slots, RANKS), held, paired(groups))
 
     def place(
-        self, plan: Plan, picker: Picker, price: Callable[[], Sequence[EffortMap]]
+        self,
+        plan: Plan,
+        picker: Picker,
+        price: Callable[[], Sequence[EffortMap]],
+        supply: Supply,
     ) -> Shortfall:
-        """Stand every slot of ``plan`` and tally what stood against what the plan asked."""
+        """Stand every slot of ``plan`` and tally what stood against what the plan asked.
+        The towns stand first, then ``supply`` stands each new town's own mines, and each
+        of those takes one slot off the paired families."""
         reach = Reach(self.demand.players)
         siting = Siting(self.sites, picker, self.effort.band, self.rng, reach, self.effort.toll)
         guards = guard_levels(self.catalog, (o for s in self.sites for o in s.objs))
         siting.held.extend((f, o, reach_guard(self.catalog, guards, o)) for f, o in plan.standing)
-        placed = place_slots(siting, plan.slots, rank, price)
-        return Shortfall(Counter(s.family for s in plan.slots), placed)
+        towns = [s for s in plan.slots if family_purpose(s.family) == Purpose.TOWN]
+        rest = [s for s in plan.slots if family_purpose(s.family) != Purpose.TOWN]
+        before = {id(o) for o in self._towns()}
+        placed = place_slots(siting, towns, rank, price)
+        new = [o for o in self._towns() if id(o) not in before]
+        stood = supply(new)
+        siting.held.extend((f, o, 0) for f, o in stood)
+        rest, over = trim(rest, plan.paired, len(stood))
+        if over:
+            print(f"  WARNING: the pairs of {len(new)} towns pass the mine curve by {over}")
+        placed += place_slots(siting, rest, rank, price)
+        return Shortfall(Counter(s.family for s in [*towns, *rest]), placed)
+
+    def _towns(self) -> list[PlacedObject]:
+        return [o for s in self.sites for o in s.objs if o.purpose == Purpose.TOWN]

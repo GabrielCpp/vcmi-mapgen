@@ -19,6 +19,7 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.families import TOP_LEVEL, dwelling_family, mine_family
 from vcmi_mapgen.core.reading.mines import RESOURCE_MINES, MapMeasure
+from vcmi_mapgen.core.reading.supply import SUPPLY
 
 RANKS: tuple[str, ...] = (
     Purpose.TOWN,
@@ -64,10 +65,11 @@ class CurveRule:
 
 @dataclass(frozen=True, slots=True)
 class Group:
-    """Families counted by one rule."""
+    """Families counted by one rule, less ``per_town`` objects for each town on the map."""
 
     families: tuple[str, ...]
     rule: CountRule
+    per_town: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,14 +113,16 @@ def purpose_families(purpose: str) -> tuple[str, ...]:
 def group_rules(curve: MineCurve, count: MapCount) -> list[Group]:
     """Every group in drawing order, each with the rule that counts it."""
     offered = [mine_family(r) for r in sorted(count.resources)]
-    resource = tuple(f for f in offered if f in {mine_family(r) for r in RESOURCE_MINES})
-    producers = tuple(f for f in offered if f not in resource)
+    supplied = {mine_family(r) for r in SUPPLY}
+    mines_of = {mine_family(r) for r in RESOURCE_MINES}
+    resource = tuple(f for f in offered if f in mines_of and f not in supplied)
+    producers = tuple(f for f in offered if f not in mines_of)
     mines = count.weight(offered)
     share = count.weight(producers) / mines if mines > 0 else 0.0
     others = [p for p in RANKS if p not in (Purpose.TOWN, Purpose.MINE)]
     return [
         Group((Purpose.TOWN,), RateRule(count.grounds, Purpose.TOWN)),
-        Group(resource, CurveRule(curve, count.measure)),
+        Group(resource, CurveRule(curve, count.measure), len(SUPPLY)),
         Group(producers, RateRule(count.grounds, Purpose.MINE, share)),
         *(Group(purpose_families(p), RateRule(count.grounds, p)) for p in others),
     ]
@@ -129,11 +133,18 @@ def family_quota(
 ) -> dict[str, int]:
     """Per family, its share of its group's count by the corpus count of each family. Each
     group draws one rounding of its expectation times ``mult``, in order. The ``towns``
-    already standing count inside the town quota."""
+    already standing count inside the town quota and take their group's ``per_town`` off
+    each later group."""
     out: dict[str, int] = {}
     for group in groups:
         n = stoch_round(rng, group.rule.expected() * mult)
         if group.families == (Purpose.TOWN,):
             n = max(0, n - towns)
+        n = max(0, n - group.per_town * towns)
         out.update(split(n, {f: float(sum(corpus.get(f, ()))) for f in group.families}))
     return out
+
+
+def paired(groups: Sequence[Group]) -> frozenset[str]:
+    """The families each new town's own objects count against."""
+    return frozenset(f for g in groups if g.per_town for f in g.families)

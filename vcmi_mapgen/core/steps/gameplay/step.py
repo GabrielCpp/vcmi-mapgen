@@ -1,7 +1,8 @@
 """GameplayStep: the player-zone pick, the sea objects, then every gameplay object placed
-against the vegetated field, in order: gate pairs, player towns, shipyards, the accent
-landmarks, the promised mines, then one map-wide pass over the neutral towns, mines,
-dwellings, banks and visitables. The pass holds each family at the corpus rate per tile, and
+against the vegetated field, in order: gate pairs, player towns, shipyards, each player
+town's own sawmill and ore pit, the accent landmarks, the promised mines, then one map-wide
+pass over the neutral towns with their own sawmill and ore pit, mines, dwellings, banks and
+visitables. The pass holds each family at the corpus rate per tile, and
 the objects already standing count inside it. A town may cover the zone's entrance bands and
 spill onto vegetation beyond it. Every player town is protected from then on, so no later
 object guards its entrance or walls in its start."""
@@ -44,6 +45,7 @@ from vcmi_mapgen.core.reading.promise import (
     promise_ways,
 )
 from vcmi_mapgen.core.reading.routes import route_map
+from vcmi_mapgen.core.reading.supply import supply_gaps
 from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
 from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
@@ -64,6 +66,7 @@ from vcmi_mapgen.core.steps.gameplay.result import (
 from vcmi_mapgen.core.steps.gameplay.sea_links import SeaLinks, sea_way
 from vcmi_mapgen.core.steps.gameplay.shipyards import Link, Shore, place_link, place_shipyards
 from vcmi_mapgen.core.steps.gameplay.siting import TOWN_MIN_AREA
+from vcmi_mapgen.core.steps.gameplay.supply import stand_pairs
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import LootZones, VegetationResult
 
@@ -122,6 +125,9 @@ class GameplayStep(PipelineStep):
     A player apart from a rival by land gets a shipyard whose sea lands on that rival's land,
     right after the shipyards of the zone plan, and the step warns when none fits. From then
     on no object closes the land tiles of its way to the rival town.
+
+    Every town owns a sawmill and an ore pit within ``NEAR`` tiles, stood right after the
+    towns and before any other mine near them, and the step warns about a town left short.
 
     Each player should reach a mine of each basic resource within ``PROMISE_DAYS``
     hero-days, and the step warns when one does not: the promised mines stand before the
@@ -187,6 +193,9 @@ class GameplayStep(PipelineStep):
         if 0 in indexes:
             self._place_shipyards(indexes[0], map_state, catalog)
             self._link_starts(catalog, indexes, map_state)
+        sites = _sites(indexes, self._loot)
+        towns = [o for s in sites for o in s.objs if o.purpose == Purpose.TOWN]
+        _ = stand_pairs(sites, site_variants(catalog), towns)
         self._place_landmarks(catalog, indexes, map_state)
         for line in self._keep_promise(catalog, indexes, map_state).warnings:
             print(f"  WARNING: mine promise: {line}")
@@ -196,6 +205,8 @@ class GameplayStep(PipelineStep):
         for line in self._keep_promise(catalog, indexes, map_state).warnings:
             print(f"  WARNING: mine promise repair: {line}")
         self._finish(catalog, indexes, map_state)
+        for line in supply_gaps(catalog, map_state.objs):
+            print(f"  WARNING: town supply: {line}")
         self._read_promise(catalog, map_state)
         self._ctx.provide(gates)
 
@@ -239,7 +250,8 @@ class GameplayStep(PipelineStep):
         plan = placement.plan(homes, sea, price())
         has_water = any(Terrain.WATER in row for grid in self._grids.values() for row in grid)
         picker = Picker(catalog, rng, has_water, self.subterrain)
-        short = placement.place(plan, picker, price)
+        variants = site_variants(catalog)
+        short = placement.place(plan, picker, price, lambda new: stand_pairs(sites, variants, new))
         self._log += [f"WARNING: gameplay shortfall: {line}" for line in short.lines()]
 
     def _keep_promise(

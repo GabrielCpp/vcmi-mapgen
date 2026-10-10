@@ -17,9 +17,11 @@ from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.mines import MapMeasure
+from vcmi_mapgen.core.steps.gameplay.allocate import site_variants
 from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.placer import Demand, Placement
+from vcmi_mapgen.core.steps.gameplay.supply import stand_pairs
 from vcmi_mapgen.corpus import gameplay, vegetation
 from vcmi_mapgen.corpus.maps import corpus_path, load_corpus_map
 from vcmi_mapgen.corpus.priors import load_priors
@@ -121,7 +123,8 @@ class OpenZonePlacer:
     def __call__(self, zone: OpenZone, seed: int) -> PlacedZone:
         """Place one zone of open land with no vegetation and a one-tile web at its top-left
         corner, outside any pipeline: a player town on the centroid when a player starts
-        there, then the zone's share of the map-wide pass. Returns the placed zone."""
+        there with its own sawmill and ore pit, then the zone's share of the map-wide pass.
+        Returns the placed zone."""
         ts, terrain, player = zone.ts, zone.terrain, zone.player
         w = max(x for x, _y in ts) + 1
         h = max(y for _x, y in ts) + 1
@@ -135,10 +138,15 @@ class OpenZonePlacer:
             ident = self.catalog.random_town()
             town = site.place(Purpose.TOWN, ident, site.centroid_order(ident))
             homes = [] if town is None else [town]
+        variants = site_variants(self.catalog)
+        _ = stand_pairs([site], variants, homes)
         rng = random.Random(seed)
         demand = Demand(MapMeasure(len(ts), 0), self.curve)
         placement = Placement(self.catalog, [site], self.effort, demand, rng)
-        _ = placement.place(placement.plan(homes, [], []), Picker(self.catalog, rng), list)
+        plan = placement.plan(homes, [], [])
+        _ = placement.place(
+            plan, Picker(self.catalog, rng), list, lambda new: stand_pairs([site], variants, new)
+        )
         size = max(w, h)
         grid = [[Terrain.GRASS] * size for _ in range(size)]
         state = MapState(size=size, terrain={0: grid}, objs=list(site.objs))
