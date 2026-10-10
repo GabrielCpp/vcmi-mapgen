@@ -235,7 +235,7 @@ class GameplayStep(PipelineStep):
         sites = _sites(indexes, self._loot)
         homes = self._view(indexes, map_state).player_towns
         measure = MapMeasure(land_area(map_state), len(homes))
-        demand = Demand(measure, self.priors.mines, self.density)
+        demand = Demand(measure, self.priors.mines, self.priors.towns, self.density)
         rng = random.Random(self.seed ^ PLACER_SALT)
         toll = self.priors.effort.toll
         families = Families.of(catalog)

@@ -122,7 +122,8 @@ uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
 `data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
 objects sit in corpus zones and in generated zones. `readings` generates maps and prints
-the map-math 8 readings beside the corpus median and quartiles. Its territory rows
+the map-math 8 readings beside the corpus median and quartiles. Each seed's line puts its
+resource mines and towns beside their corpus curves. Its territory rows
 compare the zones per player and per neutral territory, the doors per territory pair
 and the guard level at a door.
 

@@ -14,8 +14,8 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import ZoneSite
+from vcmi_mapgen.core.priors.counts import CountCurve
 from vcmi_mapgen.core.priors.effort import EffortPriors
-from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
     Families,
@@ -42,11 +42,12 @@ VISIT_RANK = 4
 
 @dataclass(frozen=True, slots=True)
 class Demand:
-    """What the pass asks of the map: its measure, the resource mine curve its measure reads,
-    and the density multiplier on every count."""
+    """What the pass asks of the map: its measure, the resource mine and town curves its
+    measure reads, and the density multiplier on every count."""
 
     measure: MapMeasure
-    curve: MineCurve
+    mines: CountCurve
+    towns: CountCurve
     density: float = 1.0
 
     @property
@@ -136,7 +137,7 @@ class Placement:
         grounds = [(len(s.ts), s.st) for s in self.sites]
         corpus = self.effort.families
         count = MapCount(grounds, demand.measure, map_resources(catalog, self.sites), corpus)
-        groups = group_rules(demand.curve, count)
+        groups = group_rules(demand.mines, demand.towns, count)
         quota = family_quota(groups, corpus, demand.density, len(homes), self.rng)
         band_of = self.effort.band
         plan = BandPlan(self.effort.families, band_of, demand.players, self.rng)

@@ -6,25 +6,25 @@ from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.priors.markov import MarkovTables
+from vcmi_mapgen.corpus.counts import MINES_FILE, MINES_SOURCE, TOWNS_FILE, TOWNS_SOURCE, save_curve
 from vcmi_mapgen.corpus.effort import save_effort, tuned_effort
 from vcmi_mapgen.corpus.gameplay import save_gameplay
 from vcmi_mapgen.corpus.gates import save_gate_stats
 from vcmi_mapgen.corpus.macro import save_macro
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.markov import save_inside, save_tables
+from vcmi_mapgen.corpus.mine.counts import mine_curve, town_curve
 from vcmi_mapgen.corpus.mine.effort import mine_effort
 from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
 from vcmi_mapgen.corpus.mine.macro import mine_macro
 from vcmi_mapgen.corpus.mine.markov import learn, learn4, learn_inside
-from vcmi_mapgen.corpus.mine.mines import mine_curve
 from vcmi_mapgen.corpus.mine.places import map_players, mine_places, place_labels
 from vcmi_mapgen.corpus.mine.territories import mine_territories
 from vcmi_mapgen.corpus.mine.tiler import corpus_tile_grids
 from vcmi_mapgen.corpus.mine.tiler import learn as learn_tiler
 from vcmi_mapgen.corpus.mine.vegetation import mine as mine_vegetation
 from vcmi_mapgen.corpus.mine.water import mine_water
-from vcmi_mapgen.corpus.mines import save_mines
 from vcmi_mapgen.corpus.places import save_places
 from vcmi_mapgen.corpus.territories import save_territories
 from vcmi_mapgen.corpus.tiler import save_tiler
@@ -103,9 +103,10 @@ def _territories(m: MineInput) -> None:
     )
 
 
-def _mines(m: MineInput) -> None:
+def _counts(m: MineInput) -> None:
     players = [map_players(m.h3m_dir, name).players for name in m.names]
-    save_mines(m.pp_dir, mine_curve(m.catalog, m.maps, players))
+    save_curve(m.pp_dir, MINES_FILE, MINES_SOURCE, mine_curve(m.catalog, m.maps, players))
+    save_curve(m.pp_dir, TOWNS_FILE, TOWNS_SOURCE, town_curve(m.catalog, m.maps, players))
 
 
 MINERS: dict[str, Callable[[MineInput], None]] = {
@@ -120,7 +121,7 @@ MINERS: dict[str, Callable[[MineInput], None]] = {
     "effort": _effort,
     "water": _water,
     "territories": _territories,
-    "mines": _mines,
+    "counts": _counts,
 }
 
 

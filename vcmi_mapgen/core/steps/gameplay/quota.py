@@ -2,9 +2,9 @@
 the rule the group rules choose, times a density multiplier, then per family by the corpus
 count of each family the map can offer.
 
-The resource mines follow the corpus curve over the map's land area and player count. The
-weekly producers follow the mine rate per tile times their corpus share of the mines. Every
-other purpose follows its own corpus rate per tile."""
+The towns and the resource mines follow their corpus curves over the map's land area and
+player count. The weekly producers follow the mine rate per tile times their corpus share of
+the mines. Every other purpose follows its own corpus rate per tile."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from typing import Protocol
 
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.intensity import density, stoch_round
+from vcmi_mapgen.core.priors.counts import CountCurve
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.families import TOP_LEVEL, dwelling_family, mine_family
 from vcmi_mapgen.core.reading.mines import RESOURCE_MINES, MapMeasure
 from vcmi_mapgen.core.reading.supply import SUPPLY
@@ -54,9 +54,9 @@ class RateRule:
 
 @dataclass(frozen=True, slots=True)
 class CurveRule:
-    """The resource mine curve at the map's measure."""
+    """A count curve at the map's measure."""
 
-    curve: MineCurve
+    curve: CountCurve
     measure: MapMeasure
 
     def expected(self) -> float:
@@ -110,19 +110,19 @@ def purpose_families(purpose: str) -> tuple[str, ...]:
     return (purpose,)
 
 
-def group_rules(curve: MineCurve, count: MapCount) -> list[Group]:
+def group_rules(mines: CountCurve, towns: CountCurve, count: MapCount) -> list[Group]:
     """Every group in drawing order, each with the rule that counts it."""
     offered = [mine_family(r) for r in sorted(count.resources)]
     supplied = {mine_family(r) for r in SUPPLY}
     mines_of = {mine_family(r) for r in RESOURCE_MINES}
     resource = tuple(f for f in offered if f in mines_of and f not in supplied)
     producers = tuple(f for f in offered if f not in mines_of)
-    mines = count.weight(offered)
-    share = count.weight(producers) / mines if mines > 0 else 0.0
+    weight = count.weight(offered)
+    share = count.weight(producers) / weight if weight > 0 else 0.0
     others = [p for p in RANKS if p not in (Purpose.TOWN, Purpose.MINE)]
     return [
-        Group((Purpose.TOWN,), RateRule(count.grounds, Purpose.TOWN)),
-        Group(resource, CurveRule(curve, count.measure), len(SUPPLY)),
+        Group((Purpose.TOWN,), CurveRule(towns, count.measure)),
+        Group(resource, CurveRule(mines, count.measure), len(SUPPLY)),
         Group(producers, RateRule(count.grounds, Purpose.MINE, share)),
         *(Group(purpose_families(p), RateRule(count.grounds, p)) for p in others),
     ]

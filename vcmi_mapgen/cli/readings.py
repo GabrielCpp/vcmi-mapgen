@@ -11,35 +11,45 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.reading.places import owners_of
 from vcmi_mapgen.core.reading.spread import Spread, columns
 from vcmi_mapgen.core.reading.vector import Vector, map_vector
 from vcmi_mapgen.corpus.maps import named_corpus_maps
-from vcmi_mapgen.corpus.mine.mines import map_mines
+from vcmi_mapgen.corpus.mine.counts import map_mines, map_towns
 from vcmi_mapgen.corpus.mine.places import map_players
 from vcmi_mapgen.corpus.priors import load_priors
 
 SECONDS = "seconds"
 MINES = "resource mines"
 CURVE = "mine curve"
+TOWNS = "towns"
+TOWN_CURVE = "town curve"
 
 type Columns = Mapping[str, Sequence[float]]
 type Named = tuple[str, MapState]
 
 
-def mine_reading(catalog: Catalog, state: MapState, players: int, curve: MineCurve) -> Vector:
-    """The resource mines on ``state`` beside the curve's expectation at its land and
-    ``players``."""
-    expected = curve.expected(land_area(state), players)
-    return {MINES: float(map_mines(catalog, state)), CURVE: expected}
+def count_reading(catalog: Catalog, state: MapState, players: int, priors: Priors) -> Vector:
+    """The resource mines and the towns on ``state``, each beside its curve's expectation at
+    the map's land and ``players``."""
+    land = land_area(state)
+    return {
+        MINES: float(map_mines(catalog, state)),
+        CURVE: priors.mines.expected(land, players),
+        TOWNS: float(map_towns(catalog, state)),
+        TOWN_CURVE: priors.towns.expected(land, players),
+    }
 
 
-def mine_line(seed: int, vector: Vector) -> str:
-    """One generated map's resource mines beside the curve's expectation."""
+def count_line(seed: int, vector: Vector) -> str:
+    """One generated map's resource mines and towns, each beside its curve's expectation."""
     mines, curve = vector[MINES], vector[CURVE]
-    return f"seed {seed}: {mines:.0f} resource mines, curve {curve:.1f}, ratio {mines / curve:.2f}"
+    towns, town_curve = vector[TOWNS], vector[TOWN_CURVE]
+    return (
+        f"seed {seed}: {mines:.0f} resource mines, curve {curve:.1f}, ratio {mines / curve:.2f};"
+        f" {towns:.0f} towns, curve {town_curve:.1f}, ratio {towns / town_curve:.2f}"
+    )
 
 
 def _generated(catalog: Catalog, priors: Priors, config: StepConfig) -> Vector:
@@ -50,21 +60,21 @@ def _generated(catalog: Catalog, priors: Priors, config: StepConfig) -> Vector:
     with contextlib.redirect_stdout(io.StringIO()):
         state = pipeline.run()
     seconds = time.perf_counter() - start
-    mines = mine_reading(catalog, state, config.players, priors.mines)
-    return {**map_vector(catalog, state, owners_of(state)), **mines, SECONDS: seconds}
+    counts = count_reading(catalog, state, config.players, priors)
+    return {**map_vector(catalog, state, owners_of(state)), **counts, SECONDS: seconds}
 
 
-def _corpus_vector(catalog: Catalog, h3m_dir: Path, curve: MineCurve, named: Named) -> Vector:
+def _corpus_vector(catalog: Catalog, h3m_dir: Path, priors: Priors, named: Named) -> Vector:
     name, state = named
     players = map_players(h3m_dir, name)
-    mines = mine_reading(catalog, state, players.players, curve)
-    return {**map_vector(catalog, state, players.owners), **mines}
+    counts = count_reading(catalog, state, players.players, priors)
+    return {**map_vector(catalog, state, players.owners), **counts}
 
 
-def _corpus(catalog: Catalog, settings: Settings, size: int, curve: MineCurve) -> list[Vector]:
+def _corpus(catalog: Catalog, settings: Settings, size: int, priors: Priors) -> list[Vector]:
     named = named_corpus_maps(settings.maps_dir)
     sized = [(name, state) for name, state in named if state.size == size] or named
-    return [_corpus_vector(catalog, settings.h3m_dir, curve, n) for n in sized]
+    return [_corpus_vector(catalog, settings.h3m_dir, priors, n) for n in sized]
 
 
 def _cell(spread: Spread | None) -> str:
@@ -94,8 +104,8 @@ def readings(catalog: Catalog, settings: Settings, seeds: Sequence[int], size: i
     generated = columns(vectors)
     print(f"generated {len(vectors)} maps")
     for seed, vector in zip(seeds, vectors, strict=True):
-        print(mine_line(seed, vector))
-    corpus_vectors = _corpus(catalog, settings, size, priors.mines)
+        print(count_line(seed, vector))
+    corpus_vectors = _corpus(catalog, settings, size, priors)
     corpus = columns(corpus_vectors)
     print(f"read {len(corpus_vectors)} corpus maps")
     for line in table_lines(corpus, generated):

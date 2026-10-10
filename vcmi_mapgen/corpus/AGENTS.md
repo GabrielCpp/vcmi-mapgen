@@ -12,7 +12,7 @@ Code here reads the corpus, loads and saves the priors, and compares the corpus 
 - `gameplay.py`: `load_gameplay` and `save_gameplay` over the per-level gameplay statistics.
 - `macro.py`: `load_macro` and `save_macro` over `data/pp/macro_stats.json` and its underground twin.
 - `markov.py`: `load_tables` and `save_tables` over `data/pp/markov_<level>.json`, and `load_inside` and `save_inside` over `data/pp/markov_places_<level>.json`.
-- `mines.py`: `load_mines` and `save_mines` over `data/pp/mines.json`, the resource mine curve.
+- `counts.py`: `load_curve` and `save_curve` over `data/pp/mines.json`, the resource mine curve, and `data/pp/towns.json`, the town curve.
 - `places.py`: `load_places` and `save_places` over `data/pp/place_stats.json` and its underground twin. Each `PlaceContent` row is saved as `[role, hop, area, rewards, value, fixed, guards]`, and the road statistics under `roads`.
 - `territories.py`: `load_territories` and `save_territories` over `data/pp/territory_stats.json`, one `TerritoryStats` per level.
 - `tiler.py`: `load_tiler` and `save_tiler` over `data/pp/tiler.json`, the terrain and the road frame tables. The export and the PNG renderer load it. No step does.
