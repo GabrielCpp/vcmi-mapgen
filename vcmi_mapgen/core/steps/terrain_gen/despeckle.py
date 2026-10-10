@@ -4,6 +4,10 @@ reads as coherent regions and does not fragment the map into unplayable sliver z
 import collections
 from collections.abc import Collection
 from dataclasses import dataclass
+from typing import cast
+
+import numpy as np
+from numpy.typing import NDArray
 
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -19,24 +23,25 @@ _NB4 = ((1, 0), (-1, 0), (0, 1), (0, -1))
 def _thin_tiles(ids: list[list[int]], thin_drawable: Collection[int]) -> list[Tile]:
     """Tiles of a terrain outside ``thin_drawable`` that belong to no 2x2 same-terrain
     square. Off-map tiles count as the same terrain, as the tiler reads them."""
-    H, W = len(ids), len(ids[0])
+    grid = np.array(ids, dtype=np.int64)
+    padded = np.pad(grid, 1, constant_values=-1)
+    a, b, c, d = padded[:-1, :-1], padded[1:, :-1], padded[:-1, 1:], padded[1:, 1:]
+    top = np.maximum(np.maximum(a, b), np.maximum(c, d))
+    square = np.logical_and(
+        np.logical_and(_blank_or(a, top), _blank_or(b, top)),
+        np.logical_and(_blank_or(c, top), _blank_or(d, top)),
+    )
+    thick = np.logical_or(
+        np.logical_or(square[:-1, :-1], square[1:, :-1]),
+        np.logical_or(square[:-1, 1:], square[1:, 1:]),
+    )
+    thin = np.logical_and(np.logical_not(thick), np.isin(grid, list(thin_drawable), invert=True))
+    ys, xs = np.nonzero(thin)
+    return list(zip(cast(list[int], xs.tolist()), cast(list[int], ys.tolist()), strict=True))
 
-    def same(xs: int, ys: int, t: int) -> bool:
-        return not (0 <= xs < W and 0 <= ys < H) or ids[ys][xs] == t
 
-    thin: list[Tile] = []
-    for y in range(H):
-        for x in range(W):
-            t = ids[y][x]
-            if t in thin_drawable:
-                continue
-            if not any(
-                all(same(xs + dx, ys + dy, t) for dx in (0, 1) for dy in (0, 1))
-                for xs in (x - 1, x)
-                for ys in (y - 1, y)
-            ):
-                thin.append((x, y))
-    return thin
+def _blank_or(corner: NDArray[np.int64], top: NDArray[np.int64]) -> NDArray[np.bool_]:
+    return np.logical_or(np.equal(corner, -1), np.equal(corner, top))
 
 
 def keep_patch(tiles: Collection[Tile], min_patch: int = MIN_TERRAIN_PATCH) -> bool:
