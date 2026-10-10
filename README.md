@@ -123,7 +123,9 @@ is one. `--densities` prints the per-terrain gameplay densities instead. `extrac
 `data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
 objects sit in corpus zones and in generated zones. `readings` generates maps and prints
 the map-math 8 readings beside the corpus median and quartiles. Each seed's line puts its
-resource mines and towns beside their corpus curves. Its territory rows
+resource mines and towns beside their corpus curves. It then counts the players whose way
+out repeats a rare resource before meeting every one, and the share of rare mines with one
+of their resource within 10 tiles. Its territory rows
 compare the zones per player and per neutral territory, the doors per territory pair
 and the guard level at a door.
 

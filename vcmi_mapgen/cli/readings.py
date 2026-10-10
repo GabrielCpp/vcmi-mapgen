@@ -13,8 +13,10 @@ from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.reading.places import owners_of
+from vcmi_mapgen.core.reading.promise import player_maps
 from vcmi_mapgen.core.reading.spread import Spread, columns
 from vcmi_mapgen.core.reading.vector import Vector, map_vector
+from vcmi_mapgen.core.reading.way import close_share, player_ways, rare_mines
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.mine.counts import map_mines, map_towns
 from vcmi_mapgen.corpus.mine.places import map_players
@@ -25,6 +27,8 @@ MINES = "resource mines"
 CURVE = "mine curve"
 TOWNS = "towns"
 TOWN_CURVE = "town curve"
+CLOSE_RARE = "close rare mines"
+REPEATS = "repeating ways"
 
 type Columns = Mapping[str, Sequence[float]]
 type Named = tuple[str, MapState]
@@ -39,16 +43,28 @@ def count_reading(catalog: Catalog, state: MapState, players: int, priors: Prior
         CURVE: priors.mines.expected(land, players),
         TOWNS: float(map_towns(catalog, state)),
         TOWN_CURVE: priors.towns.expected(land, players),
+        CLOSE_RARE: close_share(catalog, state.objs),
     }
 
 
+def way_reading(catalog: Catalog, state: MapState, priors: Priors) -> Vector:
+    """The players whose way out repeats a rare resource before it meets every one the map
+    offers."""
+    offered = {res for res, _o in rare_mines(catalog, state.objs)}
+    ways = player_ways(catalog, state.objs, player_maps(catalog, state, priors.effort.toll))
+    return {REPEATS: float(sum(w.repeat(offered) is not None for w in ways))}
+
+
 def count_line(seed: int, vector: Vector) -> str:
-    """One generated map's resource mines and towns, each beside its curve's expectation."""
+    """One generated map's resource mines and towns, each beside its curve's expectation,
+    then its repeating ways and its share of rare mines with one of their resource close
+    by."""
     mines, curve = vector[MINES], vector[CURVE]
     towns, town_curve = vector[TOWNS], vector[TOWN_CURVE]
     return (
         f"seed {seed}: {mines:.0f} resource mines, curve {curve:.1f}, ratio {mines / curve:.2f};"
-        f" {towns:.0f} towns, curve {town_curve:.1f}, ratio {towns / town_curve:.2f}"
+        f" {towns:.0f} towns, curve {town_curve:.1f}, ratio {towns / town_curve:.2f};"
+        f" {vector.get(REPEATS, 0):.0f} ways repeat, close rare share {vector[CLOSE_RARE]:.2f}"
     )
 
 
@@ -61,7 +77,8 @@ def _generated(catalog: Catalog, priors: Priors, config: StepConfig) -> Vector:
         state = pipeline.run()
     seconds = time.perf_counter() - start
     counts = count_reading(catalog, state, config.players, priors)
-    return {**map_vector(catalog, state, owners_of(state)), **counts, SECONDS: seconds}
+    ways = way_reading(catalog, state, priors)
+    return {**map_vector(catalog, state, owners_of(state)), **counts, **ways, SECONDS: seconds}
 
 
 def _corpus_vector(catalog: Catalog, h3m_dir: Path, priors: Priors, named: Named) -> Vector:

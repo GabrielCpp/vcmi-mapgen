@@ -110,10 +110,14 @@ class BandPlan:
         for cell in standing:
             _take(cells, cell)
         return [
-            Slot(family, p, b, _target(self.rng, days, b, self.band_of))
+            Slot(family, p, b, self.target(days, b))
             for (p, b), k in sorted(cells.items())
             for _ in range(k)
         ]
+
+    def target(self, days: Sequence[int], band: int) -> int:
+        """A target in days inside ``band``, drawn by the corpus count per day ``days``."""
+        return _target(self.rng, days, band, self.band_of)
 
 
 def slot_order(slots: Sequence[Slot], ranks: Sequence[str]) -> list[Slot]:

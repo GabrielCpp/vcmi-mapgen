@@ -73,7 +73,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       family and the days from the nearest home to reach it (`families.py`). It splits
       the walkable land into territories at the guards and gates, with the doors
       between them and the players that own them (`territories.py`). It measures each
-      town's tiles to its nearest sawmill and ore pit (`supply.py`).
+      town's tiles to its nearest sawmill and ore pit (`supply.py`). It reads each
+      player's way out to the rare mines, where it repeats a resource, and the rare mines
+      with one of their resource close by (`way.py`).
     - `steps/terrain_gen/`: the places terrain model. It lays out a place graph and
       paints each place. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.

@@ -99,12 +99,9 @@ def guard_levels(catalog: Catalog, objs: Iterable[PlacedObject]) -> dict[Key, in
     }
 
 
-def reach_guard(catalog: Catalog, guards: Mapping[Key, int], obj: PlacedObject) -> int:
-    """The level of the strongest of ``guards`` next to a door of ``obj``, the guard a player
-    beats to count ``obj`` in reach. A mine or a town counts none, since its guard comes
-    with it."""
-    if purpose_of(catalog, obj) in UNGUARDED:
-        return 0
+def door_guard(guards: Mapping[Key, int], obj: PlacedObject) -> int:
+    """The level of the strongest of ``guards`` next to a door of ``obj``, zero when none
+    is."""
     return max(
         (
             guards.get((d.level, d.x + dx, d.y + dy), 0)
@@ -114,6 +111,15 @@ def reach_guard(catalog: Catalog, guards: Mapping[Key, int], obj: PlacedObject) 
         ),
         default=0,
     )
+
+
+def reach_guard(catalog: Catalog, guards: Mapping[Key, int], obj: PlacedObject) -> int:
+    """The level of the strongest of ``guards`` next to a door of ``obj``, the guard a player
+    beats to count ``obj`` in reach. A mine or a town counts none, since its guard comes
+    with it."""
+    if purpose_of(catalog, obj) in UNGUARDED:
+        return 0
+    return door_guard(guards, obj)
 
 
 def family_days(

@@ -8,6 +8,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.reading.families import (
     FAR_DAYS,
+    door_guard,
     family_days,
     guard_levels,
     histogram,
@@ -49,3 +50,12 @@ def test_reach_counts_the_own_guard_of_all_but_a_mine(catalog: Catalog) -> None:
     objs = [_obj((d.x, d.y + 1), Purpose.GUARD, catalog.guard(4).kind, Role.VISIT) for d in near]
     guards = guard_levels(catalog, objs)
     assert (reach_guard(catalog, guards, mine), reach_guard(catalog, guards, shrine)) == (0, 4)
+
+
+def test_the_door_guard_of_a_mine_is_the_guard_next_to_its_door(catalog: Catalog) -> None:
+    sawmill = catalog.mines_by_resource("grass")["sawmill"][0]
+    mine = PlacedObject(30, 3, 0, Purpose.MINE, sawmill.kind, sawmill.footprint)
+    door = doors(mine)[0]
+    guard = _obj((door.x + 1, door.y + 1), Purpose.GUARD, catalog.guard(3).kind, Role.VISIT)
+    guards = guard_levels(catalog, [guard])
+    assert (door_guard(guards, mine), door_guard({}, mine)) == (3, 0)

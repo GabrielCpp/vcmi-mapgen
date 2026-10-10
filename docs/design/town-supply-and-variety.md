@@ -376,6 +376,11 @@ Claim check: the existing system follows all eight claims. The design keeps 5, r
    player on the same seeds meets every offered rare resource before a second of any, at
    most 10% of rare mines have one of their resource within 10 tiles, and the counts per
    resource are unchanged.
+   Measured at commit: the counts hold their quota on all 11 maps. Seed 6 holds one mercury
+   fewer than before, since the old deal overshot its quota by one. Seeds 1, 6 and 7 keep one
+   repeating way each (A13). Seed 8 has 20% of its rare mines close, from two sulfur mines
+   the promise stood for its two players before the turn runs. Seed 25 at 144 has no
+   repeating way and 6% close.
 4. **Gold in contested land.** Placing gold, the landmark check and the gold reading. Done
    when no gold mine stands within 8 days of a home, every gold mine meets the contest bound
    or is named in the shortfall, and the gold count is unchanged.
@@ -437,9 +442,13 @@ Claim check: the existing system follows all eight claims. The design keeps 5, r
     random". **If wrong**: Player's mine way, and done 3.
 13. **Assumption**: a mine stands near its target day often enough that dealing by target day
     gives the order the player meets. **Decided**: done 3 is read on the finished map, by
-    distance from each player town. **Basis**: none measured. Siting sorts tiles by band, then
-    by distance to the target day. **If wrong**: Rotating rare resources needs the order read
-    at standing time, not at planning time.
+    distance from each player town. The deal by target day was not enough, so the order is
+    also read at standing time: each rare slot takes its resource where it stands. **Basis**:
+    measured in slice 3. The days siting weighs leave out the guards the later steps add, so
+    a mine weighed at 2 days can read 30 on the finished map. Three of 11 maps keep one
+    player whose way repeats, from two mines a few days apart that swap order once those
+    guards stand. **If wrong**: Rotating rare resources needs the later guards priced while
+    the rare mines stand.
 14. **Assumption**: sawmills, ore pits and gold mines need no round robin. **Decided**:
     Rotating rare resources deals only mercury, sulfur, crystal and gems. **Basis**: the
     user's rule, "the round robin does not apply to ore pit, saw mill and gold mine". **If
