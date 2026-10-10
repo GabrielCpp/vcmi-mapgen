@@ -204,6 +204,7 @@ class Placement:
             siting.gold = GoldSpot.of(self.demand.enemies, self.effort.toll)
         guards = guard_levels(self.catalog, (o for s in self.sites for o in s.objs))
         siting.held.extend((f, o, reach_guard(self.catalog, guards, o)) for f, o in plan.standing)
+        picker.see(o for _f, o in plan.standing)
         towns = [s for s in plan.slots if family_purpose(s.family) == Purpose.TOWN]
         rest = [s for s in plan.slots if family_purpose(s.family) != Purpose.TOWN]
         before = {id(o) for o in self._towns()}

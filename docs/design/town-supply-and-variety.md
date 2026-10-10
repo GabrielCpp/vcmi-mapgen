@@ -390,6 +390,10 @@ Claim check: the existing system follows all eight claims. The design keeps 5, r
    warning (A15).
 5. **No repeats side by side.** Near repeat and the repeat reading. Done when the readings
    report shows at most 12% within 10 tiles and 4% within 6 on the same seeds.
+   Measured at commit: on seeds 1 to 10 at 72, 10.3% of the repeated visitables have a copy
+   of their kind within 10 tiles and 3.3% within 6, down from 15.9% and 5.2%. On seed 25 at
+   144 the shares are 11.6% and 2.4%, down from 18.9% and 7.3%. The corpus reads 9.9% and
+   2.9%. Seed 3 at 144 takes 39 s of CPU, one more than before (A8, A10).
 
 ## 7. Assumptions
 
@@ -427,7 +431,10 @@ Claim check: the existing system follows all eight claims. The design keeps 5, r
    nearest home, farthest first. **Basis**: none. **If wrong**: Gold spot.
 8. **Assumption**: a near-repeat factor of 0.1 per copy within 10 tiles brings the repeat
    share near the corpus. **Decided**: that factor, tuned in slice 5 against done 6.
-   **Basis**: none. The corpus shares are 10% and 3%. **If wrong**: Near repeat.
+   **Basis**: measured in slice 5. The factor alone moved the share within 10 tiles from
+   15.9% to 14.3%, because one draw served every tile of a site. Each group of tiles now
+   draws at its best tile, and the tiles with no copy near come first. Together they reach
+   10.3%. The corpus shares are 10% and 3%. **If wrong**: Near repeat.
 9. **Assumption**: the town curve fitted on all towns, player ones included, matches how the
    generator counts. **Decided**: the curve gives all towns, and the standing player towns
    come off it. **Basis**: the quota already counts standing towns inside the town count.

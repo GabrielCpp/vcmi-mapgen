@@ -214,7 +214,7 @@ class Siting:
         if self.gold is not None and slot.family == GOLD_FAMILY:
             return self._stand_gold(slot, purpose)
         groups = self._groups(slot, purpose)
-        picks: dict[tuple[ZoneSite, str], Pick | None] = {}
+        picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
         stops = self._stops(slot.family)
         for strict in (True, False) if stops is not None and groups else (False,):
             near = [g for g in groups if g[0] == groups[0][0]] if strict else groups
@@ -224,7 +224,7 @@ class Siting:
         return None
 
     def _stand_gold(self, slot: Slot, purpose: str) -> tuple[str, PlacedObject] | None:
-        picks: dict[tuple[ZoneSite, str], Pick | None] = {}
+        picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
         for loose in (False, True):
             groups = self._groups(slot, purpose, loose)
             stood = self._stand(slot.family, groups, (picks, None), False)
@@ -236,7 +236,7 @@ class Siting:
         self,
         dealt: str,
         groups: Sequence[Group],
-        seen: tuple[dict[tuple[ZoneSite, str], Pick | None], Sequence[Stop] | None],
+        seen: tuple[dict[tuple[ZoneSite, str, int], Pick | None], Sequence[Stop] | None],
         strict: bool,
     ) -> tuple[str, PlacedObject] | None:
         limit = len(self.sites) if family_purpose(dealt) == Purpose.MINE else MAX_SITES
@@ -267,27 +267,34 @@ class Siting:
         dealt: str,
         site: ZoneSite,
         rows: NDArray[np.intp],
-        seen: tuple[dict[tuple[ZoneSite, str], Pick | None], Sequence[Stop] | None],
+        seen: tuple[dict[tuple[ZoneSite, str, int], Pick | None], Sequence[Stop] | None],
         strict: bool,
     ) -> list[tuple[str, Pick, NDArray[np.intp]]]:
         picks, stops = seen
         if stops is None:
-            drawn = self._first(picks, site, [dealt])
+            drawn = self._first(picks, site, [dealt], cast(list[int], rows[:1].tolist())[0])
             return [] if drawn is None else [(*drawn, rows)]
         parts: dict[str, tuple[Pick, list[int]]] = {}
         for k in cast(list[int], rows.tolist()):
-            drawn = self._first(picks, site, self._turns(dealt, site, k, stops, strict))
+            drawn = self._first(picks, site, self._turns(dealt, site, k, stops, strict), k)
             if drawn is not None:
                 parts.setdefault(drawn[0], (drawn[1], []))[1].append(k)
         return [(f, p, np.array(ks, dtype=np.intp)) for f, (p, ks) in parts.items()]
 
     def _first(
-        self, picks: dict[tuple[ZoneSite, str], Pick | None], site: ZoneSite, families: list[str]
+        self,
+        picks: dict[tuple[ZoneSite, str, int], Pick | None],
+        site: ZoneSite,
+        families: list[str],
+        k: int,
     ) -> tuple[str, Pick] | None:
+        tiles = self.tiles
+        assert tiles is not None
         for family in families:
-            if (site, family) not in picks:
-                picks[site, family] = self.picker.pick(family, site.zone.terrain, site.st)
-            pick = picks[site, family]
+            if (site, family, k) not in picks:
+                at = tiles.keys[k]
+                picks[site, family, k] = self.picker.pick(family, site.zone.terrain, site.st, at)
+            pick = picks[site, family, k]
             if pick is not None:
                 return family, pick
         return None
@@ -331,9 +338,10 @@ class Siting:
         footing = shape(ZoneFooting(mine=True) if guard else footing_of(purpose))
         idents = smaller(site, pick.pool, pick.ident) if fallback else [pick.ident]
         for ident in idents:
-            obj = site.place(purpose, ident, centres, footing, guard or None)
+            spots = self.picker.clear_first(ident, site.lf.level, centres)
+            obj = site.place(purpose, ident, spots, footing, guard or None)
             if obj is not None:
-                self.picker.use(ident)
+                self.picker.use(ident, obj)
                 self.track(family, obj, guard)
                 return obj
         return None

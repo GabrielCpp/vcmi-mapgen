@@ -126,7 +126,9 @@ the map-math 8 readings beside the corpus median and quartiles. Each seed's line
 resource mines and towns beside their corpus curves. It then counts the players whose way
 out repeats a rare resource before meeting every one, and the share of rare mines with one
 of their resource within 10 tiles. Last come the gold mines, those within 8 days of a home
-and those no enemy reaches within 3 days of the first player. Its territory rows
+and those no enemy reaches within 3 days of the first player. The line ends with the
+share of repeated visitables with a copy of their kind within 10 tiles and within 6. The
+same two shares appear as rows beside the corpus spread. Its territory rows
 compare the zones per player and per neutral territory, the doors per territory pair
 and the guard level at a door.
 

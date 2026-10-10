@@ -15,6 +15,7 @@ from vcmi_mapgen.core.reading.contest import CONTEST, FAR_FLOOR, enemy_pairs, go
 from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.reading.places import owners_of
 from vcmi_mapgen.core.reading.promise import player_maps
+from vcmi_mapgen.core.reading.repeats import NEAR, SIDE, nearest_copies, repeat_share
 from vcmi_mapgen.core.reading.spread import Spread, columns
 from vcmi_mapgen.core.reading.vector import Vector, map_vector
 from vcmi_mapgen.core.reading.way import close_share, player_ways, rare_mines
@@ -33,6 +34,8 @@ REPEATS = "repeating ways"
 GOLD_MINES = "gold mines"
 GOLD_NEAR = "gold near home"
 GOLD_OPEN = "uncontested gold"
+NEAR_COPIES = "copies within 10"
+SIDE_COPIES = "copies within 6"
 
 type Columns = Mapping[str, Sequence[float]]
 type Named = tuple[str, MapState]
@@ -40,14 +43,18 @@ type Named = tuple[str, MapState]
 
 def count_reading(catalog: Catalog, state: MapState, players: int, priors: Priors) -> Vector:
     """The resource mines and the towns on ``state``, each beside its curve's expectation at
-    the map's land and ``players``."""
+    the map's land and ``players``, then the share of repeated visitables with a copy of
+    their kind within NEAR and within SIDE tiles."""
     land = land_area(state)
+    gaps = nearest_copies(catalog, state.objs)
     return {
         MINES: float(map_mines(catalog, state)),
         CURVE: priors.mines.expected(land, players),
         TOWNS: float(map_towns(catalog, state)),
         TOWN_CURVE: priors.towns.expected(land, players),
         CLOSE_RARE: close_share(catalog, state.objs),
+        NEAR_COPIES: repeat_share(gaps, NEAR),
+        SIDE_COPIES: repeat_share(gaps, SIDE),
     }
 
 
@@ -70,7 +77,8 @@ def way_reading(catalog: Catalog, state: MapState, priors: Priors) -> Vector:
 def count_line(seed: int, vector: Vector) -> str:
     """One generated map's resource mines and towns, each beside its curve's expectation,
     then its repeating ways, its share of rare mines with one of their resource close by,
-    and its gold mines with those near a home and those uncontested."""
+    its gold mines with those near a home and those uncontested, and its shares of repeated
+    visitables with a copy close by."""
     mines, curve = vector[MINES], vector[CURVE]
     towns, town_curve = vector[TOWNS], vector[TOWN_CURVE]
     return (
@@ -78,7 +86,8 @@ def count_line(seed: int, vector: Vector) -> str:
         f" {towns:.0f} towns, curve {town_curve:.1f}, ratio {towns / town_curve:.2f};"
         f" {vector.get(REPEATS, 0):.0f} ways repeat, close rare share {vector[CLOSE_RARE]:.2f};"
         f" {vector.get(GOLD_MINES, 0):.0f} gold, {vector.get(GOLD_NEAR, 0):.0f} near home,"
-        f" {vector.get(GOLD_OPEN, 0):.0f} uncontested"
+        f" {vector.get(GOLD_OPEN, 0):.0f} uncontested;"
+        f" copies within 10 {vector[NEAR_COPIES]:.2f}, within 6 {vector[SIDE_COPIES]:.2f}"
     )
 
 
