@@ -11,7 +11,6 @@ days the search under that ceiling needs.
 
 from __future__ import annotations
 
-import heapq
 import math
 from collections.abc import Iterator, Sequence
 from collections.abc import Set as AbstractSet
@@ -21,11 +20,10 @@ from typing import cast
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen.core.reading.effort_search import SLACK, STEPS, Grid, search
+from vcmi_mapgen.core.reading.effort_search import SLACK, STEPS, Grid, around, search
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot
 
 _MATCH = 1e-6
-AROUND = 3
 UNREACHED = -1
 
 
@@ -136,12 +134,14 @@ class EffortMap:
         least ``least`` on the way. The tiles within ``AROUND`` steps of ``spot`` are walked
         again around ``shut``. The days beyond them stand."""
         tile = self.flat.index(spot)
-        blocked = {self.flat.index(s) for s in shut if s.level == spot.level}
+        blocked = np.array(
+            [self.flat.index(s) for s in shut if s.level == spot.level], dtype=np.int64
+        )
         options: list[tuple[int, int, int]] = []
         for ceiling, days in self.days.items():
             if any(ceiling < c <= least for c in self.days):
                 continue
-            arrive = _around(self.flat, days, ceiling, tile, blocked)
+            arrive = around(self.flat.grid, days, ceiling, tile, blocked)
             if arrive < math.inf:
                 guard = max(ceiling, least)
                 options.append((self.toll[guard] + _whole(arrive), guard, _whole(arrive)))
@@ -228,45 +228,6 @@ def _beside(days: NDArray[np.float64]) -> NDArray[np.float64]:
     for dx, dy, _scale in STEPS:
         best = np.minimum(best, padded[:, 1 + dy : 1 + dy + rows, 1 + dx : 1 + dx + cols])
     return best
-
-
-def _around(
-    flat: _Flat, days: NDArray[np.float64], ceiling: int, tile: int, shut: set[int]
-) -> float:
-    rest, x = divmod(tile, flat.size)
-    base, y = divmod(rest, flat.size)
-    near = {
-        (base * flat.size + ny) * flat.size + nx
-        for ny in range(max(0, y - AROUND), min(flat.size, y + AROUND + 1))
-        for nx in range(max(0, x - AROUND), min(flat.size, x + AROUND + 1))
-    }
-    best = dict.fromkeys(near, math.inf)
-    heap: list[tuple[float, int]] = []
-    for t in near:
-        nx, ny = t % flat.size, t // flat.size % flat.size
-        edge = max(abs(nx - x), abs(ny - y)) == AROUND or days.item(t) <= SLACK
-        if edge and t not in shut and days.item(t) < math.inf:
-            best[t] = days.item(t)
-            heap.append((days.item(t), t))
-    heapq.heapify(heap)
-    while heap:
-        d, t = heapq.heappop(heap)
-        if d > best[t]:
-            continue
-        for n, scale in _neighbours(flat.size, t):
-            if (
-                n not in near
-                or n in shut
-                or not flat.grid.open.item(n)
-                or flat.grid.guard.item(n) > ceiling
-            ):
-                continue
-            same = flat.grid.water.item(n) == flat.grid.water.item(t)
-            arrive = d + flat.grid.cost.item(t) * scale if same else math.floor(d + SLACK) + 1.0
-            if arrive < best[n]:
-                best[n] = arrive
-                heapq.heappush(heap, (arrive, n))
-    return best[tile]
 
 
 def _before(
