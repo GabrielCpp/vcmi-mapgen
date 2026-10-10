@@ -5,6 +5,7 @@ A sprite that is not snug may still be sided: one closed tile beside its body.
 A tile is closed when a hero cannot stand on it."""
 
 from collections.abc import Callable
+from functools import cache
 
 from vcmi_mapgen.core.model import Footprint, Role, Tile
 
@@ -15,7 +16,13 @@ _SIDES = ((0, -1), (1, 0), (0, 1), (-1, 0))
 
 def solid_cells(fp: Footprint, anchor: Tile) -> list[tuple[Tile, Role]]:
     """The cells of ``fp`` at ``anchor`` a hero cannot walk under, with their roles."""
-    return [(t, role) for t, role in fp.at(*anchor) if role not in (Role.OVERLAY, Role.APPROACH)]
+    x, y = anchor
+    return [((x + dx, y + dy), role) for dx, dy, role in _solid(fp)]
+
+
+@cache
+def _solid(fp: Footprint) -> tuple[tuple[int, int, Role], ...]:
+    return tuple(c for c in fp.cells if c[2] not in (Role.OVERLAY, Role.APPROACH))
 
 
 def size_class(fp: Footprint) -> int:

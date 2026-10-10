@@ -247,16 +247,27 @@ class Siting:
         spread, own = np.divmod(code, ARRIVALS)
         order = cast(NDArray[np.intp], np.lexsort((r, target, band, own, guard, spread)))
         kept = order[(counted & (code < ARRIVALS))[order]]
-        tiers = cast(
-            list[list[int]], np.stack((spread, guard, own, tiles.site))[:, kept].T.tolist()
-        )
-        groups: dict[tuple[Tier, int], list[Tile]] = {}
-        for k, (s, g, o, i) in zip(cast(list[int], kept.tolist()), tiers, strict=True):
-            centres = groups.setdefault(((s, g, o), i), [])
-            if len(centres) < CENTRES:
-                _lv, x, y = tiles.keys[k]
-                centres.append((x, y))
-        return [(tier, self.sites[i], centres) for (tier, i), centres in groups.items()]
+        return self._grouped(tiles, kept, np.stack((spread, guard, own))[:, kept])
+
+    def _grouped(self, tiles: Tiles, kept: NDArray[np.intp], tier: Codes) -> list[Group]:
+        if len(kept) == 0:
+            return []
+        step = np.concatenate(([0], np.any(np.not_equal(tier[:, 1:], tier[:, :-1]), axis=0)))
+        key = np.cumsum(step) * len(self.sites) + tiles.site[kept]
+        _keys, first, member = np.unique(key, return_index=True, return_inverse=True)
+        by = np.argsort(member, kind="stable")
+        counts = np.bincount(member)
+        starts = cast(list[int], (np.cumsum(counts) - counts).tolist())
+        sizes = cast(list[int], np.minimum(counts, CENTRES).tolist())
+        heads = cast(list[int], tiles.site[kept[first]].tolist())
+        tiers = cast(list[list[int]], tier[:, first].T.tolist())
+        groups: list[Group] = []
+        for g in cast(list[int], np.argsort(first).tolist()):
+            ks = cast(list[int], kept[by[starts[g] : starts[g] + sizes[g]]].tolist())
+            centres = [(tiles.keys[k][1], tiles.keys[k][2]) for k in ks]
+            s, gd, o = tiers[g]
+            groups.append(((s, gd, o), self.sites[heads[g]], centres))
+        return groups
 
     def _spreads(self, family: str, level: int) -> Codes:
         rows, back = self._patterns(level)

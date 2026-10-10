@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Container, Iterable, Iterator
+from functools import cache
 
 from vcmi_mapgen.core.model import Footprint, PlacedObject, Role, Tile
 
@@ -77,10 +78,20 @@ def front_tiles(fp: Footprint, x: int, y: int) -> set[Tile]:
 def footprint_cells(fp: Footprint, ax: int, ay: int) -> tuple[list[Tile], list[Tile], Tile | None]:
     """(all_cells, blocking_cells, approach) of a footprint anchored at (ax, ay); approach is
     the tile a hero stands on to visit: below an entrance, or a visit cell itself."""
+    allc, blk, approach = _offsets(fp)
+    return (
+        [(ax + dx, ay + dy) for dx, dy in allc],
+        [(ax + dx, ay + dy) for dx, dy in blk],
+        None if approach is None else (ax + approach[0], ay + approach[1]),
+    )
+
+
+@cache
+def _offsets(fp: Footprint) -> tuple[tuple[Tile, ...], tuple[Tile, ...], Tile | None]:
     allc: list[Tile] = []
     blk: list[Tile] = []
     approach: Tile | None = None
-    for (tx, ty), role in fp.at(ax, ay):
+    for (tx, ty), role in fp.at(0, 0):
         allc.append((tx, ty))
         if role.blocks:
             blk.append((tx, ty))
@@ -88,4 +99,4 @@ def footprint_cells(fp: Footprint, ax: int, ay: int) -> tuple[list[Tile], list[T
             approach = (tx, ty + 1)
         elif role is Role.VISIT and approach is None:
             approach = (tx, ty)
-    return allc, blk, approach
+    return tuple(allc), tuple(blk), approach
