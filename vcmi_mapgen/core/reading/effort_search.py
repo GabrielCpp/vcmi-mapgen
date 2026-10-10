@@ -33,6 +33,15 @@ class Grid(NamedTuple):
     jump_to: NDArray[np.int64]
 
 
+class Ceilings(NamedTuple):
+    """The guard ceilings of an effort map, the best travel days under each, one row per
+    ceiling, and the days to beat a guard of each level."""
+
+    levels: NDArray[np.int64]
+    days: NDArray[np.float64]
+    toll: NDArray[np.int64]
+
+
 class _Run(NamedTuple):
     best: NDArray[np.float64]
     ceiling: int
@@ -148,7 +157,7 @@ def _window_shut(grid: Grid, tile: int, shut: NDArray[np.int64]) -> NDArray[np.b
 
 
 @njit
-def around(
+def _around(
     grid: Grid, days: NDArray[np.float64], ceiling: int, tile: int, shut: NDArray[np.int64]
 ) -> float:
     """The days to reach ``tile`` once ``shut`` blocks, the tiles within ``AROUND`` steps of
@@ -182,3 +191,26 @@ def around(
                 best[m] = arrive
                 heapq.heappush(heap, (arrive, m))
     return best[AROUND * span + AROUND]
+
+
+@njit
+def beside(
+    grid: Grid, ceilings: Ceilings, tile: int, least: int, shut: NDArray[np.int64]
+) -> tuple[int, int, int]:
+    """The cheapest total, guard level and travel days to reach ``tile`` once ``shut``
+    blocks, beating a guard of at least ``least`` on the way. The total is -1 when no
+    ceiling reaches ``tile``."""
+    levels = ceilings.levels
+    best: tuple[int, int, int] = (-1, 0, 0)
+    for i in range(levels.shape[0]):
+        ceiling = int(levels[i])
+        if np.any((levels > ceiling) & (levels <= least)):
+            continue
+        arrive = _around(grid, ceilings.days[i], ceiling, tile, shut)
+        if arrive < math.inf:
+            guard = max(ceiling, least)
+            whole = math.ceil(arrive - SLACK)
+            option = (int(ceilings.toll[guard]) + whole, guard, whole)
+            if best[0] < 0 or option < best:
+                best = option
+    return best

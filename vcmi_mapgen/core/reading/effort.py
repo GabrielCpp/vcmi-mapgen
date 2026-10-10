@@ -20,7 +20,7 @@ from typing import cast
 import numpy as np
 from numpy.typing import NDArray
 
-from vcmi_mapgen.core.reading.effort_search import SLACK, STEPS, Grid, around, search
+from vcmi_mapgen.core.reading.effort_search import SLACK, STEPS, Ceilings, Grid, beside, search
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot
 
 _MATCH = 1e-6
@@ -123,6 +123,7 @@ class EffortMap:
     flat: _Flat
     days: dict[int, NDArray[np.float64]]
     toll: Sequence[int]
+    ceilings: Ceilings
 
     def at(self, spot: Spot, least: int = 0) -> Effort | None:
         """The effort to reach ``spot``, beating a guard of at least ``least`` on the way."""
@@ -133,22 +134,13 @@ class EffortMap:
         """The effort to reach ``spot`` once an object blocks ``shut``, beating a guard of at
         least ``least`` on the way. The tiles within ``AROUND`` steps of ``spot`` are walked
         again around ``shut``. The days beyond them stand."""
-        tile = self.flat.index(spot)
         blocked = np.array(
             [self.flat.index(s) for s in shut if s.level == spot.level], dtype=np.int64
         )
-        options: list[tuple[int, int, int]] = []
-        for ceiling, days in self.days.items():
-            if any(ceiling < c <= least for c in self.days):
-                continue
-            arrive = around(self.flat.grid, days, ceiling, tile, blocked)
-            if arrive < math.inf:
-                guard = max(ceiling, least)
-                options.append((self.toll[guard] + _whole(arrive), guard, _whole(arrive)))
-        if not options:
-            return None
-        total, guard, whole = min(options)
-        return Effort(days=whole, guard=guard, total=total)
+        total, guard, whole = beside(
+            self.flat.grid, self.ceilings, self.flat.index(spot), least, blocked
+        )
+        return None if total < 0 else Effort(days=whole, guard=guard, total=total)
 
     def visit(self, door: Spot, least: int = 0) -> Effort | None:
         """The effort to visit the object whose entrance is ``door``: a hero steps on it from
@@ -272,8 +264,14 @@ def effort_map(route: RouteMap, homes: Sequence[Spot], toll: Sequence[int]) -> E
     flat = _flat(route)
     sources = [flat.index(h) for h in homes]
     colours = sorted(set(route.gates.values())) or [-2]
-    days: dict[int, NDArray[np.float64]] = {}
-    for ceiling in [0, *route.guard_levels()]:
-        runs = [_search(flat, sources, ceiling, colour) for colour in colours]
-        days[ceiling] = np.minimum.reduce(runs)
-    return EffortMap(flat=flat, days=days, toll=toll)
+    levels = [0, *route.guard_levels()]
+    stack = np.array(
+        [
+            np.minimum.reduce([_search(flat, sources, ceiling, colour) for colour in colours])
+            for ceiling in levels
+        ],
+        dtype=np.float64,
+    )
+    days = {ceiling: stack[i] for i, ceiling in enumerate(levels)}
+    ceilings = Ceilings(np.array(levels, dtype=np.int64), stack, np.array(toll, dtype=np.int64))
+    return EffortMap(flat=flat, days=days, toll=toll, ceilings=ceilings)
