@@ -188,6 +188,11 @@ class Catalog(Protocol):
         """The border gate and its keymaster tent, one pair per key colour, in colour order."""
         ...
 
+    def border_guards(self) -> list[tuple[Identity, Identity]]:
+        """The one-tile border guard that vanishes once opened and its keymaster tent, one pair
+        per key colour, in colour order."""
+        ...
+
     def subterranean_gate(self) -> Identity:
         """The gate that joins the surface to the underground."""
         ...

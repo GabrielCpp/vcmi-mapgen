@@ -434,7 +434,7 @@ class GatedPlacer:
                 continue
             if not self._gate_cells_fit(zone, cells, interactive):
                 continue
-            entry = _find_entry_tile(interactive, cells, zone.ts)
+            entry = _find_entry_tile(interactive, cells, zone.ts - self.blocked)
             if entry is None or _entry_tile_has_stray_leak(
                 entry, cells, zone.ts, self.all_ts, self.blocked
             ):
@@ -459,19 +459,24 @@ class GatedPlacer:
             and 0 <= nb[1] < h
         )
 
+    def _doors(self) -> Iterator[tuple[Identity, Identity]]:
+        for doors in (self.catalog.border_gates(), self.catalog.border_guards()):
+            if doors:
+                yield doors[self.gate_count % len(doors)]
+
     def _place_gate(self, zone: _LootZone, aim: _GateAim) -> bool:
-        gates = self.catalog.border_gates()
-        gate_ident, key_ident = gates[self.gate_count % len(gates)]
-        if self._find_ext_spot(key_ident, zone.ext_pools) is None:
-            return False
-        sited = self._seal_gate(zone, aim, gate_ident)
-        if sited is None:
-            return False
-        if not self._place_ext_partner(zone.zid, zone.ext_pools, key_ident, Purpose.QUEST_GATE):
-            return False
-        self.gate_count += 1
-        self._record_access(zone.zid, sited)
-        return True
+        for gate_ident, key_ident in self._doors():
+            if self._find_ext_spot(key_ident, zone.ext_pools) is None:
+                continue
+            sited = self._seal_gate(zone, aim, gate_ident)
+            if sited is None:
+                continue
+            if not self._place_ext_partner(zone.zid, zone.ext_pools, key_ident, Purpose.QUEST_GATE):
+                return False
+            self.gate_count += 1
+            self._record_access(zone.zid, sited)
+            return True
+        return False
 
     def _seal_gate(self, zone: _LootZone, aim: _GateAim, gate_ident: Identity) -> _Sited | None:
         mark = self.cover.mark()
@@ -482,7 +487,7 @@ class GatedPlacer:
                 if self._commit_gate(gate_ident, g, sited.cells, sited.interactive):
                     doorstep = self._doorstep(zone.ts, sited.interactive, frozenset())
                     self._seal(zone, sited, doorstep if keep_doorstep else frozenset())
-                    if self._finish(zone, sited) and self._doorstep(
+                    if self._finish(zone, sited, blocked) and self._doorstep(
                         zone.ts, sited.interactive, frozenset()
                     ):
                         return sited
@@ -510,7 +515,7 @@ class GatedPlacer:
             if fp_coords is None:
                 continue
             mono_cells = list(FP.anchored_cells(mono_ident.footprint, *t))
-            entry = _find_entry_tile(fp_coords, mono_cells, zone.ts)
+            entry = _find_entry_tile(fp_coords, mono_cells, zone.ts - self.blocked)
             if entry is None or _entry_tile_has_stray_leak(
                 entry, mono_cells, zone.ts, self.all_ts, self.blocked
             ):
@@ -541,12 +546,13 @@ class GatedPlacer:
             return False
         int_t, sited = found
         n0 = len(self.objs)
+        before = frozenset(self.blocked)
         spec = PlaceSpec(Purpose.TRANSPORT, None, ident=mono_ident, interactive_only=True)
         if not place_one(self._target(zone), spec, *int_t):
             return False
         self.blocked |= FP.blocking_cells(self.objs[n0:])
         self._seal(zone, sited, frozenset())
-        if not self._finish(zone, sited):
+        if not self._finish(zone, sited, before):
             return False
         if not self._place_ext_partner(zone.zid, zone.ext_pools, mono_ident, Purpose.TRANSPORT):
             return False
@@ -586,7 +592,7 @@ class GatedPlacer:
         for t in sorted(zone.ts):
             if t in skip or t in self.cover.claims or t in self.blocked:
                 continue
-            if any(nb in ext_ts for nb in _nbs(t)):
+            if any(nb in ext_ts and nb not in self.blocked for nb in _nbs(t)):
                 _ = self._seal_tile(t, zone.terrain, zone.rng)
 
     def _close_leak(
@@ -621,9 +627,12 @@ class GatedPlacer:
                 if self._close_leak(zone, t, nb, keep, doorstep):
                     break
 
-    def _finish(self, zone: _LootZone, sited: _Sited) -> bool:
+    def _finish(self, zone: _LootZone, sited: _Sited, before: AbstractSet[Tile]) -> bool:
         walkable = (self.all_ts - self.blocked) - sited.interactive
-        return _reach8({sited.entry}, walkable) <= zone.ts
+        reached = _reach8({sited.entry}, walkable)
+        room = _reach8({sited.entry}, (zone.ts - before) - sited.interactive)
+        footprint = {(cx, cy) for cx, cy, _b in sited.cells}
+        return reached <= zone.ts and room - self.blocked - footprint <= reached
 
     def _place_ext_partner(
         self, zid: int, pools: Iterable[Sequence[ZoneRecord]], ident: Identity, purpose: str

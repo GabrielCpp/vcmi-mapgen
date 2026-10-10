@@ -86,6 +86,8 @@ def index_of(objs: list[PlacedObject]) -> dict[tuple[int, Tile], list[Cover]]:
 _BEHIND_SPRITES = frozenset({Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD})
 _DECOR = frozenset({"", Purpose.DECORATION})
 _DOOR = frozenset({Role.ENTRANCE, Role.APPROACH})
+_PASSAGES = frozenset({Purpose.QUEST_GATE, Purpose.TRANSPORT})
+_PICKUPS = frozenset({Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP})
 
 
 def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str | None:
@@ -94,8 +96,15 @@ def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str 
     approach tile and its sprite overlays the entrance, since that is its job. A pickup or a
     guard may sit partly behind another object's sprite, so an overlay over either is allowed.
     A decoration's sprite may overhang an entrance or its approach, as it does on most corpus
-    maps, but never a walk-on visit tile."""
+    maps, but never a walk-on visit tile. A pickup may stand on the approach of a gate or a
+    portal: the hero collects it from the passage and it leaves the tile."""
     if role is Role.APPROACH:
+        return None
+    if (
+        victim.role is Role.APPROACH
+        and victim.obj.purpose in _PASSAGES
+        and culprit.purpose in _PICKUPS
+    ):
         return None
     if role is Role.OVERLAY and culprit.purpose in _DECOR and victim.role in _DOOR:
         return None

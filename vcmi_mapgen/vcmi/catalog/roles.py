@@ -33,6 +33,7 @@ RANDOM_DWELLING = "avrcgen0"
 RANDOM_DWELLINGS = tuple(f"avrcgen{i}" for i in range(1, 8))
 PORTALS = ("avxmn2g0", "avxmn2o0", "avxmn2p0", "avxmn4b0")
 BORDER_GATES = tuple((f"avxbgt{i}0", f"avxkey{i}0") for i in range(8))
+BORDER_GUARDS = tuple((f"avxbor{i}0", f"avxkey{i}0") for i in range(8))
 SUBTERRANEAN_GATE = "avtcave"
 CROSSINGS: dict[str, Crossing] = {
     "borderGate": Crossing.GATE,

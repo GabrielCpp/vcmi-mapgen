@@ -126,6 +126,9 @@ class FakeCatalog:
     def border_gates(self) -> list[tuple[Identity, Identity]]:
         return [(self._role("border_gate"), self._role("keymaster"))]
 
+    def border_guards(self) -> list[tuple[Identity, Identity]]:
+        return [(self._role("border_guard"), self._role("keymaster"))]
+
     def subterranean_gate(self) -> Identity:
         return self._role("subterranean_gate")
 

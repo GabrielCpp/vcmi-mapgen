@@ -22,6 +22,7 @@ from vcmi_mapgen.core.placement.prizes import (
     hold_prize,
     place_boxes,
 )
+from vcmi_mapgen.core.placement.room import RoomRule
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.effort import Offer
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
@@ -118,6 +119,20 @@ def _blocking_decor(walk: _Walk, t: Tile) -> bool:
     return True
 
 
+def _passable_decor(walk: _Walk, t: Tile) -> bool:
+    if walk.target.cover.covers_at(t):
+        walk.target.cover.claim([t])
+        return True
+    pool = walk.target.catalog.decor(walk.zone.terrain, blocking=False, max_cells=1)
+    if not pool:
+        return False
+    o = PlacedObject.at(walk.target.rng.choice(pool), t, purpose="")
+    if not walk.target.cover.try_claim(o, [t]):
+        return False
+    walk.target.objs.append(o)
+    return True
+
+
 def _hero(walk: _Walk, t: Tile, kind: str) -> bool:
     ident = walk.heroes[kind]
     spec = PlaceSpec(Purpose.BONUS_TEMP, None, ident=ident, cache=True, interactive_only=True)
@@ -126,10 +141,11 @@ def _hero(walk: _Walk, t: Tile, kind: str) -> bool:
 
 def _loot(walk: _Walk, t: Tile) -> bool:
     """The first of these that lands at `t`: the rolled loot, a rare resource, any resource,
-    then a blocking decoration."""
+    a blocking decoration, then a passable decoration where a blocking one would split the
+    room."""
     specs = fallback_specs(walk.target.rng, walk.pools, walk.zone.offer)
     landed = any(place_one(walk.target, spec, *t) for spec in specs)
-    return landed or _blocking_decor(walk, t)
+    return landed or _blocking_decor(walk, t) or _passable_decor(walk, t)
 
 
 def _deepest(walk: _Walk, tiles: Sequence[Tile]) -> list[Tile]:
@@ -216,7 +232,6 @@ def fill_loot_zones(
 ) -> LootFill:
     """Fill every loot zone of one level."""
     zone_records, footprints, level_objs = level.zone_records, level.footprints, level.objs
-    cover = CoverIndex(level_objs, level.claims, level.rules)
     blocked: set[Tile] = {
         (cx, cy)
         for o in level_objs
@@ -224,6 +239,12 @@ def fill_loot_zones(
         if blk
     }
     interactive = {c for o in level_objs for c in FP.interactive_cells(o.footprint, o.x, o.y)}
+    reaches = {
+        zr.zid: frozenset(zr.ts - blocked - interactive)
+        for zr in zone_records
+        if zr.zid in footprints
+    }
+    cover = CoverIndex(level_objs, level.claims, (*level.rules, RoomRule(reaches.values())))
     all_ts: set[Tile] = set()
     for zr in zone_records:
         all_ts |= zr.ts
@@ -237,7 +258,7 @@ def fill_loot_zones(
         zone = FillZone(
             terrain=zr.terrain,
             st=level.gameplay[zr.terrain],
-            reach=frozenset(zr.ts - blocked - interactive),
+            reach=reaches[zr.zid],
             all_ts=all_ts,
             footprint=footprint,
             offer=level.offers[zr.zid],

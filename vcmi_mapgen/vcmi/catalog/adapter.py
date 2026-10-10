@@ -167,7 +167,13 @@ class VcmiCatalog:
         return self._kept([OB.identity_of(a) for a in RO.PORTALS])
 
     def border_gates(self) -> list[tuple[Identity, Identity]]:
-        pairs = [(OB.identity_of(g), OB.identity_of(k)) for g, k in RO.BORDER_GATES]
+        return self._keyed(RO.BORDER_GATES)
+
+    def border_guards(self) -> list[tuple[Identity, Identity]]:
+        return self._keyed(RO.BORDER_GUARDS)
+
+    def _keyed(self, kinds: tuple[tuple[str, str], ...]) -> list[tuple[Identity, Identity]]:
+        pairs = [(OB.identity_of(g), OB.identity_of(k)) for g, k in kinds]
         return [(g, k) for g, k in pairs if self._allows(g) and self._allows(k)]
 
     def subterranean_gate(self) -> Identity:
