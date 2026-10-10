@@ -1,8 +1,8 @@
 """Accent landmarks: every accent patch of ``LANDMARK_FLOOR`` tiles or more holds one gold
 mine, abandoned mine, permanent stat building or dwelling, its entrance on the patch. The
 first kind is drawn by the corpus patch mix, and the others follow in list order when the
-patch has no room for it. The patch the homes reach last holds a dragon dwelling instead,
-guarded at the top level."""
+patch has no room for it. A gold mine stands only where the gold rule admits it. The patch
+the homes reach last holds a dragon dwelling instead, guarded at the top level."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ from vcmi_mapgen.core.steps.gameplay.fallback import smaller
 LANDMARK_FLOOR = 20
 LANDMARK_SALT = 0x1A4D
 TOP_TIER = 7
+
+type Admits = Callable[[Spot], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,18 +121,26 @@ class PatchFooting:
 
 
 def place_landmark(
-    site: ZoneSite, patch: Accent, terrain: str, rng: random.Random
+    site: ZoneSite,
+    patch: Accent,
+    terrain: str,
+    rng: random.Random,
+    gold: Admits | None = None,
 ) -> PlacedObject | None:
     """Stand one landmark on ``patch``, whose ground is ``terrain``: the drawn kind first, a
-    smaller object of the same kind next, then the next kind."""
+    smaller object of the same kind next, then the next kind. A gold mine keeps its entrance
+    on the patch tiles ``gold`` admits, and gives way to the next kind when none is left."""
     for kind in kind_order(rng):
         pool = landmark_pool(site.catalog, kind, terrain)
-        if not pool:
+        tiles = patch.tiles
+        if kind == GOLD_MINE and gold is not None:
+            tiles = frozenset(t for t in tiles if gold(Spot(site.lf.level, *t)))
+        if not pool or not tiles:
             continue
-        footing = PatchFooting(patch.tiles, kind.purpose == Purpose.MINE)
+        footing = PatchFooting(tiles, kind.purpose == Purpose.MINE)
         first = rng.choice(pool)
         for ident in (first, *smaller(site, pool, first)):
-            obj = site.place(kind.purpose, ident, spot_order(patch.tiles, ident), footing)
+            obj = site.place(kind.purpose, ident, spot_order(tiles, ident), footing)
             if obj is not None:
                 return obj
     return None
@@ -172,16 +182,21 @@ def place_dragon(
 
 
 def place_landmarks(
-    site: ZoneSite, patches: Sequence[Accent], seed: int, skip: Accent | None = None
+    site: ZoneSite,
+    patches: Sequence[Accent],
+    seed: int,
+    skip: Accent | None = None,
+    gold: Admits | None = None,
 ) -> int:
     """Stand one landmark on each of the zone's patches at or above the floor but ``skip``,
-    the largest first, and return how many stood. A patch with no room logs why."""
+    the largest first, each gold mine on the tiles ``gold`` admits, and return how many
+    stood. A patch with no room logs why."""
     placed = 0
     big = [p for p in patches if p.place == site.zid and p.size >= LANDMARK_FLOOR and p != skip]
     for patch in sorted(big, key=lambda p: (-p.size, min(p.tiles))):
         x, y = min(patch.tiles)
         terrain = site.catalog.terrain_name(int(patch.terrain))
-        if place_landmark(site, patch, terrain, patch_rng(seed, site.lf.level, patch)):
+        if place_landmark(site, patch, terrain, patch_rng(seed, site.lf.level, patch), gold):
             placed += 1
             continue
         print(

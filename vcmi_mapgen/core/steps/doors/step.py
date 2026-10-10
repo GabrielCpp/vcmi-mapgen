@@ -21,6 +21,7 @@ from vcmi_mapgen.core.planning.door_levels import TOP_LEVEL, DoorSpread
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.territories import TerritoryStats
+from vcmi_mapgen.core.reading.contest import enemy_pairs
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.steps.doors.guards import (
@@ -31,7 +32,7 @@ from vcmi_mapgen.core.steps.doors.guards import (
     territory_areas,
 )
 from vcmi_mapgen.core.steps.doors.result import DoorGuard, DoorGuards, ShortPair
-from vcmi_mapgen.core.steps.doors.rivals import RivalDoor, cut_rivals, enemy_pairs
+from vcmi_mapgen.core.steps.doors.rivals import RivalDoor, cut_rivals
 from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlaceMap
 from vcmi_mapgen.core.steps.vegetation.result import LootZones
 
@@ -94,7 +95,7 @@ class DoorsStep(PipelineStep):
         map_state.add_objs([d.obj for d in posted])
         for line in self.log:
             print(f"  WARNING: {line}")
-        self._ctx.provide(DoorGuards(tuple(posted), cut.short, self._spreads))
+        self._ctx.provide(DoorGuards(tuple(posted), cut.short, self._spreads, tuple(pairs)))
 
     def _homes(self) -> dict[int, Spot]:
         homes: dict[int, Spot] = {}

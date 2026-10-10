@@ -1,6 +1,6 @@
 from vcmi_mapgen.core.reading.routes import RouteMap, Spot, with_guards
 from vcmi_mapgen.core.steps.doors.result import Shortfall, ShortPair
-from vcmi_mapgen.core.steps.doors.rivals import RivalDoor, cut_rivals, enemy_pairs
+from vcmi_mapgen.core.steps.doors.rivals import RivalDoor, cut_rivals
 
 STEP = 100 / 1500
 NO_DOCKS: frozenset[Spot] = frozenset()
@@ -64,11 +64,6 @@ def test_a_door_at_the_top_level_leaves_the_pair_short() -> None:
 def test_a_route_with_no_door_stays_short() -> None:
     cut = cut_rivals(CORRIDOR, TOLL, [], HOMES, [(0, 1)])
     assert cut.short == (ShortPair((0, 1), 2, Shortfall.OPEN),)
-
-
-def test_allies_are_never_cut_apart() -> None:
-    assert enemy_pairs(4, (0, 0, 1, 1)) == [(0, 2), (0, 3), (1, 2), (1, 3)]
-    assert enemy_pairs(3) == [(0, 1), (0, 2), (1, 2)]
 
 
 def test_a_door_guard_watches_the_land_around_it() -> None:

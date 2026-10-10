@@ -47,13 +47,6 @@ class RivalCut:
     short: tuple[ShortPair, ...]
 
 
-def enemy_pairs(players: int, teams: Sequence[int] = ()) -> list[tuple[int, int]]:
-    """Every pair of players on different teams. Without ``teams`` every other player is
-    an enemy."""
-    team = list(teams) or list(range(players))
-    return [(a, b) for a, b in itertools.combinations(range(players), 2) if team[a] != team[b]]
-
-
 def _watches(route: RouteMap, door: Spot, tile: Spot) -> bool:
     water = route.water[door.level]
     return (

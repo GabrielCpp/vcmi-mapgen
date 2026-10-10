@@ -356,7 +356,7 @@ Lookups:
 - Per-player days: `Siting._groups` reads `tiles.days[0]`, one column per player, and
   already takes the soonest over players (`siting.py:240`). Contest is one more column
   reduction. Resolved.
-- Teams: `enemy_pairs` (`core/steps/doors/rivals.py:50`) gives the enemy pairs from the
+- Teams: `enemy_pairs` (now `core/reading/contest.py`) gives the enemy pairs from the
   team list. The gameplay step needs the same team list handed in. Resolved, with the
   hand-off as new wiring.
 
@@ -384,6 +384,10 @@ Claim check: the existing system follows all eight claims. The design keeps 5, r
 4. **Gold in contested land.** Placing gold, the landmark check and the gold reading. Done
    when no gold mine stands within 8 days of a home, every gold mine meets the contest bound
    or is named in the shortfall, and the gold count is unchanged.
+   Measured at commit: the gold count holds on all 11 maps. No gold mine stands within 8
+   days of a home, the nearest at 31. Before, 14 of 23 gold mines stood past the contest
+   bound, the worst at 24 days. Now 4 do, on seeds 4, 5 and 7, each named in a gold
+   warning (A15).
 5. **No repeats side by side.** Near repeat and the repeat reading. Done when the readings
    report shows at most 12% within 10 tiles and 4% within 6 on the same seeds.
 
@@ -453,3 +457,11 @@ Claim check: the existing system follows all eight claims. The design keeps 5, r
     Rotating rare resources deals only mercury, sulfur, crystal and gems. **Basis**: the
     user's rule, "the round robin does not apply to ore pit, saw mill and gold mine". **If
     wrong**: Rare resources, and done 3.
+15. **Assumption**: the far floor counts the gold mine's own guard, as the gold reading
+    does. **Decided**: Gold spot adds the days of the level 6 gold guard to the walk before
+    it compares against the far floor. Where no tile within the contest bound takes a gold
+    mine, the mine stands on the far land past it and the step names it. **Basis**:
+    measured in slice 4. On walk days alone, 6 of 2,438 tiles on a 72 map lie past 8 days,
+    and five maps lost a gold mine. The level 6 guard costs 28 days, so every gold mine
+    passes the floor and the contest bound is what moves it. **If wrong**: Far floor,
+    Gold spot, and done 4.

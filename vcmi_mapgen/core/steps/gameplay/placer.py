@@ -1,7 +1,9 @@
 """The one map-wide pass over the neutral towns, mines, dwellings, banks and visitables. The
 map holds each family at the count its group rule gives, the players share each family band
 by band, and each object stands where its player reaches it at its target effort. Each
-neutral town takes its own sawmill and ore pit right after the towns, before any mine."""
+neutral town takes its own sawmill and ore pit right after the towns, before any mine. The
+gold mines serve no player and stand last among the mines, on contested land far from every
+home."""
 
 from __future__ import annotations
 
@@ -27,6 +29,7 @@ from vcmi_mapgen.core.reading.families import (
 )
 from vcmi_mapgen.core.reading.mines import RARE_MINE_RES, MapMeasure
 from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order
+from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.quota import (
     RANKS,
@@ -37,6 +40,7 @@ from vcmi_mapgen.core.steps.gameplay.quota import (
 )
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
 from vcmi_mapgen.core.steps.gameplay.siting import (
+    GOLD_FAMILY,
     Siting,
     place_slots,
     standing_cell,
@@ -52,12 +56,13 @@ RARE_FAMILIES = frozenset(mine_family(r) for r in RARE_MINE_RES)
 @dataclass(frozen=True, slots=True)
 class Demand:
     """What the pass asks of the map: its measure, the resource mine and town curves its
-    measure reads, and the density multiplier on every count."""
+    measure reads, the density multiplier on every count, and the pairs of enemy players."""
 
     measure: MapMeasure
     mines: CountCurve
     towns: CountCurve
     density: float = 1.0
+    enemies: tuple[tuple[int, int], ...] = ()
 
     @property
     def players(self) -> int:
@@ -167,12 +172,15 @@ class Placement:
         maps: Sequence[EffortMap],
     ) -> list[Slot]:
         """The slots of ``quota`` once the objects ``standing`` count against it: the rare
-        mines dealt in turn along each player's way, every other family band by band."""
+        mines dealt in turn along each player's way, the gold mines for no player, every other
+        family band by band."""
         band_of = self.effort.band
         plan = BandPlan(self.effort.families, band_of, self.demand.players, self.rng)
         slots: list[Slot] = []
         for family, n in quota.items():
-            if family not in RARE_FAMILIES:
+            if family == GOLD_FAMILY and self.demand.players:
+                slots += [Slot(family)] * max(0, n - len(standing.get(family, [])))
+            elif family not in RARE_FAMILIES:
                 cells = [standing_cell(o, maps, band_of) for o in standing.get(family, [])]
                 slots += plan.slots(family, n, cells, starts.get(family, 0))
         rare = {f: n for f, n in quota.items() if f in RARE_FAMILIES}
@@ -192,6 +200,8 @@ class Placement:
         takes its family from the turn where it stands."""
         reach = Reach(self.demand.players)
         siting = Siting(self.sites, picker, self.effort.band, self.rng, reach, self.effort.toll)
+        if self.demand.players:
+            siting.gold = GoldSpot.of(self.demand.enemies, self.effort.toll)
         guards = guard_levels(self.catalog, (o for s in self.sites for o in s.objs))
         siting.held.extend((f, o, reach_guard(self.catalog, guards, o)) for f, o in plan.standing)
         towns = [s for s in plan.slots if family_purpose(s.family) == Purpose.TOWN]

@@ -47,12 +47,13 @@ class ShortPair:
 @dataclass(frozen=True, slots=True)
 class DoorGuards:
     """Every guard DoorsStep posted, a class apart from the prize guards, the enemy pairs
-    the rival cut left under a week apart, and the door spread each level drew, which a
-    portal between two territories draws its guard from."""
+    the rival cut left under a week apart, the door spread each level drew, which a portal
+    between two territories draws its guard from, and every pair of enemy players."""
 
     doors: tuple[DoorGuard, ...] = ()
     short: tuple[ShortPair, ...] = ()
     spreads: Mapping[int, DoorSpread] = field(default_factory=dict[int, DoorSpread])
+    enemies: tuple[tuple[int, int], ...] = ()
 
     def on(self, level: int) -> tuple[DoorGuard, ...]:
         return tuple(d for d in self.doors if d.level == level)

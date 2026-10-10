@@ -11,6 +11,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.contest import CONTEST, FAR_FLOOR, enemy_pairs, gold_mines
 from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.reading.places import owners_of
 from vcmi_mapgen.core.reading.promise import player_maps
@@ -29,6 +30,9 @@ TOWNS = "towns"
 TOWN_CURVE = "town curve"
 CLOSE_RARE = "close rare mines"
 REPEATS = "repeating ways"
+GOLD_MINES = "gold mines"
+GOLD_NEAR = "gold near home"
+GOLD_OPEN = "uncontested gold"
 
 type Columns = Mapping[str, Sequence[float]]
 type Named = tuple[str, MapState]
@@ -49,22 +53,32 @@ def count_reading(catalog: Catalog, state: MapState, players: int, priors: Prior
 
 def way_reading(catalog: Catalog, state: MapState, priors: Priors) -> Vector:
     """The players whose way out repeats a rare resource before it meets every one the map
-    offers."""
+    offers, then the gold mines, those within the far floor of a home and those past the
+    contest bound."""
     offered = {res for res, _o in rare_mines(catalog, state.objs)}
-    ways = player_ways(catalog, state.objs, player_maps(catalog, state, priors.effort.toll))
-    return {REPEATS: float(sum(w.repeat(offered) is not None for w in ways))}
+    maps = player_maps(catalog, state, priors.effort.toll)
+    ways = player_ways(catalog, state.objs, maps)
+    gold = gold_mines(catalog, state.objs, maps, enemy_pairs(len(maps)))
+    return {
+        REPEATS: float(sum(w.repeat(offered) is not None for w in ways)),
+        GOLD_MINES: float(len(gold)),
+        GOLD_NEAR: float(sum(g.days is not None and g.days <= FAR_FLOOR for g in gold)),
+        GOLD_OPEN: float(sum(g.contest is None or g.contest > CONTEST for g in gold)),
+    }
 
 
 def count_line(seed: int, vector: Vector) -> str:
     """One generated map's resource mines and towns, each beside its curve's expectation,
-    then its repeating ways and its share of rare mines with one of their resource close
-    by."""
+    then its repeating ways, its share of rare mines with one of their resource close by,
+    and its gold mines with those near a home and those uncontested."""
     mines, curve = vector[MINES], vector[CURVE]
     towns, town_curve = vector[TOWNS], vector[TOWN_CURVE]
     return (
         f"seed {seed}: {mines:.0f} resource mines, curve {curve:.1f}, ratio {mines / curve:.2f};"
         f" {towns:.0f} towns, curve {town_curve:.1f}, ratio {towns / town_curve:.2f};"
-        f" {vector.get(REPEATS, 0):.0f} ways repeat, close rare share {vector[CLOSE_RARE]:.2f}"
+        f" {vector.get(REPEATS, 0):.0f} ways repeat, close rare share {vector[CLOSE_RARE]:.2f};"
+        f" {vector.get(GOLD_MINES, 0):.0f} gold, {vector.get(GOLD_NEAR, 0):.0f} near home,"
+        f" {vector.get(GOLD_OPEN, 0):.0f} uncontested"
     )
 
 

@@ -10,7 +10,7 @@ object guards its entrance or walls in its start."""
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -34,6 +34,7 @@ from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.pricing import effort_with
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.contest import enemy_pairs, gold_mines
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import Families, unguarded
 from vcmi_mapgen.core.reading.homes import town_homes
@@ -44,11 +45,13 @@ from vcmi_mapgen.core.reading.promise import (
     promise_from,
     promise_ways,
 )
-from vcmi_mapgen.core.reading.routes import route_map
+from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.reading.supply import supply_gaps
+from vcmi_mapgen.core.steps.doors.result import DoorGuards
 from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
 from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
+from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.landmark import (
     LANDMARK_FLOOR,
     dragon_order,
@@ -118,6 +121,8 @@ class GameplayStep(PipelineStep):
     tiles or more takes a landmark right after the towns, and the map-wide pass counts it.
     The patch the homes reach last takes a dragon dwelling behind a level-7 guard instead.
     The ``LootZones`` when present: no object stands in a zone chosen to be sealed.
+    The ``DoorGuards`` when present: their enemy pairs set the contest each gold mine stands
+    in. Without them every pair of players is enemies.
     The step publishes the player zones the zone plan picked, then commits the sea objects
     the zone plan drew. Gates stay off each player town's kept room.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
@@ -128,6 +133,10 @@ class GameplayStep(PipelineStep):
 
     Every town owns a sawmill and an ore pit within ``NEAR`` tiles, stood right after the
     towns and before any other mine near them, and the step warns about a town left short.
+
+    No gold mine stands within ``FAR_FLOOR`` hero-days of a home, and each stands on land
+    the first player to reach it holds by at most ``CONTEST`` days over its nearest enemy.
+    The step warns about each gold mine the final map breaks either rule for.
 
     Each player should reach a mine of each basic resource within ``PROMISE_DAYS``
     hero-days, and the step warns when one does not: the promised mines stand before the
@@ -168,6 +177,7 @@ class GameplayStep(PipelineStep):
         self._accents = Accents()
         self._loot = LootZones()
         self._sea_ways: dict[int, frozenset[Tile]] = {}
+        self._doors: DoorGuards | None = None
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -178,6 +188,7 @@ class GameplayStep(PipelineStep):
         self._content = ctx.get(ContentPlan, ContentPlan())
         self._accents = ctx.get(Accents, Accents())
         self._loot = ctx.get(LootZones, LootZones())
+        self._doors = ctx.get(DoorGuards)
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -207,11 +218,39 @@ class GameplayStep(PipelineStep):
         self._finish(catalog, indexes, map_state)
         for line in supply_gaps(catalog, map_state.objs):
             print(f"  WARNING: town supply: {line}")
-        self._read_promise(catalog, map_state)
+        maps = player_maps(catalog, map_state, self.priors.effort.toll)
+        enemies = self._enemies(len(maps))
+        for gold in gold_mines(catalog, map_state.objs, maps, enemies):
+            for line in gold.misses(bool(enemies)):
+                print(f"  WARNING: gold: {line}")
+        self._read_promise(catalog, map_state, maps)
         self._ctx.provide(gates)
 
-    def _read_promise(self, catalog: Catalog, map_state: MapState) -> None:
-        maps = player_maps(catalog, map_state, self.priors.effort.toll)
+    def _enemies(self, players: int) -> tuple[tuple[int, int], ...]:
+        if self._doors is None:
+            return tuple(enemy_pairs(players))
+        return self._doors.enemies
+
+    def _gold_rule(
+        self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
+    ) -> Callable[[Spot], bool]:
+        maps: list[EffortMap] = []
+        spot: list[GoldSpot] = []
+
+        def admits(at: Spot) -> bool:
+            if not spot:
+                view = self._view(indexes, map_state)
+                maps.extend(player_maps(catalog, view, self.priors.effort.toll))
+                spot.append(GoldSpot.of(self._enemies(len(maps)), self.priors.effort.toll))
+            if not maps:
+                return True
+            return spot[0].admits([None if (e := em.visit(at)) is None else e.total for em in maps])
+
+        return admits
+
+    def _read_promise(
+        self, catalog: Catalog, map_state: MapState, maps: Sequence[EffortMap]
+    ) -> None:
         for line in promise_from(catalog, map_state.objs, maps, BASIC_MINE_RES).broken():
             print(f"  WARNING: mine promise broken: {line}")
         ways = promise_ways(catalog, map_state.objs, maps, BASIC_MINE_RES)
@@ -223,11 +262,12 @@ class GameplayStep(PipelineStep):
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> None:
         dragon = self._place_dragon(catalog, indexes, map_state)
+        gold = self._gold_rule(catalog, indexes, map_state)
         for level, idx in sorted(indexes.items()):
             patches = self._accents.levels.get(level, ())
             skip = dragon[1] if dragon is not None and dragon[0] == level else None
             for _zid, site in sorted(idx.sites.items()):
-                _ = place_landmarks(site, patches, self.seed, skip)
+                _ = place_landmarks(site, patches, self.seed, skip, gold)
 
     def _place_all(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
@@ -235,7 +275,8 @@ class GameplayStep(PipelineStep):
         sites = _sites(indexes, self._loot)
         homes = self._view(indexes, map_state).player_towns
         measure = MapMeasure(land_area(map_state), len(homes))
-        demand = Demand(measure, self.priors.mines, self.priors.towns, self.density)
+        enemies = self._enemies(len(homes))
+        demand = Demand(measure, self.priors.mines, self.priors.towns, self.density, enemies)
         rng = random.Random(self.seed ^ PLACER_SALT)
         toll = self.priors.effort.toll
         families = Families.of(catalog)

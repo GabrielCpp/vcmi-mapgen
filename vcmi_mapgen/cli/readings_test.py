@@ -3,6 +3,9 @@
 from vcmi_mapgen.cli.readings import (
     CLOSE_RARE,
     CURVE,
+    GOLD_MINES,
+    GOLD_NEAR,
+    GOLD_OPEN,
     MINES,
     REPEATS,
     TOWN_CURVE,
@@ -24,8 +27,9 @@ def test_table_lines_show_the_corpus_spread_and_the_generated_median() -> None:
 
 def test_count_line_shows_each_count_beside_its_curve() -> None:
     counts = {MINES: 40.0, CURVE: 50.0, TOWNS: 12.0, TOWN_CURVE: 10.0}
-    line = count_line(3, {**counts, REPEATS: 1.0, CLOSE_RARE: 0.25})
+    gold = {GOLD_MINES: 2.0, GOLD_NEAR: 0.0, GOLD_OPEN: 1.0}
+    line = count_line(3, {**counts, REPEATS: 1.0, CLOSE_RARE: 0.25, **gold})
     assert line == (
         "seed 3: 40 resource mines, curve 50.0, ratio 0.80; 12 towns, curve 10.0, ratio 1.20;"
-        " 1 ways repeat, close rare share 0.25"
+        " 1 ways repeat, close rare share 0.25; 2 gold, 0 near home, 1 uncontested"
     )

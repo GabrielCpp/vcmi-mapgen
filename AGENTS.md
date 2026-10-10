@@ -63,7 +63,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       between them and the players that own them (`territories.py`). It measures each
       town's tiles to its nearest sawmill and ore pit (`supply.py`). It reads each
       player's way out to the rare mines, where it repeats a resource, and the rare mines
-      with one of their resource close by (`way.py`).
+      with one of their resource close by (`way.py`). It reads where the players fight
+      over a tile: the days between the first player to reach it and that player's
+      nearest enemy, and each gold mine's days from home and its contest (`contest.py`).
     - `steps/terrain_gen/`: the places terrain model. It lays out a place graph and
       paints each place. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.

@@ -1,6 +1,8 @@
 """Where each planned object stands: the tiles that keep the players' reach of its family even,
 under the weakest guard that does, then the tiles its player reaches first, nearest its band
-and its target in days, tried across the few zone sites that hold the best of them."""
+and its target in days, tried across the few zone sites that hold the best of them. A gold
+mine stands where the gold rule admits it, the best of its rank first, and where the loose
+gold rule admits it when no such tile takes it."""
 
 from __future__ import annotations
 
@@ -24,13 +26,16 @@ from vcmi_mapgen.core.placement.site import (
     ZoneSite,
     footing_of,
 )
+from vcmi_mapgen.core.reading.contest import soonest
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
     UNGUARDED,
     door_guard,
     family_purpose,
     guard_levels,
+    mine_family,
 )
+from vcmi_mapgen.core.reading.mines import GOLD
 from vcmi_mapgen.core.reading.promise import doors
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.reading.supply import entrance
@@ -43,6 +48,7 @@ from vcmi_mapgen.core.steps.gameplay.fair_guard import (
     fair_guard,
 )
 from vcmi_mapgen.core.steps.gameplay.fallback import smaller
+from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.pick import Pick, Picker
 from vcmi_mapgen.core.steps.gameplay.reach import SLACK, Bands, Reach
 from vcmi_mapgen.core.steps.gameplay.turn import Stop, Turn, near
@@ -51,6 +57,7 @@ TOWN_MIN_AREA = 150
 MAX_SITES = 4
 CENTRES = 40
 REPRICE = 12
+GOLD_FAMILY = mine_family(GOLD)
 
 type Days = tuple[int | None, ...]
 type Key = tuple[int, int, int]
@@ -167,6 +174,7 @@ class Siting:
     )
     maps: Sequence[EffortMap] = ()
     turn: Turn | None = None
+    gold: GoldSpot | None = None
     _band: Codes = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     _rows: dict[int, tuple[list[Bands], NDArray[np.intp]]] = field(
         default_factory=dict[int, tuple[list[Bands], NDArray[np.intp]]]
@@ -203,12 +211,23 @@ class Siting:
         the best few. A rare mine takes its family from the turn where it stands. None when
         no site takes any, and nothing stands."""
         purpose = family_purpose(slot.family)
+        if self.gold is not None and slot.family == GOLD_FAMILY:
+            return self._stand_gold(slot, purpose)
         groups = self._groups(slot, purpose)
         picks: dict[tuple[ZoneSite, str], Pick | None] = {}
         stops = self._stops(slot.family)
         for strict in (True, False) if stops is not None and groups else (False,):
             near = [g for g in groups if g[0] == groups[0][0]] if strict else groups
             stood = self._stand(slot.family, near, (picks, stops), strict)
+            if stood is not None:
+                return stood
+        return None
+
+    def _stand_gold(self, slot: Slot, purpose: str) -> tuple[str, PlacedObject] | None:
+        picks: dict[tuple[ZoneSite, str], Pick | None] = {}
+        for loose in (False, True):
+            groups = self._groups(slot, purpose, loose)
+            stood = self._stand(slot.family, groups, (picks, None), False)
             if stood is not None:
                 return stood
         return None
@@ -319,10 +338,11 @@ class Siting:
                 return obj
         return None
 
-    def _groups(self, slot: Slot, purpose: str) -> list[Group]:
+    def _groups(self, slot: Slot, purpose: str, loose: bool = False) -> list[Group]:
         """The tiles that widen no gap under their weakest fair guard, best first, grouped by
         tier and site, at most CENTRES per group. A tier is the spread change, the guard
-        level and the arrival rank."""
+        level and the arrival rank. A gold mine keeps only the tiles the gold rule admits, or
+        the ``loose`` gold rule."""
         tiles = self.tiles
         if tiles is None:
             return []
@@ -331,25 +351,33 @@ class Siting:
         r = np.random.default_rng(self.rng.getrandbits(64)).random(n)
         zero = np.zeros(n, dtype=np.int64)
         code, guard, band, target = zero, zero, zero, zero
-        if slot.player is not None and slot.band is not None and slot.target is not None:
-            days = cast(Codes, tiles.days[0])
-            reached = days >= 0
-            soonest = cast(Codes, np.where(reached, days, np.iinfo(np.int64).max).min(axis=1))
+        ok = np.ones(n, dtype=np.bool_)
+        days = cast(Codes, tiles.days[0])
+        if self.gold is not None and slot.family == GOLD_FAMILY:
+            ok, target = self.gold.rank(days, loose)
+            code, guard = self._fair(slot.family, purpose, zero, counted)
+        elif slot.player is not None and slot.band is not None and slot.target is not None:
             mine = days[:, slot.player]
-            own = np.where(mine < 0, 2, (mine > soonest).astype(np.int64))
+            own = np.where(mine < 0, 2, (mine > soonest(days)).astype(np.int64))
             at = np.maximum(mine, 0)
             band = np.where(mine < 0, 0, np.abs(self._band[at] - slot.band))
             target = np.where(mine < 0, 0, np.abs(at - slot.target))
-            family = slot.family
-            code, guard = fair_guard(
-                lambda level: self._spreads(family, level) * ARRIVALS + own,
-                0 if purpose in UNGUARDED else min(FAIR_GUARD, len(self.toll) - 1),
-                lambda c: tiles.grid.worst_within(c, NEIGHBOURHOOD, counted),
-            )
+            code, guard = self._fair(slot.family, purpose, own, counted)
         spread, own = np.divmod(code, ARRIVALS)
         order = cast(NDArray[np.intp], np.lexsort((r, target, band, own, guard, spread)))
-        kept = order[(counted & (code < ARRIVALS))[order]]
+        kept = order[(counted & ok & (code < ARRIVALS))[order]]
         return self._grouped(tiles, kept, np.stack((spread, guard, own))[:, kept])
+
+    def _fair(
+        self, family: str, purpose: str, own: Codes, counted: NDArray[np.bool_]
+    ) -> tuple[Codes, Codes]:
+        tiles = self.tiles
+        assert tiles is not None
+        return fair_guard(
+            lambda level: self._spreads(family, level) * ARRIVALS + own,
+            0 if purpose in UNGUARDED else min(FAIR_GUARD, len(self.toll) - 1),
+            lambda c: tiles.grid.worst_within(c, NEIGHBOURHOOD, counted),
+        )
 
     def _grouped(self, tiles: Tiles, kept: NDArray[np.intp], tier: Codes) -> list[Group]:
         if len(kept) == 0:
