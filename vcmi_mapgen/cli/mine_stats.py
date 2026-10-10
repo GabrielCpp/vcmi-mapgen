@@ -17,12 +17,14 @@ from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
 from vcmi_mapgen.corpus.mine.macro import mine_macro
 from vcmi_mapgen.corpus.mine.markov import learn, learn4, learn_inside
+from vcmi_mapgen.corpus.mine.mines import mine_curve
 from vcmi_mapgen.corpus.mine.places import map_players, mine_places, place_labels
 from vcmi_mapgen.corpus.mine.territories import mine_territories
 from vcmi_mapgen.corpus.mine.tiler import corpus_tile_grids
 from vcmi_mapgen.corpus.mine.tiler import learn as learn_tiler
 from vcmi_mapgen.corpus.mine.vegetation import mine as mine_vegetation
 from vcmi_mapgen.corpus.mine.water import mine_water
+from vcmi_mapgen.corpus.mines import save_mines
 from vcmi_mapgen.corpus.places import save_places
 from vcmi_mapgen.corpus.territories import save_territories
 from vcmi_mapgen.corpus.tiler import save_tiler
@@ -101,6 +103,11 @@ def _territories(m: MineInput) -> None:
     )
 
 
+def _mines(m: MineInput) -> None:
+    players = [map_players(m.h3m_dir, name).players for name in m.names]
+    save_mines(m.pp_dir, mine_curve(m.catalog, m.maps, players))
+
+
 MINERS: dict[str, Callable[[MineInput], None]] = {
     "macro": _macro,
     "markov": _markov,
@@ -113,6 +120,7 @@ MINERS: dict[str, Callable[[MineInput], None]] = {
     "effort": _effort,
     "water": _water,
     "territories": _territories,
+    "mines": _mines,
 }
 
 

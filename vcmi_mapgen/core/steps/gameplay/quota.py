@@ -1,16 +1,24 @@
-"""How many gameplay objects the whole map holds: per purpose at the corpus rate per tile,
-times a density multiplier, then per family by the corpus count of each family the map can
-offer."""
+"""How many gameplay objects the whole map holds: one count per group of families, each by
+the rule the group rules choose, times a density multiplier, then per family by the corpus
+count of each family the map can offer.
+
+The resource mines follow the corpus curve over the map's land area and player count. The
+weekly producers follow the mine rate per tile times their corpus share of the mines. Every
+other purpose follows its own corpus rate per tile."""
 
 from __future__ import annotations
 
 import random
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Protocol
 
-from vcmi_mapgen.core.model.purpose import FLANKED, VISIT_PURPOSES, Purpose
+from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.intensity import density, stoch_round
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
+from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.families import TOP_LEVEL, dwelling_family, mine_family
+from vcmi_mapgen.core.reading.mines import RESOURCE_MINES, MapMeasure
 
 RANKS: tuple[str, ...] = (
     Purpose.TOWN,
@@ -20,20 +28,60 @@ RANKS: tuple[str, ...] = (
     *VISIT_PURPOSES,
 )
 
+Grounds = Sequence[tuple[int, TerrainStats]]
+Corpus = Mapping[str, Sequence[int]]
 
-def purpose_quota(
-    grounds: Iterable[tuple[int, TerrainStats]], mult: float, towns: int, rng: random.Random
-) -> dict[str, int]:
-    """Per purpose, the objects ``grounds`` hold at the corpus rate of their terrain times
-    ``mult``. The ``towns`` already standing count inside the town quota."""
-    expected = dict.fromkeys(RANKS, 0.0)
-    for area, st in grounds:
-        dens = density(st)
-        for p in FLANKED:
-            expected[p] += area * dens.get(p, 0.0) * mult
-    out = {p: stoch_round(rng, expected[p]) for p in RANKS}
-    out[Purpose.TOWN] = max(0, out[Purpose.TOWN] - towns)
-    return out
+
+class CountRule(Protocol):
+    def expected(self) -> float:
+        """The objects a group should hold on the map, before the density multiplier."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class RateRule:
+    """Each terrain's area times its corpus rate per tile of ``purpose``, times ``share``."""
+
+    grounds: Grounds
+    purpose: str
+    share: float = 1.0
+
+    def expected(self) -> float:
+        rate = sum(area * density(st).get(self.purpose, 0.0) for area, st in self.grounds)
+        return rate * self.share
+
+
+@dataclass(frozen=True, slots=True)
+class CurveRule:
+    """The resource mine curve at the map's measure."""
+
+    curve: MineCurve
+    measure: MapMeasure
+
+    def expected(self) -> float:
+        return self.curve.expected(self.measure.land, self.measure.players)
+
+
+@dataclass(frozen=True, slots=True)
+class Group:
+    """Families counted by one rule."""
+
+    families: tuple[str, ...]
+    rule: CountRule
+
+
+@dataclass(frozen=True, slots=True)
+class MapCount:
+    """What the group rules read of a map: its terrain areas with their corpus statistics,
+    its measure, the mine resources it offers, and the corpus count of each family."""
+
+    grounds: Grounds
+    measure: MapMeasure
+    resources: Sequence[str]
+    corpus: Corpus
+
+    def weight(self, families: Sequence[str]) -> float:
+        return float(sum(sum(self.corpus.get(f, ())) for f in families))
 
 
 def split(n: int, weights: Mapping[str, float]) -> dict[str, int]:
@@ -52,24 +100,40 @@ def split(n: int, weights: Mapping[str, float]) -> dict[str, int]:
     return dict(zip(keys, out, strict=True))
 
 
-def purpose_families(purpose: str, resources: Sequence[str]) -> list[str]:
-    """The families of ``purpose`` a map offers: one per mine resource in ``resources``, one
-    per dwelling level 0..7, the purpose itself otherwise."""
-    if purpose == Purpose.MINE:
-        return [mine_family(r) for r in sorted(resources)]
+def purpose_families(purpose: str) -> tuple[str, ...]:
+    """The families of a purpose other than the mines: one per dwelling level 0..7, the
+    purpose itself otherwise."""
     if purpose == Purpose.DWELLING:
-        return [dwelling_family(n) for n in range(TOP_LEVEL + 1)]
-    return [purpose]
+        return tuple(dwelling_family(n) for n in range(TOP_LEVEL + 1))
+    return (purpose,)
+
+
+def group_rules(curve: MineCurve, count: MapCount) -> list[Group]:
+    """Every group in drawing order, each with the rule that counts it."""
+    offered = [mine_family(r) for r in sorted(count.resources)]
+    resource = tuple(f for f in offered if f in {mine_family(r) for r in RESOURCE_MINES})
+    producers = tuple(f for f in offered if f not in resource)
+    mines = count.weight(offered)
+    share = count.weight(producers) / mines if mines > 0 else 0.0
+    others = [p for p in RANKS if p not in (Purpose.TOWN, Purpose.MINE)]
+    return [
+        Group((Purpose.TOWN,), RateRule(count.grounds, Purpose.TOWN)),
+        Group(resource, CurveRule(curve, count.measure)),
+        Group(producers, RateRule(count.grounds, Purpose.MINE, share)),
+        *(Group(purpose_families(p), RateRule(count.grounds, p)) for p in others),
+    ]
 
 
 def family_quota(
-    purposes: Mapping[str, int],
-    resources: Sequence[str],
-    corpus: Mapping[str, Sequence[int]],
+    groups: Sequence[Group], corpus: Corpus, mult: float, towns: int, rng: random.Random
 ) -> dict[str, int]:
-    """Per family, its share of its purpose's quota by the corpus count of each family."""
+    """Per family, its share of its group's count by the corpus count of each family. Each
+    group draws one rounding of its expectation times ``mult``, in order. The ``towns``
+    already standing count inside the town quota."""
     out: dict[str, int] = {}
-    for purpose, n in purposes.items():
-        fams = purpose_families(purpose, resources)
-        out.update(split(n, {f: float(sum(corpus.get(f, ()))) for f in fams}))
+    for group in groups:
+        n = stoch_round(rng, group.rule.expected() * mult)
+        if group.families == (Purpose.TOWN,):
+            n = max(0, n - towns)
+        out.update(split(n, {f: float(sum(corpus.get(f, ()))) for f in group.families}))
     return out

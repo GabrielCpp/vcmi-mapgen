@@ -15,6 +15,8 @@ from vcmi_mapgen.core.placement.site import LevelField, PlacedZone, SiteZone, Zo
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
+from vcmi_mapgen.core.priors.mines import MineCurve
+from vcmi_mapgen.core.reading.mines import MapMeasure
 from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.placer import Demand, Placement
@@ -114,6 +116,7 @@ class OpenZonePlacer:
     catalog: Catalog
     gameplay: GameplayStats
     effort: EffortPriors
+    curve: MineCurve
 
     def __call__(self, zone: OpenZone, seed: int) -> PlacedZone:
         """Place one zone of open land with no vegetation and a one-tile web at its top-left
@@ -133,7 +136,7 @@ class OpenZonePlacer:
             town = site.place(Purpose.TOWN, ident, site.centroid_order(ident))
             homes = [] if town is None else [town]
         rng = random.Random(seed)
-        demand = Demand(0)
+        demand = Demand(MapMeasure(len(ts), 0), self.curve)
         placement = Placement(self.catalog, [site], self.effort, demand, rng)
         _ = placement.place(placement.plan(homes, [], []), Picker(self.catalog, rng), list)
         size = max(w, h)
@@ -145,4 +148,4 @@ class OpenZonePlacer:
 
 @pytest.fixture
 def open_zone(catalog: Catalog, priors: Priors) -> OpenZonePlacer:
-    return OpenZonePlacer(catalog, priors.gameplay[0], priors.effort)
+    return OpenZonePlacer(catalog, priors.gameplay[0], priors.effort, priors.mines)

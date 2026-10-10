@@ -7,6 +7,7 @@ from vcmi_mapgen.core.placement.site import LevelField, SiteZone, ZoneSite
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.effort import effort_map
 from vcmi_mapgen.core.reading.effort_test import TOLL, grid_route
+from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.steps.gameplay.allocate import (
     Days,
@@ -17,7 +18,6 @@ from vcmi_mapgen.core.steps.gameplay.allocate import (
     rank,
     site_variants,
 )
-from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES
 
 _ST = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
 _SIDE = 24

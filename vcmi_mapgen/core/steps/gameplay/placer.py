@@ -1,6 +1,6 @@
 """The one map-wide pass over the neutral towns, mines, dwellings, banks and visitables. The
-map holds each family at the corpus rate per tile, the players share each family band by
-band, and each object stands where its player reaches it at its target effort."""
+map holds each family at the count its group rule gives, the players share each family band
+by band, and each object stands where its player reaches it at its target effort."""
 
 from __future__ import annotations
 
@@ -13,11 +13,13 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.priors.effort import EffortPriors
+from vcmi_mapgen.core.priors.mines import MineCurve
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import Families, guard_levels, reach_guard
+from vcmi_mapgen.core.reading.mines import MapMeasure
 from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
-from vcmi_mapgen.core.steps.gameplay.quota import RANKS, family_quota, purpose_quota
+from vcmi_mapgen.core.steps.gameplay.quota import RANKS, MapCount, family_quota, group_rules
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
 from vcmi_mapgen.core.steps.gameplay.siting import Siting, place_slots, standing_cell
 
@@ -26,11 +28,16 @@ VISIT_RANK = 4
 
 @dataclass(frozen=True, slots=True)
 class Demand:
-    """What the pass asks of the map: the players and the density multiplier on the corpus
-    rate."""
+    """What the pass asks of the map: its measure, the resource mine curve its measure reads,
+    and the density multiplier on every count."""
 
-    players: int
+    measure: MapMeasure
+    curve: MineCurve
     density: float = 1.0
+
+    @property
+    def players(self) -> int:
+        return self.measure.players
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,8 +106,10 @@ class Placement:
                 standing.setdefault(f, []).append(o)
         held = [(f, o) for f, objs in sorted(standing.items()) for o in objs]
         grounds = [(len(s.ts), s.st) for s in self.sites]
-        purposes = purpose_quota(grounds, demand.density, len(homes), self.rng)
-        quota = family_quota(purposes, map_resources(catalog, self.sites), self.effort.families)
+        corpus = self.effort.families
+        count = MapCount(grounds, demand.measure, map_resources(catalog, self.sites), corpus)
+        groups = group_rules(demand.curve, count)
+        quota = family_quota(groups, corpus, demand.density, len(homes), self.rng)
         band_of = self.effort.band
         plan = BandPlan(self.effort.families, band_of, demand.players, self.rng)
         slots: list[Slot] = []

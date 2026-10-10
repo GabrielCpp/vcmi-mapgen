@@ -17,9 +17,9 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.guards import Fit
 from vcmi_mapgen.core.placement.site import ZoneSite, door_cells
 from vcmi_mapgen.core.reading.effort import Effort
+from vcmi_mapgen.core.reading.mines import GOLD
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.routes import Spot
-from vcmi_mapgen.core.steps.gameplay.economy import GOLD
 from vcmi_mapgen.core.steps.gameplay.fallback import smaller
 
 LANDMARK_FLOOR = 20

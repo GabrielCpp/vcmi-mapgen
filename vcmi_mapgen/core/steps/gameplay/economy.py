@@ -1,5 +1,5 @@
-"""The zone economy: the mines every map must cover, the mine sprites a terrain shows, and
-the dwellings tied to their nearest town."""
+"""The zone economy: the mine sprites a terrain shows, and the dwellings tied to their
+nearest town."""
 
 import math
 from collections.abc import Mapping, Sequence
@@ -11,12 +11,6 @@ from vcmi_mapgen.core.reading.effort import EffortMap, effort_map
 from vcmi_mapgen.core.reading.homes import town_spots
 from vcmi_mapgen.core.reading.promise import doors
 from vcmi_mapgen.core.reading.routes import route_map
-
-# the six basic resource mines every map must cover (gold is the deliberate exception:
-# only worth placing when the map holds several towns)
-BASIC_MINE_RES = ("sawmill", "orePit", "alchemistLab", "sulfurDune", "crystalCavern", "gemPond")
-
-GOLD = "goldMine"
 
 
 def mine_variants(ids: list[Identity], mine_w: Mapping[str, int]) -> list[Identity]:

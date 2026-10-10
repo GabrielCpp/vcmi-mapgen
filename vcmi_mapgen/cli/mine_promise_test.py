@@ -13,8 +13,8 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import ProviderRegistry
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS, promise_of
-from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES
 
 GOLD = "goldMine"
 SWEEP_SEEDS = range(1, 11)

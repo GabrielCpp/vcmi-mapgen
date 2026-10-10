@@ -36,6 +36,7 @@ from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import Families, unguarded
 from vcmi_mapgen.core.reading.homes import town_homes
+from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES, MapMeasure, land_area
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.promise import (
     player_maps,
@@ -44,7 +45,7 @@ from vcmi_mapgen.core.reading.promise import (
 )
 from vcmi_mapgen.core.reading.routes import route_map
 from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
-from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, tie_dwellings
+from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.landmark import (
     LANDMARK_FLOOR,
@@ -222,7 +223,8 @@ class GameplayStep(PipelineStep):
     ) -> None:
         sites = _sites(indexes, self._loot)
         homes = self._view(indexes, map_state).player_towns
-        demand = Demand(len(homes), self.density)
+        measure = MapMeasure(land_area(map_state), len(homes))
+        demand = Demand(measure, self.priors.mines, self.density)
         rng = random.Random(self.seed ^ PLACER_SALT)
         toll = self.priors.effort.toll
         families = Families.of(catalog)

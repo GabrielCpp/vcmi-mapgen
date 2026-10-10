@@ -22,9 +22,10 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.footprint import cell_offsets
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.reading.effort import EffortMap
+from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS, PROMISE_GAP
 from vcmi_mapgen.core.reading.routes import Spot
-from vcmi_mapgen.core.steps.gameplay.economy import BASIC_MINE_RES, mine_variants
+from vcmi_mapgen.core.steps.gameplay.economy import mine_variants
 
 OWN_GUARD: Mapping[str, int] = {"sawmill": 1, "orePit": 1}
 RARE_GUARD = 3
