@@ -162,6 +162,7 @@ def has_animation(animation: str) -> bool:
     return (animation or "").lower() in leaf_meta()
 
 
+@cache
 def mask_of(animation: str) -> Mask:
     """B/A/V footprint rows for an animation (`vcmi.footprint.footprint_of` semantics: rows are
     stored LEFT-TO-RIGHT, sprite-aligned, so column 0 is the LEFTMOST tile and the anchor is
@@ -219,15 +220,24 @@ def footprint_size(animation: str) -> int:
 
 
 _CONFIG: list[VcmiConfig] = [EMPTY_CONFIG]
+_IDENTITIES: dict[str, Identity] = {}
 
 
 def use_config(config: VcmiConfig) -> None:
     _CONFIG[0] = config
+    _IDENTITIES.clear()
 
 
 def identity_of(animation: str) -> Identity:
     """Placement ``Identity`` (type, subtype, animation, mask) for an animation, sourced
     entirely from the ontology + objects.txt metadata."""
+    ident = _IDENTITIES.get(animation)
+    if ident is None:
+        ident = _IDENTITIES[animation] = _identity(animation)
+    return ident
+
+
+def _identity(animation: str) -> Identity:
     cls, sub = cls_sub_of(animation)
     r = _CONFIG[0].resolve(cls, sub) if cls is not None and sub is not None else None
     return Identity(
