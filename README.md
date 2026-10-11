@@ -40,14 +40,15 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    enough that each player still reaches its mines within 14 days. A door into a
    sealed loot room or a dead-end treasure place stays open.
 5. **Gameplay.** Gates, towns, mines, shipyards, dwellings, banks and shrines
-   settle with their backs against the vegetation. The whole map holds objects
-   at the corpus rate per tile, and `--density` scales it. A player whose land
-   reaches no rival gets a shipyard that sails to the rival's land. Each player
-   should reach a mine of each basic resource within 14 hero-days, and the step
-   log warns when one cannot. Each kind of object sits
-   at the corpus effort from home, and the players reach the same count of it
-   band by band, within one or two. Reward value and guard level follow each
-   place's hop count from home.
+   settle with their backs against the vegetation. The whole map holds each kind
+   of object at the count its corpus curve gives for the map's land and players,
+   and `--density` scales it. A player whose land reaches no rival gets a
+   shipyard that sails to the rival's land. Each player should reach a mine of
+   each basic resource within 14 hero-days, and the step log warns when one
+   cannot. Each kind of object sits at the corpus effort from home, stretched
+   with the map's land so a large map spreads its towns and high dwellings out,
+   and the players reach the same count of it band by band, within one or two.
+   Reward value and guard level follow each place's hop count from home.
 6. **Loot.** Unguarded scatter along routes, and guarded caches in pockets with a
    monster on the mouth. Guard level scales with the guarded value.
 7. **Roads.** Roads link the towns through the planned passages.

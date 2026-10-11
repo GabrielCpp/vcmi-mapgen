@@ -1,7 +1,7 @@
 import random
 
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.reading.families import mine_family
+from vcmi_mapgen.core.reading.families import FAR_DAYS, mine_family
 from vcmi_mapgen.core.steps.gameplay.bands import (
     BandPlan,
     Slot,
@@ -9,6 +9,7 @@ from vcmi_mapgen.core.steps.gameplay.bands import (
     band_shares,
     player_split,
     slot_order,
+    stretched,
 )
 from vcmi_mapgen.core.steps.gameplay.quota import RANKS
 
@@ -68,3 +69,18 @@ def test_mines_go_before_banks_and_far_bands_first() -> None:
     slots = [Slot(Purpose.BANK, 0, 1), Slot(ore, 0, 1), Slot(ore, 0, 3)]
     order = slot_order(slots, RANKS)
     assert [(s.family, s.band) for s in order] == [(ore, 3), (ore, 1), (Purpose.BANK, 1)]
+
+
+def test_a_unit_factor_leaves_the_corpus_days_in_place() -> None:
+    days = [0, 2, 5, 1]
+    assert stretched(days, 1.0)[: len(days)] == tuple(days)
+
+
+def test_a_stretch_moves_each_day_out_by_the_factor() -> None:
+    out = stretched([0, 0, 4, 0, 1], 2.0)
+    assert (out[4], out[8], sum(out)) == (4, 1, 5)
+
+
+def test_a_stretch_never_passes_the_far_day() -> None:
+    out = stretched([0] * FAR_DAYS + [3], 3.0)
+    assert (out[FAR_DAYS], sum(out)) == (3, 3)

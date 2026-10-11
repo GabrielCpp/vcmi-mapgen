@@ -4,7 +4,8 @@ count of each family the map can offer.
 
 The towns and the resource mines follow their corpus curves over the map's land area and
 player count. The weekly producers follow the mine rate per tile times their corpus share of
-the mines. Every other purpose follows its own corpus rate per tile."""
+the mines. Every other purpose follows the corpus curve of each of its families when the
+corpus fitted one for every family it offers, and its own corpus rate per tile otherwise."""
 
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ from typing import Protocol
 
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.intensity import density, stoch_round
-from vcmi_mapgen.core.priors.counts import CountCurve
+from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.families import TOP_LEVEL, dwelling_family, mine_family
 from vcmi_mapgen.core.reading.mines import RESOURCE_MINES, MapMeasure
@@ -30,6 +31,7 @@ RANKS: tuple[str, ...] = (
 )
 
 Grounds = Sequence[tuple[int, TerrainStats]]
+NO_FITS = FamilyCurves()
 Corpus = Mapping[str, Sequence[int]]
 
 
@@ -110,8 +112,22 @@ def purpose_families(purpose: str) -> tuple[str, ...]:
     return (purpose,)
 
 
-def group_rules(mines: CountCurve, towns: CountCurve, count: MapCount) -> list[Group]:
-    """Every group in drawing order, each with the rule that counts it."""
+def _purpose_groups(purpose: str, count: MapCount, families: FamilyCurves) -> list[Group]:
+    offered = purpose_families(purpose)
+    curves = {f: families.curve(f) for f in offered if count.weight([f]) > 0}
+    if not curves or any(c is None for c in curves.values()):
+        return [Group(offered, RateRule(count.grounds, purpose))]
+    return [Group((f,), CurveRule(c, count.measure)) for f, c in curves.items() if c is not None]
+
+
+def group_rules(
+    mines: CountCurve,
+    towns: CountCurve,
+    count: MapCount,
+    families: FamilyCurves = NO_FITS,
+) -> list[Group]:
+    """Every group in drawing order, each with the rule that counts it. A purpose whose
+    every corpus family has a curve in ``families`` counts each family by its curve."""
     offered = [mine_family(r) for r in sorted(count.resources)]
     supplied = {mine_family(r) for r in SUPPLY}
     mines_of = {mine_family(r) for r in RESOURCE_MINES}
@@ -124,7 +140,7 @@ def group_rules(mines: CountCurve, towns: CountCurve, count: MapCount) -> list[G
         Group((Purpose.TOWN,), CurveRule(towns, count.measure)),
         Group(resource, CurveRule(mines, count.measure), len(SUPPLY)),
         Group(producers, RateRule(count.grounds, Purpose.MINE, share)),
-        *(Group(purpose_families(p), RateRule(count.grounds, p)) for p in others),
+        *(g for p in others for g in _purpose_groups(p, count, families)),
     ]
 
 

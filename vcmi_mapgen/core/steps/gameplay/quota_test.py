@@ -1,11 +1,20 @@
 import random
 
+import pytest
+
 from vcmi_mapgen.core.model.purpose import Purpose
-from vcmi_mapgen.core.priors.counts import MINE_CURVE, TOWN_CURVE, CountCurve
+from vcmi_mapgen.core.priors.counts import (
+    MINE_CURVE,
+    TOWN_CURVE,
+    CountCurve,
+    FamilyCurves,
+    FamilyFit,
+)
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.core.reading.families import mine_family
+from vcmi_mapgen.core.reading.families import dwelling_family, mine_family
 from vcmi_mapgen.core.reading.mines import MapMeasure
 from vcmi_mapgen.core.steps.gameplay.quota import (
+    CountRule,
     CurveRule,
     Group,
     MapCount,
@@ -94,3 +103,35 @@ def test_towns_follow_the_town_curve() -> None:
     count = MapCount([], MapMeasure(400, 2), [], {})
     groups = group_rules(MINE_CURVE, CountCurve(0.0, 0.5, 1.0), count)
     assert groups[0].rule.expected() == 40
+
+
+def _rule_of(groups: list[Group], family: str) -> CountRule:
+    return next(g.rule for g in groups if family in g.families)
+
+
+def test_a_fitted_purpose_follows_each_family_curve() -> None:
+    st = _stats(100, {Purpose.BANK: 10})
+    count = MapCount([(400, st)], MapMeasure(400, 2), [], {Purpose.BANK: [3]})
+    fits = FamilyCurves(100, {Purpose.BANK: FamilyFit(CountCurve(0.0, 0.5, 1.0))})
+    groups = group_rules(MINE_CURVE, TOWN_CURVE, count, fits)
+    assert _rule_of(groups, Purpose.BANK).expected() == 40
+
+
+def test_a_purpose_missing_a_family_curve_keeps_the_corpus_rate() -> None:
+    st = _stats(100, {Purpose.DWELLING: 10})
+    corpus = {dwelling_family(1): [3], dwelling_family(2): [3]}
+    count = MapCount([(400, st)], MapMeasure(400, 2), [], corpus)
+    fits = FamilyCurves(100, {dwelling_family(1): FamilyFit(CountCurve(0.0, 1.0, 0.0))})
+    groups = group_rules(MINE_CURVE, TOWN_CURVE, count, fits)
+    rule = _rule_of(groups, dwelling_family(1))
+    assert isinstance(rule, RateRule)
+    assert rule.expected() == 40
+
+
+def test_a_family_the_corpus_never_saw_needs_no_curve() -> None:
+    corpus = {dwelling_family(1): [3]}
+    count = MapCount([], MapMeasure(400, 2), [], corpus)
+    fits = FamilyCurves(100, {dwelling_family(1): FamilyFit(CountCurve(0.0, 1.0, 0.0))})
+    groups = group_rules(MINE_CURVE, TOWN_CURVE, count, fits)
+    assert _rule_of(groups, dwelling_family(1)).expected() == pytest.approx(400)
+    assert all(dwelling_family(2) not in g.families for g in groups)

@@ -276,7 +276,14 @@ class GameplayStep(PipelineStep):
         homes = self._view(indexes, map_state).player_towns
         measure = MapMeasure(land_area(map_state), len(homes))
         enemies = self._enemies(len(homes))
-        demand = Demand(measure, self.priors.mines, self.priors.towns, self.density, enemies)
+        demand = Demand(
+            measure,
+            self.priors.mines,
+            self.priors.towns,
+            self.density,
+            enemies,
+            self.priors.families,
+        )
         rng = random.Random(self.seed ^ PLACER_SALT)
         toll = self.priors.effort.toll
         families = Families.of(catalog)

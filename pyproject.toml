@@ -7,6 +7,7 @@ dependencies = [
     "pillow>=10",  # editor-quality H3 sprite rendering (vcmi_mapgen/render_editor.py)
     "numpy>=1.26",  # terrain segmentation + zone transform math
     "numba>=0.68.0",
+    "scipy>=1.17.1",
 ]
 
 # pytest in the PROJECT env; uv installs the `dev` group by default for `uv run`/`uv sync`.
@@ -17,6 +18,7 @@ dev = [
     "basedpyright>=1.20",
     "pytest-xdist>=3.8.0",
     "import-linter>=2.15",
+    "scipy-stubs>=1.18.1.1",
 ]
 
 # Everything else is the Python standard library. Run via uv, e.g.:

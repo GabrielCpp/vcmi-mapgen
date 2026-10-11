@@ -34,6 +34,16 @@ def player_split(n: int, players: int, start: int) -> list[int]:
     return [base + int((p - start) % players < rest) for p in range(players)]
 
 
+def stretched(days: Sequence[int], factor: float) -> tuple[int, ...]:
+    """The count per day ``days`` with every day scaled by ``factor``, rounded to a day and
+    capped at FAR_DAYS, so a map larger than the corpus median asks for its efforts further
+    from home."""
+    out = [0] * (FAR_DAYS + 1)
+    for d, n in enumerate(days):
+        out[min(round(d * factor), FAR_DAYS)] += n
+    return tuple(out)
+
+
 def band_shares(days: Sequence[int], band_of: Callable[[int], int]) -> list[float]:
     """The share of each band 1..BANDS among ``days``, a count per day. All of it goes to
     the first band when ``days`` is empty."""

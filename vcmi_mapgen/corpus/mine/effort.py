@@ -45,6 +45,12 @@ def _interactive(obj: PlacedObject) -> list[Spot]:
     return [Spot(obj.level, x, y) for x, y in cells or [(obj.x, obj.y)]]
 
 
+def home_spots(state: MapState, owners: Mapping[TownKey, int]) -> list[Spot]:
+    """The entrances of the towns a player owns on ``state``, the homes its efforts read
+    from."""
+    return [s for o in state.objs if (o.x, o.y, o.level) in owners for s in _interactive(o)]
+
+
 def pickup_efforts(
     catalog: Catalog,
     state: MapState,
@@ -54,7 +60,7 @@ def pickup_efforts(
 ) -> list[tuple[ArtifactTier, int]]:
     """The effort in days at each artifact pickup a home reaches on one map, with its class.
     The homes are the entrances of the towns a player owns."""
-    homes = [s for o in state.objs if (o.x, o.y, o.level) in owners for s in _interactive(o)]
+    homes = home_spots(state, owners)
     if not homes:
         return []
     em = effort_map(route_map(catalog, state), homes, toll)
@@ -100,7 +106,7 @@ def mine_effort(
     for state, own in zip(maps, owners, strict=True):
         for tier, total in pickup_efforts(catalog, state, own, tiers, tuned.toll):
             by_tier[tier].append(total)
-        homes = [s for o in state.objs if (o.x, o.y, o.level) in own for s in _interactive(o)]
+        homes = home_spots(state, own)
         for family, days in family_days(catalog, state, homes, set(own), tuned.toll):
             by_family.setdefault(family, []).append(days)
     medians = {t: float(statistics.median(v)) for t, v in by_tier.items() if v}

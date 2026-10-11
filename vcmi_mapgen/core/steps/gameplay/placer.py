@@ -16,7 +16,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import MINE_GUARD_LVL, ZoneSite
-from vcmi_mapgen.core.priors.counts import CountCurve
+from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
@@ -28,7 +28,7 @@ from vcmi_mapgen.core.reading.families import (
     reach_guard,
 )
 from vcmi_mapgen.core.reading.mines import RARE_MINE_RES, MapMeasure
-from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order
+from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order, stretched
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.quota import (
@@ -56,13 +56,15 @@ RARE_FAMILIES = frozenset(mine_family(r) for r in RARE_MINE_RES)
 @dataclass(frozen=True, slots=True)
 class Demand:
     """What the pass asks of the map: its measure, the resource mine and town curves its
-    measure reads, the density multiplier on every count, and the pairs of enemy players."""
+    measure reads, the density multiplier on every count, the pairs of enemy players, and
+    the corpus fit of each gameplay family."""
 
     measure: MapMeasure
     mines: CountCurve
     towns: CountCurve
     density: float = 1.0
     enemies: tuple[tuple[int, int], ...] = ()
+    families: FamilyCurves = field(default_factory=FamilyCurves)
 
     @property
     def players(self) -> int:
@@ -153,7 +155,7 @@ class Placement:
         grounds = [(len(s.ts), s.st) for s in self.sites]
         corpus = self.effort.families
         count = MapCount(grounds, demand.measure, map_resources(catalog, self.sites), corpus)
-        groups = group_rules(demand.mines, demand.towns, count)
+        groups = group_rules(demand.mines, demand.towns, count, demand.families)
         quota = family_quota(groups, corpus, demand.density, len(homes), self.rng)
         pairs = paired(groups)
         starts = {
@@ -173,9 +175,14 @@ class Placement:
     ) -> list[Slot]:
         """The slots of ``quota`` once the objects ``standing`` count against it: the rare
         mines dealt in turn along each player's way, the gold mines for no player, every other
-        family band by band."""
+        family band by band, each family's corpus effort stretched with the map's land."""
         band_of = self.effort.band
-        plan = BandPlan(self.effort.families, band_of, self.demand.players, self.rng)
+        land = self.demand.measure.land
+        corpus = {
+            f: stretched(days, self.demand.families.factor(f, land))
+            for f, days in self.effort.families.items()
+        }
+        plan = BandPlan(corpus, band_of, self.demand.players, self.rng)
         slots: list[Slot] = []
         for family, n in quota.items():
             if family == GOLD_FAMILY and self.demand.players:

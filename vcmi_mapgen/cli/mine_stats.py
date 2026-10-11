@@ -6,14 +6,21 @@ from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.priors.markov import MarkovTables
-from vcmi_mapgen.corpus.counts import MINES_FILE, MINES_SOURCE, TOWNS_FILE, TOWNS_SOURCE, save_curve
+from vcmi_mapgen.corpus.counts import (
+    MINES_FILE,
+    MINES_SOURCE,
+    TOWNS_FILE,
+    TOWNS_SOURCE,
+    save_curve,
+    save_families,
+)
 from vcmi_mapgen.corpus.effort import save_effort, tuned_effort
 from vcmi_mapgen.corpus.gameplay import save_gameplay
 from vcmi_mapgen.corpus.gates import save_gate_stats
 from vcmi_mapgen.corpus.macro import save_macro
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.markov import save_inside, save_tables
-from vcmi_mapgen.corpus.mine.counts import mine_curve, town_curve
+from vcmi_mapgen.corpus.mine.counts import family_curves, mine_curve, town_curve
 from vcmi_mapgen.corpus.mine.effort import mine_effort
 from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
@@ -104,9 +111,13 @@ def _territories(m: MineInput) -> None:
 
 
 def _counts(m: MineInput) -> None:
-    players = [map_players(m.h3m_dir, name).players for name in m.names]
+    mp = [map_players(m.h3m_dir, name) for name in m.names]
+    players = [p.players for p in mp]
     save_curve(m.pp_dir, MINES_FILE, MINES_SOURCE, mine_curve(m.catalog, m.maps, players))
     save_curve(m.pp_dir, TOWNS_FILE, TOWNS_SOURCE, town_curve(m.catalog, m.maps, players))
+    toll = tuned_effort(m.pp_dir).toll
+    owners = [p.owners for p in mp]
+    save_families(m.pp_dir, family_curves(m.catalog, m.maps, players, owners, toll))
 
 
 MINERS: dict[str, Callable[[MineInput], None]] = {
