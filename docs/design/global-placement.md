@@ -605,7 +605,10 @@ Each slice passes `make check`, updates the docs it renames, and is committed on
     guard tries levels 1 to 4 and no higher. **Basis:** 12 days moves any band-1 object past
     the 8-day band edge for every player. A level 5 guard costs 18 days, which puts a
     temporary bonus behind a monster no player would fight for it. **If wrong:** Fair guard,
-    slice 6's done-when.
+    slice 6's done-when. **Revised 2026-10-11:** the fair guard tries every level up to the
+    toll's top, 10, because a guard's job is to slow the player it favours and no toll is
+    too high for that. The bands past the corpus keep a strong guard's object in a band the
+    players who reach it count alike.
 13. **Assumption:** the corpus measures an object's effort without its own guard, so the
     fair guard leaves the object's band in Band plan alone. **Decided:** Siting ranks band
     and target by the effort without the guard, and Held reach counts it past the guard.

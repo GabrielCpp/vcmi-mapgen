@@ -3,6 +3,7 @@ from vcmi_mapgen.core.model import Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.vcmi.catalog import objects as ON
+from vcmi_mapgen.vcmi.catalog import roles as RO
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.config import EMPTY_CONFIG, load_config
 from vcmi_mapgen.vcmi.content.enabled import EnabledSet
@@ -80,6 +81,26 @@ def test_a_fixed_monster_reads_its_creature_level_without_an_install() -> None:
         assert catalog.creature_level("AVWbehl0") == 3
     finally:
         ON.use_config(load_config(install) if install is not None else EMPTY_CONFIG)
+
+
+def test_a_guard_above_level_seven_is_a_fixed_dragon_stack() -> None:
+    catalog = VcmiCatalog()
+    assert catalog.guard(7).kind == "avwmon7"
+    assert catalog.guard(8).kind == "avwrust"
+    assert catalog.guard(9).kind == "avwcdrg"
+    assert catalog.guard(10).kind == "avwazure"
+    assert catalog.guard(12).kind == "avwazure"
+    assert [catalog.creature_level(catalog.guard(lv).kind) for lv in range(1, 11)] == list(
+        range(1, 11)
+    )
+    assert catalog.creature_level("avwfdrg") == 8
+
+
+def test_a_banned_dragon_hands_its_guard_level_to_the_next_stack_down() -> None:
+    catalog = VcmiCatalog(EnabledSet(banned=frozenset({"azureDragon", "crystalDragon"})))
+    assert catalog.guard(10).kind == "avwrust"
+    none = VcmiCatalog(EnabledSet(banned=frozenset(RO.DRAGON_CREATURES.values())))
+    assert none.guard(10).kind == "avwmon7"
 
 
 def test_a_pickup_or_a_monster_vanishes_and_a_sign_or_a_school_lasts() -> None:

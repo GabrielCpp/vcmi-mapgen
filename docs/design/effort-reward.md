@@ -48,8 +48,10 @@ Settled with the user in the grill (2026-10-04):
    An island trip runs home, shipyard, sea, landing. Boarding and landing each round up to
    the next day. A monolith or portal counts as one step.
 4. Guard cost depends on creature level only: 3, 5, 8, 12, 18, 28 and 45 days for levels 1
-   to 7, kept as data.
-5. For each guard level L from 0 to 7, take the shortest trip that meets no guard above L.
+   to 7, kept as data. Levels 8 to 10 are fixed neutral dragon stacks, rust, crystal and
+   azure, and their toll of 69, 108 and 168 days extrapolates the corpus growth per level,
+   about 1.57.
+5. For each guard level L from 0 to 10, take the shortest trip that meets no guard above L.
    Effort is the minimum over L of days(L) plus that trip.
 6. The guard comes first and the value follows. Each loot has exactly one guard. A guard
    already on the route is that guard. Otherwise the prize gets its own guard, with its

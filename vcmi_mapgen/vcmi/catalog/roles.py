@@ -1,7 +1,9 @@
 """The animations behind the object roles the core asks the catalog for: the editor's random
 classes, the portals, the border gate colours, the subterranean gate and the spell scroll.
 
-`RANDOM_MONSTERS` and `RANDOM_DWELLINGS` are indexed by level 1..7. `PORTALS` are two-way
+`RANDOM_MONSTERS` and `RANDOM_DWELLINGS` are indexed by level 1..7. `DRAGON_GUARDS` holds the
+fixed neutral dragon stack that guards at each level above 7, the strongest last, and
+`DRAGON_CREATURES` the creature each one is a stack of. `PORTALS` are two-way
 monoliths whose one visit tile is their only solid cell, subtypes monolith1..4. Both ends
 of a pair share the animation. Heroes III networks every end of one subtype, so a fifth
 portal joins an existing network and stays reachable. `SUBTERRANEAN_GATE` has one
@@ -21,6 +23,12 @@ from vcmi_mapgen.core.catalog import Crossing, Trait
 from vcmi_mapgen.core.model.artifact import ArtifactTier
 
 RANDOM_MONSTERS = tuple(f"avwmon{i}" for i in range(1, 8))
+DRAGON_GUARDS: dict[int, str] = {8: "avwrust", 9: "avwcdrg", 10: "avwazure"}
+DRAGON_CREATURES: dict[str, str] = {
+    "avwrust": "rustDragon",
+    "avwcdrg": "crystalDragon",
+    "avwazure": "azureDragon",
+}
 RANDOM_ARTIFACT_BY_TIER: dict[ArtifactTier, str] = {
     "treasure": "avarnd1",
     "minor": "avarnd2",

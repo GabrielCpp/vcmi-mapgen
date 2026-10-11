@@ -1,5 +1,10 @@
 # Neutral dragons as guards and rewards
 
+Status 2026-10-11: guards above level 7 landed another way. The toll runs to level 10 and
+the catalog's guard of levels 8, 9 and 10 is a fixed rust, crystal or azure dragon stack,
+read back at that level, with a banned dragon handing its level to the next stack down.
+The fair guard tries every level up to 10. The reward packs below are still open.
+
 Disclosure: before this note I had read the guard toll, the fair guard, the reward tiers,
 the landmark step and the catalog's creature level. Their decisions are claims in 1b.
 

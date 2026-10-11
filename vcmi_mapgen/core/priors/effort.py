@@ -1,6 +1,7 @@
 """The guard toll, the effort bands the reward steps price a place by, and what each band
 offers: its artifact class weights, its Pandora's Box grant and its box count. The corpus
-sets the first edges, and the rest grow by the toll's growth per guard level, so a place
+sets the toll up to level 7 and the first edges. The toll past level 7 extrapolates the
+corpus growth per level, and the rest of the edges grow by the same factor, so a place
 behind a stronger guard always lands in a higher band."""
 
 import math
@@ -12,7 +13,8 @@ from vcmi_mapgen.core.model.artifact import ArtifactTier
 
 type Basket = Mapping[ArtifactTier, int]
 
-DEFAULT_TOLL = (0, 3, 5, 8, 12, 18, 28, 45)
+DEFAULT_TOLL = (0, 3, 5, 8, 12, 18, 28, 45, 69, 108, 168)
+TOP_GUARD = len(DEFAULT_TOLL) - 1
 BANDS = 8
 CORPUS_EDGES = (8, 13, 22)
 DEFAULT_BASKETS: tuple[Basket, ...] = (
@@ -104,12 +106,12 @@ class BandEdgeError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class EffortPriors:
-    """The days a hero spends beating a guard of each level 0..7, the effort edges that split
-    places into BANDS bands, and per band its artifact class weights, its Pandora's Box grant
-    and its box count. `medians` is the corpus effort at the pickups of each artifact class,
-    and `counts` the pickups behind each median. `families` holds per gameplay family the
-    corpus count of objects at each effort in days, the last count holding every effort past
-    it."""
+    """The days a hero spends beating a guard of each level 0..TOP_GUARD, the effort edges
+    that split places into BANDS bands, and per band its artifact class weights, its Pandora's
+    Box grant and its box count. `medians` is the corpus effort at the pickups of each
+    artifact class, and `counts` the pickups behind each median. `families` holds per
+    gameplay family the corpus count of objects at each effort in days, the last count
+    holding every effort past it."""
 
     toll: tuple[int, ...] = DEFAULT_TOLL
     edges: tuple[int, ...] = DEFAULT_EDGES

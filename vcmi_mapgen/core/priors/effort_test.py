@@ -16,7 +16,7 @@ from vcmi_mapgen.core.priors.effort import (
 
 def test_a_band_starts_at_its_edge() -> None:
     priors = EffortPriors()
-    assert [priors.band(t) for t in (0, 7, 8, 12, 13, 21, 22, 34)] == [1, 1, 2, 2, 3, 3, 4, 4]
+    assert [priors.band(t) for t in (0, 7, 8, 12, 13, 21, 22, 33)] == [1, 1, 2, 2, 3, 3, 4, 4]
     assert priors.band(DEFAULT_EDGES[-1] - 1) == BANDS - 1
     assert priors.band(10_000) == BANDS
 
@@ -27,6 +27,7 @@ def test_the_edges_past_the_corpus_grow_by_the_toll() -> None:
     assert DEFAULT_EDGES[: len(CORPUS_EDGES)] == CORPUS_EDGES
     assert len(DEFAULT_EDGES) == BANDS - 1
     assert DEFAULT_EDGES[3:] == tuple(round(22 * growth**k) for k in range(1, 5))
+    assert all(1.5 < b / a < 1.6 for a, b in pairwise(DEFAULT_TOLL[7:]))
     assert extend_edges((8, 13, 22), (0, 1, 1, 1), 6) == (8, 13, 22, 23, 24)
 
 

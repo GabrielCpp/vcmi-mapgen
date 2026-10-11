@@ -232,10 +232,11 @@ model inside the zone's budget. The sampler protocol stays as it is.
 - The four dragon dwellings already reach `candidates(DWELLING, t)` on every land terrain
   (`avgazur`, `avgcdrg`, `avgrust`, `avgfdrg`). The drawer can pick one today, at random,
   as an ordinary dwelling.
-- `creature_level` clamps to 7 (`adapter.py:135`), although `data/catalog/monster_levels.json`
-  holds 10 for the azure, crystal and rust dragons and 8 for the faerie dragon. A new port
-  method answers a dwelling's creature level, unclamped. The dragon pool is every dwelling
-  whose level is above 7.
+- `creature_level` clamped to 7 when this was written, although
+  `data/catalog/monster_levels.json` holds 10 for the azure, crystal and rust dragons and 8
+  for the faerie dragon. A new port method answers a dwelling's creature level, unclamped.
+  The dragon pool is every dwelling whose level is above 7. Since 2026-10-11 the stack
+  level is unclamped too, and the dragons guard at levels 8 to 10.
 - The value table prices every fixed dwelling at 2000 (`core/reading/value.py:24`), the same
   as a goblin barracks. Only the random dwellings get 1000 per level (`value.py:30`). The
   code is wrong here: a fixed dwelling should take 1000 per creature level as well, so a

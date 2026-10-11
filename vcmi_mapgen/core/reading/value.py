@@ -12,6 +12,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.artifact import TIERS, ArtifactTier
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
+from vcmi_mapgen.core.priors.effort import TOP_GUARD
 from vcmi_mapgen.core.reading.ground import REWARD_PURPOSES, purpose_of
 
 ARTIFACT_VALUE: Mapping[ArtifactTier, int] = {
@@ -30,6 +31,7 @@ PURPOSE_VALUE: Mapping[str, int] = {
 }
 DWELLING_STEP = 1000
 LEVELS = range(1, 8)
+GUARD_LEVELS = range(1, TOP_GUARD + 1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,7 +48,7 @@ class ValueTable:
         return ValueTable(
             artifacts={catalog.random_artifact(t).kind.lower(): t for t in TIERS},
             dwellings={catalog.random_dwelling(lv).kind.lower(): lv for lv in LEVELS},
-            monsters={catalog.guard(lv).kind.lower(): lv for lv in LEVELS},
+            monsters={catalog.guard(lv).kind.lower(): lv for lv in GUARD_LEVELS},
         )
 
 

@@ -151,7 +151,8 @@ class Catalog(Protocol):
         ...
 
     def creature_level(self, kind: str) -> int | None:
-        """The level 1..7 of a monster stack, fixed or random, or None when the kind is no
+        """The guard level of a monster stack, 1..7 for a random one and for a fixed stack of a
+        town creature, 8..10 for a fixed neutral dragon stack, or None when the kind is no
         monster or a random monster of any level."""
         ...
 
@@ -161,7 +162,8 @@ class Catalog(Protocol):
         ...
 
     def guard(self, level: int) -> Identity:
-        """The random monster of a strength level, clamped to 1..7."""
+        """The guard of a strength level: the random monster of levels 1..7, a fixed neutral
+        dragon stack above, clamped to the levels the catalog has."""
         ...
 
     def random_artifact(self, tier: ArtifactTier) -> Identity:

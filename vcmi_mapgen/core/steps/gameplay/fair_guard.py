@@ -13,8 +13,10 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from vcmi_mapgen.core.priors.effort import TOP_GUARD
+
 ARRIVALS = 3
-FAIR_GUARD = 4
+FAIR_GUARD = TOP_GUARD
 
 type Codes = NDArray[np.int64]
 

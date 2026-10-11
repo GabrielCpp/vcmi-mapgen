@@ -145,8 +145,11 @@ class VcmiCatalog:
         creature = OB.identity_of(kind).subtype or TB.creature_ids().get(
             sub if sub is not None else -1, ""
         )
+        for guard_level, animation in RO.DRAGON_GUARDS.items():
+            if RO.DRAGON_CREATURES[animation] == creature:
+                return guard_level
         level = TB.monster_levels().get(creature, 0)
-        return min(7, level) if level >= 1 else None
+        return level if level >= 1 else None
 
     def dwelling_level(self, kind: str) -> int | None:
         levels = [TB.monster_levels().get(c, 0) for c in OB.dwelling_creatures(kind)]
@@ -154,6 +157,10 @@ class VcmiCatalog:
         return top if top >= 1 else None
 
     def guard(self, level: int) -> Identity:
+        for guard_level in range(min(int(level), max(RO.DRAGON_GUARDS)), 7, -1):
+            animation = RO.DRAGON_GUARDS[guard_level]
+            if self.enabled.allows(RO.DRAGON_CREATURES[animation]):
+                return OB.identity_of(animation)
         return OB.identity_of(RO.RANDOM_MONSTERS[max(1, min(7, int(level))) - 1])
 
     def random_artifact(self, tier: ArtifactTier) -> Identity:

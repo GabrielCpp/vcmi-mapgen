@@ -13,7 +13,7 @@
 - `bands.py`: the slot of each object: the player and effort band it serves and its target in days, and the order the slots are placed in.
 - `reach.py`: `Reach`, the objects of each family each player reaches within each band, and how far one more would spread the players.
 - `siting.py`: where each slot stands. It ranks every site tile by the spread it would cause under its weakest fair guard, then by its player's band and target, and skips an object that would spread the players beyond one.
-- `fair_guard.py`: `fair_guard`, the weakest guard from level 1 to 4 that keeps the players' reach even at each tile, and `TileGrid`, which takes each tile's worst code within a few tiles. Both work on plain arrays, so the tests draw their grids in ASCII. Towns and mines take no fair guard.
+- `fair_guard.py`: `fair_guard`, the weakest guard, up to the toll's top level, that keeps the players' reach even at each tile, and `TileGrid`, which takes each tile's worst code within a few tiles. Both work on plain arrays, so the tests draw their grids in ASCII. Towns and mines take no fair guard.
 - `pick.py`: `Picker`, which object of a family stands on a site's terrain. Each copy of a kind standing within 10 tiles of the spot weighs that kind down, and `clear_first` puts the centres with no copy near first.
 - `fallback.py`: `smaller`, the smaller objects of a pool to try when the drawn one finds no room.
 - `economy.py`: the mine variants a terrain shows and the dwellings tied to a town.
