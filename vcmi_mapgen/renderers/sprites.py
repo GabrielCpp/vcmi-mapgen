@@ -12,7 +12,7 @@ Usage:
 """
 
 import io
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from functools import cache
 
 from PIL import Image, ImageDraw
@@ -21,7 +21,7 @@ from vcmi_mapgen.core.model import JsonValue, PlacedObject
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.vcmi.content.archive import ContentArchive
 from vcmi_mapgen.vcmi.formats import json_value as jv
-from vcmi_mapgen.vcmi.formats.defs import parse_def
+from vcmi_mapgen.vcmi.formats.defs import TRANSPARENT, Rgba, parse_def
 from vcmi_mapgen.vcmi.tiles import decode_tile_string
 
 # terrain code (first 2 chars of tile string) -> terrain .def filename
@@ -47,6 +47,16 @@ ROAD_DEF: dict[Road, str] = {
 DEF_SUFFIX = ".def"
 JSON_SUFFIX = ".json"
 TILE = 32  # pixels per map tile
+PLAYER_FLAGS: dict[str, Rgba] = {
+    "red": (0xFF, 0x00, 0x00, 0xFF),
+    "blue": (0x31, 0x52, 0xFF, 0xFF),
+    "tan": (0x9C, 0x73, 0x52, 0xFF),
+    "green": (0x42, 0x94, 0x29, 0xFF),
+    "orange": (0xFF, 0x84, 0x00, 0xFF),
+    "purple": (0x8C, 0x29, 0xA5, 0xFF),
+    "teal": (0x09, 0x9C, 0xA5, 0xFF),
+    "pink": (0xC6, 0x7B, 0x8C, 0xFF),
+}
 SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
     0: (0, 0, 0, 0),
     1: (0, 0, 0, 0),
@@ -57,17 +67,19 @@ SPECIAL_PALETTE: dict[int, tuple[int, int, int, int]] = {
 }
 
 
-def get_def(index: ContentArchive, name: str) -> list[list[Image.Image]] | None:
-    return _load_def(index, name.lower())
+def get_def(
+    index: ContentArchive, name: str, flag: Rgba = TRANSPARENT
+) -> list[list[Image.Image]] | None:
+    return _load_def(index, name.lower(), flag)
 
 
 @cache
-def _load_def(index: ContentArchive, key: str) -> list[list[Image.Image]] | None:
+def _load_def(index: ContentArchive, key: str, flag: Rgba) -> list[list[Image.Image]] | None:
     data = index.read(key)
     if data is None:
         return _load_json(index, key)
     try:
-        return parse_def(data)
+        return parse_def(data, flag)
     except Exception:
         return None
 
@@ -179,7 +191,11 @@ def render_map(
     surf: Sequence[Sequence[str]],
     objs: Sequence[PlacedObject],
     title: str = "",
+    owners: Mapping[tuple[int, int], str] | None = None,
 ) -> Image.Image:
+    """The map as the editor draws it. ``owners`` gives the player colour of the object
+    anchored at each (x, y), whose flag takes that colour."""
+    owners = owners or {}
     H, W = len(surf), len(surf[0])
     canvas = Image.new("RGB", (W * TILE, H * TILE), (0, 0, 0))
 
@@ -199,7 +215,8 @@ def render_map(
         anim = o.kind
         if not anim:
             continue
-        groups = get_def(index, anim)
+        flag = PLAYER_FLAGS.get(owners.get((o.x, o.y), ""), TRANSPARENT)
+        groups = get_def(index, anim, flag)
         if not groups or not groups[0]:
             miss += 1
             continue

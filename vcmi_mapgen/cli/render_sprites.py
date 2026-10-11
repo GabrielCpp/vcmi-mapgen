@@ -8,7 +8,11 @@ from vcmi_mapgen.renderers.sprites import render_map
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
-from vcmi_mapgen.vcmi.load import load_map
+from vcmi_mapgen.vcmi.load import load_map, map_colours
+
+
+def _flags(vmap: str) -> dict[tuple[int, int], str]:
+    return {(x, y): c for (x, y, level), c in map_colours(vmap).items() if level == 0}
 
 
 def render_sprites(
@@ -21,12 +25,13 @@ def render_sprites(
     index = lod(install.data_dir)
     gen = load_map(vmap)
     surf, objs = VM.read(vmap).terrain[0], gen.objs
-    gen_img = render_map(index, surf, objs, title=os.path.basename(vmap))
+    gen_img = render_map(index, surf, objs, os.path.basename(vmap), _flags(vmap))
 
     if compare:
         real = load_corpus_map(settings.maps_dir, compare)
         rsurf, robjs = VM.read(corpus_path(settings.maps_dir, compare)).terrain[0], real.objs
-        real_img = render_map(index, rsurf, robjs, title=f"REAL: {compare}")
+        real_path = corpus_path(settings.maps_dir, compare)
+        real_img = render_map(index, rsurf, robjs, f"REAL: {compare}", _flags(real_path))
         gap = 8
         canvas = Image.new(
             "RGB",

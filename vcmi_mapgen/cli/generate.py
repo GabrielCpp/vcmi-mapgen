@@ -44,6 +44,7 @@ from vcmi_mapgen.vcmi.content.enabled import (
 from vcmi_mapgen.vcmi.content.manifest import read_manifests
 from vcmi_mapgen.vcmi.content.mods import load_mods
 from vcmi_mapgen.vcmi.content.sprites import SpriteSource
+from vcmi_mapgen.vcmi.export import player_colours
 from vcmi_mapgen.vcmi.formats.lod import lod
 from vcmi_mapgen.vcmi.install import VcmiInstall
 from vcmi_mapgen.vcmi.players import parse_teams
@@ -365,7 +366,8 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
 
     if "png" in renderers:
         index = sprite_source(install, catalog)
-        png_renderer = PngRenderer(index, str(folder), tables)
+        colours = player_colours(install)
+        png_renderer = PngRenderer(index, str(folder), tables, colours=colours)
         print(f"  {png_renderer.save(map_state, 'surface.png', level=0)}")
         if opts.subterrain and 1 in map_state.terrain:
             print(f"  {png_renderer.save(map_state, 'underground.png', level=1)}")
@@ -373,7 +375,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         zones = pipeline.ctx.get(Segmentation, Segmentation({}, {})).zones
         overlays = parse_overlays(opts.overlays, loot_result.pockets, zones)
         if overlays:
-            overlay_renderer = PngRenderer(index, str(folder), tables, overlays)
+            overlay_renderer = PngRenderer(index, str(folder), tables, overlays, colours)
             print(f"  {overlay_renderer.save(map_state, 'overlays.png', level=0)}")
 
     if "vmap" in renderers:

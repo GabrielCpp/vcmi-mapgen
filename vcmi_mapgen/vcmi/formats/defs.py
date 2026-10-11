@@ -3,8 +3,11 @@ from dataclasses import dataclass
 
 from PIL import Image
 
+Rgba = tuple[int, int, int, int]
+TRANSPARENT: Rgba = (0, 0, 0, 0)
 
-def _decode_frame(data: bytes, foff: int) -> Image.Image:
+
+def _decode_frame(data: bytes, foff: int, flag: Rgba = TRANSPARENT) -> Image.Image:
     """Decode one DEF frame to RGBA PIL Image (32-bit).
 
     H3 SSpriteDef header (8 uint32): size, format, fullW, fullH, frameW, frameH,
@@ -18,18 +21,18 @@ def _decode_frame(data: bytes, foff: int) -> Image.Image:
       format 3 : each line split into 32-px BLOCKS, one uint16 offset PER BLOCK
                  (row-major), each block decoded with the format-2 segment scheme.
     Palette indices 0-7 are special: render shadows (1/4/6) as semi-transparent
-    black so objects read like the editor; 0/2/3 transparent, 5 selection and
-    7 player-flag transparent for static renders.
+    black so objects read like the editor; 0/2/3/7 transparent. Index 5 is the
+    owner's flag, drawn in ``flag``.
     """
     _sz, comp, fw_full, fh_full, fw, fh, fleft, ftop = struct.unpack_from("<IIIIIIII", data, foff)
     pal_raw = data[16 : 16 + 256 * 3]
-    SPECIAL: dict[int, tuple[int, int, int, int]] = {
+    SPECIAL: dict[int, Rgba] = {
         0: (0, 0, 0, 0),
         1: (0, 0, 0, 64),
         2: (0, 0, 0, 0),
         3: (0, 0, 0, 0),
         4: (0, 0, 0, 128),
-        5: (0, 0, 0, 0),
+        5: flag,
         6: (0, 0, 0, 128),
         7: (0, 0, 0, 0),
     }
@@ -137,8 +140,9 @@ class _Frame:
                     x += 1
 
 
-def parse_def(data: bytes) -> list[list[Image.Image]]:
-    """Parse a DEF file -> list of groups, each group = list of PIL Images."""
+def parse_def(data: bytes, flag: Rgba = TRANSPARENT) -> list[list[Image.Image]]:
+    """Parse a DEF file -> list of groups, each group = list of PIL Images, the owner's
+    flag drawn in ``flag``."""
     _dtype, fw, fh, nblocks = struct.unpack_from("<IIII", data, 0)  # 4 fields before palette
     if nblocks == 0 or nblocks > 64:
         nblocks = 1
@@ -159,7 +163,7 @@ def parse_def(data: bytes) -> list[list[Image.Image]]:
         frames: list[Image.Image] = []
         for foff in offsets:
             try:
-                img = _decode_frame(data, foff)
+                img = _decode_frame(data, foff, flag)
                 frames.append(img)
             except Exception:
                 frames.append(Image.new("RGBA", (fw, fh), (0, 0, 0, 0)))

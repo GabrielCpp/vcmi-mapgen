@@ -6,6 +6,7 @@ from vcmi_mapgen.core.model import Identity, JsonValue, MapState, PlacedObject
 from vcmi_mapgen.vcmi.catalog import objects as OB
 from vcmi_mapgen.vcmi.content.mods import NO_MODS, ModContent
 from vcmi_mapgen.vcmi.footprint import mask_rows
+from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.install import VcmiInstall
 from vcmi_mapgen.vcmi.options import options_of
@@ -23,6 +24,11 @@ def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
     if rmg:
         return VM.read_header(str(rmg[0]))
     return VM.header_template()
+
+
+def player_colours(install: VcmiInstall | None) -> list[str]:
+    """The colour of each player slot of an exported map, in slot order."""
+    return sorted(jv.as_object(_default_header(install).get("players")))
 
 
 def _identity(mods: ModContent, kind: str) -> Identity:

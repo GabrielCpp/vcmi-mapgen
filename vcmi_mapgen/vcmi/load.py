@@ -49,6 +49,16 @@ def load_map(path: str) -> MapState:
     return state
 
 
+def map_colours(path: str) -> dict[TownKey, str]:
+    """Object position ``(x, y, level)`` -> owner colour for every owned object of a
+    `.vmap`."""
+    return {
+        (o.x, o.y, o.level): owner
+        for o in VM.read(path).objects
+        if isinstance(owner := (o.options or {}).get("owner"), str)
+    }
+
+
 def map_owners(path: str) -> dict[TownKey, int]:
     """Town position ``(x, y, level)`` -> owner for every owned town of a `.vmap`. A player's
     index is its colour's rank among the header's colours sorted by name, the order export

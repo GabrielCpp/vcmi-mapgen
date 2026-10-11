@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
 from PIL import Image
 
@@ -18,7 +18,8 @@ from vcmi_mapgen.vcmi.tiles import TilerTables, tile_strings
 class PngRenderer:
     """Render a MapState to editor-quality 32px H3 sprite PNGs.
 
-    The tile art comes from ``tables``, the corpus tiler the caller loaded. Overlays are RGBA
+    The tile art comes from ``tables``, the corpus tiler the caller loaded. Player ``i``
+    flies ``colours[i]``, the colour of its slot in the exported map. Overlays are RGBA
     layers composited over the base sprite render; any number of overlay instances can be
     stacked in order.
 
@@ -36,6 +37,7 @@ class PngRenderer:
     out_dir: str
     _overlays: list[MapOverlay]
     tables: TilerTables
+    colours: tuple[str, ...]
 
     def __init__(
         self,
@@ -43,11 +45,13 @@ class PngRenderer:
         out_dir: str,
         tables: TilerTables,
         overlays: Iterable[MapOverlay] = (),
+        colours: Sequence[str] = (),
     ) -> None:
         self.index = index
         self.out_dir = out_dir
         self._overlays = list(overlays)
         self.tables = tables
+        self.colours = tuple(colours)
 
     def render(
         self,
@@ -55,10 +59,13 @@ class PngRenderer:
         level: int = 0,
         title: str = "",
         surface: Sequence[Sequence[str]] | None = None,
+        owners: Mapping[tuple[int, int, int], str] | None = None,
     ) -> Image.Image:
         """Return a PIL Image for the given level, with overlays composited. A map read from
         a file passes its own tile strings as ``surface`` to keep its art and its HotA
-        terrains. Otherwise the tiler draws the level from its terrain."""
+        terrains. Otherwise the tiler draws the level from its terrain. ``owners`` gives the
+        colour of each owned object by (x, y, level). Without it each start town flies its
+        player's colour."""
         terrain = state.terrain.get(level)
         if terrain is None:
             raise ValueError(f"state.terrain has no level {level}")
@@ -68,7 +75,13 @@ class PngRenderer:
         else:
             # renderers.sprites draws only l==0 objects; shift underground to l=0
             objs = [dataclasses.replace(o, level=0) for o in state.objs if o.level == level]
-        base = RED.render_map(self.index, surfs, objs, title=title)
+        if owners is None:
+            owners = {
+                (t.x, t.y, t.level): c
+                for t, c in zip(state.player_towns, self.colours, strict=False)
+            }
+        flags = {(x, y): c for (x, y, lv), c in owners.items() if lv == level}
+        base = RED.render_map(self.index, surfs, objs, title=title, owners=flags)
         if not self._overlays:
             return base
         img = base.convert("RGBA")

@@ -9,6 +9,7 @@ from pathlib import Path
 from vcmi_mapgen.corpus.maps import all_map_names, corpus_path, load_corpus_map
 from vcmi_mapgen.renderers import PngRenderer
 from vcmi_mapgen.vcmi.formats import vmap as VM
+from vcmi_mapgen.vcmi.load import map_colours
 
 UNDERGROUND_SUFFIX = "_underground"
 
@@ -16,11 +17,13 @@ UNDERGROUND_SUFFIX = "_underground"
 def render_vmap(renderer: PngRenderer, vmap_dir: Path, png_dir: Path, name: str) -> list[Path]:
     """Render one map's levels and return the paths written."""
     state = load_corpus_map(vmap_dir, name)
-    doc = VM.read(corpus_path(vmap_dir, name))
+    source = corpus_path(vmap_dir, name)
+    doc = VM.read(source)
+    owners = map_colours(source)
     written: list[Path] = []
     for level, surface in enumerate(doc.terrain):
         path = png_dir / f"{name}{UNDERGROUND_SUFFIX if level else ''}.png"
-        renderer.render(state, level, name, surface).save(path)
+        renderer.render(state, level, name, surface, owners).save(path)
         written.append(path)
     return written
 

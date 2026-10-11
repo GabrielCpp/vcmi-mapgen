@@ -123,6 +123,19 @@ def test_render_is_deterministic() -> None:
     assert a.tobytes() == b.tobytes(), "renderer is not deterministic"
 
 
+def test_an_owned_town_flies_its_player_colour() -> None:
+    surf = [[f"gr{(x + y) % 4}_" for x in range(8)] for y in range(8)]
+    town = PlacedObject(6, 6, 0, "", "avcranx0", Footprint(0, 0, ()))
+    blue = RE.PLAYER_FLAGS["blue"][:3]
+
+    def flag_pixels(owners: dict[tuple[int, int], str]) -> int:
+        img = RE.render_map(_index(), surf, [town], owners=owners)
+        return sum(1 for p in img.get_flattened_data() if p == blue)
+
+    assert flag_pixels({}) == 0
+    assert flag_pixels({(6, 6): "blue"}) > 0
+
+
 def _png(colour: tuple[int, int, int]) -> bytes:
     buf = io.BytesIO()
     Image.new("RGB", (RE.TILE, RE.TILE), colour).save(buf, "PNG")
