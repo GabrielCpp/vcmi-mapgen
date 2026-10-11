@@ -20,11 +20,14 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import (
     NEIGHBOURHOOD,
     Footing,
+    OpenFooting,
     SidedFooting,
     SnugFooting,
     ZoneFooting,
     ZoneSite,
     footing_of,
+    large,
+    openness,
 )
 from vcmi_mapgen.core.reading.contest import soonest
 from vcmi_mapgen.core.reading.effort import EffortMap
@@ -68,6 +71,7 @@ type Shape = Callable[[Footing], Footing]
 PASSES: tuple[tuple[bool, Shape], ...] = (
     (False, SnugFooting),
     (False, SidedFooting),
+    (False, OpenFooting),
     (True, SnugFooting),
     (True, SidedFooting),
 )
@@ -206,10 +210,11 @@ class Siting:
     def stand(self, slot: Slot) -> tuple[str, PlacedObject] | None:
         """Stand one object of ``slot`` on the best site that takes it, with its family. The
         drawn object first looks for a spot where it sits snug for its size, then for a spot
-        with one closed side. It then gives way to a smaller object of the same family, which
-        looks for the same spots in the same order. A mine tries every site, any other object
-        the best few. A rare mine takes its family from the turn where it stands. None when
-        no site takes any, and nothing stands."""
+        with one closed side, and a large object then for any spot in the open. It then gives
+        way to a smaller object of the same family, which looks for the snug and the sided
+        spots in the same order. A large object tries the most open ground of a group first.
+        A mine tries every site, any other object the best few. A rare mine takes its family
+        from the turn where it stands. None when no site takes any, and nothing stands."""
         purpose = family_purpose(slot.family)
         if self.gold is not None and slot.family == GOLD_FAMILY:
             return self._stand_gold(slot, purpose)
@@ -338,13 +343,19 @@ class Siting:
         footing = shape(ZoneFooting(mine=True) if guard else footing_of(purpose))
         idents = smaller(site, pick.pool, pick.ident) if fallback else [pick.ident]
         for ident in idents:
-            spots = self.picker.clear_first(ident, site.lf.level, centres)
+            at = self._open_first(site, centres) if large(ident) else centres
+            spots = self.picker.clear_first(ident, site.lf.level, at)
             obj = site.place(purpose, ident, spots, footing, guard or None)
             if obj is not None:
                 self.picker.use(ident, obj)
                 self.track(family, obj, guard)
                 return obj
         return None
+
+    @staticmethod
+    def _open_first(site: ZoneSite, centres: list[Tile]) -> list[Tile]:
+        room = {c: openness(site, c, NEIGHBOURHOOD) for c in centres}
+        return sorted(centres, key=lambda c: -room[c])
 
     def _groups(self, slot: Slot, purpose: str, loose: bool = False) -> list[Group]:
         """The tiles that widen no gap under their weakest fair guard, best first, grouped by

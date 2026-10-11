@@ -32,7 +32,7 @@ from vcmi_mapgen.core.grid.components import components
 from vcmi_mapgen.core.grid.detour import detours
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
 from vcmi_mapgen.core.grid.reach import walk
-from vcmi_mapgen.core.grid.snug import sided, snug
+from vcmi_mapgen.core.grid.snug import SIZE_CLASSES, sided, size_class, snug
 from vcmi_mapgen.core.grid.splits import MIN_AREA, splits
 from vcmi_mapgen.core.model import (
     CoverIndex,
@@ -734,6 +734,34 @@ class SidedFooting:
     def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
         fit = self.inner.fit(site, ident, anchor)
         return fit if fit is not None and site.sided(ident, anchor) else None
+
+
+@final
+@dataclass(frozen=True, slots=True)
+class OpenFooting:
+    """Another footing's spots, kept to the sprites of the largest size class, which may
+    stand in the open with no closed tile beside them."""
+
+    inner: Footing
+
+    def admits(self, site: ZoneSite, ident: Identity, anchor: Tile) -> bool:
+        return large(ident) and self.inner.admits(site, ident, anchor)
+
+    def fit(self, site: ZoneSite, ident: Identity, anchor: Tile) -> Fit | None:
+        return self.inner.fit(site, ident, anchor)
+
+
+def large(ident: Identity) -> bool:
+    """Whether ``ident`` has a body of the largest size class."""
+    return size_class(ident.footprint) == SIZE_CLASSES[-1]
+
+
+def openness(site: ZoneSite, centre: Tile, r: int) -> int:
+    """The open tiles within ``r`` of ``centre`` on the site's level."""
+    x, y = centre
+    return sum(
+        not site.lf.closed((x + dx, y + dy)) for dx in range(-r, r + 1) for dy in range(-r, r + 1)
+    )
 
 
 def spot(site: ZoneSite, footing: Footing, ident: Identity, anchor: Tile) -> Fit | None:

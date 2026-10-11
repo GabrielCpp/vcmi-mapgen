@@ -3,11 +3,13 @@ from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.site import (
     LevelField,
+    OpenFooting,
     SidedFooting,
     SiteZone,
     TownFooting,
     ZoneFooting,
     ZoneSite,
+    openness,
     spot,
 )
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
@@ -45,6 +47,21 @@ _TALL = Identity(
     ),
 )
 _ART = Identity("artifact", "x", "ava0001", Footprint.one(Role.VISIT))
+_BIG = Identity(
+    "artifact",
+    "x",
+    "ava0001",
+    Footprint(
+        2,
+        2,
+        (
+            (-1, -1, Role.BLOCKING),
+            (0, -1, Role.BLOCKING),
+            (-1, 0, Role.BLOCKING),
+            (0, 0, Role.VISIT),
+        ),
+    ),
+)
 _ST = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
 
 
@@ -118,3 +135,17 @@ def test_sided_footing_keeps_the_spots_beside_a_closed_tile(catalog: Catalog) ->
     assert spot(site, SidedFooting(ZoneFooting()), _ART, (9, 5)) is not None
     assert spot(site, SidedFooting(ZoneFooting()), _ART, (5, 5)) is None
     assert spot(site, ZoneFooting(), _ART, (5, 5)) is not None
+
+
+def test_open_footing_stands_only_a_large_body_in_the_open(catalog: Catalog) -> None:
+    site = _site(catalog, Terrain.GRASS, vegetated=True)
+    assert spot(site, SidedFooting(ZoneFooting()), _BIG, (5, 5)) is None
+    assert spot(site, OpenFooting(ZoneFooting()), _BIG, (5, 5)) is not None
+    assert spot(site, OpenFooting(ZoneFooting()), _ART, (5, 5)) is None
+
+
+def test_openness_counts_the_open_tiles_around_a_centre(catalog: Catalog) -> None:
+    site = _site(catalog, Terrain.GRASS, vegetated=True)
+    assert openness(site, (5, 5), 1) == 9
+    assert openness(site, (9, 5), 1) == 6
+    assert openness(site, (0, 0), 1) == 4
