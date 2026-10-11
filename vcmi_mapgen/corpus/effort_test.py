@@ -7,10 +7,19 @@ from vcmi_mapgen.corpus.effort import load_effort, save_effort, tuned_effort
 def test_saved_effort_priors_load_back_unchanged(tmp_path: Path) -> None:
     priors = EffortPriors(
         toll=(0, 1, 2, 3, 4, 5, 6, 7),
-        edges=(5, 9, 30),
-        baskets=({"treasure": 1}, {"minor": 2}, {"major": 3}, {"relic": 4}),
-        grants=(RewardTier((1, 2, 3), (100,), (200, 300), (1, 2), (1,)),) * 4,
-        boxes=(0, 1, 2, 3),
+        edges=(5, 9, 30, 40, 50, 60, 70),
+        baskets=(
+            {"treasure": 1},
+            {"minor": 2},
+            {"major": 3},
+            {"relic": 4},
+            {"relic": 5},
+            {"relic": 6},
+            {"relic": 7},
+            {"relic": 8},
+        ),
+        grants=(RewardTier((1, 2, 3), (100,), (200, 300), (1, 2), (1,)),) * 8,
+        boxes=(0, 1, 2, 3, 3, 3, 3, 3),
         medians={"treasure": 4.0, "relic": 40.0},
         counts={"treasure": 10, "relic": 2},
     )

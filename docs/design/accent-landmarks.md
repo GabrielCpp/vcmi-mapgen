@@ -39,8 +39,8 @@ building. It reads as a hole in the map rather than a spot worth the walk.
 1. Every gameplay object is placed after vegetation, and its body may stand over trees.
    (memory: gameplay after vegetation)
 2. Each zone's object total follows the corpus rate. (memory: gameplay after vegetation)
-3. Reward follows hero-days. Band 4 holds level 6 and 7 dwellings. The guard comes first and
-   the value follows it. (memory: effort reward)
+3. Reward follows hero-days. Band 4 and up hold level 6 and 7 dwellings. The guard comes
+   first and the value follows it. (memory: effort reward)
 4. The catalog is the only source of object identity, and mod objects join through it.
    (AGENTS.md, memory: effort reward)
 5. The landmark is a gold mine or an abandoned mine, a stat building or a dwelling, and a

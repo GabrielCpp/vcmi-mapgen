@@ -1,6 +1,7 @@
 import random
 
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.priors.effort import BANDS
 from vcmi_mapgen.core.reading.families import FAR_DAYS, mine_family
 from vcmi_mapgen.core.steps.gameplay.bands import (
     BandPlan,
@@ -25,11 +26,11 @@ def test_the_remainder_goes_to_the_players_from_start() -> None:
 
 def test_band_shares_follow_the_corpus_days() -> None:
     days = [1] * 5 + [3] * 5
-    assert band_shares(days, _band) == [0.25, 0.75, 0.0, 0.0]
+    assert band_shares(days, _band) == [0.25, 0.75] + [0.0] * (BANDS - 2)
 
 
 def test_no_corpus_days_put_every_object_in_the_first_band() -> None:
-    assert band_shares([], _band) == [1.0, 0.0, 0.0, 0.0]
+    assert band_shares([], _band) == [1.0] + [0.0] * (BANDS - 1)
 
 
 def test_every_prefix_of_the_sequence_follows_the_shares() -> None:

@@ -1,8 +1,11 @@
 """The guard toll, the effort bands the reward steps price a place by, and what each band
-offers: its artifact class weights, its Pandora's Box grant and its box count."""
+offers: its artifact class weights, its Pandora's Box grant and its box count. The corpus
+sets the first edges, and the rest grow by the toll's growth per guard level, so a place
+behind a stronger guard always lands in a higher band."""
 
+import math
 from bisect import bisect_right
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.model.artifact import ArtifactTier
@@ -10,12 +13,17 @@ from vcmi_mapgen.core.model.artifact import ArtifactTier
 type Basket = Mapping[ArtifactTier, int]
 
 DEFAULT_TOLL = (0, 3, 5, 8, 12, 18, 28, 45)
-BANDS = 4
+BANDS = 8
+CORPUS_EDGES = (8, 13, 22)
 DEFAULT_BASKETS: tuple[Basket, ...] = (
     {"treasure": 3, "minor": 1},
     {"treasure": 1, "minor": 3, "major": 1},
     {"minor": 1, "major": 3, "relic": 1},
     {"major": 1, "relic": 3},
+    {"major": 1, "relic": 4},
+    {"major": 1, "relic": 6},
+    {"major": 1, "relic": 9},
+    {"relic": 1},
 )
 
 
@@ -37,8 +45,35 @@ DEFAULT_GRANTS: tuple[RewardTier, ...] = (
     RewardTier((35, 35, 30), (2000, 3000, 5000), (5000, 7500), (4, 8), (3, 4)),
     RewardTier((20, 40, 40), (5000, 7500, 10000), (10000, 15000), (3, 6), (5,)),
     RewardTier((0, 40, 60), (10000,), (20000, 30000), (2, 4), (6, 7)),
+    RewardTier((0, 40, 60), (10000, 15000), (20000, 30000), (3, 6), (6, 7)),
+    RewardTier((0, 35, 65), (15000,), (30000, 40000), (4, 8), (7,)),
+    RewardTier((0, 30, 70), (15000, 20000), (40000, 50000), (6, 10), (7,)),
+    RewardTier((0, 25, 75), (20000,), (50000,), (8, 14), (7,)),
 )
-DEFAULT_BOXES = (0, 0, 1, 1)
+DEFAULT_BOXES = (0, 0, 1, 1, 1, 2, 2, 2)
+
+
+def toll_growth(toll: Sequence[int]) -> float:
+    """The factor the toll grows by per guard level, read between the weakest and the
+    strongest guard."""
+    first = next((t for t in toll if t > 0), None)
+    if first is None or toll[-1] <= first:
+        return 1.0
+    steps = len(toll) - 1 - toll.index(first)
+    return math.pow(toll[-1] / first, 1 / steps)
+
+
+def extend_edges(edges: Sequence[int], toll: Sequence[int], bands: int = BANDS) -> tuple[int, ...]:
+    """``edges`` grown to ``bands - 1`` of them, each next edge the last one times the
+    toll's growth per guard level, so the bands keep pace with the guards."""
+    growth = toll_growth(toll)
+    out = list(edges)
+    for k in range(1, bands - len(edges)):
+        out.append(max(round(edges[-1] * growth**k), out[-1] + 1))
+    return tuple(out)
+
+
+DEFAULT_EDGES = extend_edges(CORPUS_EDGES, DEFAULT_TOLL)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,15 +104,15 @@ class BandEdgeError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class EffortPriors:
-    """The days a hero spends beating a guard of each level 0..7, the three effort edges
-    that split places into four bands, and per band its artifact class weights, its Pandora's
-    Box grant and its box count. `medians` is the corpus effort at the pickups of each
-    artifact class, and `counts` the pickups behind each median. `families` holds per
-    gameplay family the corpus count of objects at each effort in days, the last count
-    holding every effort past it."""
+    """The days a hero spends beating a guard of each level 0..7, the effort edges that split
+    places into BANDS bands, and per band its artifact class weights, its Pandora's Box grant
+    and its box count. `medians` is the corpus effort at the pickups of each artifact class,
+    and `counts` the pickups behind each median. `families` holds per gameplay family the
+    corpus count of objects at each effort in days, the last count holding every effort past
+    it."""
 
     toll: tuple[int, ...] = DEFAULT_TOLL
-    edges: tuple[int, ...] = (8, 13, 22)
+    edges: tuple[int, ...] = DEFAULT_EDGES
     baskets: tuple[Basket, ...] = DEFAULT_BASKETS
     grants: tuple[RewardTier, ...] = DEFAULT_GRANTS
     boxes: tuple[int, ...] = DEFAULT_BOXES
@@ -97,10 +132,10 @@ class EffortPriors:
             raise BandEdgeError(f"there must be {BANDS} band box counts: {len(self.boxes)}")
 
     def band(self, total: int) -> int:
-        """The band 1..4 of an effort in days."""
+        """The band 1..BANDS of an effort in days."""
         return bisect_right(self.edges, total) + 1
 
     def offer(self, band: int) -> Offer:
-        """What a band 1..4 offers a place."""
+        """What a band 1..BANDS offers a place."""
         i = band - 1
         return Offer(self.baskets[i], self.grants[i], self.boxes[i])

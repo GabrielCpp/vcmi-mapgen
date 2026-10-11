@@ -9,11 +9,10 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.artifact import TIERS, ArtifactSet, ArtifactTier
-from vcmi_mapgen.core.priors.effort import BANDS
 from vcmi_mapgen.core.steps.sets.slots import NO_HOME, Slot
 
 QUOTA_AREA = 72 * 72
-TOP_BANDS = 2
+TOP_BAND = 3
 
 
 def set_quota(levels: int, size: int) -> int:
@@ -35,8 +34,8 @@ def tiers_of(catalog: Catalog) -> dict[str, ArtifactTier]:
 
 
 def top_slots(slots: Sequence[Slot]) -> list[Slot]:
-    """The slots a home reaches in the top two bands."""
-    return [s for s in slots if s.home != NO_HOME and s.band > BANDS - TOP_BANDS]
+    """The slots a home reaches in the bands from TOP_BAND on."""
+    return [s for s in slots if s.home != NO_HOME and s.band >= TOP_BAND]
 
 
 def share(slots: Sequence[Slot], n: int) -> list[Slot] | None:
@@ -83,8 +82,8 @@ class Dealer:
 
 
 def deal_sets(dealer: Dealer, slots: Sequence[Slot], rng: random.Random) -> list[Deal]:
-    """Up to the quota of distinct sets, each drawn among those whose parts fit the top-band
-    slots still free."""
+    """Up to the quota of distinct sets, each drawn among those whose parts fit the top
+    band slots still free."""
     free = top_slots(slots)
     pool = sorted(dealer.sets, key=lambda s: s.name)
     deals: list[Deal] = []

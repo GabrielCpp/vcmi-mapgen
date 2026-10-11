@@ -32,7 +32,7 @@ def test_homes_are_the_visit_tiles_of_the_player_towns(catalog: Catalog) -> None
 
 
 def test_a_far_place_lands_in_a_higher_band_than_a_near_one(catalog: Catalog) -> None:
-    effort = EffortPriors(edges=(1, 2, 3))
+    effort = EffortPriors(edges=(1, 2, 3, 4, 5, 6, 7))
     em = effort_with(catalog, _state(catalog), effort.toll)
     prices = price_places(em, {0: {1: _access(7, 8), 2: _access(22, 22)}}, effort)
     near, far = prices[0][1], prices[0][2]

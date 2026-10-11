@@ -44,7 +44,7 @@ def _held(*places: dict[int, dict[int, CutoffPlace]]) -> list[HeldPrize]:
 class SetsStep(PipelineStep):
     """Combined artifacts. The treasure, portal and loot steps each hold one prize slot back
     per place. This step prices every slot by the effort from its nearest home, deals whole
-    sets onto the slots in the top two bands, one part per place and round-robin over the
+    sets onto the slots from the third band on, one part per place and round-robin over the
     homes, and fills every slot no set took with the artifact its place drew.
 
     Config:

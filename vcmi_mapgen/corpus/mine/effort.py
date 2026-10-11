@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.artifact import TIERS, ArtifactTier
-from vcmi_mapgen.core.priors.effort import BANDS, EffortPriors
+from vcmi_mapgen.core.priors.effort import EffortPriors, extend_edges
 from vcmi_mapgen.core.reading.effort import effort_map
 from vcmi_mapgen.core.reading.families import family_days, histogram
 from vcmi_mapgen.core.reading.routes import Spot, route_map
@@ -76,13 +76,14 @@ def pickup_efforts(
 
 
 def _quantiles(values: Sequence[int]) -> tuple[int, ...]:
-    cuts = statistics.quantiles(values, n=BANDS, method="inclusive")
+    cuts = statistics.quantiles(values, n=len(TIERS), method="inclusive")
     return tuple(round(c) for c in cuts)
 
 
 def band_edges(medians: Sequence[float], values: Sequence[int]) -> tuple[int, ...]:
     """The edges at the geometric midpoints of consecutive class medians, or the effort
-    quartiles when the medians do not rise."""
+    quartiles when the medians do not rise. The bands past the last class grow from these
+    by the toll, see ``extend_edges``."""
     edges = tuple(
         round(math.sqrt(max(a, 1.0) * max(b, 1.0))) for a, b in itertools.pairwise(medians)
     )
@@ -97,9 +98,9 @@ def mine_effort(
     owners: Iterable[Mapping[TownKey, int]],
     tuned: EffortPriors,
 ) -> EffortPriors:
-    """The ``tuned`` priors with their band edges read from the effort at every corpus
-    artifact pickup of each class, and the effort spread of each gameplay family from the
-    player towns. The toll and the baskets stay as tuned."""
+    """The ``tuned`` priors with their first band edges read from the effort at every corpus
+    artifact pickup of each class and the rest grown by the toll, and the effort spread of
+    each gameplay family from the player towns. The toll and the baskets stay as tuned."""
     tiers = ArtifactTiers.of(catalog)
     by_tier: dict[ArtifactTier, list[int]] = {t: [] for t in TIERS}
     by_family: dict[str, list[int]] = {}
@@ -114,7 +115,7 @@ def mine_effort(
     edges = band_edges([medians[t] for t in TIERS if t in medians], values)
     return replace(
         tuned,
-        edges=edges,
+        edges=extend_edges(edges, tuned.toll),
         medians=medians,
         counts={t: len(v) for t, v in by_tier.items()},
         families={f: histogram(v) for f, v in sorted(by_family.items())},

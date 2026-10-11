@@ -18,7 +18,7 @@ from vcmi_mapgen.core.reading.ground import purpose_of
 from vcmi_mapgen.core.reading.promise import doors
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 
-FAR_DAYS = 40
+FAR_DAYS = 180
 TOP_LEVEL = 7
 UNGUARDED = frozenset({Purpose.MINE, Purpose.TOWN})
 

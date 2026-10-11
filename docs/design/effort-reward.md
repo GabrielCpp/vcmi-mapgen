@@ -55,9 +55,11 @@ Settled with the user in the grill (2026-10-04):
    already on the route is that guard. Otherwise the prize gets its own guard, with its
    level from the corpus reading of guard level by distance.
 7. The premium goes only to places cut off by a gate, sea, portal or deep pocket.
-8. Four bands, with edges from the corpus effort in front of each artifact class. Each band
-   names its kinds. The place's size sets the item count.
-9. Set parts go one per place in the top two bands. One set per 72×72 tiles, both levels
+8. Eight bands. The first three edges come from the corpus effort in front of each artifact
+   class, and the rest grow by the toll's growth per guard level, so a stronger guard always
+   lifts a place into a higher band. Each band names its kinds. The place's size sets the
+   item count.
+9. Set parts go one per place in the bands from the third on. One set per 72×72 tiles, both levels
    counted, at least one. A set is placed only when enough places exist, and only from sets
    whose parts are all enabled. Parts go round-robin across players by nearest home.
 10. The treasure step fills islands too. The rules apply to markov maps too.

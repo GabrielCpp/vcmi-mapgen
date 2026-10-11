@@ -15,7 +15,7 @@ One subpackage per step (`terrain_gen/`, `segment/`, `vegetation/`, `doors/`, `g
 - `treasure/`: `TreasureStep`, the treasure inside each sealed loot zone and on each island, priced by its effort in hero-days. It provides `TreasureResult`.
 - `portal/`: `PortalStep`, the portal pairs that link cut-off zones to the start zone, and each portal place's prizes priced by its effort. A pair never joins two player territories, and a pair between two territories takes its guard level from the `DoorGuards` spread. It provides `PortalResult`.
 - `loot/`: `LootStep`, the seer-hut quests and the pocket caches, guarded only in a deep pocket.
-- `sets/`: `SetsStep`, the combined artifact sets. The treasure, portal and loot steps each hold one prize slot open per place, and this step deals whole sets onto the slots in the top two effort bands, then fills every other slot. It provides `SetsResult`.
+- `sets/`: `SetsStep`, the combined artifact sets. The treasure, portal and loot steps each hold one prize slot open per place, and this step deals whole sets onto the slots from the third effort band on, then fills every other slot. It provides `SetsResult`.
 - `scatter/`: `ScatterStep`, the free resource piles placed last.
 - `roads/`: `RoadsStep`, the last step. It lays each level's roads into `map_state.roads` with the `RoadLayer` it is given, `PassageRoads` from `cli/steps.py`. It runs after every object, so it routes over the tiles no blocking cell or gate covers and no later object can stand on a road. A lasting object's visit tile is a blocking entrance, so no road runs over it.
 
