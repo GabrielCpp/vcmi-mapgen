@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from collections.abc import Mapping
 from typing import override
 
@@ -12,10 +13,12 @@ from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement.intensity import stoch_round
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan, ContentPlanner, HopContent
-from vcmi_mapgen.core.planning.loot_zones import choose_loot_zones
+from vcmi_mapgen.core.planning.loot_zones import choose_loot_zones, draw_loot_zones
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap, Segmentation, TerrainGrids
 from vcmi_mapgen.core.steps.vegetation.border_plan import BorderPlan, seal_borders
 from vcmi_mapgen.core.steps.vegetation.grow import (
@@ -75,19 +78,24 @@ def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
     return VegetatedZone(zone.open_set - mine, zone.passable - mine)
 
 
-def _loot_zones(map_state: MapState, plan: ZPL.ZonePlan) -> LootZones:
+def _loot_zones(
+    map_state: MapState, plan: ZPL.ZonePlan, priors: Priors, players: int, seed: int
+) -> LootZones:
     homes = {lvl: {zid for lv, zid in plan.player_zids if lv == lvl} for lvl in plan.levels}
-    return LootZones(
-        {
-            lvl: choose_loot_zones(
-                {zid: z.ts for zid, z in pl.zones.items()},
-                FP.blocking_cells([o for o in [*pl.sea, *map_state.objs] if o.level == lvl]),
-                map_state.terrain.get(lvl, ()),
-                homes[lvl],
-            )
-            for lvl, pl in plan.levels.items()
-        }
-    )
+    candidates = {
+        lvl: choose_loot_zones(
+            {zid: z.ts for zid, z in pl.zones.items()},
+            FP.blocking_cells([o for o in [*pl.sea, *map_state.objs] if o.level == lvl]),
+            map_state.terrain.get(lvl, ()),
+            homes[lvl],
+        )
+        for lvl, pl in plan.levels.items()
+    }
+    rng = random.Random(seed ^ 0x6A7E)
+    land = land_area(map_state)
+    gates = stoch_round(rng, priors.keymasters.expected(land, players))
+    pairs = stoch_round(rng, priors.portals.expected(land, players))
+    return LootZones(*draw_loot_zones(candidates, gates, pairs, rng))
 
 
 def _patches(
@@ -119,8 +127,9 @@ class VegetationStep(PipelineStep):
     Produces: extends ``map_state.objs`` with this step's own new vegetation objects
     (``self.objs`` keeps just the new ones, for callers that want that distinction). Into ctx:
     the ``ContentPlan``, the ``ZonePlan``, ``VegetationResult``, which holds each zone's
-    open and passable tiles, and ``LootZones``, the zones ``choose_loot_zones`` picks to be
-    sealed once the trees stand.
+    open and passable tiles, and ``LootZones``, the zones ``draw_loot_zones`` draws among
+    those ``choose_loot_zones`` picks, up to the corpus count of keymaster tents and of
+    monolith pairs, to be sealed once the trees stand.
     """
 
     def __init__(
@@ -185,7 +194,7 @@ class VegetationStep(PipelineStep):
         self._ctx.provide(content)
         self._ctx.provide(plan)
         self._ctx.provide(VegetationResult(log=tuple(self.log), zones=veg))
-        self._ctx.provide(_loot_zones(map_state, plan))
+        self._ctx.provide(_loot_zones(map_state, plan, self.priors, self.players, self.seed))
 
     def _zone_plan(
         self, catalog: Catalog, map_state: MapState, content: ContentPlan

@@ -1,5 +1,6 @@
 """The corpus curves of an object count over a map's land area and player count: one for the
-towns, one for the resource mines, and one per gameplay family beside the power its efforts
+towns, one for the resource mines, one for the keymaster tents, one for the two-way monolith
+pairs, and one per gameplay family beside the power its efforts
 from home stretch by with the land and the share of its objects at each guard level. Only the
 town curve grows with the player count."""
 
@@ -27,6 +28,8 @@ class CountCurve:
 
 MINE_CURVE = CountCurve(-1.69, 0.61, 0.0)
 TOWN_CURVE = CountCurve(-2.43, 0.41, 0.68)
+KEYMASTER_CURVE = CountCurve(-4.18, 0.54, 0.0)
+PORTAL_CURVE = CountCurve(-3.75, 0.45, 0.0)
 
 
 @dataclass(frozen=True, slots=True)

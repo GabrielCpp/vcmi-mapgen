@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import final, override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.reach import land_reach
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.ways import kept_rules
 from vcmi_mapgen.core.planning.content import ContentPlan
@@ -30,14 +32,14 @@ def _reached(map_state: MapState, gate_xy: set[Tile]) -> dict[int, frozenset[Til
     return {lvl: frozenset((x, y) for x, y, at in found if at == lvl) for lvl in map_state.terrain}
 
 
-def _report_loot(level: int, n_loot: int, loot_zids: set[int]) -> None:
-    if n_loot:
+def _report_loot(level: int, new: Sequence[PlacedObject], loot_zids: set[int]) -> None:
+    if loot_zids:
+        gates = sum(o.purpose == Purpose.QUEST_GATE for o in new) // 2
+        pairs = sum(o.purpose == Purpose.TRANSPORT for o in new) // 2
         zid_str = ", ".join(str(z) for z in sorted(loot_zids))
         print(
-            f"  L{level} loot zones: {n_loot} access pair(s) placed "
-            + f"(1 gate+key, {n_loot - 1} sealed+monolith) zones=[{zid_str}]"
-            if n_loot > 1
-            else f"  L{level} loot zones: 1 gate+key pair placed zones=[{zid_str}]"
+            f"  L{level} loot zones: {gates} gate+key, {pairs} sealed+monolith"
+            + f" zones=[{zid_str}]"
         )
 
 
@@ -58,7 +60,9 @@ class GatedStep(PipelineStep):
     hero walks through between levels) and the ``ContentPlan`` when present, whose hops pick
     the level of each partner guard from the corpus spread. A zone no home reaches on foot
     is never sealed and never holds a partner. The ``LootZones`` when present name the
-    zones to seal, otherwise the step chooses them over the map as it stands.
+    zones to seal and the ones a monolith pair seals, otherwise the step chooses them over
+    the map as it stands and flips a coin for each. Each keymaster tent and outer monolith
+    stands in a random zone a home reaches, a zone without a town or a partner first.
 
     Produces: appends the gates, monoliths, partners, guards and seals to ``map_state.objs``,
     and provides ``ZoneIndex`` and ``GatedResult``.
@@ -94,7 +98,7 @@ class GatedStep(PipelineStep):
         result = GatedResult()
         reached = _reached(map_state, self._gate_xy)
         for level, zone_records in index.zone_records.items():
-            new, n, access, claims = place_gated_zones(
+            new, _n, access, claims = place_gated_zones(
                 catalog,
                 GatedLevel(
                     zone_records,
@@ -105,6 +109,7 @@ class GatedStep(PipelineStep):
                     prize_guard(self.priors.places, self._content, level),
                     None if reached is None else reached[level],
                     None if self._loot is None else self._loot.on(level),
+                    None if self._loot is None else self._loot.monoliths_on(level),
                 ),
                 seed=self.seed,
                 bounds=(self.size, self.size),
@@ -116,7 +121,7 @@ class GatedStep(PipelineStep):
             result.access[level] = access
             index.claims[level] = claims
             self.objs.extend(new)
-            _report_loot(level, n, set(access))
+            _report_loot(level, new, set(access))
         map_state.add_objs(self.objs)
         self._ctx.provide(index)
         self._ctx.provide(result)

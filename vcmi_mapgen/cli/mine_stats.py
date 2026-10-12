@@ -7,8 +7,12 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.priors.markov import MarkovTables
 from vcmi_mapgen.corpus.counts import (
+    KEYMASTERS_FILE,
+    KEYMASTERS_SOURCE,
     MINES_FILE,
     MINES_SOURCE,
+    PORTALS_FILE,
+    PORTALS_SOURCE,
     TOWNS_FILE,
     TOWNS_SOURCE,
     save_curve,
@@ -20,7 +24,13 @@ from vcmi_mapgen.corpus.gates import save_gate_stats
 from vcmi_mapgen.corpus.macro import save_macro
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.markov import save_inside, save_tables
-from vcmi_mapgen.corpus.mine.counts import family_curves, mine_curve, town_curve
+from vcmi_mapgen.corpus.mine.counts import (
+    family_curves,
+    keymaster_curve,
+    mine_curve,
+    portal_curve,
+    town_curve,
+)
 from vcmi_mapgen.corpus.mine.effort import mine_effort
 from vcmi_mapgen.corpus.mine.gameplay import mine_gameplay
 from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
@@ -121,6 +131,8 @@ def _counts(m: MineInput) -> None:
     players = [p.players for p in mp]
     save_curve(m.pp_dir, MINES_FILE, MINES_SOURCE, mine_curve(m.catalog, m.maps))
     save_curve(m.pp_dir, TOWNS_FILE, TOWNS_SOURCE, town_curve(m.catalog, m.maps, players))
+    save_curve(m.pp_dir, KEYMASTERS_FILE, KEYMASTERS_SOURCE, keymaster_curve(m.catalog, m.maps))
+    save_curve(m.pp_dir, PORTALS_FILE, PORTALS_SOURCE, portal_curve(m.catalog, m.maps))
     toll = tuned_effort(m.pp_dir).toll
     owners = [p.owners for p in mp]
     save_families(m.pp_dir, family_curves(m.catalog, m.maps, players, owners, toll))

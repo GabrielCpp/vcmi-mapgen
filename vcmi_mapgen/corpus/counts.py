@@ -1,5 +1,7 @@
 """Load and save the corpus count curves: the resource mines in ``data/pp/mines.json``, the
-towns in ``data/pp/towns.json`` and every gameplay family in ``data/pp/families.json``."""
+towns in ``data/pp/towns.json``, the keymaster tents in ``data/pp/keymasters.json``, the
+two-way monolith pairs in ``data/pp/portals.json`` and every gameplay family in
+``data/pp/families.json``."""
 
 from pathlib import Path
 
@@ -10,11 +12,15 @@ from vcmi_mapgen.vcmi.formats import json_value as jv
 
 MINES_FILE = "mines.json"
 TOWNS_FILE = "towns.json"
+KEYMASTERS_FILE = "keymasters.json"
+PORTALS_FILE = "portals.json"
 FAMILIES_FILE = "families.json"
 CURVE_VERSION = 1
 FAMILIES_VERSION = 2
 MINES_SOURCE = "vcmi_mapgen.corpus.mine.counts.mine_curve"
 TOWNS_SOURCE = "vcmi_mapgen.corpus.mine.counts.town_curve"
+KEYMASTERS_SOURCE = "vcmi_mapgen.corpus.mine.counts.keymaster_curve"
+PORTALS_SOURCE = "vcmi_mapgen.corpus.mine.counts.portal_curve"
 FAMILIES_SOURCE = "vcmi_mapgen.corpus.mine.counts.family_curves"
 
 

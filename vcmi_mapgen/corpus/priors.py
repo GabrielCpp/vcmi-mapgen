@@ -4,7 +4,14 @@ from pathlib import Path
 
 from vcmi_mapgen.core.grid.pocket_masks import parse_masks
 from vcmi_mapgen.core.priors.bundle import Priors, TerrainPriors
-from vcmi_mapgen.corpus.counts import MINES_FILE, TOWNS_FILE, load_curve, load_families
+from vcmi_mapgen.corpus.counts import (
+    KEYMASTERS_FILE,
+    MINES_FILE,
+    PORTALS_FILE,
+    TOWNS_FILE,
+    load_curve,
+    load_families,
+)
 from vcmi_mapgen.corpus.effort import load_effort
 from vcmi_mapgen.corpus.gameplay import load_gameplay
 from vcmi_mapgen.corpus.gates import load_gate_stats
@@ -22,7 +29,8 @@ LEVELS = (0, 1)
 def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
     """The terrain, gameplay and place statistics of both levels, the gate estimator, the
     vegetation statistics of every terrain that has them, the effort priors, the water
-    priors, the territory spread, the resource mine and town curves, the family curves
+    priors, the territory spread, the resource mine, town, keymaster tent and two-way
+    monolith pair curves, the family curves
     and the remote distance per map size, all read from
     ``pp_dir``, and the pocket masks drawn in ``pockets_file``."""
     return Priors(
@@ -42,6 +50,8 @@ def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
         territories=load_territories(pp_dir),
         mines=load_curve(pp_dir, MINES_FILE),
         towns=load_curve(pp_dir, TOWNS_FILE),
+        keymasters=load_curve(pp_dir, KEYMASTERS_FILE),
+        portals=load_curve(pp_dir, PORTALS_FILE),
         families=load_families(pp_dir),
         remote=load_remote(pp_dir),
     )

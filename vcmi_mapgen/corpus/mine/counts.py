@@ -1,9 +1,10 @@
 """Fit the corpus curve of the town count over each map's land area and player count, of the
-resource mine count over its land area, and of every gameplay family its count curve over its
-land area, the power its efforts from home stretch by with the land and its guard record."""
+resource mine, keymaster tent and two-way monolith pair counts over its land area, and of every
+gameplay family its count curve over its land area, the power its efforts from home stretch by
+with the land and its guard record."""
 
 import statistics
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
 import numpy as np
@@ -12,7 +13,7 @@ from scipy import optimize
 from scipy.special import gammaln
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import MapState
+from vcmi_mapgen.core.model import Identity, MapState
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves, FamilyFit
 from vcmi_mapgen.core.reading.families import (
@@ -44,6 +45,22 @@ def map_towns(catalog: Catalog, state: MapState) -> int:
     return sum(purpose_of(catalog, o) == Purpose.TOWN for o in state.objs)
 
 
+def _count_of(state: MapState, idents: Iterable[Identity]) -> int:
+    kinds = {i.kind.lower() for i in idents}
+    return sum(o.kind.lower() in kinds for o in state.objs)
+
+
+def map_keymasters(catalog: Catalog, state: MapState) -> int:
+    """The keymaster tents on ``state``."""
+    keys = [k for _g, k in [*catalog.border_gates(), *catalog.border_guards()]]
+    return _count_of(state, keys)
+
+
+def map_portal_pairs(catalog: Catalog, state: MapState) -> int:
+    """The two-way monolith pairs on ``state``: half its two-way monoliths."""
+    return _count_of(state, catalog.portals()) // 2
+
+
 def _log_fit(x: Floats, y: Floats) -> tuple[list[float], float]:
     beta = np.linalg.lstsq(x, y, rcond=None)[0]
     resid = y - x @ beta
@@ -72,6 +89,18 @@ def fit_land_curve(rows: Sequence[tuple[int, int]]) -> CountCurve:
 def mine_curve(catalog: Catalog, maps: Sequence[MapState]) -> CountCurve:
     """The resource mine curve over the land of the corpus ``maps``."""
     return fit_land_curve([(land_area(m), map_mines(catalog, m)) for m in maps])
+
+
+def keymaster_curve(catalog: Catalog, maps: Sequence[MapState]) -> CountCurve:
+    """The keymaster tent curve over the land of the corpus ``maps``, the maps holding none
+    included."""
+    return fit_count([land_area(m) for m in maps], [map_keymasters(catalog, m) for m in maps])
+
+
+def portal_curve(catalog: Catalog, maps: Sequence[MapState]) -> CountCurve:
+    """The two-way monolith pair curve over the land of the corpus ``maps``, the maps holding
+    none included."""
+    return fit_count([land_area(m) for m in maps], [map_portal_pairs(catalog, m) for m in maps])
 
 
 def town_curve(catalog: Catalog, maps: Sequence[MapState], players: Sequence[int]) -> CountCurve:

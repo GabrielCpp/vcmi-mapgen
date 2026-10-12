@@ -1,9 +1,11 @@
-"""The loot zones of one level: the small zones with a single passage that a gate or a
-monolith pair seals. The choice is made once, after vegetation, so the door guards, the
-gameplay objects and the seals all read the same zones."""
+"""The loot zones of a map: the small zones with a single passage that a gate or a monolith
+pair seals, drawn at random among the candidates up to the corpus count of each. The choice is
+made once, after vegetation, so the door guards, the gameplay objects and the seals all read
+the same zones."""
 
 from __future__ import annotations
 
+import random
 from collections.abc import Iterable, Mapping
 from collections.abc import Set as AbstractSet
 
@@ -85,3 +87,25 @@ def choose_loot_zones(
         and not on_coast(ts, blocked, ground)
         and passage(ts, all_ts, blocked)[0] == 1
     )
+
+
+type LevelZones = dict[int, frozenset[int]]
+
+
+def _by_level(drawn: Iterable[tuple[int, int]], levels: Iterable[int]) -> LevelZones:
+    out = {lvl: set[int]() for lvl in levels}
+    for lvl, zid in drawn:
+        out[lvl].add(zid)
+    return {lvl: frozenset(zids) for lvl, zids in out.items()}
+
+
+def draw_loot_zones(
+    candidates: Mapping[int, AbstractSet[int]], gates: int, pairs: int, rng: random.Random
+) -> tuple[LevelZones, LevelZones]:
+    """The candidate zones of every level drawn at random, ``gates`` to seal behind a gate and
+    ``pairs`` behind a monolith pair, the gates served first when the candidates run short.
+    Returns every drawn zone by level, then the zones among them a monolith pair seals."""
+    pool = sorted((lvl, zid) for lvl, zids in candidates.items() for zid in zids)
+    rng.shuffle(pool)
+    drawn = pool[: gates + pairs]
+    return _by_level(drawn, candidates), _by_level(drawn[gates:], candidates)

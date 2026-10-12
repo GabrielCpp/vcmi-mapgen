@@ -4,7 +4,14 @@ step constructors."""
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from vcmi_mapgen.core.priors.counts import MINE_CURVE, TOWN_CURVE, CountCurve, FamilyCurves
+from vcmi_mapgen.core.priors.counts import (
+    KEYMASTER_CURVE,
+    MINE_CURVE,
+    PORTAL_CURVE,
+    TOWN_CURVE,
+    CountCurve,
+    FamilyCurves,
+)
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.priors.gates import GateStats
@@ -34,8 +41,8 @@ class Priors:
     1 = underground), the gate estimator, the vegetation statistics per terrain name, every
     orientation of the drawn pocket masks, the guard toll and effort bands, the fitted odds
     of surface water with the corpus water targets, the territory spread per level, and the
-    resource mine and town count curves, the count curve and effort stretch of each
-    gameplay family, and the remote distance per map size."""
+    resource mine, town, keymaster tent and two-way monolith pair count curves, the count
+    curve and effort stretch of each gameplay family, and the remote distance per map size."""
 
     terrain: Mapping[int, TerrainPriors]
     gameplay: Mapping[int, GameplayStats]
@@ -48,5 +55,7 @@ class Priors:
     territories: Mapping[int, TerritoryStats] = field(default_factory=dict[int, TerritoryStats])
     mines: CountCurve = MINE_CURVE
     towns: CountCurve = TOWN_CURVE
+    keymasters: CountCurve = KEYMASTER_CURVE
+    portals: CountCurve = PORTAL_CURVE
     families: FamilyCurves = field(default_factory=FamilyCurves)
     remote: RemotePriors = field(default_factory=RemotePriors)

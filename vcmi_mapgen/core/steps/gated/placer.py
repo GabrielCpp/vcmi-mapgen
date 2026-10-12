@@ -4,7 +4,6 @@ Border Gate with its Keymaster outside, or a monolith pair."""
 from __future__ import annotations
 
 import collections
-import math
 import random
 from collections.abc import Collection, Iterable, Iterator, Sequence
 from collections.abc import Set as AbstractSet
@@ -227,7 +226,9 @@ class GatedLevel:
     terrain grid every seal must be allowed on. ``reached`` holds the tiles a home reaches on
     foot. A loot zone and the partner outside it stand only on those, and None reads as
     every tile. ``loot`` holds the zones chosen to seal, and None reads as the zones
-    ``choose_loot_zones`` picks over the level as it stands."""
+    ``choose_loot_zones`` picks over the level as it stands. ``monoliths`` holds the zones a
+    monolith pair seals and the others take a gate first, and None reads as a coin flip per
+    zone."""
 
     zone_records: Sequence[ZoneRecord]
     objs: Sequence[PlacedObject]
@@ -237,6 +238,7 @@ class GatedLevel:
     guard: PrizeGuard = field(default_factory=PrizeGuard)
     reached: AbstractSet[Tile] | None = None
     loot: AbstractSet[int] | None = None
+    monoliths: AbstractSet[int] | None = None
 
 
 @final
@@ -279,9 +281,10 @@ class GatedPlacer:
             if level.loot is None
             else level.loot
         )
+        self.monoliths = level.monoliths
         self.ext_no_castle: list[ZoneRecord] = []
         self.ext_any: list[ZoneRecord] = []
-        self.placed_ext_tiles: list[Tile] = []
+        self.partner_zids: list[int] = []
         self.objs: list[PlacedObject] = []
         self.n_placed = 0
         self.access: dict[int, LootAccess] = {}
@@ -344,47 +347,43 @@ class GatedPlacer:
         mark = self.cover.mark()
         n_objs = len(self.objs)
         blocked = frozenset(self.blocked)
-        counts = (self.n_placed, len(self.placed_ext_tiles), self.gate_count, self.mono_count)
+        counts = (self.n_placed, len(self.partner_zids), self.gate_count, self.mono_count)
         outside = self.all_ts - zr.ts
-        use_gate = rng.random() < 0.5
+        use_gate = rng.random() < 0.5 if self.monoliths is None else zr.zid not in self.monoliths
         order = (True, False) if use_gate else (False, True)
         for gate in order:
             ok = self._place_gate(zone, aim) if gate else self._place_monolith(zone)
             if ok and not _splits(outside - blocked, outside - self.blocked):
                 return
             self.n_placed, n_ext, self.gate_count, self.mono_count = counts
-            del self.placed_ext_tiles[n_ext:]
+            del self.partner_zids[n_ext:]
             _ = self.access.pop(zr.zid, None)
             self.cover.rollback(mark)
             del self.objs[n_objs:]
             self.blocked = set(blocked)
 
-    def _remoteness(self, x: float, y: float) -> float:
-        d_town = min((math.dist((x, y), t) for t in self.town_tiles), default=1e9)
-        d_ext = min((math.dist((x, y), t) for t in self.placed_ext_tiles), default=1e9)
-        return d_town + d_ext
-
-    def _far_score(self, zr: ZoneRecord) -> tuple[float, int]:
-        free = zr.reach - self.cover.claims
-        if not free:
-            return (-1.0, 0)
-        cx = sum(x for x, _ in zr.ts) / len(zr.ts)
-        cy = sum(y for _, y in zr.ts) / len(zr.ts)
-        return (self._remoteness(cx, cy), len(free))
+    def _ext_order(self, pool: Sequence[ZoneRecord], rng: random.Random) -> list[ZoneRecord]:
+        fresh = [zr for zr in pool if zr.zid not in self.partner_zids]
+        used = [zr for zr in pool if zr.zid in self.partner_zids]
+        rng.shuffle(fresh)
+        rng.shuffle(used)
+        return fresh + used
 
     def _find_ext_spot(
-        self, ident: Identity, pools: Iterable[Sequence[ZoneRecord]]
+        self, zid: int, ident: Identity, pools: Iterable[Sequence[ZoneRecord]]
     ) -> _Spot | None:
-        return next(self._ext_spots(ident, pools), None)
+        return next(self._ext_spots(zid, ident, pools), None)
 
-    def _ext_spots(self, ident: Identity, pools: Iterable[Sequence[ZoneRecord]]) -> Iterator[_Spot]:
+    def _ext_spots(
+        self, zid: int, ident: Identity, pools: Iterable[Sequence[ZoneRecord]]
+    ) -> Iterator[_Spot]:
         rules = CellRules(bounds=self.bounds)
+        rng = random.Random(self.seed ^ (zid * 6151) ^ 0x5B07)
         for pool in pools:
-            for cand in sorted(pool, key=self._far_score, reverse=True):
+            for cand in self._ext_order(pool, rng):
                 claims = self.cover.claims
-                free = sorted(
-                    cand.reach - claims, key=lambda t: (self._remoteness(*t), t), reverse=True
-                )
+                free = sorted(cand.reach - claims)
+                rng.shuffle(free)
                 for t in free:
                     if not _anchor_clear(cand, claims, t):
                         continue
@@ -466,7 +465,7 @@ class GatedPlacer:
 
     def _place_gate(self, zone: _LootZone, aim: _GateAim) -> bool:
         for gate_ident, key_ident in self._doors():
-            if self._find_ext_spot(key_ident, zone.ext_pools) is None:
+            if self._find_ext_spot(zone.zid, key_ident, zone.ext_pools) is None:
                 continue
             sited = self._seal_gate(zone, aim, gate_ident)
             if sited is None:
@@ -538,7 +537,7 @@ class GatedPlacer:
     def _place_monolith(self, zone: _LootZone) -> bool:
         portals = self.catalog.portals()
         mono_ident = portals[self.mono_count % len(portals)]
-        spot = self._find_ext_spot(mono_ident, zone.ext_pools)
+        spot = self._find_ext_spot(zone.zid, mono_ident, zone.ext_pools)
         if spot is None:
             return False
         found = self._site_monolith(zone, mono_ident)
@@ -642,7 +641,7 @@ class GatedPlacer:
         spec = PlaceSpec(purpose, None, ident=ident)
         mark = self.cover.mark()
         n0 = len(self.objs)
-        for ext_zr, ext_t in self._ext_spots(ident, pools):
+        for ext_zr, ext_t in self._ext_spots(zid, ident, pools):
             target = PlaceTarget(
                 self.catalog,
                 self.objs,
@@ -654,7 +653,7 @@ class GatedPlacer:
             )
             if place_one(target, spec, *ext_t) and self._guard_partner(ext_zr, target, n0, gident):
                 self.n_placed += 1
-                self.placed_ext_tiles.append(ext_t)
+                self.partner_zids.append(ext_zr.zid)
                 self.blocked |= FP.blocking_cells(self.objs[n0:])
                 return True
             self.cover.rollback(mark)
