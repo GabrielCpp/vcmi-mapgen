@@ -186,3 +186,94 @@ def test_a_priced_zone_is_left_to_its_price(catalog: Catalog, priors: Priors) ->
     departure = RS.Departure((0, (5, 5)), priced={(0, 2)})
     found = RS.rescue_unreachable_zones(catalog, world, departure, seed=3)
     assert found == [] and objs[0] == []
+
+
+def _gap_world(priors: Priors) -> RS.PortalWorld:
+    size, grid, zones, _inner, ts1 = _enclave_fixture()
+    gap = {(x, y) for x in range(21) for y in range(21)}
+    gap |= {(20, 21), *((x, 22) for x in range(21, 26)), (24, 23), (25, 23), (25, 24)}
+    gap |= {(25, 25), (25, 26), (25, 27)}
+    pine = Identity("pineTrees", "pineTrees", "pine", Footprint.one(Role.BLOCKING))
+    pile = Identity("resource", "wood", "wood_pile", Footprint.one(Role.VISIT))
+    objs = [
+        _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (5, 5), Purpose.TOWN),
+        _obj(Identity("mine", "s", "X", Footprint.one(Role.VISIT)), (31, 31), Purpose.MINE),
+        _obj(pile, (25, 27), Purpose.RESOURCE_PILE),
+        *(_obj(pine, t, "") for t in sorted(ts1 - gap)),
+    ]
+    return RS.PortalWorld(
+        size,
+        {0: grid},
+        {0: zones},
+        {0: objs},
+        {0: [(5, 6), (25, 27)]},
+        {0: []},
+        {0: CoverIndex(objs)},
+        priors.gameplay[0],
+    )
+
+
+def test_a_near_portal_never_plugs_the_only_way_into_a_pocket(
+    catalog: Catalog, priors: Priors, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tall = [p for p in catalog.portals() if len(p.footprint.cells) == 2]
+    monkeypatch.setattr(catalog, "portals", lambda: tall)
+    world = _gap_world(priors)
+    rescued = RS.rescue_unreachable_zones(catalog, world, RS.Departure((0, (5, 5))), seed=3)
+    assert len(rescued) == 1
+    RS.check_reach(world)
+
+
+def _two_enclaves(priors: Priors) -> tuple[RS.PortalWorld, set[Tile]]:
+    size = 40
+    grid = [[GRASS] * size for _ in range(size)]
+    inners = [
+        {(x, y) for x in range(31, 37) for y in range(31, 37)},
+        {(x, y) for x in range(31, 37) for y in range(3, 9)},
+    ]
+    for x0, y0 in ((28, 28), (28, 0)):
+        for y in range(y0, y0 + 12):
+            for x in range(x0, x0 + 12):
+                if not any((x, y) in inner for inner in inners):
+                    grid[y][x] = ROCK
+    host = {(x, y) for x in range(size) for y in range(size) if grid[y][x] == GRASS}
+    host -= inners[0] | inners[1]
+
+    def zone(ts: set[Tile]) -> Zone:
+        cx, cy = sum(x for x, _ in ts) / len(ts), sum(y for _, y in ts) / len(ts)
+        return Zone(Terrain(GRASS), len(ts), (cx, cy), sorted(ts), frozenset(ts))
+
+    zones = {1: zone(host), 2: zone(inners[0]), 3: zone(inners[1])}
+    mine = Identity("mine", "s", "X", Footprint.one(Role.VISIT))
+    objs = [
+        _obj(Identity("town", "s", "X", Footprint.one(Role.VISIT)), (2, 37), Purpose.TOWN),
+        _obj(mine, (33, 33), Purpose.MINE),
+        _obj(mine, (33, 5), Purpose.MINE),
+    ]
+    world = RS.PortalWorld(
+        size,
+        {0: grid},
+        {0: zones},
+        {0: objs},
+        {0: [(2, 38)]},
+        {0: []},
+        {0: CoverIndex(objs)},
+        priors.gameplay[0],
+    )
+    return world, host
+
+
+def test_two_rescues_sharing_a_host_spread_their_near_ends(
+    catalog: Catalog, priors: Priors
+) -> None:
+    world, host = _two_enclaves(priors)
+    rescued = RS.rescue_unreachable_zones(catalog, world, RS.Departure((0, (2, 37))), seed=3)
+    assert len(rescued) == 2
+    near = [
+        (o.x, o.y)
+        for o in world.objs_by_level[0]
+        if o.purpose == Purpose.TRANSPORT and (o.x, o.y) in host
+    ]
+    assert len(near) == 2
+    (ax, ay), (bx, by) = near
+    assert max(abs(ax - bx), abs(ay - by)) >= world.size // 2

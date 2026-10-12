@@ -13,6 +13,7 @@ that leaves it behind."""
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 
@@ -20,8 +21,10 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.footprint import cell_offsets
+from vcmi_mapgen.core.placement.guard_draw import GuardDraw
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.reading.effort import EffortMap
+from vcmi_mapgen.core.reading.families import mine_family
 from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS, PROMISE_GAP
 from vcmi_mapgen.core.reading.routes import Spot
@@ -35,11 +38,18 @@ _FAR = 1000
 Days = tuple[int | None, ...]
 Variants = Callable[[ZoneSite, str], Sequence[Identity]]
 Key = tuple[Spot, int, frozenset[Spot]]
+Guarding = Callable[[str], int]
 
 
 def promised_guard(res: str) -> int:
     """The guard level in front of a promised mine of ``res``."""
     return OWN_GUARD.get(res, RARE_GUARD)
+
+
+def drawn_guard(draws: GuardDraw, rng: random.Random) -> Guarding:
+    """A promised mine's guard drawn from its family's record, never past its promised
+    level, so a mine priced at that level is reached no later."""
+    return lambda res: min(draws.draw(rng, mine_family(res)), promised_guard(res))
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,10 +103,10 @@ def site_variants(catalog: Catalog) -> Variants:
 
 
 def offers(
-    sites: Sequence[ZoneSite], variants: Variants, pricer: Pricer, res: str
+    sites: Sequence[ZoneSite], variants: Variants, pricer: Pricer, res: str, level: int
 ) -> Iterator[Offer]:
-    """Every anchor where a mine of ``res`` may stand, before its fit is checked."""
-    level = promised_guard(res)
+    """Every anchor where a mine of ``res`` may stand behind a guard of ``level``, before its
+    fit is checked."""
     found: list[tuple[ZoneSite, Identity, Tile, Spot, frozenset[Spot]]] = []
     for site in sites:
         lv = site.lf.level
@@ -154,6 +164,13 @@ def _with(best: Days, days: Days, players: Sequence[int]) -> Days:
     )
 
 
+def keeps_even(best: Days, days: Days) -> bool:
+    """Whether a mine each player reaches in ``days`` leaves behind no player that ``best``
+    does not, and widens the gap between the players reaching one in time no further."""
+    new = _with(best, days, range(len(best)))
+    return set(_behind(new)) <= set(_behind(best)) and _excess(new) <= _excess(best)
+
+
 def _served(days: Days, best: Days) -> int:
     return len(_behind(best)) - len(_behind(_with(best, days, range(len(best)))))
 
@@ -190,12 +207,12 @@ def _order(pool: list[Offer], best: Days, res: str, player: int = 0) -> None:
     pool.sort(key=key)
 
 
-def _stand(offer: Offer, res: str) -> bool:
+def _stand(offer: Offer, level: int) -> bool:
     site = offer.site
     fit = site.fit(offer.ident, offer.anchor, mine=True)
     if fit is None:
         return False
-    obj = site.try_commit(Purpose.MINE, offer.ident, offer.anchor, fit, promised_guard(res))
+    obj = site.try_commit(Purpose.MINE, offer.ident, offer.anchor, fit, level)
     return obj is not None
 
 
@@ -211,34 +228,36 @@ class Kept:
         return sum(1 for o in self.stood if o.site is site)
 
 
-def _own(pool: list[Offer], best: Days, res: str, kept: _Ledger) -> None:
+def _own(pool: list[Offer], best: Days, res: str, kept: _Ledger, level: int) -> Days:
     for player in _behind(best):
         _order(pool, best, res, player)
-        taken = next((o for o in pool if _stand(o, res)), None)
+        taken = next((o for o in pool if _stand(o, level)), None)
         if taken is None:
             kept.warnings.append(f"{res}: no spot for player {player}")
-            return
+            return best
         pool.remove(taken)
         kept.stood.append(taken)
         if _late(taken.days[player]):
             kept.warnings.append(f"{res}: player {player} past {PROMISE_DAYS} days")
         best = _with(best, taken.days, [player])
+    return best
 
 
-def _shared(pool: list[Offer], best: Days, res: str, kept: _Ledger) -> None:
+def _shared(pool: list[Offer], best: Days, res: str, kept: _Ledger, level: int) -> Days:
     while behind := _behind(best):
         _order(pool, best, res)
         useful = pool if _waiting(best) else [o for o in pool if _served(o.days, best) > 0]
-        taken = next((o for o in useful if _stand(o, res)), None)
+        taken = next((o for o in useful if _stand(o, level)), None)
         if taken is None:
             kept.warnings.append(f"{res}: no spot for players {behind}")
-            return
+            return best
         pool.remove(taken)
         kept.stood.append(taken)
         if _served(taken.days, best) <= 0:
             kept.warnings.append(f"{res}: players {behind} past {PROMISE_DAYS} days")
-            return
+            return best
         best = _with(best, taken.days, range(len(best)))
+    return best
 
 
 @dataclass(slots=True)
@@ -247,18 +266,31 @@ class _Ledger:
     warnings: list[str] = field(default_factory=list[str])
 
 
-def keep_promise(sites: Sequence[ZoneSite], variants: Variants, survey: Survey) -> Kept:
+def keep_promise(
+    sites: Sequence[ZoneSite],
+    variants: Variants,
+    survey: Survey,
+    guarding: Guarding = promised_guard,
+) -> Kept:
     """Stand promised mines until every player reaches each basic resource in time. Each
     player behind on wood or ore gets a mine of its own. A rare mine serves every player it
     reaches in time. ``survey`` reads the map again after each resource that stood a mine,
-    so the next resource is priced around it."""
+    so the next resource is priced around it. ``guarding`` gives each resource the guard its
+    mines are priced at and stand behind. While a player stays behind, the mines step down
+    one guard level and try again, down to no guard."""
     kept = _Ledger()
     pricer, have = survey()
     for res in BASIC_MINE_RES:
         stood = len(kept.stood)
         best = have.get(res, (None,) * len(pricer.maps))
-        pool = list(offers(sites, variants, pricer, res))
-        (_own if res in OWN_GUARD else _shared)(pool, best, res, kept)
+        for level in range(guarding(res), -1, -1):
+            tried = _Ledger()
+            pool = list(offers(sites, variants, pricer, res, level))
+            best = (_own if res in OWN_GUARD else _shared)(pool, best, res, tried, level)
+            kept.stood.extend(tried.stood)
+            if not _behind(best) or level == 0:
+                kept.warnings.extend(tried.warnings)
+                break
         if len(kept.stood) > stood:
             pricer, have = survey()
     return Kept(tuple(kept.stood), tuple(kept.warnings))

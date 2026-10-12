@@ -21,8 +21,6 @@ from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.steps.portal.crossing import Side, may_join, pair_guard_level, side_of
 from vcmi_mapgen.core.steps.terrain_gen.result import TerritoryPlan
 
-MIN_AREA = 25  # matches GameplayStep's own zone floor
-
 
 def _walk_and_hard_cells(objs: Sequence[PlacedObject]) -> tuple[set[Tile], set[Tile]]:
     walk: set[Tile] = set()
@@ -62,8 +60,6 @@ def unreachable_targets(
     return [t for t in bad if t in through]
 
 
-PORTAL_MIN_AREA = 12  # smallest unreachable zone worth a portal rescue (mapeval's zone
-#                        floor); smaller slivers keep the decoration-fill fate.
 MAX_PORTALS = 8  # cap on rescued zones per map
 
 
@@ -74,8 +70,8 @@ class _LevelState:
     reserved: set[Tile]
 
 
-def _outskirts_key(t: Tile, towns: Sequence[Tile]) -> tuple[float, Tile]:
-    return (-min((t[0] - tx) ** 2 + (t[1] - ty) ** 2 for tx, ty in towns), t)
+def _outskirts_key(t: Tile, anchors: Sequence[Tile]) -> tuple[float, Tile]:
+    return (-min((t[0] - ax) ** 2 + (t[1] - ay) ** 2 for ax, ay in anchors), t)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,7 +193,7 @@ def _candidates(
     cands: list[tuple[int, int, int, str]] = []
     for lvl in sorted(world.zones_by_level):
         for zid, z in sorted(world.zones_by_level[lvl].items()):
-            if z.terrain_type.is_barrier or z.area < PORTAL_MIN_AREA:
+            if z.terrain_type.is_barrier:
                 continue
             terrain = catalog.terrain_name(z.terrain_type)
             ts = set(z.tiles_set)
@@ -206,6 +202,16 @@ def _candidates(
             cands.append((-z.area, lvl, zid, terrain))
     cands.sort()
     return cands
+
+
+@dataclass(frozen=True, slots=True)
+class _Reach:
+    """The targets already cut off on foot before a pair stands, and the ends of the pair
+    already chosen with their approaches, which every near end is checked beside."""
+
+    cut: set[Tile] = field(default_factory=set[Tile])
+    ends: tuple[PlacedObject, ...] = ()
+    approaches: tuple[Tile, ...] = ()
 
 
 @final
@@ -235,6 +241,7 @@ class _PortalRescue:
         }
 
         self.cover_by = world.covers
+        self.reach = _Reach()
 
     def _emit_end(self, lvl: int, ident: Identity, node: Tile, fit: Fit) -> Tile:
         allc, _blk, approach = fit
@@ -333,8 +340,6 @@ class _PortalRescue:
         for hzid, hz in sorted(self.world.zones_by_level[lvl].items()):
             if hzid == zone.zid or hz.terrain_type.is_barrier:
                 continue
-            if hz.area < MIN_AREA:
-                continue
             if not any((x, y, lvl) in self.reached for (x, y) in hz.tiles_set):
                 continue
             if not may_join(self._side(lvl, zone.zid), self._side(lvl, hzid)):
@@ -344,6 +349,13 @@ class _PortalRescue:
         hosts.sort()
         return hosts
 
+    def _keeps_reach(self, lvl: int, near: PlacedObject, approach: Tile) -> bool:
+        w = self.world
+        objs = [*w.objs_by_level[lvl], *self.reach.ends, near]
+        targets = [*w.targets_by_level[lvl], *self.reach.approaches, approach]
+        cut = unreachable_targets(w.size, w.grids[lvl], objs, targets)
+        return set(cut) <= self.reach.cut
+
     def _near_in_host(
         self, zone: _Enclave, hzid: int, ident: Identity, gident: Identity
     ) -> tuple[Tile, Fit, Tile] | None:
@@ -352,7 +364,10 @@ class _PortalRescue:
         hts = set(self.world.zones_by_level[lvl][hzid].tiles_set)
         tl = self.towns[lvl]
         if tl:  # outskirts: value sits outward
-            order = sorted(hts, key=partial(_outskirts_key, towns=tl))
+            ends = [
+                (o.x, o.y) for o in self.world.objs_by_level[lvl] if o.purpose == Purpose.TRANSPORT
+            ]
+            order = sorted(hts, key=partial(_outskirts_key, anchors=[*tl, *ends]))
         else:
             order = sorted(hts, key=partial(centre_key, cx=zone.cx, cy=zone.cy))
 
@@ -364,6 +379,8 @@ class _PortalRescue:
             g = self._guard_spot(end, fit[2], set(fit[0]), gident)
             if g is None:  # a portal must be guardable — skip
                 continue  # candidates with no room for the guard
+            if not self._keeps_reach(lvl, end, fit[2]):
+                continue
             return t, fit, g
         return None
 
@@ -422,6 +439,13 @@ class _PortalRescue:
 
         guard_rng = random.Random(self.seed ^ (lvl * 7919) ^ (zid * 104729) ^ 0x6A4D)
         prize_level = self.world.guards.get(lvl, PrizeGuard()).level(guard_rng, zid)
+        cut = unreachable_targets(
+            self.world.size,
+            self.world.grids[lvl],
+            self.world.objs_by_level[lvl],
+            self.world.targets_by_level[lvl],
+        )
+        self.reach = _Reach(set(cut), (_portal_end(lvl, ident, far_node),), (far_fit[2],))
         near = self._near_end(zone, ident, hosts, prize_level, guard_rng)
         if near is None:
             return None

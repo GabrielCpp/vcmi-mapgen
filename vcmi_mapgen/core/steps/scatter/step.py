@@ -1,4 +1,4 @@
-"""ScatterStep — free resource piles, the last thing placed on the map."""
+"""ScatterStep — free resource piles, placed after every guarded reward."""
 
 from __future__ import annotations
 

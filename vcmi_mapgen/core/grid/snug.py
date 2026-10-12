@@ -1,7 +1,8 @@
 """Whether a sprite sits snug for its size. A one-tile object sits in a hole or a corner: three
 of its sides closed, or two sides that meet. A two-tile object has the tile past its far end,
 away from its visit tile, closed. A larger object has a closed tile above the top of its body.
-A sprite that is not snug may still be sided: one closed tile beside its body.
+A sprite that is not snug may still be sided: a closed tile on it or around it, corners
+included. A sprite stands in the field when it is not sided.
 A tile is closed when a hero cannot stand on it."""
 
 from collections.abc import Callable
@@ -12,6 +13,7 @@ from vcmi_mapgen.core.model import Footprint, Role, Tile
 SIZE_CLASSES = (1, 2, 3)
 
 _SIDES = ((0, -1), (1, 0), (0, 1), (-1, 0))
+_RING = tuple((dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
 
 
 def solid_cells(fp: Footprint, anchor: Tile) -> list[tuple[Tile, Role]]:
@@ -44,13 +46,16 @@ def snug(fp: Footprint, anchor: Tile, closed: Callable[[Tile], bool]) -> bool:
 
 
 def sided(fp: Footprint, anchor: Tile, closed: Callable[[Tile], bool]) -> bool:
-    """Whether a sprite of ``fp`` at ``anchor`` has at least one closed side: a closed tile
-    beside one of its body cells, outside the body. A tile touching the body only at a
-    corner never counts."""
-    body = {t for t, _role in solid_cells(fp, anchor)}
-    return any(
-        (n := (x + dx, y + dy)) not in body and closed(n) for x, y in body for dx, dy in _SIDES
-    )
+    """Whether a sprite of ``fp`` at ``anchor`` rests against a closed tile: one under its
+    sprite or touching it, corners included."""
+    return not in_field(fp, anchor, closed)
+
+
+def in_field(fp: Footprint, anchor: Tile, closed: Callable[[Tile], bool]) -> bool:
+    """Whether a sprite of ``fp`` at ``anchor`` stands in the field: no tile of the sprite and
+    no tile touching it, corners included, is closed."""
+    near = {(x + dx, y + dy) for (x, y), _role in fp.at(*anchor) for dx, dy in _RING}
+    return not any(closed(t) for t in near)
 
 
 def _nested(t: Tile, closed: Callable[[Tile], bool]) -> bool:

@@ -19,12 +19,14 @@ type ZoneGrowth = tuple[list[PlacedObject], set[Tile], AbstractSet[Tile]]
 @dataclass(frozen=True, slots=True)
 class SampleOptions:
     """One zone's brief: the web kept open, the tiles no vegetation may touch, the rim to
-    thicken, the walls that count for connectivity and the level's terrain grid every
-    blocking cell must be allowed on. An empty ``ground`` checks no terrain."""
+    thicken, the land past the zone that counts as open ground, the walls that count for
+    connectivity and the level's terrain grid every blocking cell must be allowed on. An empty
+    ``ground`` checks no terrain."""
 
     prot: AbstractSet[Tile] | None = None
     forbid: AbstractSet[Tile] = _NO_TILES
     border: Collection[Tile] = _NO_TILES
+    land: AbstractSet[Tile] = _NO_TILES
     impassable: AbstractSet[Tile] = _NO_TILES
     ground: Sequence[Sequence[Terrain]] = ()
 

@@ -374,7 +374,7 @@ a concept shared by two parts.
 | Content | Reshape | `core/catalog.py` port and `vcmi/catalog/`. It answers object questions but takes no setting, reads only the four LOD files (`vcmi/formats/lod.py` L8), and `load_config` reads every mod folder unfiltered (`vcmi/config.py` L132-142). |
 | Guarding | Reshape | Spread over `gated/placer.py` `_guard_partner` L663-673 (always `guard(7)`), `portal/rescue.py` L428 (`4 + area//60`), `portal/reward_zone.py` L77 and `loot/pickups.py` L355, L510 (value ladders). Four rules, none from distance. |
 | Effort | New | `core/reading/effort.py`. Both the corpus miner and the steps call it, as they share `core/reading/`. |
-| Pricing | Reshape | `treasure/fill.py` `_LOOT_ART_W` and `_roll_spec`, `portal/reward_zone.py` pile count, `loot/pocket_plan.py` `ART_TIER_BY_GUARD_LEVEL`. Three fixed rules become one band basket. |
+| Pricing | Reshape | `treasure/fill.py` `_LOOT_ART_W` and `_roll_spec`, `portal/reward_zone.py` pile count, `planning/guarding.py` `ART_TIER_BY_GUARD_LEVEL`. Three fixed rules become one band basket. |
 | Sets | New | `core/steps/sets/`, a step after `loot`. |
 | Placing | Exists | `CoverIndex.try_claim`, `core/placement/ground.stands`, and each step's fill loop. Held-back prize is new. |
 | Saving | Reshape | `vcmi/export.py`, `vcmi/options.py` (`core:` prefix at L157-198), `vcmi/formats/vmap/writer.py`, `renderers/sprites.py`. |

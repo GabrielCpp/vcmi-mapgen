@@ -30,6 +30,7 @@ class VegModel:
     iweights: list[list[float]]
     iblk: list[list[list[Tile]]]
     ifoot: list[list[list[Tile]]]
+    isolid: list[list[list[Tile]]]
     iland: list[list[frozenset[Terrain]]]
     sigma: float
     target: float
@@ -71,6 +72,7 @@ def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegMo
     iweights: list[list[float]] = []
     iblk: list[list[list[Tile]]] = []
     ifoot: list[list[list[Tile]]] = []
+    isolid: list[list[list[Tile]]] = []
     iland: list[list[frozenset[Terrain]]] = []
     for c in cats:
         w = st.anim_w.get(c, {})
@@ -79,12 +81,15 @@ def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegMo
         iweights.append([w.get(i.kind.lower(), 0) + BASE_W for i in ids])
         blk: list[list[Tile]] = []
         foot: list[list[Tile]] = []
+        solid: list[list[Tile]] = []
         for i in ids:
             cells = [(cx, cy, b) for cx, cy, b in FP.anchored_cells(i.footprint, 0, 0)]
             blk.append([(cx, cy) for cx, cy, b in cells if b])
             foot.append([(cx, cy) for cx, cy, _b in cells])
+            solid.append([(cx, cy) for cx, cy, _b in FP.anchored_cells(i.footprint.solid(), 0, 0)])
         iblk.append(blk)
         ifoot.append(foot)
+        isolid.append(solid)
         iland.append([allowed_terrains(catalog, i.kind) for i in ids])
 
     return VegModel(
@@ -96,6 +101,7 @@ def build_model(catalog: Catalog, terrain: str, st: PS.VegetationStats) -> VegMo
         iweights=iweights,
         iblk=iblk,
         ifoot=ifoot,
+        isolid=isolid,
         iland=iland,
         sigma=PS.cox_sigma(st),
         target=st.veg_blocked_frac,

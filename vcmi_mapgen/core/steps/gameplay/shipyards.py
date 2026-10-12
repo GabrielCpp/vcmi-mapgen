@@ -80,27 +80,28 @@ class _ShipyardHooks:
             return None
         return owner
 
-    def _cells_ok(self, allc: Sequence[Tile], blk: Sequence[Tile]) -> bool:
+    def _cells_ok(self, allc: Sequence[Tile], blk: Sequence[Tile], body: Sequence[Tile]) -> bool:
         lf = self.lf
         if any(t in lf.near for t in blk):
             return False
+        if any(t in lf.occupied or not lf.on_map(t) for t in allc):
+            return False
         return not any(
-            t in lf.occupied or t in lf.avoid or t in self.banned or self.idx.site_at(t) is None
-            for t in allc
+            t in lf.avoid or t in self.banned or self.idx.site_at(t) is None for t in body
         )
 
     def accept(self, obj: PlacedObject) -> bool:
         anchor = (obj.x, obj.y)
         allc, blk, approach = footprint_cells(obj.footprint, *anchor)
-        if approach is None or not self._cells_ok(allc, blk):
-            return False
         solid = solid_tiles(obj.footprint, anchor)
+        if approach is None or not self._cells_ok(allc, blk, solid):
+            return False
         if not on_ground(self.catalog, obj.kind, solid, self.lf.ground):
             return False
         owner = self._door_ok(obj.footprint, anchor, approach)
         if owner is None or not self.lf.accepts(obj):
             return False
-        touched = {id(s): s for t in allc if (s := self.idx.site_at(t)) is not None}
+        touched = {id(s): s for t in solid if (s := self.idx.site_at(t)) is not None}
         touched[id(owner)] = owner
         reaches: list[tuple[ZoneSite, set[Tile]]] = []
         for site in touched.values():

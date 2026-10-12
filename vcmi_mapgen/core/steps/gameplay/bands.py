@@ -1,7 +1,7 @@
-"""Which player and effort band each gameplay object serves. A family's count splits evenly
-over the players, and each player's share splits over the bands by the corpus effort of the
-family, so per family and band no player holds two more than another. Each object gets a
-target in days drawn from the corpus inside its band."""
+"""Which effort band each gameplay object serves. A family's count splits over the bands by
+the corpus effort of the family, map-wide, and each object gets a target in days drawn from
+the corpus inside its band. No object serves a player: the reach gate keeps the players
+even. Rare mines alone split over the players, through the turn."""
 
 from __future__ import annotations
 
@@ -12,8 +12,6 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.priors.effort import BANDS
 from vcmi_mapgen.core.reading.families import FAR_DAYS, family_purpose
-
-type Cell = tuple[int, int]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,22 +66,6 @@ def band_sequence(shares: Sequence[float], n: int) -> list[int]:
     return out
 
 
-def _take(cells: Counter[Cell], cell: Cell | None) -> None:
-    if cell is None:
-        left = Counter[int]()
-        for (p, _b), n in cells.items():
-            left[p] += n
-        if not left:
-            return
-        player = min(left, key=lambda p: (-left[p], p))
-        band = BANDS
-    else:
-        player, band = cell
-    near = sorted((abs(b - band), b) for (p, b), n in cells.items() if p == player and n > 0)
-    if near:
-        cells[player, near[0][1]] -= 1
-
-
 def _target(
     rng: random.Random, days: Sequence[int], band: int, band_of: Callable[[int], int]
 ) -> int:
@@ -96,32 +78,29 @@ def _target(
 
 @dataclass(frozen=True, slots=True)
 class BandPlan:
-    """The corpus effort per family, the band rule and the players, to plan each family's
-    slots."""
+    """The corpus effort per family, the band rule and the player count, to plan each
+    family's slots."""
 
     corpus: Mapping[str, Sequence[int]]
     band_of: Callable[[int], int]
     players: int
     rng: random.Random
 
-    def slots(self, family: str, n: int, standing: Sequence[Cell | None], start: int) -> list[Slot]:
-        """The slots of the ``n`` objects of ``family`` still to place once the objects
-        ``standing`` count against the plan, each at its (player, band) cell or the nearest
-        band of that player. One no player reaches counts against the player with the most
-        left."""
-        players = self.players
-        if players <= 0:
+    def shared(self, family: str, n: int, standing: Sequence[int | None]) -> list[Slot]:
+        """The slots of the ``n`` objects of ``family`` still to place, serving no player, once
+        the objects ``standing`` count against the plan, each at its band or the nearest one
+        left. One no player reaches counts against the furthest band left."""
+        if self.players <= 0:
             return [Slot(family)] * max(0, n - len(standing))
         days = self.corpus.get(family, ())
-        shares = band_shares(days, self.band_of)
-        cells: Counter[Cell] = Counter()
-        for p, count in enumerate(player_split(n, players, start)):
-            cells.update((p, b) for b in band_sequence(shares, count))
-        for cell in standing:
-            _take(cells, cell)
+        left = Counter(band_sequence(band_shares(days, self.band_of), n))
+        for band in standing:
+            near = sorted((abs(b - (band or BANDS)), -b) for b, k in left.items() if k > 0)
+            if near:
+                left[-near[0][1]] -= 1
         return [
-            Slot(family, p, b, self.target(days, b))
-            for (p, b), k in sorted(cells.items())
+            Slot(family, None, b, self.target(days, b))
+            for b, k in sorted(left.items())
             for _ in range(k)
         ]
 

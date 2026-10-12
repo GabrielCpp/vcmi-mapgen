@@ -7,6 +7,7 @@ from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import open_islands
+from vcmi_mapgen.core.grid.reach import reach
 from vcmi_mapgen.core.model import MapState, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
@@ -44,7 +45,12 @@ def _check_islands(map_state: MapState, level: int, pl: ZPL.PlanLevel, land: set
         for cx, cy, blk in FP.anchored_cells(o.footprint, o.x, o.y)
         if blk
     }
-    unreached = {t for island in open_islands(land, set(), anchors) for t in island}
+    stranded = {
+        t for zone in pl.zones.values() for t in zone.ts - reach(set(zone.ts), zone.prot & zone.ts)
+    }
+    unreached = stranded | {
+        t for island in open_islands(land - stranded, set(), anchors) for t in island
+    }
     islands = open_islands(land - unreached, blocking, anchors)
     if islands:
         first = min(min(c) for c in islands)

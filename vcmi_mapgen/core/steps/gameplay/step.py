@@ -5,7 +5,8 @@ pass over the neutral towns with their own sawmill and ore pit, mines, dwellings
 visitables. The pass holds each family at the corpus rate per tile, and
 the objects already standing count inside it. A town may cover the zone's entrance bands and
 spill onto vegetation beyond it. Every player town is protected from then on, so no later
-object guards its entrance or walls in its start."""
+object guards its entrance or walls in its start, and no guard stands on its way out of
+its home zone."""
 
 from __future__ import annotations
 
@@ -18,6 +19,8 @@ from vcmi_mapgen.core.model import Identity, MapState, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
+from vcmi_mapgen.core.placement import footprint as FP
+from vcmi_mapgen.core.placement.guard_draw import GuardDraw
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.keep_out import KeepOutRule
 from vcmi_mapgen.core.placement.site import (
@@ -28,8 +31,8 @@ from vcmi_mapgen.core.placement.site import (
     SiteZone,
     ZoneSite,
 )
-from vcmi_mapgen.core.placement.start_room import StartRoomRule
-from vcmi_mapgen.core.placement.ways import WayRule
+from vcmi_mapgen.core.placement.start_room import StartRoomRule, Walk
+from vcmi_mapgen.core.placement.ways import WayRule, home_ways
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan
 from vcmi_mapgen.core.planning.pricing import effort_with
@@ -48,7 +51,15 @@ from vcmi_mapgen.core.reading.promise import (
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.reading.supply import supply_gaps
 from vcmi_mapgen.core.steps.doors.result import DoorGuards
-from vcmi_mapgen.core.steps.gameplay.allocate import Kept, Pricer, keep_promise, site_variants
+from vcmi_mapgen.core.steps.gameplay.allocate import (
+    Guarding,
+    Kept,
+    Pricer,
+    drawn_guard,
+    keep_promise,
+    promised_guard,
+    site_variants,
+)
 from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
@@ -64,17 +75,19 @@ from vcmi_mapgen.core.steps.gameplay.result import (
     GameplayResult,
     GateResult,
     PromisedWays,
+    Shortfall,
     TownsIndex,
 )
 from vcmi_mapgen.core.steps.gameplay.sea_links import SeaLinks, sea_way
 from vcmi_mapgen.core.steps.gameplay.shipyards import Link, Shore, place_link, place_shipyards
-from vcmi_mapgen.core.steps.gameplay.siting import TOWN_MIN_AREA
 from vcmi_mapgen.core.steps.gameplay.supply import stand_pairs
 from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import LootZones, VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
 PLACER_SALT = 0x61A7
+PROMISE_SALT = 0x9B0D
+TOWN_MIN_AREA = 150
 
 
 def _sites(indexes: dict[int, SiteIndex], loot: LootZones) -> list[ZoneSite]:
@@ -126,6 +139,8 @@ class GameplayStep(PipelineStep):
     The step publishes the player zones the zone plan picked, then commits the sea objects
     the zone plan drew. Gates stay off each player town's kept room.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
+    From then on no object closes the tiles each player town walks out of its home zone to
+    each zone around it, and ``PromisedWays`` carries them on.
 
     A player apart from a rival by land gets a shipyard whose sea lands on that rival's land,
     right after the shipyards of the zone plan, and the step warns when none fits. From then
@@ -165,6 +180,7 @@ class GameplayStep(PipelineStep):
         self.density = density
         self.objs: list[PlacedObject] = []
         self._log: list[str] = []
+        self._short = Shortfall({}, {})
         self._ctx = ProviderRegistry()
         self._plan = ZPL.ZonePlan({}, ())
         self._veg = VegetationResult()
@@ -176,7 +192,9 @@ class GameplayStep(PipelineStep):
         self._content = ContentPlan()
         self._accents = Accents()
         self._loot = LootZones()
+        self._guarding: Guarding = promised_guard
         self._sea_ways: dict[int, frozenset[Tile]] = {}
+        self._home_ways: dict[int, frozenset[Tile]] = {}
         self._doors: DoorGuards | None = None
 
     @override
@@ -193,6 +211,10 @@ class GameplayStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         self._grids = map_state.terrain
+        self._guarding = drawn_guard(
+            GuardDraw(self.priors.families, len(self.priors.effort.toll) - 1),
+            random.Random(self.seed ^ PROMISE_SALT),
+        )
         self._pick_player_zones()
         for _level, pl in sorted(self._plan.levels.items()):
             map_state.add_objs(list(pl.sea))
@@ -201,12 +223,13 @@ class GameplayStep(PipelineStep):
         }
         gates = self._place_gates(catalog, indexes, map_state)
         self._place_player_towns(catalog, indexes)
+        self._keep_home_ways(indexes, map_state)
         if 0 in indexes:
             self._place_shipyards(indexes[0], map_state, catalog)
             self._link_starts(catalog, indexes, map_state)
         sites = _sites(indexes, self._loot)
         towns = [o for s in sites for o in s.objs if o.purpose == Purpose.TOWN]
-        _ = stand_pairs(sites, site_variants(catalog), towns)
+        _ = stand_pairs(sites, site_variants(catalog), towns, self._guarding)
         self._place_landmarks(catalog, indexes, map_state)
         for line in self._keep_promise(catalog, indexes, map_state).warnings:
             print(f"  WARNING: mine promise: {line}")
@@ -254,8 +277,11 @@ class GameplayStep(PipelineStep):
         for line in promise_from(catalog, map_state.objs, maps, BASIC_MINE_RES).broken():
             print(f"  WARNING: mine promise broken: {line}")
         ways = promise_ways(catalog, map_state.objs, maps, BASIC_MINE_RES)
-        sea = self._sea_ways
-        kept = {lv: ways.get(lv, NO_TILES) | sea.get(lv, NO_TILES) for lv in {*ways, *sea}}
+        sea, home = self._sea_ways, self._home_ways
+        kept = {
+            lv: ways.get(lv, NO_TILES) | sea.get(lv, NO_TILES) | home.get(lv, NO_TILES)
+            for lv in {*ways, *sea, *home}
+        }
         self._ctx.provide(PromisedWays(kept))
 
     def _place_landmarks(
@@ -299,15 +325,21 @@ class GameplayStep(PipelineStep):
         has_water = any(Terrain.WATER in row for grid in self._grids.values() for row in grid)
         picker = Picker(catalog, rng, has_water, self.subterrain)
         variants = site_variants(catalog)
-        short = placement.place(plan, picker, price, lambda new: stand_pairs(sites, variants, new))
+        short = placement.place(
+            plan, picker, price, lambda new: stand_pairs(sites, variants, new, self._guarding)
+        )
         self._log += [f"WARNING: gameplay shortfall: {line}" for line in short.lines()]
+        self._short = short
 
     def _keep_promise(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
     ) -> Kept:
         sites = _sites(indexes, self._loot)
         kept = keep_promise(
-            sites, site_variants(catalog), lambda: self._survey(catalog, indexes, map_state)
+            sites,
+            site_variants(catalog),
+            lambda: self._survey(catalog, indexes, map_state),
+            self._guarding,
         )
         if kept.stood:
             _ = self._survey(catalog, indexes, map_state)
@@ -389,6 +421,18 @@ class GameplayStep(PipelineStep):
                 print(f"  player town moved to zone {site.zid} (level {site.lf.level})")
         if need > 0:
             print(f"  WARNING: {need} player town(s) found no zone with room")
+
+    def _keep_home_ways(self, indexes: dict[int, SiteIndex], map_state: MapState) -> None:
+        for level, idx in sorted(indexes.items()):
+            walk = Walk(map_state, level, idx.lf.covers)
+            tiles: set[Tile] = set()
+            for site in _sites({level: idx}, self._loot):
+                for town in site.objs:
+                    start = FP.footprint_cells(town.footprint, town.x, town.y)[2]
+                    if town.purpose == Purpose.TOWN and start is not None:
+                        tiles |= home_ways(start, idx.zone_of, walk.passable, walk.threatened)
+            self._ways[level].keep(tiles)
+            self._home_ways[level] = frozenset(tiles)
 
     def _place_dragon(
         self, catalog: Catalog, indexes: dict[int, SiteIndex], map_state: MapState
@@ -539,7 +583,9 @@ class GameplayStep(PipelineStep):
         map_state.add_objs(self.objs)
         map_state.player_towns = self._player_towns(towns)
         tie_dwellings(catalog, map_state, self.priors.effort.toll)
-        self._ctx.provide(GameplayResult(zones, landings, town_of_zone, tuple(self._log)))
+        self._ctx.provide(
+            GameplayResult(zones, landings, town_of_zone, tuple(self._log), self._short)
+        )
 
     def _player_towns(self, towns: dict[tuple[int, int], list[PlacedObject]]) -> list[PlacedObject]:
         out = [towns[k][0] for k in self._player_zids if k in towns]

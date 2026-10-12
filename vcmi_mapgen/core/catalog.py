@@ -161,6 +161,11 @@ class Catalog(Protocol):
         dwelling reads above 7. None when the kind recruits no known creature."""
         ...
 
+    def dwelling_faction(self, kind: str) -> str | None:
+        """The town faction that recruits every creature a fixed dwelling recruits. None
+        when one of them is neutral or unknown, or the dwelling's creatures span towns."""
+        ...
+
     def guard(self, level: int) -> Identity:
         """The guard of a strength level: the random monster of levels 1..7, a fixed neutral
         dragon stack above, clamped to the levels the catalog has."""

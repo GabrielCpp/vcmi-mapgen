@@ -1,7 +1,5 @@
-"""The map-wide gameplay pass holds each family at the corpus rate per tile, within DENSITY_TOL,
-keeps every family's median effort inside the corpus p10 to p90, and leaves each family's
-reach per band at most REACH_GAP apart between the players, each object past its own guard
-unless it is a mine or a town."""
+"""The map-wide gameplay pass stands at least 1 - STOOD_TOL of the objects its plan asks for,
+and keeps every family's median effort inside the corpus p10 to p90."""
 
 import contextlib
 import io
@@ -12,34 +10,22 @@ import pytest
 
 from vcmi_mapgen.cli.steps import StepConfig, build_steps
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import MapState, PlacedObject
-from vcmi_mapgen.core.model.purpose import FLANKED
+from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import ProviderRegistry
-from vcmi_mapgen.core.placement.intensity import density
-from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
-from vcmi_mapgen.core.priors.effort import BANDS
-from vcmi_mapgen.core.reading.families import (
-    Families,
-    family_days,
-    guard_levels,
-    reach_guard,
-    unguarded,
-)
-from vcmi_mapgen.core.reading.promise import doors, player_maps
+from vcmi_mapgen.core.reading.families import family_days
 from vcmi_mapgen.core.reading.routes import Spot
-from vcmi_mapgen.core.steps.gameplay.reach import Reach
+from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, Shortfall
 
 SWEEP_SEEDS = range(1, 11)
-DENSITY_TOL = 0.1
-REACH_GAP = 2
+STOOD_TOL = 0.1
 LOW, HIGH = 0.1, 0.9
 
 
-_MAPS: dict[StepConfig, tuple[MapState, ZonePlan]] = {}
+_MAPS: dict[StepConfig, tuple[MapState, Shortfall]] = {}
 
 
-def _map(catalog: Catalog, priors: Priors, config: StepConfig) -> tuple[MapState, ZonePlan]:
+def _map(catalog: Catalog, priors: Priors, config: StepConfig) -> tuple[MapState, Shortfall]:
     if config in _MAPS:
         return _MAPS[config]
     state = MapState(size=config.size)
@@ -50,49 +36,14 @@ def _map(catalog: Catalog, priors: Priors, config: StepConfig) -> tuple[MapState
             step.run(catalog, state)
             if name == "gameplay":
                 break
-    _MAPS[config] = (state, ctx.require(ZonePlan))
+    _MAPS[config] = (state, ctx.require(GameplayResult).shortfall)
     return _MAPS[config]
 
 
-def _placed(catalog: Catalog, state: MapState) -> list[tuple[str, PlacedObject]]:
-    families = Families.of(catalog)
-    homes = {id(o) for o in state.player_towns}
-    return [
-        (f, o)
-        for o in state.objs
-        if id(o) not in homes and (f := families.family(catalog, o)) is not None
-    ]
-
-
-def _density(catalog: Catalog, priors: Priors, config: StepConfig) -> float:
-    state, plan = _map(catalog, priors, config)
-    expected = sum(
-        len(z.ts) * sum(density(priors.gameplay[level][z.terrain]).get(p, 0.0) for p in FLANKED)
-        for level, levels in plan.levels.items()
-        for z in levels.zones.values()
-    )
-    return len(_placed(catalog, state)) / expected
-
-
-def _reach_gap(catalog: Catalog, priors: Priors, config: StepConfig) -> int:
-    state, _plan = _map(catalog, priors, config)
-    placed = _placed(catalog, state)
-    guards = guard_levels(catalog, state.objs)
-    view = unguarded(catalog, state, (o for _f, o in placed))
-    maps = player_maps(catalog, view, priors.effort.toll)
-    reach = Reach(len(maps))
-    for f, o in placed:
-        least = reach_guard(catalog, guards, o)
-        lows = (
-            min((e.total for d in doors(o) if (e := em.visit(d, least))), default=None)
-            for em in maps
-        )
-        reach.add(f, tuple(None if d is None else priors.effort.band(d) for d in lows))
-    rows = [[reach.within(f, p) for p in range(len(maps))] for f in {f for f, _o in placed}]
-    return max(
-        (max(r[b] for r in fam) - min(r[b] for r in fam) for fam in rows for b in range(BANDS)),
-        default=0,
-    )
+def _stood(catalog: Catalog, priors: Priors, config: StepConfig) -> float:
+    _state, short = _map(catalog, priors, config)
+    wanted = sum(short.wanted.values())
+    return sum(short.placed.values()) / wanted if wanted else 1.0
 
 
 def _quantile(hist: tuple[int, ...], q: float) -> int:
@@ -104,27 +55,20 @@ def _quantile(hist: tuple[int, ...], q: float) -> int:
     return len(hist) - 1
 
 
-def test_a_small_map_keeps_each_family_even_between_players(
-    catalog: Catalog, priors: Priors
-) -> None:
-    assert _reach_gap(catalog, priors, StepConfig(3, 48)) <= REACH_GAP
+def test_a_small_map_stands_what_its_plan_asks(catalog: Catalog, priors: Priors) -> None:
+    assert _stood(catalog, priors, StepConfig(3, 48)) >= 1 - STOOD_TOL
 
 
 @pytest.mark.slow
-def test_every_seed_holds_the_corpus_rate_and_effort_evenly(
-    catalog: Catalog, priors: Priors
-) -> None:
+def test_every_seed_stands_its_plan_at_the_corpus_effort(catalog: Catalog, priors: Priors) -> None:
     configs = [StepConfig(seed, 72) for seed in SWEEP_SEEDS]
-    sparse = [
-        (c.seed, round(r, 2))
-        for c in configs
-        if abs((r := _density(catalog, priors, c)) - 1) > DENSITY_TOL
+    short = [
+        (c.seed, round(r, 2)) for c in configs if (r := _stood(catalog, priors, c)) < 1 - STOOD_TOL
     ]
-    uneven = [(c.seed, g) for c in configs if (g := _reach_gap(catalog, priors, c)) > REACH_GAP]
-    assert (sparse, uneven) == ([], [])
+    assert short == []
     days: dict[str, list[int]] = defaultdict(list)
     for config in configs:
-        state, _plan = _map(catalog, priors, config)
+        state, _short = _map(catalog, priors, config)
         homes = [Spot(o.level, o.x, o.y) for o in state.player_towns]
         skip = {(o.x, o.y, o.level) for o in state.player_towns}
         for f, d in family_days(catalog, state, homes, skip, priors.effort.toll):

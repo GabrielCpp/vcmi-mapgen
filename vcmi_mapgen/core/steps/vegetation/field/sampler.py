@@ -56,9 +56,9 @@ class _FieldRun:
 
     def fill(self) -> ZoneGrowth:
         """Place decorations until the field's target mask is covered, one uncovered target
-        tile at a time: draw a category from the corpus mix, try FILL_TRIES identities and
-        offsets that block that tile, and keep the one that blocks the most uncovered target
-        tiles for the fewest uncovered tiles off the mask."""
+        tile at a time: draw a category from the corpus mix, try FILL_TRIES identities, each
+        at the first position that blocks that tile legally, and keep the one that blocks the
+        most uncovered target tiles for the fewest uncovered tiles off the mask."""
         cv = self.canvas
         dom = cv.inz & ~cv.protm & ~cv.box_mask(cv.forbid)
         tiles_per_ebin = np.bincount(cv.eb[dom].ravel(), minlength=EBINS)
@@ -87,25 +87,27 @@ class _FieldRun:
             ii = self.mix.draw_identity(c)
             if not model.iblk[c][ii]:
                 continue
-            dx, dy = rng.choice(model.iblk[c][ii])
-            x, y = t[0] - dx, t[1] - dy
-            if not self._in_zone(x, y) or (x, y) in cv.forbid:
-                continue
-            cells = cv.blocked_cells(c, ii, x, y)
-            if cells is None:
-                continue
-            score = self._fill_score(cells, target)
-            if score >= 0:
-                scored.append((score, -k, x, y, ii, cells))
-        scored.sort(reverse=True)
+            offsets = list(model.iblk[c][ii])
+            rng.shuffle(offsets)
+            for dx, dy in offsets:
+                x, y = t[0] - dx, t[1] - dy
+                if not self._in_window(x, y) or (x, y) in cv.forbid:
+                    continue
+                cells = cv.blocked_cells(c, ii, x, y)
+                if cells is None:
+                    continue
+                score = self._fill_score(cells, target)
+                if score >= 0:
+                    scored.append((score, -k, x, y, ii, cells))
+                    break
+        scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
         for _score, _k, x, y, ii, cells in scored[:FILL_CHECKS]:
             if cv.try_place((x, y, c, ii), cells):
                 return
 
-    def _in_zone(self, x: int, y: int) -> bool:
+    def _in_window(self, x: int, y: int) -> bool:
         cv = self.canvas
-        lx, ly = x - cv.x0, y - cv.y0
-        return 0 <= lx < cv.W and 0 <= ly < cv.H and bool(cast(np.bool_, cv.inz[ly, lx]))
+        return 0 <= x - cv.x0 < cv.W and 0 <= y - cv.y0 < cv.H
 
     def _fill_score(self, cells: list[Tile], target: NDArray[np.bool_]) -> int:
         cv = self.canvas

@@ -150,6 +150,24 @@ def test_island_50_or_more_tiles_gets_a_seaport(catalog: Catalog) -> None:
     assert objs, "a 54-tile island must get a seaport"
 
 
+def test_a_dock_on_a_thin_island_hangs_its_sprite_over_the_water(catalog: Catalog) -> None:
+    WATER = 8
+    W, H = 30, 8
+    grid = [[WATER for _ in range(W)] for _ in range(H)]
+    zone_tiles = {(x, y) for y in (4, 5) for x in range(2, 27)}
+    for x, y in zone_tiles:
+        grid[y][x] = 2
+    zones = {0: _zone(zone_tiles, 14, 4.5)}
+    objs = WT.ensure_water_seaports(WT.SeaMap(W, H, grid, zones), [], seed=2, catalog=catalog)
+    assert objs
+    body = {
+        (x, y)
+        for x, y, blocks in FP.anchored_cells(objs[0].footprint, objs[0].x, objs[0].y)
+        if blocks
+    }
+    assert body <= zone_tiles
+
+
 def _comps_of(tiles: Iterable[Tile], dirs: Sequence[Tile], universe: set[Tile]) -> list[set[Tile]]:
     """8- or 4-connected clusters of `tiles`, restricted to `universe`."""
     seen: set[Tile] = set()

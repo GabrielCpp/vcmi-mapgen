@@ -44,7 +44,7 @@ def _short(snug: Snug) -> dict[int, float]:
 
 
 def test_a_small_map_tucks_its_objects_in(catalog: Catalog, priors: Priors) -> None:
-    snug = _snug(catalog, priors, StepConfig(3, 48))
+    snug = _snug(catalog, priors, StepConfig(4, 48))
     assert sum(snug.objects.values()) > 0
     assert _short(snug) == {}
 

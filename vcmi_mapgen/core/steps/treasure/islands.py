@@ -31,7 +31,6 @@ from vcmi_mapgen.core.priors.gameplay import GameplayStats
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.routes import Spot
 
-ISLAND_MIN_AREA = 12
 PRIZES_PER_GUARD = 3
 
 
@@ -79,13 +78,12 @@ class GuardedIsland:
 def find_islands(
     catalog: Catalog, lvl: IslandLevel, em: EffortMap, reached: Container[tuple[int, int, int]]
 ) -> list[Island]:
-    """Every land zone of at least ``ISLAND_MIN_AREA`` tiles that no home reaches on foot,
-    no gate opens, and a hero still reaches over water. A zone no hero reaches at all is
-    left to the portal rescue."""
+    """Every land zone that no home reaches on foot, no gate opens, and a hero still reaches
+    over water. A zone no hero reaches at all is left to the portal rescue."""
     out: list[Island] = []
     for zr in lvl.records:
         z = lvl.zones.get(zr.zid)
-        if z is None or z.terrain_type.is_barrier or z.area < ISLAND_MIN_AREA:
+        if z is None or z.terrain_type.is_barrier:
             continue
         if zr.zid in lvl.loot or any((x, y, lvl.level) in reached for x, y in z.tiles_set):
             continue

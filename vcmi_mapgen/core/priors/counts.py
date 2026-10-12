@@ -1,6 +1,7 @@
 """The corpus curves of an object count over a map's land area and player count: one for the
-resource mines, one for the towns, and one per gameplay family beside the power its efforts
-from home stretch by with the land."""
+towns, one for the resource mines, and one per gameplay family beside the power its efforts
+from home stretch by with the land and the share of its objects at each guard level. Only the
+town curve grows with the player count."""
 
 import math
 from collections.abc import Mapping
@@ -24,17 +25,19 @@ class CountCurve:
         return math.exp(log + self.players_exp * math.log(max(players, 1)))
 
 
-MINE_CURVE = CountCurve(-1.39, 0.49, 0.51)
+MINE_CURVE = CountCurve(-1.69, 0.61, 0.0)
 TOWN_CURVE = CountCurve(-2.43, 0.41, 0.68)
 
 
 @dataclass(frozen=True, slots=True)
 class FamilyFit:
-    """One gameplay family's corpus fit: its count curve, and the power of the land ratio
-    its efforts from home stretch by."""
+    """One gameplay family's corpus fit: its count curve, the power of the land ratio its
+    efforts from home stretch by, and its guard record, the share of its objects whose own
+    guard is of each level from 0, unguarded, up."""
 
     count: CountCurve
     stretch: float = 0.0
+    guards: tuple[float, ...] = ()
 
 
 def _no_fits() -> Mapping[str, FamilyFit]:
@@ -54,6 +57,11 @@ class FamilyCurves:
         """The count curve of ``family``, None when the corpus fit none."""
         fit = self.fits.get(family)
         return fit.count if fit is not None else None
+
+    def guards(self, family: str) -> tuple[float, ...]:
+        """The guard record of ``family``, empty when the corpus fit none."""
+        fit = self.fits.get(family)
+        return fit.guards if fit is not None else ()
 
     def factor(self, family: str, land: int) -> float:
         """What a corpus effort of ``family`` scales by on a map of ``land`` tiles."""

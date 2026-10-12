@@ -40,7 +40,7 @@ class Walk:
     ground: MapState
     level: int
     covers: CoverIndex
-    ignore: PlacedObject
+    ignore: PlacedObject | None = None
 
     def passable(self, t: Tile) -> bool:
         """A hero may stand on ``t``: on the map, not gate-blocked, not water or rock, and no

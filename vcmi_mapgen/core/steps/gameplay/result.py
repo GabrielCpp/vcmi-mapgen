@@ -28,15 +28,31 @@ class TownsIndex:
 
 
 @dataclass(frozen=True, slots=True)
+class Shortfall:
+    """Per family, the objects the plan asked for and the objects that stood."""
+
+    wanted: Mapping[str, int]
+    placed: Mapping[str, int]
+
+    def lines(self) -> list[str]:
+        return [
+            f"{f}: {self.placed.get(f, 0)}/{n}"
+            for f, n in sorted(self.wanted.items())
+            if self.placed.get(f, 0) < n
+        ]
+
+
+@dataclass(frozen=True, slots=True)
 class GameplayResult:
     """Each zone after placement by level and zid, each level's seaport landings recomputed
-    from the placed shipyards, the first town each zone received, and diagnostic log lines
-    for the CLI to print."""
+    from the placed shipyards, the first town each zone received, diagnostic log lines
+    for the CLI to print, and what the map-wide pass asked per family against what stood."""
 
     zones: Mapping[int, Mapping[int, PlacedZone]]
     landings: Mapping[int, Landings]
     town_of_zone: Mapping[int, Mapping[int, PlacedObject]]
     log: tuple[str, ...] = ()
+    shortfall: Shortfall = Shortfall({}, {})
 
 
 @dataclass(frozen=True, slots=True)

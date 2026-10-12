@@ -3,18 +3,9 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.core.model.artifact import ArtifactTier
 from vcmi_mapgen.core.planning.content import PlaceIntent
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 
-ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier, ...] = (
-    "treasure",
-    "treasure",
-    "minor",
-    "major",
-    "major",
-    "relic",
-)
 DEEP_AREA = 3
 DEEP_DEPTH = 2
 FILL_CAP = 5
@@ -30,10 +21,6 @@ class PocketKind(StrEnum):
 
 def pocket_kind(area: int, depth: int) -> PocketKind:
     return PocketKind.DEEP if area >= DEEP_AREA and depth >= DEEP_DEPTH else PocketKind.SHALLOW
-
-
-def ward_tier(guard_level: int) -> ArtifactTier:
-    return ART_TIER_BY_GUARD_LEVEL[min(len(ART_TIER_BY_GUARD_LEVEL), guard_level) - 1]
 
 
 def largest(candidates: Sequence[Candidate]) -> Candidate:

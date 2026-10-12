@@ -11,7 +11,9 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.claimed import CLAIM_DAYS, claims_of, owner_maps, worst_share
 from vcmi_mapgen.core.reading.contest import CONTEST, FAR_FLOOR, enemy_pairs, gold_mines
+from vcmi_mapgen.core.reading.ground import TownKey
 from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.reading.places import owners_of
 from vcmi_mapgen.core.reading.promise import player_maps
@@ -74,6 +76,24 @@ def way_reading(catalog: Catalog, state: MapState, priors: Priors) -> Vector:
     }
 
 
+def claimed_name(days: int) -> str:
+    """The reading of the worst player's value claimed within ``days`` over the best's."""
+    return f"claimed within {days}"
+
+
+def value_reading(
+    catalog: Catalog, state: MapState, owners: Mapping[TownKey, int], priors: Priors
+) -> Vector:
+    """Per horizon of CLAIM_DAYS, the worst player's value claimed first over the best
+    player's, empty when fewer than two players own a town."""
+    maps = owner_maps(catalog, state, owners, priors.effort.toll)
+    if len(maps) < 2:
+        return {}
+    claims = claims_of(catalog, state, maps)
+    shares = {claimed_name(d): worst_share(claims, d) for d in CLAIM_DAYS}
+    return {name: share for name, share in shares.items() if share is not None}
+
+
 def count_line(seed: int, vector: Vector) -> str:
     """One generated map's resource mines and towns, each beside its curve's expectation,
     then its repeating ways, its share of rare mines with one of their resource close by,
@@ -101,14 +121,17 @@ def _generated(catalog: Catalog, priors: Priors, config: StepConfig) -> Vector:
     seconds = time.perf_counter() - start
     counts = count_reading(catalog, state, config.players, priors)
     ways = way_reading(catalog, state, priors)
-    return {**map_vector(catalog, state, owners_of(state)), **counts, **ways, SECONDS: seconds}
+    owners = owners_of(state)
+    value = value_reading(catalog, state, owners, priors)
+    return {**map_vector(catalog, state, owners), **counts, **ways, **value, SECONDS: seconds}
 
 
 def _corpus_vector(catalog: Catalog, h3m_dir: Path, priors: Priors, named: Named) -> Vector:
     name, state = named
     players = map_players(h3m_dir, name)
     counts = count_reading(catalog, state, players.players, priors)
-    return {**map_vector(catalog, state, players.owners), **counts}
+    value = value_reading(catalog, state, players.owners, priors)
+    return {**map_vector(catalog, state, players.owners), **counts, **value}
 
 
 def _corpus(catalog: Catalog, settings: Settings, size: int, priors: Priors) -> list[Vector]:
@@ -138,9 +161,12 @@ def table_lines(corpus: Columns, generated: Columns) -> list[str]:
     return [head, *rows]
 
 
-def readings(catalog: Catalog, settings: Settings, seeds: Sequence[int], size: int) -> None:
+def readings(
+    catalog: Catalog, settings: Settings, seeds: Sequence[int], size: int, players: int = 2
+) -> None:
     priors = load_priors(settings.pp_dir, settings.pockets_file)
-    vectors = [_generated(catalog, priors, StepConfig(seed, size)) for seed in seeds]
+    configs = [StepConfig(seed, size, players=players) for seed in seeds]
+    vectors = [_generated(catalog, priors, config) for config in configs]
     generated = columns(vectors)
     print(f"generated {len(vectors)} maps")
     for seed, vector in zip(seeds, vectors, strict=True):

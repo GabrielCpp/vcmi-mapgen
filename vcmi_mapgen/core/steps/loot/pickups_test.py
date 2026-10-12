@@ -14,11 +14,12 @@ from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.cells import legal_cells
 from vcmi_mapgen.core.placement.scatter import ScatterConfig, ScatterZone, place_scatter
 from vcmi_mapgen.core.planning.entrances import zone_gate_bands
+from vcmi_mapgen.core.planning.guarding import ART_TIER_BY_GUARD_LEVEL
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.loot import pickups as CA
-from vcmi_mapgen.core.steps.loot.pocket_plan import ART_TIER_BY_GUARD_LEVEL, PocketPlan
+from vcmi_mapgen.core.steps.loot.pocket_plan import PocketPlan
 from vcmi_mapgen.core.steps.loot.pockets import access_tiles, occupied_tiles
 
 

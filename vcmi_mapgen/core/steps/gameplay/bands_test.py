@@ -39,30 +39,33 @@ def test_every_prefix_of_the_sequence_follows_the_shares() -> None:
         assert seq[:k].count(1) == seq[:k].count(2)
 
 
-def test_each_player_gets_the_same_bands_within_one() -> None:
-    plan = BandPlan({"bank": [1] * 10 + [1] * 10}, _band, 2, random.Random(1))
-    slots = plan.slots("bank", 7, [], 0)
-    for b in range(1, 5):
-        per = [sum(1 for s in slots if s.player == p and s.band == b) for p in range(2)]
-        assert max(per) - min(per) <= 1
+def test_shared_slots_serve_no_player_and_split_over_the_bands() -> None:
+    plan = BandPlan({"bank": [1] * 5 + [1] * 5}, _band, 2, random.Random(1))
+    slots = plan.shared("bank", 6, [])
+    assert {s.player for s in slots} == {None}
+    assert sorted(s.band or 0 for s in slots) == [1, 1, 1, 2, 2, 2]
 
 
 def test_each_target_lies_inside_its_band() -> None:
     plan = BandPlan({"bank": [2] * 20}, _band, 2, random.Random(1))
-    for s in plan.slots("bank", 8, [], 0):
+    for s in plan.shared("bank", 8, []):
         assert s.band is not None and s.target is not None
         assert _band(s.target) == s.band
 
 
-def test_a_standing_object_takes_its_players_slot() -> None:
+def test_a_standing_object_takes_the_nearest_band_left() -> None:
     plan = BandPlan({"bank": [1] * 5}, _band, 2, random.Random(1))
-    slots = plan.slots("bank", 4, [(0, 1)], 0)
-    assert [s.player for s in slots].count(0) == 1
+    assert [s.band for s in plan.shared("bank", 3, [3])] == [1, 1]
+
+
+def test_a_standing_object_no_player_reaches_takes_the_furthest_band_left() -> None:
+    plan = BandPlan({"bank": [1] * 5 + [1] * 5}, _band, 2, random.Random(1))
+    assert [s.band for s in plan.shared("bank", 4, [None])] == [1, 1, 2]
 
 
 def test_a_map_without_players_gets_bare_slots() -> None:
     plan = BandPlan({}, _band, 0, random.Random(1))
-    assert plan.slots("bank", 3, [None], 0) == [Slot("bank")] * 2
+    assert plan.shared("bank", 3, [None]) == [Slot("bank")] * 2
 
 
 def test_mines_go_before_banks_and_far_bands_first() -> None:

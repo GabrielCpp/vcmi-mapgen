@@ -83,7 +83,8 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
     assert all(_opts(o)["character"] == "hostile" for o in guards)
     # random dwellings in a town zone are marked with the town's coordinates ...
     rdwell = [o for o in objs if (ON.identity_of(o.kind).type or "").startswith("randomDwelling")]
-    assert all(_opts(o)["sameAsTown"] == [town.x, town.y, 0] for o in rdwell)
+    towns = [[t.x, t.y, 0] for t in objs if t.purpose == "TOWN"]
+    assert all(_opts(o)["sameAsTown"] in towns for o in rdwell)
     # ... and they survive the .vmap round trip, with sprite-extent masks
     grid = [[2] * 30 for _ in range(24)]
     terrain = [[Terrain(t) for t in row] for row in grid]
@@ -99,7 +100,8 @@ def test_vmap_export_game_contracts(open_zone: OpenZonePlacer, tmp_path: Path) -
     # the coordinate marker resolved to the town's minted instanceName
     vdwell = [vo for vo in vobjs if jv.as_str(vo.get("type")).startswith("randomDwelling")]
     if rdwell:
-        assert vdwell and all(_vopts(vo)["sameAsTown"] == vtown["instanceName"] for vo in vdwell)
+        vnames = [vo["instanceName"] for vo in vobjs if vo.get("type") in ("town", "randomTown")]
+        assert vdwell and all(_vopts(vo)["sameAsTown"] in vnames for vo in vdwell)
     vguards = [
         vo
         for vo in vobjs

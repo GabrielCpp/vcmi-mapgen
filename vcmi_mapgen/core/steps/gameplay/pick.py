@@ -1,6 +1,7 @@
 """Which object of a family stands on a site's terrain: the corpus sprite weights draw it, a
 sprite the map already shows weighs less, and so does a kind with copies standing near the
-spot."""
+spot. A town's creatures come only from a random dwelling, which takes the faction of the
+town nearest in hero-days, so only a dwelling of neutral creatures stands fixed."""
 
 from __future__ import annotations
 
@@ -13,12 +14,12 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.identity import pick_kind
+from vcmi_mapgen.core.planning.landmarks import above_top_tier
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.families import family_level, family_purpose
 from vcmi_mapgen.core.reading.repeats import NEAR, Kind, Spot, kind_of
 from vcmi_mapgen.core.reading.supply import apart
 from vcmi_mapgen.core.steps.gameplay.economy import mine_variants
-from vcmi_mapgen.core.steps.gameplay.landmark import above_top_tier
 
 RANDOM_SHARE = 0.7
 RANDOM_DWELLING_SHARE = 0.8
@@ -120,6 +121,7 @@ class Picker:
             i
             for i in self.catalog.candidates(Purpose.DWELLING, terrain)
             if not above_top_tier(self.catalog, i)
+            and self.catalog.dwelling_faction(i.kind) is None
             and (self.catalog.dwelling_level(i.kind) or 0) == level
         ]
         if fixed and self.rng.random() >= RANDOM_DWELLING_SHARE:

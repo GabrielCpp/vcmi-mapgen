@@ -16,7 +16,7 @@ Subcommands:
                      folder of .h3m maps, HotA ones with `--mods hota`, and render them.
   corpus-match    -> compare generated gameplay placement to the corpus.
   readings        -> print the map-math 8 readings of generated maps beside the corpus
-                     spread.
+                     spread, with the worst player's value claimed first over the best's.
   effort-report   -> print the opener, the effort, the band and the prize of every cut-off
                      place on a few generated maps.
   patch-report    -> compare how the corpus and generated maps dress their small enclosed
@@ -239,7 +239,7 @@ def cmd_corpus_match(args: Args) -> None:
 def cmd_readings(args: Args) -> None:
     settings = load_settings()
     _ = _open_catalog(settings)
-    readings(VcmiCatalog(), settings, args.seeds, args.size)
+    readings(VcmiCatalog(), settings, args.seeds, args.size, args.players)
 
 
 def cmd_effort_report(args: Args) -> None:
@@ -398,6 +398,7 @@ def main() -> None:
     )
     _ = prd.add_argument("--seeds", type=int, nargs="+", default=list(range(1, 11)))
     _ = prd.add_argument("--size", type=int, default=72)
+    _ = prd.add_argument("--players", type=int, default=2)
     _ = prd.set_defaults(func=cmd_readings)
 
     per = sub.add_parser(

@@ -1,3 +1,4 @@
+import math
 from typing import cast
 
 from vcmi_mapgen.core.reading.effort import Effort, effort_map
@@ -172,3 +173,19 @@ def test_the_path_pays_a_cheap_guard_over_a_long_detour() -> None:
     route = grid_route(rows, guard={(0, 1): 1})
     path = effort_map(route, [_at(0, 0)], TOLL).path(_at(0, 2))
     assert path == [_at(0, 0), _at(0, 1), _at(0, 2)]
+
+
+def test_a_guard_across_the_corridor_cuts_the_far_end_off() -> None:
+    effort = effort_map(grid_route(["." * 20]), [_at(0, 0)], TOLL)
+    assert effort.detour({_at(5, 0): 4}) == math.inf
+
+
+def test_a_guard_at_the_end_of_the_corridor_lengthens_nothing() -> None:
+    effort = effort_map(grid_route(["." * 20]), [_at(0, 0)], TOLL)
+    assert effort.detour({_at(19, 0): 4}) == 0.0
+
+
+def test_a_guard_in_a_field_adds_a_short_detour() -> None:
+    effort = effort_map(grid_route(["." * 30] * 9), [_at(0, 4)], TOLL)
+    zone = {_at(x, y): 4 for x in range(9, 12) for y in range(3, 6)}
+    assert 0.0 < effort.detour(zone) < 1.0

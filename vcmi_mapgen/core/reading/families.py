@@ -20,7 +20,7 @@ from vcmi_mapgen.core.reading.routes import Spot, route_map
 
 FAR_DAYS = 180
 TOP_LEVEL = 7
-UNGUARDED = frozenset({Purpose.MINE, Purpose.TOWN})
+UNGUARDED = frozenset({Purpose.MINE})
 
 type Key = tuple[int, int, int]
 
@@ -115,8 +115,7 @@ def door_guard(guards: Mapping[Key, int], obj: PlacedObject) -> int:
 
 def reach_guard(catalog: Catalog, guards: Mapping[Key, int], obj: PlacedObject) -> int:
     """The level of the strongest of ``guards`` next to a door of ``obj``, the guard a player
-    beats to count ``obj`` in reach. A mine or a town counts none, since its guard comes
-    with it."""
+    beats to count ``obj`` in reach. A mine counts none, since its guard comes with it."""
     if purpose_of(catalog, obj) in UNGUARDED:
         return 0
     return door_guard(guards, obj)

@@ -287,7 +287,7 @@ class _ZonePlanner:
     def level(self) -> PlanLevel:
         zones: dict[int, PlanZone] = {}
         for zid, z in sorted(self.lp.zones.items()):
-            if z.terrain_type.is_barrier or z.area < MIN_AREA:
+            if z.terrain_type.is_barrier:
                 continue
             zones[zid] = self.zone(zid, z, self.lp.catalog.terrain_name(z.terrain_type))
         return PlanLevel(

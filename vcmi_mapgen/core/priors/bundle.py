@@ -12,6 +12,7 @@ from vcmi_mapgen.core.priors.macro import MacroStats
 from vcmi_mapgen.core.priors.markov import MarkovTables, empty_tables
 from vcmi_mapgen.core.priors.places import PlaceStats
 from vcmi_mapgen.core.priors.pocket_masks import PocketMask
+from vcmi_mapgen.core.priors.remote import RemotePriors
 from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.priors.vegetation import VegetationStats
 from vcmi_mapgen.core.priors.water import WaterPriors
@@ -33,8 +34,8 @@ class Priors:
     1 = underground), the gate estimator, the vegetation statistics per terrain name, every
     orientation of the drawn pocket masks, the guard toll and effort bands, the fitted odds
     of surface water with the corpus water targets, the territory spread per level, and the
-    resource mine and town count curves, and the count curve and effort stretch of each
-    gameplay family."""
+    resource mine and town count curves, the count curve and effort stretch of each
+    gameplay family, and the remote distance per map size."""
 
     terrain: Mapping[int, TerrainPriors]
     gameplay: Mapping[int, GameplayStats]
@@ -48,3 +49,4 @@ class Priors:
     mines: CountCurve = MINE_CURVE
     towns: CountCurve = TOWN_CURVE
     families: FamilyCurves = field(default_factory=FamilyCurves)
+    remote: RemotePriors = field(default_factory=RemotePriors)

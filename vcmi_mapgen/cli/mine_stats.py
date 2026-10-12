@@ -27,12 +27,14 @@ from vcmi_mapgen.corpus.mine.gates import mine_gate_stats
 from vcmi_mapgen.corpus.mine.macro import mine_macro
 from vcmi_mapgen.corpus.mine.markov import learn, learn4, learn_inside
 from vcmi_mapgen.corpus.mine.places import map_players, mine_places, place_labels
+from vcmi_mapgen.corpus.mine.remote import mine_remote
 from vcmi_mapgen.corpus.mine.territories import mine_territories
 from vcmi_mapgen.corpus.mine.tiler import corpus_tile_grids
 from vcmi_mapgen.corpus.mine.tiler import learn as learn_tiler
 from vcmi_mapgen.corpus.mine.vegetation import mine as mine_vegetation
 from vcmi_mapgen.corpus.mine.water import mine_water
 from vcmi_mapgen.corpus.places import save_places
+from vcmi_mapgen.corpus.remote import save_remote
 from vcmi_mapgen.corpus.territories import save_territories
 from vcmi_mapgen.corpus.tiler import save_tiler
 from vcmi_mapgen.corpus.vegetation import save_vegetation
@@ -103,6 +105,10 @@ def _water(m: MineInput) -> None:
     save_water(m.pp_dir, mine_water(m.catalog, m.maps))
 
 
+def _remote(m: MineInput) -> None:
+    save_remote(m.pp_dir, mine_remote(m.maps))
+
+
 def _territories(m: MineInput) -> None:
     owners = [map_players(m.h3m_dir, name).owners for name in m.names]
     save_territories(
@@ -113,7 +119,7 @@ def _territories(m: MineInput) -> None:
 def _counts(m: MineInput) -> None:
     mp = [map_players(m.h3m_dir, name) for name in m.names]
     players = [p.players for p in mp]
-    save_curve(m.pp_dir, MINES_FILE, MINES_SOURCE, mine_curve(m.catalog, m.maps, players))
+    save_curve(m.pp_dir, MINES_FILE, MINES_SOURCE, mine_curve(m.catalog, m.maps))
     save_curve(m.pp_dir, TOWNS_FILE, TOWNS_SOURCE, town_curve(m.catalog, m.maps, players))
     toll = tuned_effort(m.pp_dir).toll
     owners = [p.owners for p in mp]
@@ -133,6 +139,7 @@ MINERS: dict[str, Callable[[MineInput], None]] = {
     "water": _water,
     "territories": _territories,
     "counts": _counts,
+    "remote": _remote,
 }
 
 

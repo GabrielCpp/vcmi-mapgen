@@ -2,10 +2,11 @@
 the rule the group rules choose, times a density multiplier, then per family by the corpus
 count of each family the map can offer.
 
-The towns and the resource mines follow their corpus curves over the map's land area and
-player count. The weekly producers follow the mine rate per tile times their corpus share of
-the mines. Every other purpose follows the corpus curve of each of its families when the
-corpus fitted one for every family it offers, and its own corpus rate per tile otherwise."""
+The towns follow their corpus curve over the map's land area and player count, the resource
+mines theirs over its land area. The weekly producers follow the mine rate per tile times
+their corpus share of the mines. Every other purpose follows the corpus curve of each of its
+families when the corpus fitted one for every family it offers, and its own corpus rate per
+tile otherwise."""
 
 from __future__ import annotations
 

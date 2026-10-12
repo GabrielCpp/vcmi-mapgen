@@ -71,6 +71,16 @@ def test_a_dragon_dwelling_reads_its_creature_level_unclamped() -> None:
     assert catalog.dwelling_level(catalog.random_dwelling(3).kind) is None
 
 
+def test_a_dwelling_names_its_town_only_when_one_town_recruits_all_its_creatures() -> None:
+    catalog = VcmiCatalog()
+    assert catalog.dwelling_faction("avgtrog0") == "dungeon"
+    assert catalog.dwelling_faction("avgelem0") == "conflux"
+    assert catalog.dwelling_faction("avgazur") is None
+    assert catalog.dwelling_faction("avgboar") is None
+    assert catalog.dwelling_faction("avggolm0") is None
+    assert catalog.dwelling_faction(catalog.random_dwelling(3).kind) is None
+
+
 def test_a_fixed_monster_reads_its_creature_level_without_an_install() -> None:
     install = find_install()
     ON.use_config(EMPTY_CONFIG)

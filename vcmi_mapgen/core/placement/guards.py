@@ -1,5 +1,5 @@
-"""Guard spacing and the gameplay-footprint fit every placement step shares: the GAP rule, a
-guard's zone of control."""
+"""Guard spacing and the gameplay-footprint fit every placement step shares: the GAP rule, no
+free tile between two gameplay bodies, and a guard's zone of control."""
 
 from collections.abc import Container, Iterable, Sequence
 from dataclasses import dataclass
@@ -12,8 +12,7 @@ from vcmi_mapgen.core.placement.footprint import cell_offsets
 NO_TILES: frozenset[Tile] = frozenset()
 
 
-GAP = 2  # free tiles kept between any two gameplay footprints — gameplay
-# neighbours VEGETATION (which fills the gap), not other gameplay
+GAP = 0
 
 
 type Fit = tuple[list[Tile], list[Tile], Tile]
@@ -28,8 +27,8 @@ class Clearance:
 
 
 def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -> Fit | None:
-    """Legality: whole footprint in-zone, at least GAP free tiles from every other gameplay
-    footprint (`near` = existing cells inflated by GAP), no squatting on an earlier object's
+    """Legality: whole footprint in-zone, clear of every other gameplay footprint's gap
+    (`near` = existing cells inflated by their `gap_of`), no squatting on an earlier object's
     approach tile (`reserved`), own approach tile in-zone and standable. No cell and no
     approach may touch `avoid`, the ground a later object has claimed."""
     allo, blko, appro = cell_offsets(ident.footprint)
@@ -52,10 +51,10 @@ def fits(ident: Identity, anchor: Tile, ts: Container[Tile], clear: Clearance) -
     )
 
 
-def inflate_gap(near: set[Tile], cells: Iterable[Tile]) -> None:
+def inflate_gap(near: set[Tile], cells: Iterable[Tile], gap: int = GAP) -> None:
     for cx, cy in cells:
-        for gx in range(-GAP, GAP + 1):
-            for gy in range(-GAP, GAP + 1):
+        for gx in range(-gap, gap + 1):
+            for gy in range(-gap, gap + 1):
                 near.add((cx + gx, cy + gy))
 
 

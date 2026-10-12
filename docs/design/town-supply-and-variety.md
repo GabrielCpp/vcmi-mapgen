@@ -347,6 +347,8 @@ What the existing system has that the design lacks:
   promise, and its wood and ore part finds the pairs already standing.
 - The fair guard (`core/steps/gameplay/fair_guard.py`), which keeps each player's reach of a
   family even. For gold, Contest does that job. The fair guard still sets gold's guard level.
+  Superseded 2026-10-12: gold draws its guard from its corpus record (global-placement.md,
+  R18).
 
 Lookups:
 

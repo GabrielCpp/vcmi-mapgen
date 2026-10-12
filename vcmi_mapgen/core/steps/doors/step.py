@@ -17,7 +17,7 @@ from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement.ground import stands
 from vcmi_mapgen.core.placement.guards import guard_spaced
-from vcmi_mapgen.core.planning.door_levels import TOP_LEVEL, DoorSpread
+from vcmi_mapgen.core.planning.door_levels import DoorSpread
 from vcmi_mapgen.core.planning.zone_plan import ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.territories import TerritoryStats
@@ -25,10 +25,12 @@ from vcmi_mapgen.core.reading.contest import enemy_pairs
 from vcmi_mapgen.core.reading.promise import PROMISE_DAYS
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.steps.doors.guards import (
-    door_caps,
     door_level,
     door_tile,
+    home_doors,
+    home_land,
     open_zones,
+    player_door_cap,
     territory_areas,
 )
 from vcmi_mapgen.core.steps.doors.result import DoorGuard, DoorGuards, ShortPair
@@ -43,7 +45,8 @@ DOOR_SALT = 0x0D00
 class DoorsStep(PipelineStep):
     """Door guards: a random monster stands on one tile of every planned door, so its zone
     of control closes the door. The doors a player crosses before its land holds
-    ``HOME_ROOM`` tiles take guards whose tolls leave days to reach its mines. A door into
+    its ``home_room``, the mean home on the level, stay open. Every other door out of
+    a player's open land takes a guard whose toll leaves days to reach its mines. A door into
     a loot zone or a dead-end treasure place stays open. The rival cut then raises the
     guards that leave two enemies under a week apart, home to home, and records the pairs
     it leaves short.
@@ -118,13 +121,14 @@ class DoorsStep(PipelineStep):
         plan = lp.territories
         skip = open_zones(lp.places, self._loot.on(level), plan.doors)
         areas = territory_areas(lp.label, plan.zones)
-        caps = door_caps(plan, areas, self.priors.effort.toll, PROMISE_DAYS)
+        home = home_doors(plan, areas)
+        land = home_land(plan, home)
         post = _Post(catalog, map_state, level)
         posted: list[tuple[DoorGuard, int]] = []
         for i, door in enumerate(plan.doors):
-            if any(z in skip for z in door.zones):
+            if i in home or any(z in skip for z in door.zones):
                 continue
-            cap = caps.get(i, TOP_LEVEL)
+            cap = player_door_cap(door, land, self.priors.effort.toll, PROMISE_DAYS)
             strength = door_level(spread, door, rng, cap)
             ident = catalog.guard(strength)
             tile = door_tile(door, partial(post.fits, ident))

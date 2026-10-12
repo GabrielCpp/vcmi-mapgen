@@ -10,17 +10,17 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.guards import Fit
-from vcmi_mapgen.core.placement.site import Footing, ZoneSite, door_cells, footing_of
+from vcmi_mapgen.core.placement.site import SUPPLY_FOOTING, Footing, ZoneSite, door_cells
 from vcmi_mapgen.core.reading.families import mine_family
 from vcmi_mapgen.core.reading.supply import NEAR, SUPPLY, apart, entrance
-from vcmi_mapgen.core.steps.gameplay.allocate import Variants, promised_guard
+from vcmi_mapgen.core.steps.gameplay.allocate import Guarding, Variants, promised_guard
 
 type Supply = Callable[[Sequence[PlacedObject]], list[tuple[str, PlacedObject]]]
 
 
 @dataclass(frozen=True, slots=True)
 class NearFooting:
-    """The mine footing, trying only the anchors whose entrances lie within NEAR tiles of
+    """The supply footing, trying only the anchors whose entrances lie within NEAR tiles of
     ``door``."""
 
     inner: Footing
@@ -52,27 +52,35 @@ def supply_spots(
 
 
 def _stand(
-    spots: Sequence[tuple[ZoneSite, list[Tile]]], variants: Variants, footing: Footing, res: str
+    spots: Sequence[tuple[ZoneSite, list[Tile]]],
+    variants: Variants,
+    footing: Footing,
+    res: str,
+    guarding: Guarding,
 ) -> PlacedObject | None:
     for site, tiles in spots:
         for ident in variants(site, res):
-            obj = site.place(Purpose.MINE, ident, tiles, footing, promised_guard(res))
+            obj = site.place(Purpose.MINE, ident, tiles, footing, guarding(res))
             if obj is not None:
                 return obj
     return None
 
 
 def stand_pairs(
-    sites: Sequence[ZoneSite], variants: Variants, towns: Sequence[PlacedObject]
+    sites: Sequence[ZoneSite],
+    variants: Variants,
+    towns: Sequence[PlacedObject],
+    guarding: Guarding = promised_guard,
 ) -> list[tuple[str, PlacedObject]]:
     """One sawmill and one ore pit per town of ``towns``, in level then tile order, each
-    with its family. A town whose surroundings take no mine of a resource goes without."""
+    with its family, each guarded by ``guarding``. A town whose surroundings take no mine of
+    a resource goes without."""
     stood: list[tuple[str, PlacedObject]] = []
     for town in sorted(towns, key=lambda t: (t.level, t.x, t.y)):
         spots = supply_spots(sites, town)
-        footing = NearFooting(footing_of(Purpose.MINE), entrance(town))
+        footing = NearFooting(SUPPLY_FOOTING, entrance(town))
         for res in SUPPLY:
-            obj = _stand(spots, variants, footing, res)
+            obj = _stand(spots, variants, footing, res, guarding)
             if obj is not None:
                 stood.append((mine_family(res), obj))
     return stood

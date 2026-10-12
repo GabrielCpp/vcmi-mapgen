@@ -105,6 +105,10 @@ class FakeCatalog:
         self.asked.append(("dwelling_level", kind))
         return None
 
+    def dwelling_faction(self, kind: str) -> str | None:
+        self.asked.append(("dwelling_faction", kind))
+        return None
+
     def guard(self, level: int) -> Identity:
         return self._role("guard", str(level))
 

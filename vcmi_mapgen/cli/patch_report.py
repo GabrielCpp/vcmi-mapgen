@@ -14,8 +14,8 @@ from vcmi_mapgen.cli.steps import StepConfig, build_steps
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import Pipeline
+from vcmi_mapgen.core.planning.landmarks import TOP_TIER
 from vcmi_mapgen.core.reading.patches import Patch, map_cover, read_patches
-from vcmi_mapgen.core.steps.gameplay.landmark import TOP_TIER
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.priors import load_priors
 

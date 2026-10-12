@@ -1,10 +1,12 @@
 """Map-generation pipeline steps."""
 
+from vcmi_mapgen.core.steps.compensation.step import CompensationStep
 from vcmi_mapgen.core.steps.doors.step import DoorsStep
 from vcmi_mapgen.core.steps.gameplay.step import GameplayStep
 from vcmi_mapgen.core.steps.gated.step import GatedStep
 from vcmi_mapgen.core.steps.loot.step import LootStep
 from vcmi_mapgen.core.steps.portal.step import PortalStep
+from vcmi_mapgen.core.steps.remote.step import RemoteStep
 from vcmi_mapgen.core.steps.roads.step import RoadsStep
 from vcmi_mapgen.core.steps.scatter.step import ScatterStep
 from vcmi_mapgen.core.steps.sets.step import SetsStep
@@ -13,11 +15,13 @@ from vcmi_mapgen.core.steps.treasure.step import TreasureStep
 from vcmi_mapgen.core.steps.vegetation.step import VegetationStep
 
 __all__ = [
+    "CompensationStep",
     "DoorsStep",
     "GameplayStep",
     "GatedStep",
     "LootStep",
     "PortalStep",
+    "RemoteStep",
     "RoadsStep",
     "ScatterStep",
     "SetsStep",

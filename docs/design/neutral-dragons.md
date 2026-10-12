@@ -5,6 +5,13 @@ the catalog's guard of levels 8, 9 and 10 is a fixed rust, crystal or azure drag
 read back at that level, with a banned dragon handing its level to the next stack down.
 The fair guard tries every level up to 10. The reward packs below are still open.
 
+Status 2026-10-12: no gameplay object stands behind a dragon any more. Each family draws its
+guard from its corpus record, and no corpus gameplay family uses levels 8 to 10
+(global-placement.md, R18). The dragon dwelling of slice 1 takes its family's record too:
+level 7 guards 45% to 75% of corpus level 7 dwellings. The toll keeps levels 8 to 10, so
+effort still reads the named dragons on the 10 corpus maps that hold one. A dragon in front
+of a prize worth it, such as the Armageddon's Blade, waits on a study of artifact guards.
+
 Disclosure: before this note I had read the guard toll, the fair guard, the reward tiers,
 the landmark step and the catalog's creature level. Their decisions are claims in 1b.
 
@@ -166,7 +173,7 @@ Revision log: none.
   About ten callers place random monsters through it and stay unchanged.
 - **Guard draw: New**, beside the guard placement code in `core/placement/`.
 - **Top-prize guard: Reshape.** The landmark step guards the dragon dwelling at
-  `TOP_TIER = 7` (`core/steps/gameplay/landmark.py:27`, `:150`). The site's guard front
+  `TOP_TIER = 7` (`core/planning/landmarks.py:15`, `core/steps/gameplay/landmark.py`). The site's guard front
   turns a level into one creature (`core/placement/site.py:541`). It draws from the tier
   pool instead.
 - **Fair guard: Exists.** Its top is `min(FAIR_GUARD, len(toll) - 1)`

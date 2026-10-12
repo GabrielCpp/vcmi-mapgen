@@ -20,11 +20,11 @@ from vcmi_mapgen.core.placement.guards import guard_spaced
 from vcmi_mapgen.core.placement.identity import solo_visit_pool
 from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.placement.prizes import HeldPrize, hold_prize
-from vcmi_mapgen.core.planning.guarding import PrizeGuard
+from vcmi_mapgen.core.planning.guarding import ART_TIER_BY_GUARD_LEVEL, PrizeGuard, ward_tier
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats, TerrainStats
 from vcmi_mapgen.core.steps.loot import pocket_plan as PP
-from vcmi_mapgen.core.steps.loot.pocket_plan import ART_TIER_BY_GUARD_LEVEL, PocketPlan
+from vcmi_mapgen.core.steps.loot.pocket_plan import PocketPlan
 from vcmi_mapgen.core.steps.loot.pockets import (
     guard_stand,
     home_mine_protect_pairs,
@@ -352,25 +352,30 @@ class _PocketCachePass:
             terrain,
         )
 
-    def _spots(self, cand: PP.Candidate, *covers: CoverIndex) -> list[Tile]:
+    def _spots(self, cand: PP.Candidate, terrain: str, *covers: CoverIndex) -> list[Tile]:
         return [
             t
             for t in cand[1]
             if t != cand[0]
             and t not in self.cover.claims
             and t in self.global_place
+            and self._on_terrain(t, terrain)
             and self._pickup_fits(t, *covers)
         ]
+
+    def _on_terrain(self, t: Tile, terrain: str) -> bool:
+        zid = self.zone_of.get(t)
+        return zid is not None and self.terrain_of[zid] == terrain
 
     def _guarded(self, cand: PP.Candidate, zid: int) -> bool:
         g = cand[0]
         draw = self._planned_draw(zid, g, 0x9C4)
         with_guard = CoverIndex([PlacedObject.at(self.guard_ident, g, purpose=Purpose.GUARD)])
-        spots = PP.deepest_spots(self._spots(cand, with_guard), g, PP.FILL_CAP + 1)
+        spots = PP.deepest_spots(self._spots(cand, draw.terrain, with_guard), g, PP.FILL_CAP + 1)
         mark, n0, h0 = self.cover.mark(), len(self.objs), len(self.held)
         target = self._target(self.global_place, draw)
         level = self.prize_guard.level(draw.rng, zid)
-        if spots and self._place_ward(target, draw, spots[-1], PP.ward_tier(level)):
+        if spots and self._place_ward(target, draw, spots[-1], ward_tier(level)):
             for t in spots[:-1]:
                 self._loose_fill(target, draw, t)
             if self._place_guard(g, level, draw):
@@ -412,7 +417,7 @@ class _PocketCachePass:
         draw = self._planned_draw(zid, g, 0x5A1)
         n0 = len(self.objs)
         target = self._target(self.global_place, draw)
-        for t in PP.deepest_spots(self._spots(cand), g, PP.FILL_CAP):
+        for t in PP.deepest_spots(self._spots(cand, draw.terrain), g, PP.FILL_CAP):
             self._loose_fill(target, draw, t)
         self._record_filled(cand, n0)
 
@@ -506,7 +511,13 @@ class _PocketCachePass:
         # painted magenta by the depth-recording below -- "not all magenta tiles are
         # filled"). Select against global_place, the same set every placement call
         # below actually uses, so a selected cache_spot always CAN receive an object.
-        cache_spots = [t for t in pocket if t not in self.cover.claims and t in self.global_place]
+        cache_spots = [
+            t
+            for t in pocket
+            if t not in self.cover.claims
+            and t in self.global_place
+            and self._on_terrain(t, terrain)
+        ]
         if not cache_spots:
             return
 
@@ -533,7 +544,7 @@ class _PocketCachePass:
         # tile, tier matching the guard's level exactly (user-mandated) -- the rest
         # (if any) filled with chests/resources/hero structures.
         lvl = self.prize_guard.level(draw.rng, pick.zid)
-        tier = PP.ward_tier(lvl)
+        tier = ward_tier(lvl)
 
         if guard_tile is not None and not self._place_guard(guard_tile, lvl, draw):
             return

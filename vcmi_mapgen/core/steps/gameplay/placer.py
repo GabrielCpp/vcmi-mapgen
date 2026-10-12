@@ -1,9 +1,10 @@
 """The one map-wide pass over the neutral towns, mines, dwellings, banks and visitables. The
-map holds each family at the count its group rule gives, the players share each family band
-by band, and each object stands where its player reaches it at its target effort. Each
-neutral town takes its own sawmill and ore pit right after the towns, before any mine. The
-gold mines serve no player and stand last among the mines, on contested land far from every
-home."""
+map holds each family at the count its group rule gives, split over the bands by the
+family's corpus effort, map-wide. No object serves a player: each stands where the players'
+reach of its family stays even, under the guard that lifts it into its band. The rare mines
+alone go in turn along each player's way. The neutral towns stand furthest from every other
+town. Each neutral town takes its own sawmill and ore pit right after the towns, before any
+mine. The gold mines stand last among the mines, on contested land far from every home."""
 
 from __future__ import annotations
 
@@ -15,11 +16,13 @@ from dataclasses import dataclass, field
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.placement.guard_draw import GuardDraw
 from vcmi_mapgen.core.placement.site import MINE_GUARD_LVL, ZoneSite
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
+    TOP_LEVEL,
     Families,
     door_guard,
     family_purpose,
@@ -39,11 +42,11 @@ from vcmi_mapgen.core.steps.gameplay.quota import (
     paired,
 )
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
+from vcmi_mapgen.core.steps.gameplay.result import Shortfall
 from vcmi_mapgen.core.steps.gameplay.siting import (
     GOLD_FAMILY,
     Siting,
     place_slots,
-    standing_cell,
     standing_visit,
 )
 from vcmi_mapgen.core.steps.gameplay.supply import Supply
@@ -75,27 +78,14 @@ class Demand:
 class Plan:
     """The slots still to place in placing order, the objects already standing on the
     sites by family, the count of each family each new town's own objects count against,
-    dealt once the towns stand, and the player each family's split starts from."""
+    dealt once the towns stand, the player each family's split starts from, and the player
+    towns."""
 
     slots: Sequence[Slot]
     standing: Sequence[tuple[str, PlacedObject]]
     paired: Mapping[str, int] = field(default_factory=dict[str, int])
     starts: Mapping[str, int] = field(default_factory=dict[str, int])
-
-
-@dataclass(frozen=True, slots=True)
-class Shortfall:
-    """Per family, the objects the plan asked for and the objects that stood."""
-
-    wanted: Mapping[str, int]
-    placed: Mapping[str, int]
-
-    def lines(self) -> list[str]:
-        return [
-            f"{f}: {self.placed.get(f, 0)}/{n}"
-            for f, n in sorted(self.wanted.items())
-            if self.placed.get(f, 0) < n
-        ]
+    homes: Sequence[PlacedObject] = ()
 
 
 def map_resources(catalog: Catalog, sites: Sequence[ZoneSite]) -> list[str]:
@@ -164,7 +154,7 @@ class Placement:
         now = {f: n for f, n in sorted(quota.items()) if f not in pairs}
         slots = self._deal(now, standing, starts, maps)
         later = {f: n for f, n in sorted(quota.items()) if f in pairs}
-        return Plan(slot_order(slots, RANKS), held, later, starts)
+        return Plan(slot_order(slots, RANKS), held, later, starts, list(homes))
 
     def _deal(
         self,
@@ -174,8 +164,9 @@ class Placement:
         maps: Sequence[EffortMap],
     ) -> list[Slot]:
         """The slots of ``quota`` once the objects ``standing`` count against it: the rare
-        mines dealt in turn along each player's way, the gold mines for no player, every other
-        family band by band, each family's corpus effort stretched with the map's land."""
+        mines dealt in turn along each player's way, the towns and the gold mines for no
+        player, every other family band by band, each family's corpus effort stretched with
+        the map's land."""
         band_of = self.effort.band
         land = self.demand.measure.land
         corpus = {
@@ -185,11 +176,13 @@ class Placement:
         plan = BandPlan(corpus, band_of, self.demand.players, self.rng)
         slots: list[Slot] = []
         for family, n in quota.items():
-            if family == GOLD_FAMILY and self.demand.players:
+            unowned = family == GOLD_FAMILY or family_purpose(family) == Purpose.TOWN
+            if unowned and self.demand.players:
                 slots += [Slot(family)] * max(0, n - len(standing.get(family, [])))
             elif family not in RARE_FAMILIES:
-                cells = [standing_cell(o, maps, band_of) for o in standing.get(family, [])]
-                slots += plan.slots(family, n, cells, starts.get(family, 0))
+                visits = [standing_visit(o, maps) for o in standing.get(family, [])]
+                bands = [None if v is None else band_of(v[1]) for v in visits]
+                slots += plan.shared(family, n, bands)
         rare = {f: n for f, n in quota.items() if f in RARE_FAMILIES}
         visits = {f: [standing_visit(o, maps) for o in standing.get(f, [])] for f in rare}
         return slots + rare_slots(plan, rare, visits, starts)
@@ -206,7 +199,12 @@ class Placement:
         those takes one object off the paired families, which are dealt then. Each rare mine
         takes its family from the turn where it stands."""
         reach = Reach(self.demand.players)
-        siting = Siting(self.sites, picker, self.effort.band, self.rng, reach, self.effort.toll)
+        top = min(TOP_LEVEL, len(self.effort.toll) - 1)
+        draws = GuardDraw(self.demand.families, top)
+        siting = Siting(
+            self.sites, picker, self.effort.band, self.rng, reach, self.effort.toll, draws
+        )
+        siting.homes = plan.homes
         if self.demand.players:
             siting.gold = GoldSpot.of(self.demand.enemies, self.effort.toll)
         guards = guard_levels(self.catalog, (o for s in self.sites for o in s.objs))

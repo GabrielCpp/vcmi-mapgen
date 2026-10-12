@@ -4,11 +4,13 @@ from vcmi_mapgen.core.pipeline import PipelineStep
 from vcmi_mapgen.core.planning.content import HopContent
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps import (
+    CompensationStep,
     DoorsStep,
     GameplayStep,
     GatedStep,
     LootStep,
     PortalStep,
+    RemoteStep,
     RoadsStep,
     ScatterStep,
     SetsStep,
@@ -36,6 +38,8 @@ GENERATE_STOP_POINTS = (
     "loot",
     "sets",
     "scatter",
+    "remote",
+    "compensation",
     "roads",
 )
 
@@ -90,5 +94,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
         ("loot", LootStep(priors, seed, size)),
         ("sets", SetsStep(priors, seed, size)),
         ("scatter", ScatterStep(priors, seed, size)),
+        ("remote", RemoteStep(priors, seed, size)),
+        ("compensation", CompensationStep(priors)),
         ("roads", RoadsStep(priors, PassageRoads(), seed)),
     ]

@@ -12,7 +12,7 @@ MINES_FILE = "mines.json"
 TOWNS_FILE = "towns.json"
 FAMILIES_FILE = "families.json"
 CURVE_VERSION = 1
-FAMILIES_VERSION = 1
+FAMILIES_VERSION = 2
 MINES_SOURCE = "vcmi_mapgen.corpus.mine.counts.mine_curve"
 TOWNS_SOURCE = "vcmi_mapgen.corpus.mine.counts.town_curve"
 FAMILIES_SOURCE = "vcmi_mapgen.corpus.mine.counts.family_curves"
@@ -47,7 +47,8 @@ def _fit(value: JsonValue) -> FamilyFit:
         jv.as_float(obj.get("land_exp")),
         jv.as_float(obj.get("players_exp")),
     )
-    return FamilyFit(curve, jv.as_float(obj.get("stretch")))
+    guards = tuple(jv.as_float(g) for g in jv.as_list(obj.get("guards")))
+    return FamilyFit(curve, jv.as_float(obj.get("stretch")), guards)
 
 
 def _fit_json(fit: FamilyFit) -> JsonValue:
@@ -56,6 +57,7 @@ def _fit_json(fit: FamilyFit) -> JsonValue:
         "land_exp": fit.count.land_exp,
         "players_exp": fit.count.players_exp,
         "stretch": fit.stretch,
+        "guards": list(fit.guards),
     }
 
 

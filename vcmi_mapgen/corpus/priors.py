@@ -11,6 +11,7 @@ from vcmi_mapgen.corpus.gates import load_gate_stats
 from vcmi_mapgen.corpus.macro import load_macro
 from vcmi_mapgen.corpus.markov import load_inside, load_tables
 from vcmi_mapgen.corpus.places import load_places
+from vcmi_mapgen.corpus.remote import load_remote
 from vcmi_mapgen.corpus.territories import load_territories
 from vcmi_mapgen.corpus.vegetation import load_vegetation, vegetation_terrains
 from vcmi_mapgen.corpus.water import load_water
@@ -21,8 +22,8 @@ LEVELS = (0, 1)
 def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
     """The terrain, gameplay and place statistics of both levels, the gate estimator, the
     vegetation statistics of every terrain that has them, the effort priors, the water
-    priors, the territory spread, the resource mine and town curves and the family
-    curves, all read from
+    priors, the territory spread, the resource mine and town curves, the family curves
+    and the remote distance per map size, all read from
     ``pp_dir``, and the pocket masks drawn in ``pockets_file``."""
     return Priors(
         terrain={
@@ -42,4 +43,5 @@ def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
         mines=load_curve(pp_dir, MINES_FILE),
         towns=load_curve(pp_dir, TOWNS_FILE),
         families=load_families(pp_dir),
+        remote=load_remote(pp_dir),
     )

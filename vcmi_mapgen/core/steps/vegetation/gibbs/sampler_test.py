@@ -72,6 +72,17 @@ def test_protected_web_covers_gate_bands() -> None:
         assert g.band <= prot, "every gate-band tile must be protected from vegetation"
 
 
+def test_protected_web_leaves_out_an_entrance_its_zone_cannot_reach() -> None:
+    main = {(x, y) for x in range(10) for y in range(10)}
+    scrap = {(x, y) for x in range(12, 14) for y in range(2)}
+    ts = main | scrap
+    ref = ZoneRef(ts, label_zones({1: _zone(ts, 4.5, 4.5)}), 1, (4.5, 4.5))
+    entrance = ((13, 0), frozenset(scrap), 2)
+    prot = protected_web(ref, edge_dist(ts), (4, 4), WebOptions(entrances=[entrance]))
+    assert prot
+    assert not prot & scrap
+
+
 def test_border_bias_densifies_front(catalog: Catalog, priors: Priors) -> None:
     """Zone isolation: with BOTH zones sampling under the `border=` bias, the aligned
     open crossings outside the planned entrance band shrink. Each single side is only a

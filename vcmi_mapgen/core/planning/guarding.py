@@ -5,10 +5,29 @@ import random
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from vcmi_mapgen.core.model.artifact import ArtifactTier
 from vcmi_mapgen.core.planning.content import LEVEL_MAX, LEVEL_MIN, ContentPlan, hop_bin
 from vcmi_mapgen.core.priors.places import PlaceContent, PlaceStats
 
 EVERY_LEVEL = tuple(range(LEVEL_MIN, LEVEL_MAX + 1))
+ART_TIER_BY_GUARD_LEVEL: tuple[ArtifactTier, ...] = (
+    "treasure",
+    "treasure",
+    "minor",
+    "major",
+    "major",
+    "relic",
+)
+
+
+def ward_tier(guard_level: int) -> ArtifactTier:
+    """The artifact tier a guard of ``guard_level`` stands in front of."""
+    return ART_TIER_BY_GUARD_LEVEL[min(len(ART_TIER_BY_GUARD_LEVEL), guard_level) - 1]
+
+
+def tier_guard(tier: ArtifactTier) -> int:
+    """The weakest guard level that stands in front of an artifact of ``tier``."""
+    return ART_TIER_BY_GUARD_LEVEL.index(tier) + 1
 
 
 @dataclass(frozen=True, slots=True)

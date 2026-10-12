@@ -4,19 +4,22 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.site import LevelField, SiteZone, ZoneSite, door_cells, spot
+from vcmi_mapgen.core.planning.landmarks import (
+    DWELLING,
+    KINDS,
+    TOP_TIER,
+    above_top_tier,
+    kind_order,
+    landmark_pool,
+)
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.effort import Effort
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.steps.gameplay.landmark import (
-    KINDS,
     LANDMARK_FLOOR,
-    TOP_TIER,
     PatchFooting,
-    above_top_tier,
     dragon_order,
-    kind_order,
-    landmark_pool,
     place_dragon,
     place_landmarks,
 )
@@ -80,6 +83,13 @@ def test_small_patches_and_other_zones_take_none(catalog: Catalog) -> None:
 def test_no_ordinary_pool_holds_a_dragon_dwelling(catalog: Catalog) -> None:
     for kind in KINDS:
         assert not any(above_top_tier(catalog, i) for i in landmark_pool(catalog, kind, "lava"))
+
+
+def test_a_landmark_dwelling_is_never_a_fixed_dwelling_of_a_town(catalog: Catalog) -> None:
+    for terrain in ("lava", "grass", "snow"):
+        pool = landmark_pool(catalog, DWELLING, terrain)
+        assert pool
+        assert all(catalog.dwelling_faction(i.kind) is None for i in pool)
 
 
 def test_the_dragon_tries_the_patches_the_homes_reach_last_first() -> None:

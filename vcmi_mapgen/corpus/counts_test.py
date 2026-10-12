@@ -8,7 +8,7 @@ def test_saved_family_curves_load_back_unchanged(tmp_path: Path) -> None:
     curves = FamilyCurves(
         2500,
         {
-            "BANK": FamilyFit(CountCurve(-3.5, 1.0, 0.2), 0.07),
+            "BANK": FamilyFit(CountCurve(-3.5, 1.0, 0.2), 0.07, (0.9, 0.0, 0.1)),
             "DWELLING:4": FamilyFit(CountCurve(-8.0, 1.27, -0.3), 0.46),
         },
     )

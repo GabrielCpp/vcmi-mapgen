@@ -2,7 +2,7 @@
 plus its rim gate bands. The zone plan and the vegetation sampler both keep it free of
 blocking objects."""
 
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Container, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
@@ -47,6 +47,33 @@ class WebOptions:
     open_frac: float = 0.5
     entrances: Iterable[tuple[Tile, frozenset[Tile], int]] | None = None
     keep_off: Collection[Tile] = _NO_TILES
+
+
+def _span(
+    seedt: Tile, nodes: Sequence[Tile], domains: Sequence[Container[Tile]]
+) -> tuple[set[Tile], list[Tile]]:
+    """The backbone joining each node to the nearest node already joined, by the first of
+    `domains` that holds a path, and the nodes it joins. A node no domain reaches stays
+    off the backbone."""
+    prot = {seedt}
+    connected = [seedt]
+    remaining = [n for n in nodes if n != seedt]
+    while remaining:
+        best_r: Tile = remaining[0]
+        best_c: Tile = connected[0]
+        bd = 1 << 60
+        for r in remaining:
+            for c in connected:
+                d = (r[0] - c[0]) ** 2 + (r[1] - c[1]) ** 2
+                if d < bd:
+                    bd, best_r, best_c = d, r, c
+        path = next((p for ts in domains if (p := geodesic_path(best_c, best_r, ts))), None)
+        remaining.remove(best_r)
+        if not path:
+            continue
+        prot.update(path)
+        connected.append(best_r)
+    return prot, connected
 
 
 _DEFAULT_WEB = WebOptions()
@@ -101,26 +128,8 @@ def protected_web(
     for g in list(gates) + [n for n in opts.extra_nodes if n in ts_free]:
         if g in ts_free and g not in nodes:
             nodes.append(g)
-    prot = {seedt}
-    connected = [seedt]
-    remaining = [n for n in nodes if n != seedt]
-    while remaining:
-        best_r: Tile = remaining[0]
-        best_c: Tile = connected[0]
-        bd = 1 << 60
-        for r in remaining:
-            for c in connected:
-                d = (r[0] - c[0]) ** 2 + (r[1] - c[1]) ** 2
-                if d < bd:
-                    bd, best_r, best_c = d, r, c
-        path = (
-            geodesic_path(best_c, best_r, path_ts)
-            or geodesic_path(best_c, best_r, ts_free)
-            or geodesic_path(best_c, best_r, ts)
-        )
-        prot.update(path)
-        connected.append(best_r)
-        remaining.remove(best_r)
+    prot, connected = _span(seedt, nodes, (path_ts, ts_free, ts))
     for g in gate_bands:
-        prot.update(_band_component(g.rep, g.band & ts_free))
+        if g.rep in connected or g.rep not in nodes:
+            prot.update(_band_component(g.rep, g.band & ts_free))
     return prot - set(avoid)

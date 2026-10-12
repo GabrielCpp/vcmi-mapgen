@@ -1,8 +1,9 @@
 """Accent landmarks: every accent patch of ``LANDMARK_FLOOR`` tiles or more holds one gold
-mine, abandoned mine, permanent stat building or dwelling, its entrance on the patch. The
-first kind is drawn by the corpus patch mix, and the others follow in list order when the
-patch has no room for it. A gold mine stands only where the gold rule admits it. The patch
-the homes reach last holds a dragon dwelling instead, guarded at the top level."""
+mine, abandoned mine, permanent stat building or dwelling, its entrance on the patch. A
+town's dwelling stands only as a random one. The first kind is drawn by the corpus patch mix,
+and the others follow in list order when the patch has no room for it. A gold mine stands
+only where the gold rule admits it. The patch the homes reach last holds a dragon dwelling
+instead, guarded at the top level."""
 
 from __future__ import annotations
 
@@ -14,55 +15,24 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.placement.fallback import smaller
 from vcmi_mapgen.core.placement.guards import Fit
 from vcmi_mapgen.core.placement.site import ZoneSite, door_cells
+from vcmi_mapgen.core.planning.landmarks import (
+    GOLD_MINE,
+    TOP_TIER,
+    above_top_tier,
+    kind_order,
+    landmark_pool,
+)
 from vcmi_mapgen.core.reading.effort import Effort
-from vcmi_mapgen.core.reading.mines import GOLD
 from vcmi_mapgen.core.reading.paint import Accent
 from vcmi_mapgen.core.reading.routes import Spot
-from vcmi_mapgen.core.steps.gameplay.fallback import smaller
 
 LANDMARK_FLOOR = 20
 LANDMARK_SALT = 0x1A4D
-TOP_TIER = 7
 
 type Admits = Callable[[Spot], bool]
-
-
-@dataclass(frozen=True, slots=True)
-class LandmarkKind:
-    """One kind of landmark: its name, the purpose it is placed for and its corpus weight."""
-
-    name: str
-    purpose: Purpose
-    weight: int
-
-
-GOLD_MINE = LandmarkKind("gold", Purpose.MINE, 83)
-ABANDONED_MINE = LandmarkKind("abandoned", Purpose.MINE, 83)
-STAT_BUILDING = LandmarkKind("stat", Purpose.STAT_PERMANENT, 132)
-DWELLING = LandmarkKind("dwelling", Purpose.DWELLING, 112)
-KINDS = (GOLD_MINE, ABANDONED_MINE, STAT_BUILDING, DWELLING)
-
-
-def kind_order(rng: random.Random, kinds: Sequence[LandmarkKind] = KINDS) -> list[LandmarkKind]:
-    """One kind drawn by weight, then the others in list order."""
-    first = rng.choices(list(kinds), weights=[k.weight for k in kinds])[0]
-    return [first, *(k for k in kinds if k != first)]
-
-
-def above_top_tier(catalog: Catalog, ident: Identity) -> bool:
-    """Whether ``ident`` is a dwelling that recruits above the top guard level."""
-    return (catalog.dwelling_level(ident.kind) or 0) > TOP_TIER
-
-
-def landmark_pool(catalog: Catalog, kind: LandmarkKind, terrain: str) -> list[Identity]:
-    """The identities of ``kind`` on ``terrain``, without the dwellings above the top tier."""
-    if kind == GOLD_MINE:
-        return catalog.mines_by_resource(terrain).get(GOLD, [])
-    if kind == ABANDONED_MINE:
-        return catalog.abandoned_mines(terrain)
-    return [i for i in catalog.candidates(kind.purpose, terrain) if not above_top_tier(catalog, i)]
 
 
 def dragon_pool(catalog: Catalog, terrain: str) -> list[Identity]:

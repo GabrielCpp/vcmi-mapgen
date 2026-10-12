@@ -1,7 +1,13 @@
 import random
 
 from vcmi_mapgen.core.planning.content import ContentPlan, PlaceIntent
-from vcmi_mapgen.core.planning.guarding import EVERY_LEVEL, GuardReading, prize_guard
+from vcmi_mapgen.core.planning.guarding import (
+    EVERY_LEVEL,
+    GuardReading,
+    prize_guard,
+    tier_guard,
+    ward_tier,
+)
 from vcmi_mapgen.core.priors.places import PlaceContent, PlaceStats
 
 ROWS = (
@@ -54,3 +60,17 @@ def test_the_same_seed_draws_the_same_guards() -> None:
     guard = prize_guard({0: PlaceStats(content=ROWS)}, ContentPlan(), 0)
     draws = [[guard.level(random.Random(s), 0) for s in range(20)] for _ in range(2)]
     assert draws[0] == draws[1]
+
+
+def test_the_ward_tier_follows_the_guard_level() -> None:
+    assert ward_tier(1) == "treasure"
+    assert ward_tier(3) == "minor"
+    assert ward_tier(6) == "relic"
+    assert ward_tier(7) == "relic"
+
+
+def test_a_tier_takes_the_weakest_guard_that_stands_in_front_of_it() -> None:
+    assert tier_guard("treasure") == 1
+    assert tier_guard("minor") == 3
+    assert tier_guard("major") == 4
+    assert tier_guard("relic") == 6

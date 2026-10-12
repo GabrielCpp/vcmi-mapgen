@@ -38,7 +38,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
   - `cli/`: the CLI. `__main__.py` holds the subcommands, `generate.py` runs one map and
     `steps.py` `build_steps` builds the pipeline. The corpus and report tools sit beside
     them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
-    `readings.py`, which prints the map-math 8 readings beside the corpus spread, `effort_report.py`, which prints each gated place's hero-days,
+    `readings.py`, which prints the map-math 8 readings beside the corpus spread, with each player's value claimed first, `effort_report.py`, which prints each gated place's hero-days,
     band and top prize, and `patch_report.py`, which prints how the corpus and
     generated maps dress their small enclosed patches. `inspect_map.py` prints one tile,
     the objects near a tile, or the cheapest hero route between two tiles or two players,
@@ -79,7 +79,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       over a tile: the days between the first player to reach it and that player's
       nearest enemy, and each gold mine's days from home and its contest (`contest.py`).
       It measures how far each visitable stands from the nearest copy of its kind
-      (`repeats.py`).
+      (`repeats.py`). It reads the value each player claims first within 5, 10, 20 and 40
+      hero-days, against the best player's (`claimed.py`). It reads the free land far from
+      every object worth the walk (`remote.py`).
     - `steps/terrain_gen/`: the places terrain model. It lays out a place graph and
       paints each place. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.
@@ -123,6 +125,7 @@ uv run python -m vcmi_mapgen.cli audit
 uv run python -m vcmi_mapgen.cli extract-vmap
 uv run python -m vcmi_mapgen.cli corpus-match --seeds 1 2 3 --size 48
 uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
+uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 --size 144 --players 6
 uv run python -m vcmi_mapgen.cli effort-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 uv run python -m vcmi_mapgen.cli patch-report --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 uv run python -m vcmi_mapgen.cli inspect --seed 25 --size 72 route P0 P1 --verbose

@@ -104,6 +104,13 @@ def monster_levels() -> dict[str, int]:
 
 
 @cache
+def monster_factions() -> dict[str, str]:
+    """Each creature's faction from VCMI's `config/creatures/*.json`, `neutral` for a
+    creature no town recruits."""
+    return _load_json(DATA_DIR / "monster_factions.json", dict[str, str])
+
+
+@cache
 def spell_levels() -> dict[str, int]:
     return _load_json(DATA_DIR / "spell_levels.json", dict[str, int])
 

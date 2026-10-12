@@ -4,10 +4,12 @@ blocking decoration while the vegetation step still owns the terrain."""
 import collections
 import random
 from collections.abc import Container, Iterable, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
+from vcmi_mapgen.core.grid.reach import STEPS4
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.ground import Ground, stands
@@ -87,34 +89,69 @@ class _Sealer:
 
     def cut_off(self, t: Tile) -> frozenset[Tile] | None:
         """The open tiles closing `t` shuts away from the web, or None when they number more
-        than `MAX_CUT` or hold a tile to avoid."""
-        open_all, web = self._open_all, self._web
-        linked: set[Tile] = set()
-        cut: set[Tile] = set()
-        for nx, ny in ((t[0] + 1, t[1]), (t[0] - 1, t[1]), (t[0], t[1] + 1), (t[0], t[1] - 1)):
-            n = (nx, ny)
-            if n not in open_all or n in linked or n in cut:
-                continue
-            seen = {n}
-            queue = collections.deque([n])
-            found = n in web
-            while queue and not found:
-                u = queue.popleft()
-                for m in ((u[0] + 1, u[1]), (u[0] - 1, u[1]), (u[0], u[1] + 1), (u[0], u[1] - 1)):
-                    if m == t or m in seen or m not in open_all:
-                        continue
-                    if m in web or m in linked:
-                        found = True
-                        break
-                    seen.add(m)
-                    queue.append(m)
-            if found:
-                linked |= seen
-            else:
-                cut |= seen
+        than `MAX_CUT`, hold a tile to avoid, or hold a piece of the web."""
+        live, closed = _split(self._open_all, t)
+        held_web = [g for g in closed if any(c in self._web for c in g)]
+        if len(held_web) > (0 if live else 1):
+            return None
+        cut = {c for g in closed if g not in held_web for c in g}
         if len(cut) > MAX_CUT or any(c in self._avoid or c not in self._owner for c in cut):
             return None
         return frozenset(cut)
+
+
+def _around(t: Tile) -> tuple[Tile, ...]:
+    return tuple((t[0] + dx, t[1] + dy) for dx, dy in STEPS4)
+
+
+@final
+class _Flood:
+    """The pieces the open 4-neighbours of a closed tile fall into. Each piece floods in step
+    with the others, and a piece that runs dry is whole."""
+
+    def __init__(self, open_all: AbstractSet[Tile], t: Tile) -> None:
+        self._open = open_all
+        self._t = t
+        starts = [n for n in _around(t) if n in open_all]
+        self.label = {n: i for i, n in enumerate(starts)}
+        self.root = list(range(len(starts)))
+        self.queues = {i: collections.deque([n]) for i, n in enumerate(starts)}
+        self.closed: list[int] = []
+
+    def find(self, i: int) -> int:
+        while self.root[i] != i:
+            i = self.root[i]
+        return i
+
+    def grow(self, i: int) -> None:
+        queue = self.queues[i]
+        if not queue:
+            self.closed.append(i)
+            del self.queues[i]
+            return
+        for m in _around(queue.popleft()):
+            if m == self._t or m not in self._open:
+                continue
+            j = self.label.get(m)
+            if j is None:
+                self.label[m] = i
+                queue.append(m)
+            elif (b := self.find(j)) != i:
+                self.root[b] = i
+                queue.extend(self.queues.pop(b))
+
+
+def _split(open_all: AbstractSet[Tile], t: Tile) -> tuple[bool, list[set[Tile]]]:
+    """The pieces the open 4-neighbours of `t` fall into once `t` closes. The flood stops
+    once a single piece still grows. Returns whether that piece remains, and the whole
+    pieces."""
+    flood = _Flood(open_all, t)
+    while len(flood.queues) > 1:
+        for i in list(flood.queues):
+            if i in flood.queues:
+                flood.grow(i)
+    pieces = [{m for m, j in flood.label.items() if flood.find(j) == c} for c in flood.closed]
+    return bool(flood.queues), pieces
 
 
 def _pool(catalog: Catalog, terrain: str, cell: Tile, ground: Ground) -> list[Identity]:
@@ -183,8 +220,8 @@ def seal_borders(
             continue
         if pick is None:
             break
-        cut = frozenset[Tile]() if pick in plan.web else sealer.cut_off(pick)
-        if cut is None or (pick in plan.web and not sealer.bridges(pick)):
+        cut = sealer.cut_off(pick)
+        if cut is None or (pick in plan.web and (cut or not sealer.bridges(pick))):
             sealer.held.add(pick)
             continue
         cells = [pick, *sorted(cut)]

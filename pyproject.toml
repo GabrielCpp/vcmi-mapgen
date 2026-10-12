@@ -104,6 +104,7 @@ modules = [
     "vcmi_mapgen.core.steps.gated",
     "vcmi_mapgen.core.steps.loot",
     "vcmi_mapgen.core.steps.portal",
+    "vcmi_mapgen.core.steps.remote",
     "vcmi_mapgen.core.steps.roads",
     "vcmi_mapgen.core.steps.scatter",
     "vcmi_mapgen.core.steps.sets",

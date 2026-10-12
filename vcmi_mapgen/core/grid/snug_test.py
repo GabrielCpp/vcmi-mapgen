@@ -1,6 +1,6 @@
 """Snug fit by size class on literal sprites."""
 
-from vcmi_mapgen.core.grid.snug import sided, size_class, snug
+from vcmi_mapgen.core.grid.snug import in_field, sided, size_class, snug
 from vcmi_mapgen.core.model import Footprint, Role
 
 ONE = Footprint.one(Role.VISIT)
@@ -45,8 +45,17 @@ def test_a_larger_object_is_backed_above_its_body() -> None:
 def test_one_closed_side_makes_a_sprite_sided() -> None:
     assert sided(ONE, (5, 5), lambda t: t == (5, 6))
     assert sided(PAIR, (5, 5), lambda t: t == (4, 4))
-    assert not sided(ONE, (5, 5), lambda t: t == (6, 6))
+    assert not sided(ONE, (5, 5), lambda t: t == (7, 7))
 
 
-def test_a_corner_contact_alone_never_makes_a_sprite_sided() -> None:
-    assert not sided(PAIR, (5, 5), lambda t: t in {(3, 4), (6, 4), (3, 6), (6, 6)})
+def test_a_corner_or_a_tile_under_the_sprite_makes_a_sprite_sided() -> None:
+    assert sided(PAIR, (5, 5), lambda t: t == (6, 6))
+    assert sided(WIDE, (5, 5), lambda t: t == (3, 4))
+    assert sided(WIDE, (5, 5), lambda t: t == (2, 3))
+
+
+def test_a_sprite_in_the_field_touches_no_closed_tile() -> None:
+    assert in_field(WIDE, (5, 5), lambda t: t in {(1, 5), (5, 2), (7, 5)})
+    assert not in_field(WIDE, (5, 5), lambda t: t == (6, 6))
+    assert not in_field(WIDE, (5, 5), lambda t: t == (2, 3))
+    assert not in_field(ONE, (5, 5), lambda t: t == (4, 4))

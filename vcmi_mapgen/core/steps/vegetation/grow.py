@@ -92,16 +92,23 @@ def grow_level(
     sampler: Sampler,
 ) -> Grown:
     """Grow each zone's vegetation with `sampler` off the taken tiles, the landings and the
-    town room, and densify it along the rim outside the entrance bands. Each patch of another
-    terrain then grows with its own terrain's model, walled by what the zone grew. A zone
-    whose terrains have no vegetation category keeps an empty ``VegetatedZone``."""
+    town rooms, and densify it along the rim outside the entrance bands. Each patch of another
+    terrain then grows with its own terrain's model, walled by what the zone grew. Every zone
+    keeps the whole level's web and land open, walled by the towns and by what earlier zones
+    grew. A zone whose terrains have no vegetation category keeps an empty
+    ``VegetatedZone``."""
     landings = lv.plan.landings.blk | lv.plan.landings.appr
+    plan_zones = lv.plan.zones.values()
+    web = frozenset[Tile]().union(*(z.prot for z in plan_zones))
+    land = frozenset[Tile]().union(*(z.ts for z in plan_zones))
+    towns = frozenset[Tile]().union(*(z.town.blk for z in plan_zones))
+    forbid = lv.taken | landings | frozenset[Tile]().union(*(z.town.clear for z in plan_zones))
+    level_blocked: set[Tile] = set()
     objs: list[PlacedObject] = []
     zones: dict[int, VegetatedZone] = {}
     for zid, zone in lv.plan.zones.items():
         ref = ZoneRef(zone.ts, lv.label, zid, lv.centroids[zid], lv.level)
         seaport = landings & zone.ts
-        forbid = lv.taken | seaport | zone.town.clear
         blocked: set[Tile] = set()
         grew = False
         runs = [(models[zone.terrain], forbid, seed)]
@@ -119,15 +126,17 @@ def grow_level(
                 model,
                 run_seed,
                 SampleOptions(
-                    prot=zone.prot,
+                    prot=web,
                     forbid=run_forbid,
                     border=frozenset(zone.rim8 - zone.ent_bands - run_forbid),
-                    impassable=zone.town.blk | blocked,
+                    land=land,
+                    impassable=towns | level_blocked,
                     ground=lv.ground,
                 ),
             )
             objs.extend(zobjs)
             blocked |= zblocked
+            level_blocked |= zblocked
         if not grew:
             zones[zid] = VegetatedZone()
             continue

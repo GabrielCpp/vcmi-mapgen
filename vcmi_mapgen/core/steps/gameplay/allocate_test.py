@@ -1,12 +1,16 @@
+import random
 from collections.abc import Mapping
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement.guard_draw import GuardDraw
 from vcmi_mapgen.core.placement.site import LevelField, SiteZone, ZoneSite
+from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves, FamilyFit
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.effort import effort_map
 from vcmi_mapgen.core.reading.effort_test import TOLL, grid_route
+from vcmi_mapgen.core.reading.families import mine_family
 from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.steps.gameplay.allocate import (
@@ -14,7 +18,10 @@ from vcmi_mapgen.core.steps.gameplay.allocate import (
     Offer,
     Pricer,
     Survey,
+    drawn_guard,
     keep_promise,
+    keeps_even,
+    promised_guard,
     rank,
     site_variants,
 )
@@ -85,3 +92,21 @@ def test_each_player_gets_its_own_wood_mine(catalog: Catalog) -> None:
     kept = keep_promise([site], site_variants(catalog), _survey("sawmill", calls))
     assert kept.warnings == ()
     assert _mines(site) == 2
+
+
+def test_a_promised_mine_never_draws_past_its_promised_guard() -> None:
+    record = FamilyFit(CountCurve(0.0, 1.0, 0.0), 0.0, (0.2, 0.0, 0.0, 0.0, 0.0, 0.8))
+    curves = FamilyCurves(100, {mine_family(r): record for r in ("sawmill", "gold")})
+    guarding = drawn_guard(GuardDraw(curves, 7), random.Random(3))
+    for res in ("sawmill", "gold"):
+        seen = {guarding(res) for _ in range(200)}
+        assert seen == {0, promised_guard(res)}
+
+
+def test_a_mine_that_opens_a_gap_does_not_keep_the_players_even() -> None:
+    assert not keeps_even((11, 11), (1, 12))
+    assert keeps_even((11, 11), (9, 20))
+
+
+def test_a_mine_that_closes_a_gap_keeps_the_players_even() -> None:
+    assert keeps_even((2, 11), (12, 5))

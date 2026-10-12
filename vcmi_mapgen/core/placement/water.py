@@ -229,16 +229,17 @@ def _structure_fronts(objs: Iterable[PlacedObject]) -> tuple[set[Tile], list[set
 def _seaport_footprint(
     ax: int, ay: int, fp: Footprint
 ) -> tuple[list[Tile], list[Tile], Tile | None]:
-    allc: list[Tile] = []
+    body: list[Tile] = []
     blk: list[Tile] = []
     approach: Tile | None = None
     for (tx, ty), role in fp.at(ax, ay):
-        allc.append((tx, ty))
+        if role.blocks or role.interactive:
+            body.append((tx, ty))
         if role.blocks:
             blk.append((tx, ty))
         if role is Role.ENTRANCE:
             approach = (tx, ty + 1)
-    return allc, blk, approach
+    return body, blk, approach
 
 
 def _expand_inland(near_coastal: set[Tile], ts_set: AbstractSet[Tile]) -> set[Tile]:
@@ -332,8 +333,8 @@ class _SeaportPlanner:
     def _candidate_ok(
         self, ts_set: AbstractSet[Tile], ident: Identity, ax: int, ay: int, check_spacing: bool
     ) -> bool:
-        allc, blk, approach = _seaport_footprint(ax, ay, ident.footprint)
-        if any(c not in ts_set for c in allc):
+        body, blk, approach = _seaport_footprint(ax, ay, ident.footprint)
+        if any(c not in ts_set for c in body):
             return False
         if approach not in ts_set:
             return False
@@ -342,7 +343,7 @@ class _SeaportPlanner:
             return False
         if any(c in self.existing_blk for c in blk):
             return False
-        if any(c in self.sea.reserved for c in allc):
+        if any(c in self.sea.reserved for c in body):
             return False
         # At least one BXB cell must be 4-adjacent to water
         if not any((bx + dx, by + dy) in self.water_tiles for bx, by in blk for dx, dy in _NB4):

@@ -24,14 +24,24 @@ def zone_rng(zone: ZoneRef, seed: int) -> random.Random:
     return random.Random(seed ^ (zone.zid * 2654435761 & 0xFFFFFFFF))
 
 
+def _reach(model: VegModel) -> int:
+    """The farthest any blocking cell of the model's identities stands from its anchor."""
+    return max(
+        (max(abs(dx), abs(dy)) for cells in model.iblk for blk in cells for dx, dy in blk),
+        default=0,
+    )
+
+
 class ZoneCanvas:
-    """One zone's grids in its bounding box, and the objects placed on it so far.
+    """One zone's grids in a window, the zone's bounding box grown by the reach of its largest
+    decoration plus one, and the objects placed on it so far.
 
     A blocking cell is legal inside the zone, off the protected web and off `forbid`, or past
-    the map edge, where it counts toward nothing. A blocking cell also stands on a terrain the
-    identity allows. `impassable` tiles count as walls for
-    connectivity. The canvas refuses a placement or a removal that would wall off open ground
-    from the protected web."""
+    the map edge, where it counts toward nothing. Every solid cell stands on a terrain the
+    identity allows. The zone and the `land` around it are open ground, and `impassable` tiles
+    count as walls. The canvas refuses a placement or a removal that would wall off open
+    ground in the window from the protected web inside it, or wall off the zone's own open
+    ground from the web inside the zone."""
 
     def __init__(self, zone: ZoneRef, model: VegModel, opts: SampleOptions) -> None:
         ts = zone.ts
@@ -44,10 +54,11 @@ class ZoneCanvas:
 
         xs = [x for x, _ in ts]
         ys = [y for _, y in ts]
-        self.x0: int = min(xs)
-        self.y0: int = min(ys)
-        self.W: int = max(xs) - self.x0 + 1
-        self.H: int = max(ys) - self.y0 + 1
+        margin = _reach(model) + 1
+        self.x0: int = max(0, min(xs) - margin)
+        self.y0: int = max(0, min(ys) - margin)
+        self.W: int = min(self.map_w - 1, max(xs) + margin) - self.x0 + 1
+        self.H: int = min(self.map_h - 1, max(ys) + margin) - self.y0 + 1
         self.inz: NDArray[np.bool_] = self.box_mask(ts)
         edist = edge_dist(ts)
         self.eb: NDArray[np.int8] = self._edge_bins(ts, edist)
@@ -59,7 +70,9 @@ class ZoneCanvas:
             prot = protected_web(zone, edist, seedt)
         self.prot: AbstractSet[Tile] = prot
         self.protm: NDArray[np.bool_] = self.box_mask(prot)
-        self.solid: NDArray[np.bool_] = self._solid_mask(opts.impassable)
+        self.solid: NDArray[np.bool_] = self._solid_mask(opts.land, opts.impassable)
+        self.own_solid: NDArray[np.bool_] = self._solid_mask(frozenset(), opts.impassable)
+        self.own_protm: NDArray[np.bool_] = self.protm & self.inz
         self.border: NDArray[np.bool_] = self.box_mask(opts.border)
 
         self.tiles: list[Tile] = sorted(ts)
@@ -85,8 +98,10 @@ class ZoneCanvas:
             eb[y - self.y0, x - self.x0] = min(edist[(x, y)], EBINS - 1)
         return eb
 
-    def _solid_mask(self, impassable: AbstractSet[Tile]) -> NDArray[np.bool_]:
-        solid: NDArray[np.bool_] = np.logical_not(self.inz)
+    def _solid_mask(
+        self, land: AbstractSet[Tile], impassable: AbstractSet[Tile]
+    ) -> NDArray[np.bool_]:
+        solid: NDArray[np.bool_] = np.logical_not(self.inz | self.box_mask(land))
         return solid | self.box_mask(impassable)
 
     def on_map(self, x: int, y: int) -> bool:
@@ -108,11 +123,16 @@ class ZoneCanvas:
                 or not inz[ly, lx]
                 or protm[ly, lx]
                 or (bx, by) in forbid
-                or (ground and ground[by][bx] not in land)
             ):
                 return None
             cells.append((bx, by))
         if any((x + dx, y + dy) in forbid for dx, dy in model.ifoot[c][ii]):
+            return None
+        if ground and not all(
+            ground[y + dy][x + dx] in land
+            for dx, dy in model.isolid[c][ii]
+            if self.on_map(x + dx, y + dy)
+        ):
             return None
         return cells
 
@@ -129,7 +149,10 @@ class ZoneCanvas:
     def try_place(self, obj: tuple[int, int, int, int], cells: list[Tile]) -> bool:
         """Record `obj` as (x, y, category, identity) and block its `cells`, unless that walls
         off open ground. Whether it was placed."""
-        if not keeps_connected(self.solid, self.protm, self.blkcnt, *self._local(cells)):
+        local = self._local(cells)
+        if not keeps_connected(self.solid, self.protm, self.blkcnt, *local):
+            return False
+        if not keeps_connected(self.own_solid, self.own_protm, self.blkcnt, *local):
             return False
         x0, y0, blkcnt = self.x0, self.y0, self.blkcnt
         self.objs.append(obj)
@@ -145,7 +168,10 @@ class ZoneCanvas:
         x0, y0, blkcnt, objs = self.x0, self.y0, self.blkcnt, self.objs
         x, y, c, ii = objs[j]
         cells = self._placed_cells(c, ii, x, y)
-        if not frees_connected(self.solid, self.protm, self.blkcnt, *self._local(cells)):
+        local = self._local(cells)
+        if not frees_connected(self.solid, self.protm, self.blkcnt, *local):
+            return False
+        if not frees_connected(self.own_solid, self.own_protm, self.blkcnt, *local):
             return False
         objs[j] = objs[-1]
         _ = objs.pop()

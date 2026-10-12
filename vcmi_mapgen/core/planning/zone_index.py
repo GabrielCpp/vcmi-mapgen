@@ -47,7 +47,7 @@ def _level_records(
         pz = placed[zid]
         reach = scatter_reach(pz.open_set - (zone.rim8 - zone.ent_bands), pz.prot)
         targets.extend(pz.approaches)
-        targets.extend(r for r, _b, _o in zone.entrances)
+        targets.extend(r for r, _b, _o in zone.entrances if r in zone.prot)
         targets.extend(t for t in (landings.appr & zone.ts))
         zone_records.append(
             ZoneRecord(

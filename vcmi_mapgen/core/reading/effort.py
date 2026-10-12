@@ -11,8 +11,9 @@ days the search under that ceiling needs.
 
 from __future__ import annotations
 
+import heapq
 import math
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import cast
@@ -180,6 +181,19 @@ class EffortMap:
                 out[least] = np.minimum(cast(NDArray[np.float64], out[least]), toll[guard] + whole)
         return np.where(np.isfinite(out), out, UNREACHED).astype(np.int64)
 
+    def detour(self, shut: Mapping[Spot, int]) -> float:
+        """The most days guards of the levels ``shut`` maps each tile to would add to the way
+        to a tile outside ``shut`` under any ceiling, inf when they cut a tile off."""
+        flat = self.flat
+        landed = _landed(flat)
+        level = {flat.index(s): g for s, g in shut.items()}
+        worst = 0.0
+        for ceiling, days in self.days.items():
+            held = {t for t, g in level.items() if g > ceiling}
+            if held:
+                worst = max(worst, _detour(flat, days, held, landed))
+        return worst
+
     def way(self, door: Spot) -> list[Spot]:
         """The tiles a hero walks from the nearest home to the tile beside ``door`` it visits
         from, home first, under the guard ceiling `visit` prices. Empty when no home reaches
@@ -233,6 +247,103 @@ def _beside(days: NDArray[np.float64]) -> NDArray[np.float64]:
     for dx, dy, _scale in STEPS:
         best = np.minimum(best, padded[:, 1 + dy : 1 + dy + rows, 1 + dx : 1 + dx + cols])
     return best
+
+
+def _landed(flat: _Flat) -> dict[int, list[int]]:
+    landed: dict[int, list[int]] = {}
+    for src, ends in flat.jumps.items():
+        for end in ends:
+            landed.setdefault(end, []).append(src)
+    return landed
+
+
+def _arrival(flat: _Flat, days: float, src: int, dst: int, scale: float) -> float:
+    if flat.grid.water.item(src) == flat.grid.water.item(dst):
+        return days + flat.grid.cost.item(src) * scale
+    return math.floor(days + SLACK) + 1.0
+
+
+def _reached_outside(
+    flat: _Flat,
+    days: NDArray[np.float64],
+    tile: int,
+    out: AbstractSet[int],
+    landed: Mapping[int, Sequence[int]],
+) -> bool:
+    here = days.item(tile)
+    for n, scale in _neighbours(flat.size, tile):
+        d = days.item(n)
+        if n not in out and d < here and abs(_arrival(flat, d, n, tile, scale) - here) <= _MATCH:
+            return True
+    return any(n not in out and abs(days.item(n) - here) <= _MATCH for n in landed.get(tile, ()))
+
+
+def _onward(flat: _Flat, tile: int) -> Iterator[tuple[int, float]]:
+    yield from _neighbours(flat.size, tile)
+    for n in flat.jumps.get(tile, ()):
+        yield n, 0.0
+
+
+def _behind(
+    flat: _Flat,
+    days: NDArray[np.float64],
+    held: AbstractSet[int],
+    landed: Mapping[int, Sequence[int]],
+) -> set[int]:
+    out = set(held)
+    heap = [(days.item(n), n) for t in held for n, _ in _onward(flat, t) if n not in held]
+    heapq.heapify(heap)
+    seen: set[int] = set()
+    while heap:
+        d, tile = heapq.heappop(heap)
+        if tile in seen or d <= SLACK or d == math.inf:
+            continue
+        seen.add(tile)
+        if _reached_outside(flat, days, tile, out, landed):
+            continue
+        out.add(tile)
+        for n, _ in _onward(flat, tile):
+            if n not in out and n not in seen and days.item(n) > d:
+                heapq.heappush(heap, (days.item(n), n))
+    return out - held
+
+
+def _detour(
+    flat: _Flat,
+    days: NDArray[np.float64],
+    held: AbstractSet[int],
+    landed: Mapping[int, Sequence[int]],
+) -> float:
+    behind = _behind(flat, days, held, landed)
+    fresh: dict[int, float] = {}
+    for tile in behind:
+        options = [
+            _arrival(flat, days.item(n), n, tile, scale)
+            for n, scale in _neighbours(flat.size, tile)
+            if n not in held and n not in behind and days.item(n) < math.inf
+        ]
+        options += [days.item(n) for n in landed.get(tile, ()) if n not in held and n not in behind]
+        best = min(options, default=math.inf)
+        if best < math.inf:
+            fresh[tile] = best
+    heap = [(d, t) for t, d in fresh.items()]
+    heapq.heapify(heap)
+    done: set[int] = set()
+    worst = 0.0
+    while heap:
+        d, tile = heapq.heappop(heap)
+        if tile in done or d > fresh[tile]:
+            continue
+        done.add(tile)
+        worst = max(worst, d - days.item(tile))
+        for n, scale in _onward(flat, tile):
+            if n not in behind or n in done:
+                continue
+            arrive = d if scale == 0.0 else _arrival(flat, d, tile, n, scale)
+            if arrive < fresh.get(n, math.inf):
+                fresh[n] = arrive
+                heapq.heappush(heap, (arrive, n))
+    return worst if len(done) == len(behind) else math.inf
 
 
 def _before(

@@ -14,13 +14,6 @@ def test_a_big_and_deep_pocket_is_deep() -> None:
     assert PP.pocket_kind(12, 5) is PP.PocketKind.DEEP
 
 
-def test_the_ward_tier_follows_the_guard_level() -> None:
-    assert PP.ward_tier(1) == "treasure"
-    assert PP.ward_tier(3) == "minor"
-    assert PP.ward_tier(6) == "relic"
-    assert PP.ward_tier(7) == "relic"
-
-
 def test_largest_takes_the_first_of_the_biggest() -> None:
     small = ((0, 0), frozenset({(1, 0)}), frozenset({(0, 0)}))
     big = ((5, 5), frozenset({(6, 5), (7, 5)}), frozenset({(5, 5)}))

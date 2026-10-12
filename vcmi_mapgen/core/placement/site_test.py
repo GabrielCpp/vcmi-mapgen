@@ -62,6 +62,8 @@ _BIG = Identity(
         ),
     ),
 )
+_LOW = Identity("artifact", "x", "ava0001", _TOWN.footprint)
+_HIGH = Identity("artifact", "x", "ava0001", _TALL.footprint)
 _ST = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
 
 
@@ -84,6 +86,14 @@ def _open_top(catalog: Catalog) -> ZoneSite:
     """A zone over rows 3 to 9 of a 12x10 open grass level: rows 0 to 2 lie outside it."""
     grid = [[int(Terrain.GRASS)] * 12 for _ in range(10)]
     ts = frozenset((x, y) for x in range(12) for y in range(3, 10))
+    zone = SiteZone("grass", _ST, ts, frozenset(), frozenset({(0, 9)}), ts, ts)
+    return ZoneSite(catalog, 1, zone, LevelField.build(0, grid, []), 3)
+
+
+def _whole(catalog: Catalog) -> ZoneSite:
+    """A zone over the whole of a 12x10 open grass level."""
+    grid = [[int(Terrain.GRASS)] * 12 for _ in range(10)]
+    ts = frozenset((x, y) for x in range(12) for y in range(10))
     zone = SiteZone("grass", _ST, ts, frozenset(), frozenset({(0, 9)}), ts, ts)
     return ZoneSite(catalog, 1, zone, LevelField.build(0, grid, []), 3)
 
@@ -113,6 +123,23 @@ def test_zone_footing_keeps_the_body_inside_the_zone(catalog: Catalog) -> None:
     assert ZoneFooting().fit(site, _TOWN, (10, 5)) is None
 
 
+def test_a_spilling_body_may_cover_vegetation_outside_its_zone(catalog: Catalog) -> None:
+    site = _site(catalog, Terrain.GRASS, vegetated=True)
+    assert ZoneFooting().fit(site, _LOW, (10, 5)) is None
+    assert ZoneFooting(spill=True).fit(site, _LOW, (10, 5)) is not None
+
+
+def test_a_spilling_body_never_covers_open_land_outside_its_zone(catalog: Catalog) -> None:
+    site = _site(catalog, Terrain.GRASS, vegetated=False)
+    assert ZoneFooting(spill=True).fit(site, _LOW, (10, 5)) is None
+
+
+def test_a_spilling_sprite_may_run_past_the_map_edge(catalog: Catalog) -> None:
+    site = _whole(catalog)
+    assert ZoneFooting().fit(site, _HIGH, (5, 1)) is None
+    assert ZoneFooting(spill=True).fit(site, _HIGH, (5, 1)) is not None
+
+
 def test_town_anchors_reach_past_the_zone_by_the_footprint(catalog: Catalog) -> None:
     site = _site(catalog, Terrain.GRASS, vegetated=True)
     assert TownFooting().admits(site, _TOWN, (11, 10))
@@ -137,11 +164,14 @@ def test_sided_footing_keeps_the_spots_beside_a_closed_tile(catalog: Catalog) ->
     assert spot(site, ZoneFooting(), _ART, (5, 5)) is not None
 
 
-def test_open_footing_stands_only_a_large_body_in_the_open(catalog: Catalog) -> None:
+def test_open_footing_stands_any_body_in_the_field(catalog: Catalog) -> None:
     site = _site(catalog, Terrain.GRASS, vegetated=True)
     assert spot(site, SidedFooting(ZoneFooting()), _BIG, (5, 5)) is None
     assert spot(site, OpenFooting(ZoneFooting()), _BIG, (5, 5)) is not None
-    assert spot(site, OpenFooting(ZoneFooting()), _ART, (5, 5)) is None
+    assert spot(site, SidedFooting(ZoneFooting()), _ART, (5, 5)) is None
+    assert spot(site, OpenFooting(ZoneFooting()), _ART, (5, 5)) is not None
+    assert spot(site, OpenFooting(ZoneFooting()), _ART, (8, 5)) is not None
+    assert spot(site, OpenFooting(ZoneFooting()), _ART, (9, 5)) is None
 
 
 def test_openness_counts_the_open_tiles_around_a_centre(catalog: Catalog) -> None:

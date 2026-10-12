@@ -156,6 +156,11 @@ class VcmiCatalog:
         top = max(levels, default=0)
         return top if top >= 1 else None
 
+    def dwelling_faction(self, kind: str) -> str | None:
+        factions = {TB.monster_factions().get(c) for c in OB.dwelling_creatures(kind)}
+        faction = factions.pop() if len(factions) == 1 else None
+        return None if faction in (None, "neutral") else faction
+
     def guard(self, level: int) -> Identity:
         for guard_level in range(min(int(level), max(RO.DRAGON_GUARDS)), 7, -1):
             animation = RO.DRAGON_GUARDS[guard_level]
