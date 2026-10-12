@@ -248,7 +248,7 @@ Revision log.
 **What the existing system has that the design lacks.**
 
 - `Reach` in `gameplay/reach.py` and the per-tile spread codes. Waste for objects of no
-  player. The neutral towns' "widens no gap" filter (`siting.py:453`) and the rare mines'
+  player. The neutral towns' "widens the gap least" rank (`siting.py:458`) and the rare mines'
   rank (`siting.py:471`) still read them, so `Reach` stays for those two (A9).
 - `_even_guard` for the promised mines. A concept outside this note: the promise.
 - The uneven-tiles-last rank of R22 goes with the spread, since nothing is uneven any more.

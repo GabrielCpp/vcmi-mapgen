@@ -432,10 +432,10 @@ class Siting:
         grouped by tier and site, at most CENTRES per group. A tier is the spread change, or the
         bands off for an object of no player, then the guard level and the arrival rank. A gold
         mine keeps only the tiles the gold rule admits, or the ``loose`` gold rule. A neutral
-        town keeps only the tiles that widen no gap with TOWN_ROOM tiles of land around them,
-        and ranks them furthest from every town. Any other object of no player ranks by its
-        band, then furthest from every object standing, then by its target, whatever spread it
-        leaves between the players."""
+        town keeps only the tiles with TOWN_ROOM tiles of land around them, ranks those that
+        widen the gap least first, then furthest from every town. Any other object of no player
+        ranks by its band, then furthest from every object standing, then by its target,
+        whatever spread it leaves between the players."""
         tiles = self.tiles
         if tiles is None:
             return []
@@ -455,7 +455,7 @@ class Siting:
             code = self._code(slot.family, level, zero)
             spread = code // ARRIVALS
             gap = town_gap(tiles, self._towns())
-            ok = (town_room(tiles, self.sites) >= TOWN_ROOM) & (code < ARRIVALS)
+            ok = town_room(tiles, self.sites) >= TOWN_ROOM
             order = cast(NDArray[np.intp], np.lexsort((r, -gap, spread)))
             kept = order[ok[order]]
             return self._grouped(tiles, kept, np.stack((spread, held, zero))[:, kept])

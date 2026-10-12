@@ -3,7 +3,8 @@
 Status 2026-10-12: the town's fair guard is superseded. A neutral town draws its guard
 from the corpus record of towns like every family, and the placer evens out each player's
 claimed value over the first 40 hero-days (global-placement.md, R18, R19 and A17). Spacing
-still ranks a town's spot first.
+still ranks a town's spot first. Since 2026-10-12 the even reach is a rank, not a filter:
+a town takes the least uneven spot with room when no even one is left.
 
 Disclosure: I read the town siting code, the fair guard and the zone site before this skill
 loaded, while diagnosing seed 1024 at 144. Every design decision that code carries and that
