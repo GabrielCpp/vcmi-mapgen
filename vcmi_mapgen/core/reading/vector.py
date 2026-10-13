@@ -15,6 +15,7 @@ from vcmi_mapgen.core.reading.measures import home_separation, raw_cut_share, so
 from vcmi_mapgen.core.reading.palette import palette_regions, same_share
 from vcmi_mapgen.core.reading.places import InferredPlaces, PlaceRole, read_places
 from vcmi_mapgen.core.reading.territories import (
+    SHARE_TILES,
     TerritoryReading,
     read_territories,
     territory_reading,
@@ -72,7 +73,9 @@ def territory_vector(reading: TerritoryReading) -> Vector:
     pair, and the median door level out of a player territory and between neutral ones.
     Then the territory count, the loops, the mean doors between two close territories a
     door path joins, the share of close pairs more than ``FAR_HOP`` doors apart or cut
-    off, and the share no door or link joins."""
+    off, and the share no door or link joins. Last, ``door_share_d<n>`` for each distance
+    ``n`` from 2 to ``SHARE_TILES`` between two territories' nearest tiles: the share of the
+    pairs that far apart a door or a link joins."""
     out: Vector = {}
     _put(out, "zones_player_terr", _mean(reading.player_zones))
     _put(out, "zones_neutral_terr", _mean(reading.neutral_zones))
@@ -88,6 +91,9 @@ def territory_vector(reading: TerritoryReading) -> Vector:
     _put(out, "close_pair_far", _share(far, len(reading.close_hops)))
     walled = reading.close_joined.count(False)
     _put(out, "close_pair_walled", _share(walled, len(reading.close_joined)))
+    for d in range(2, SHARE_TILES + 1):
+        at = [joined for dist, joined in reading.near if dist == d]
+        _put(out, f"door_share_d{d}", _share(at.count(True), len(at)))
     return out
 
 

@@ -79,7 +79,8 @@ class LevelPlaces:
     """One level's places: the label grid read ``[y][x]`` with -1 off land, each place by
     its label, the planned adjacency as pairs ``(a, b)`` with ``a < b``, the tiles of every
     transition band Paint graded, empty when the level was not painted, the kind of every
-    realised pair, the passages across them, and its territories."""
+    realised pair, the passages across them, its territories, and the wall width between
+    every zone pair of two territories wider than one tile."""
 
     label: ZoneLabel
     places: Mapping[int, PlannedPlace]
@@ -90,6 +91,7 @@ class LevelPlaces:
     )
     passages: Passages = field(default_factory=lambda: Passages({}))
     territories: TerritoryPlan = field(default_factory=TerritoryPlan)
+    depths: Mapping[tuple[int, int], int] = field(default_factory=dict[tuple[int, int], int])
 
     @property
     def passable(self) -> frozenset[tuple[int, int]]:

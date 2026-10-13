@@ -34,7 +34,10 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
 3. **Vegetation.** A cellular field covered with corpus-weighted trees, rocks
    and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
    point process instead. A protected walkable web keeps every planned passage
-   reachable.
+   reachable. A wall between two territories one door apart is one tree line.
+   Two doors apart it is 3 tiles thick at side 72, and further apart 4, both
+   growing with the map side. A player reads a thin line as one fight away and
+   a thick band as the long way round.
 4. **Doors.** A monster stands in every door between two territories, its
    level drawn from the corpus door guards. The doors near a home stay weak
    enough that each player still reaches its mines within 14 days. A door into a
@@ -133,8 +136,9 @@ same two shares appear as rows beside the corpus spread. Its territory rows
 compare the zones per player and per neutral territory, the doors per territory pair
 and the guard level at a door. They also compare the territory count, the loops the
 doors close, and the door hops between two territories that come within a 24th of the
-map side. Last come the share of those close pairs more than 2 doors apart or cut off,
-and the share no door joins directly.
+map side. Then come the share of those close pairs more than 2 doors apart or cut off,
+and the share no door joins directly. Last, for each distance from 2 to 5 tiles between
+two territories' nearest tiles, the share of the pairs that far apart a door joins.
 
 `inspect` prints what the readers see on one map. The map is a `.vmap` from any folder
 (`--vmap`), a corpus map by name (`--corpus`), or a seed generated in memory with the

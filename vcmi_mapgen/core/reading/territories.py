@@ -30,6 +30,7 @@ from vcmi_mapgen.core.reading.routes import RouteMap, route_map
 
 NONE = -1
 CLOSE_SIDE = 24
+SHARE_TILES = 5
 
 type Grid = tuple[tuple[int, ...], ...]
 type Pair = tuple[int, int]
@@ -410,7 +411,9 @@ class TerritoryReading:
     territory and each door between neutral territories. Then its territory count, the
     loops its doors and links close, and for each pair of territories within
     ``side // CLOSE_SIDE`` tiles, at least 2, the doors a hero passes from one to the other,
-    None when none leads, and whether a door or a link joins the two."""
+    None when none leads, and whether a door or a link joins the two. Last, for each pair
+    within ``SHARE_TILES`` tiles, the distance between their nearest tiles and whether a door
+    or a link joins the two."""
 
     player_zones: tuple[int, ...]
     neutral_zones: tuple[int, ...]
@@ -421,13 +424,16 @@ class TerritoryReading:
     loops: int = 0
     close_hops: tuple[int | None, ...] = ()
     close_joined: tuple[bool, ...] = ()
+    near: tuple[tuple[int, bool], ...] = ()
 
 
 def territory_reading(read: Territories) -> TerritoryReading:
     """The spread ``read`` gives."""
     terrs = read.territories
     joined = door_pairs(read)
-    close = sorted(close_pairs(read.labels, max(2, len(read.labels) // CLOSE_SIDE)))
+    within = max(2, len(read.labels) // CLOSE_SIDE)
+    found = close_pairs(read.labels, max(within, SHARE_TILES))
+    close = sorted(pair for pair, d in found.items() if d <= within)
     hops = {a: hop_counts(len(terrs), joined, a) for a in {a for a, _ in close}}
     player: list[int] = []
     neutral: list[int] = []
@@ -449,6 +455,7 @@ def territory_reading(read: Territories) -> TerritoryReading:
         loops=loop_count(len(terrs), joined),
         close_hops=tuple(hops[a][b] for a, b in close),
         close_joined=tuple(pair in joined for pair in close),
+        near=tuple((d, pair in joined) for pair, d in sorted(found.items()) if d <= SHARE_TILES),
     )
 
 

@@ -42,3 +42,28 @@ def test_the_sealer_never_shuts_the_next_zones_land_away(catalog: Catalog) -> No
     )
     _objs, sealed = seal_borders(catalog, plan, [], 1, 0)
     assert (3, 1) not in sealed
+
+
+def test_the_sealer_thickens_a_wall_to_its_depth(catalog: Catalog) -> None:
+    west = {(x, y) for x in range(4) for y in range(5)}
+    middle = {(x, y) for x in range(4, 6) for y in range(5)}
+    east = {(x, y) for x in range(6, 10) for y in range(5)}
+    web = {(0, 2), (9, 2)}
+    plan = BorderPlan(
+        land=west | middle | east,
+        zones={1: _zone(west), 2: _zone(east), 3: _zone(middle)},
+        bands=frozenset[Tile](),
+        avoid=web,
+        web=web,
+        open_pairs=frozenset({(1, 3), (2, 3)}),
+        depths={(1, 2): 3},
+    )
+    _objs, sealed = seal_borders(catalog, plan, [], 1, 0)
+    near = [
+        (a, b)
+        for a in west - sealed
+        for b in east - sealed
+        if max(abs(a[0] - b[0]), abs(a[1] - b[1])) <= 3
+    ]
+    assert sealed
+    assert near == []

@@ -1,7 +1,11 @@
 """Zone-border geometry: which zone owns each land tile and which open pairs cross a zone
-border. The vegetation border plan reads them."""
+border, or sit closer than the wall between their zones allows. The vegetation border plan
+reads them."""
 
 from collections.abc import Collection, Container, Mapping, Sequence
+from typing import cast
+
+import numpy as np
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile, Zone
@@ -65,3 +69,37 @@ def closing_pairs(
         if (min(a, b), max(a, b)) not in open_pairs:
             out.append((t, n))
     return out
+
+
+def deep_pairs(
+    open_all: Collection[Tile], owner: Mapping[Tile, int], depths: Mapping[tuple[int, int], int]
+) -> list[tuple[Tile, Tile]]:
+    """The open pairs of two zones ``(a, b)``, ``a < b``, more than one tile apart and no
+    farther apart in Chebyshev distance than the wall width ``depths`` gives them, each
+    unordered pair once, in tile order."""
+    reach = max(depths.values(), default=1)
+    tiles = [t for t in open_all if t in owner]
+    if reach < 2 or not tiles:
+        return []
+    ids = sorted({owner[t] for t in tiles})
+    index = {z: i for i, z in enumerate(ids)}
+    wide = np.zeros((len(ids) + 1, len(ids) + 1), dtype=np.int32)
+    for (a, b), d in depths.items():
+        if a in index and b in index:
+            wide[index[a], index[b]] = wide[index[b], index[a]] = d
+    w = max(x for x, _ in tiles) + 1
+    h = max(y for _, y in tiles) + 1
+    grid = np.full((h + 2 * reach, w + 2 * reach), len(ids), dtype=np.int32)
+    for x, y in tiles:
+        grid[y + reach, x + reach] = index[owner[(x, y)]]
+    here = grid[reach : reach + h, reach : reach + w]
+    out: list[tuple[Tile, Tile]] = []
+    for dy in range(reach + 1):
+        for dx in range(-reach, reach + 1):
+            far = max(abs(dx), dy)
+            if far < 2 or (dy == 0 and dx < 0):
+                continue
+            there = grid[reach + dy : reach + dy + h, reach + dx : reach + dx + w]
+            yx = cast(list[list[int]], np.argwhere(wide[here, there] >= far).tolist())
+            out += [((x, y), (x + dx, y + dy)) for y, x in yx]
+    return sorted(out)

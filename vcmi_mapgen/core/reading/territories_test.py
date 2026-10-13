@@ -153,6 +153,12 @@ def test_close_pairs_finds_the_nearest_tiles_of_each_pair_within_reach() -> None
     assert close_pairs(labels, 3) == {(0, 1): 2, (0, 2): 3, (1, 2): 3}
 
 
+def test_the_reading_keeps_each_pair_within_the_share_reach_and_its_door(
+    catalog: Catalog,
+) -> None:
+    assert territory_reading(_read(catalog, _wall(gap=False), {})).near == ((2, False),)
+
+
 def test_hops_and_loops_follow_the_door_graph() -> None:
     edges = [(0, 1), (1, 2), (2, 0), (3, 4)]
     assert hop_counts(5, edges, 0) == [0, 1, 1, None, None]

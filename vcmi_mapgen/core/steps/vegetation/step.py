@@ -74,6 +74,11 @@ def _doors(places: PlaceMap, level: int) -> frozenset[Tile]:
     return frozenset(t for d in lp.territories.doors for t in d.tiles) if lp else NO_TILES
 
 
+def _depths(places: PlaceMap, level: int) -> Mapping[tuple[int, int], int]:
+    lp = places.levels.get(level)
+    return lp.depths if lp else {}
+
+
 def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
     return VegetatedZone(zone.open_set - mine, zone.passable - mine)
 
@@ -261,6 +266,7 @@ class VegetationStep(PipelineStep):
                 map_state.terrain.get(level, ()),
                 pl.open_pairs,
                 ends,
+                _depths(self._places, level),
             ),
             level_objs,
             self.seed,

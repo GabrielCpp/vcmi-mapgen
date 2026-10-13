@@ -93,3 +93,12 @@ def test_territory_readings_count_close_pairs_far_apart_or_walled() -> None:
     assert vector["close_pair_hops"] == 5 / 3
     assert vector["close_pair_far"] == 0.5
     assert vector["close_pair_walled"] == 0.5
+
+
+def test_door_shares_count_the_joined_pairs_at_each_distance() -> None:
+    near = ((2, True), (2, False), (3, True), (5, False))
+    vector = territory_vector(TerritoryReading((), (), (), (), (), near=near))
+    assert vector["door_share_d2"] == 0.5
+    assert vector["door_share_d3"] == 1
+    assert "door_share_d4" not in vector
+    assert vector["door_share_d5"] == 0

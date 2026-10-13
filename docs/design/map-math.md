@@ -859,10 +859,14 @@ want of a plan. Inside a territory the spanning set of passable pairs is a spann
 forest over the realised pairs, each weighted by the share of its role pair the corpus
 leaves passable, so a level split by water keeps one tree per piece. Its pairs draw gated
 or open, every other inner pair draws from the whole table. The content plan counts hops
-over the door graph. A walled territory border carves a barrier whose depth follows the
-door-hop distance of its pair, and the topology water mode lays its water in the deepest
-of them. A thin wall still closes by the vegetation's densification and its border
-sealer, as before. The sealer may close a tile of a zone's web only when that
+over the door graph. A walled territory border carries a barrier whose depth follows the
+door-hop distance of its pair: 1 tile one door apart, 3 two apart, 4 three or more apart
+or cut off, each at least $\lfloor N/72 \rfloor$, $\lfloor N/24 \rfloor$ and
+$\lfloor N/18 \rfloor$ on a side of $N$ tiles. The vegetation's border sealer builds it:
+it closes every open pair of the two zones that sits within the depth, so the nearest
+open tiles of the two sides stand one tile further apart than the depth. The topology
+water still lands before the places, where the layout put its masses, and does not seek
+the deepest walls yet. The sealer may close a tile of a zone's web only when that
 tile's neighbours inside the same zone stay joined, because a detour through the
 neighbouring zone is the very crossing it is closing. Markov keeps one gated pair per
 realised adjacency with every passage `plan_entrances` plans, so its maps do not change.
@@ -910,6 +914,7 @@ readings fall inside the hand-made spread.
 | Territories | territory count | $m$ against $p(m \mid k, |\mathrm{Land}|)$, corpus median 11 at side 72 |
 | Territories | home separation | $d_g(h_i, h_j) / N$ |
 | Territories | close-pair detour | mean door hops between territories within 3 tiles, corpus 1.0, and the share needing 3 or more, corpus 0 |
+| Territories | door share by distance | share of territory pairs whose nearest tiles sit $d$ tiles apart that a door joins, corpus 82%, 75%, 50% and 14% at $d$ = 2 to 5 at side 72 |
 | Roles | role coverage | one home per player, at least one treasure ground and one pocket per level at the corpus rate |
 | Identity | dominant share | $\min_p \hat\Theta_p(d_p)$ and its mean |
 | Identity | same share | share of $\hat A$ pairs with $d_p = d_q$, corpus 0.71 pooled |
@@ -1036,11 +1041,13 @@ carries each one with a recommendation and the slice that decides it.
 1. The door objective. A detour cap on close pairs, a loop budget, or both.
    Settled in slice 1: the cap alone, at 2 door hops on every touching pair. A loop
    budget from the nearest corpus maps is 0 on most 2-player maps and leaves the detours.
-   The loop count stays a reading, revisited once barriers thicken.
-2. Barrier thickness. A wall's depth by the door-hop distance of its pair, with the
-   water of the topology mode as the deepest kind. Recommendation: three depths, thin,
-   wide and water, by hop 1, hop 2 and hop 3 or more, each width a share of the map
-   side.
+   The loop count stays a reading. Slice 2 thickened the barriers and the loops fell from
+   3 to 2 at side 72, against the corpus 1. A fixed budget of 1 reached 1 on those seeds,
+   but a budget of 2 brought a detour back, so the cap stays alone.
+2. Barrier thickness. Settled in slice 2: three depths by hop 1, hop 2 and hop 3 or more,
+   at 1, 3 and 4 tiles on side 72, each a share of the map side. The water of the
+   topology mode does not seek the deepest walls yet. That waits for the shapes-first
+   order of slice 4.
 3. Territory area. Whether a territory draws a target area as well as a place count.
    Recommendation: a place count only, as today, until the territory-size reading sits
    outside the corpus spread.

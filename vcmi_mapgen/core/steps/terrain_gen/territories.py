@@ -2,7 +2,8 @@
 each home with a corpus-drawn number of its neighbours, the other places grouped into the
 neutral territories the count leaves, and the doors that join them. A door goes on every
 touching pair of territories more doors apart than ``MAX_HOP`` or not joined at all. Every
-border between two territories without a door is walled."""
+border between two territories without a door is walled, the wall as wide as
+``wall_width`` gives for the doors between them."""
 
 import collections
 import math
@@ -23,6 +24,11 @@ type Pair = tuple[int, int]
 MAX_DOORS = 2
 MAX_HOP = 2
 LAND_BAND = 2.0
+WALL_WIDTHS = ((1, 72), (3, 24), (4, 18))
+"""The least width and the map side per extra tile of a wall between two territories one
+door apart, two doors apart, and three or more apart or cut off. Measured on the corpus:
+territories a door joins sit 3 tiles apart at the median, and the walled pairs sit at least
+4 to 6 tiles apart at the first quartile at every map side."""
 
 
 def _neighbours(edges: Iterable[Pair]) -> dict[int, set[int]]:
@@ -229,6 +235,30 @@ def draw_doors(
         else:
             doors[door] = 2
     return doors
+
+
+def wall_width(hops: int | None, side: int) -> int:
+    """The tiles a wall takes between two territories ``hops`` doors apart, None when no
+    door path joins them, on a map ``side`` tiles wide: thin one door apart, wider two
+    apart, widest three or more apart or cut off."""
+    least, per = WALL_WIDTHS[min(hops, len(WALL_WIDTHS)) - 1 if hops else -1]
+    return max(least, side // per)
+
+
+def wall_depths(territory: Sequence[int], doors: Collection[Pair], side: int) -> dict[Pair, int]:
+    """The wall width between every zone pair ``(a, b)``, ``a < b``, of two territories,
+    from the door hops between their territories on a map ``side`` tiles wide. A pair
+    left out walls one tile wide."""
+    count = max(territory, default=-1) + 1
+    joined = {(territory[a], territory[b]) for a, b in doors}
+    hops = [hop_counts(count, joined, t) for t in range(count)]
+    out: dict[Pair, int] = {}
+    for b, tb in enumerate(territory):
+        for a in range(b):
+            ta = territory[a]
+            if ta != tb and (width := wall_width(hops[ta][tb], side)) > 1:
+                out[(a, b)] = width
+    return out
 
 
 def wall_kinds(

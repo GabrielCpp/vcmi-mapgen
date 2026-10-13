@@ -51,6 +51,7 @@ from vcmi_mapgen.core.steps.terrain_gen.territories import (
     stranded,
     territory_plan,
     unreached,
+    wall_depths,
     wall_kinds,
 )
 
@@ -194,8 +195,9 @@ def walled(
     doors: Mapping[tuple[int, int], int],
     gated_w: int,
 ) -> LevelPlaces:
-    """``plan`` with its territories, the kind of every realised pair, and the passages
-    across them: each door ``DOOR_W`` wide and each other gated passage ``gated_w``."""
+    """``plan`` with its territories, the kind of every realised pair, the passages
+    across them, each door ``DOOR_W`` wide and each other gated passage ``gated_w``, and
+    the wall widths between its territories."""
     territory, lords = partition
     passages = plan_passages(plan.label, kinds, doors, gated_w)
     return replace(
@@ -203,6 +205,7 @@ def walled(
         kinds=kinds,
         passages=passages,
         territories=territory_plan(territory, lords, doors, passages),
+        depths=wall_depths(territory, doors, len(plan.label)),
     )
 
 

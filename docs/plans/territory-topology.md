@@ -165,7 +165,7 @@ Readings that must move, on seeds 1 to 10 at size 72, level 0: territory count f
 the corpus 11, within 8 to 13; close-pair hops from 1.40 to 1.0 to 1.1; 3+ hops share from
 0.05, with seeds 3, 9 and 10 at 0.23 to 0.55, to 0; walled close pairs from 0.38 to 0.16.
 Loops rise from 1 to 3 without the budget. Slice 2 should bring them back toward the
-corpus, as open question 1 says.
+corpus, as open question 1 says. Slice 2 brought them to 2.
 
 Measured after slice 1, seeds 1 to 10 at size 72, level 0 medians. Seed 5 fails only in
 the measuring harness, which runs the bare catalog. The CLI generates it.
@@ -236,6 +236,121 @@ Golden hashes: both maps change.
 
 Deleted: `water.masses_of` and `_pins` on the graph, `static_features` use of the layout
 anchors. `Coastline.layout` stays until slice 4.
+
+Built in slice 2. The land walls landed. The water on the walls did not.
+
+- `territories.py` `wall_depths(territory, doors, side)` gives every zone pair of two
+  territories a width from the door hops between them. `WALL_WIDTHS` holds each width as
+  a least value and a side divisor: `max(1, side // 72)` one door apart, `max(3, side //
+  24)` two apart, `max(4, side // 18)` three or more apart or cut off. That reads 1, 3
+  and 4 at side 72, and 2, 6 and 8 at side 144. It covers zone pairs that do not touch,
+  so two territories that sit close across a third zone get their wall too.
+- `planning/borders.py` `deep_pairs` finds the open tile pairs of two zones closer than
+  their width. `border_plan.seal_borders` closes them with the crossings it closed
+  before. The nearest open tiles of a walled pair then stand one tile beyond the width.
+  The greedy pick now runs on an incremental count heap, so the extra pairs stay cheap.
+- `LevelPlaces.depths` carries the widths from `walled` to the vegetation step, on both
+  levels.
+- `reading/territories.py` reads each territory pair within 5 tiles with its distance
+  and whether a door or link joins it. `territory_vector` emits `door_share_d2` to
+  `door_share_d5`.
+
+Deviations from the sketch:
+
+- No `AdjacencyKind.BAND`. `AdjacencyKind` is the vocabulary of the corpus reading, and
+  the widths ride on `depths`. The kinds stay `CLOSED`.
+- No `water_on_walls`. The topology water still lands before the places, where the layout
+  put its masses. Moving it needs the layout and paint reorder of slice 4. The islands
+  mode is unchanged.
+- No wall-width prior. The corpus distance does not grow with the side the way a median
+  would need, and the reading window truncates it. The widths are fixed against the
+  corpus quartiles below instead.
+- Widths 1, 3 and 4 at side 72, not the sketch's 1, 2 and 3. A width of 2 leaves a hop-2
+  pair 3 tiles apart, inside the close window of 3 tiles, and the reading would count it
+  as a walled close pair.
+
+The corpus closest-tile distance between territory pairs, by the door hops between them:
+
+| Side | Hop 1 median | Hop 2 median (q25) | Hop 3+ median (q25) | Cut off median (q25) |
+|---|---|---|---|---|
+| 72 | 3 | 8 (5), water in 18% | 10 (6), water in 36% | 7 (5), water in 40% |
+| 144 | 3 | 9 (6) | 11 (7) | 9 |
+
+Our walls put a hop-2 pair at 4 tiles or more and a hop-3 pair at 5 or more at side 72,
+just under the corpus first quartile. At side 144 they give 7 and 9.
+
+Measured after slice 2, seeds 1 to 10 at size 72, level 0 medians over 9 seeds:
+
+| Rule | Territories | Loops | Doors | Close pairs | Close-pair hops | 3+ hops share | Walled close pairs |
+|---|---|---|---|---|---|---|---|
+| After slice 1 | 9 | 3 | 9 | 10 | 1.15 | 0.00 | 0.15 |
+| Slice 2, no loop budget, kept | 9 | 2 | 8 | 7 | 1.00 | 0.00 | 0.00 |
+| Slice 2, loop budget 1 | 9 | 1 | 8 | 7 | 1.00 | 0.00 | 0.00 |
+| Slice 2, loop budget 2 | 9 | 1 | 8 | 6 | 1.00 | 0.00 | 0.00 |
+| Corpus | 11 | 1 | 9.5 | 9.5 | 1.04 | 0.06 | 0.16 |
+
+The medians hide the outliers. Without a budget, seed 7 reads 1.27 hops with 0.09 of its
+close pairs 3 doors apart, and seed 9 reads 1.12. With a budget of 1, seed 9 reads 1.29
+and no close pair sits 3 doors apart. With a budget of 2, seed 7 reads 1.33 with 0.11 of
+its close pairs 3 doors apart. The budget experiment stops the detour doors that close a
+loop once the budget is spent, and always joins a cut-off pair.
+
+Door share by distance between two territories' closest tiles:
+
+| Distance | Corpus | After slice 1 | Slice 2 | Slice 2, loop budget 1 |
+|---|---|---|---|---|
+| 2 | 82% | 84% (53 of 63) | 98% (43 of 44) | 93% (39 of 42) |
+| 3 | 75% | 57% (21 of 37) | 91% (21 of 23) | 88% (15 of 17) |
+| 4 | 50% | 10% (1 of 10) | 57% (8 of 14) | 35% (6 of 17) |
+| 5 | 14% | 14% (2 of 14) | 4% (1 of 26) | 6% (2 of 31) |
+| 6 | 16% | 14% (1 of 7) | 60% (6 of 10) | 12% (1 of 8) |
+
+The walls move the walled pairs out past 3 tiles, so the pairs left at 2 and 3 tiles are
+mostly the doored ones. Water carries 19 of the 35 walled pairs at 4 to 6 tiles, against
+63% after slice 1 and one in three in the corpus. The topology water still stands where
+the layout put it.
+
+The mine promise, as under slice 1:
+
+| Rule | 48, 20 seeds | 72, 10 seeds |
+|---|---|---|
+| After slice 1 | 3 / 4 / 17 | 1 / 4 / 7 |
+| Slice 2 | 6 / 4 / 13 | 1 / 4 / 9 |
+
+Time per map at 144 with 6 players, CPU seconds per step, after slice 1 and slice 2
+alternated on the same machine:
+
+| Seed | Terrain | Vegetation | Gameplay | Whole map |
+|---|---|---|---|---|
+| 1 | 2.2 / 2.2 | 4.8 / 5.5 | 61.4 / 61.3 | 95.7 / 96.8 |
+| 2 | 2.8 / 2.9 | 1.7 / 2.2 | 55.3 / 63.5 | 81.3 / 88.5 |
+| 3 | 3.8 / 3.9 | 3.3 / 3.8 | 56.9 / 68.6 | 91.9 / 101.2 |
+
+The sealer closes about 1700 cells at 144 against 170 before. Its first `cut_off` flooded
+the open land around each pick until the pieces met, and on seed 3 the sealer took 13 s
+against 0.4 s. `cut_off` now asks whether two big pieces meet through the walls instead. It
+keeps the closed tiles joined 8-way in a union-find that grows with each seal. Two open
+4-neighbours of a pick fall apart exactly when a wall on one side of the pick is joined to a
+wall on the other side. The sealer costs 1.2 s on seed 1, and the maps come out the same as
+with the flood. Terrain costs what it did, and vegetation costs 0.5 to 0.7 s more for the
+cells it closes. The gameplay step now carries the extra time: it costs 8 to 12 s more on
+seeds 2 and 3. The machine ran other jobs, so the absolute times read high against the 57 to
+60 s of 2026-10-10.
+
+Decisions:
+
+- The loop budget stays out. A budget of 1 meets the bar on these seeds and brings the
+  loops to the corpus 1, but a budget of 2 puts a close pair of seed 7 three doors apart.
+  The result turns on one draw. A fixed budget does not scale with the map, and a budget
+  from the corpus map's loops needs a loops field in `TerritoryCount` and a new mine.
+  The user decided it after slice 2: the hop cap alone.
+- The hop cap stays. It now leaves the door share 16 points above the corpus at 2 and 3
+  tiles, past the 10-point bar of open question 2. The excess is on the side of more
+  doors, so a player meets fewer detours than the corpus gives, not more. The user
+  decided it after slice 2: the cap over the distance curve.
+
+Golden hashes: `s1_48` changes. `s3_72_sub` does not. On that map the sealer closes the
+same 49 surface cells with and without the widths.
 
 ### Slice 3: one front for both levels
 
@@ -341,17 +456,21 @@ says otherwise.
    measured both. A budget at the corpus map's loops kept loops at 1 and close-pair hops at
    1.39. A budget one above it kept hops at 1.43. The hop cap alone brought hops to 1.15,
    the 3+ hops share to 0 and walled close pairs to 0.15, at 3 loops against the corpus 1.
-   The tables under slice 1 hold the numbers. Slice 2 thickens the walls, so a walled pair
-   stops counting as close and stops drawing a detour door. That should bring the loops
-   back toward the corpus. Revisit the budget after slice 2 lands.
+   The tables under slice 1 hold the numbers. Slice 2 thickened the walls and brought the
+   loops from 3 to 2. A budget of 1 brought them to 1 with no close pair 3 doors apart,
+   but a budget of 2 put one of seed 7's close pairs 3 doors apart. The tables under slice
+   2 hold the numbers. Decided after slice 2: the hop cap alone, with no loop budget. A
+   later budget would come only as a draw from the corpus map's loops, which needs a
+   loops field in `TerritoryCount`, and would stay only if the bar holds over 20 seeds.
 2. Replacing the hop cap with the distance curve. The corpus door share falls with the
    closest-tile distance: 82%, 75%, 50%, 14%. A rule that draws a door per touching pair
-   at the odds of its distance would match the curve without a cap. Recommendation: keep
-   the cap in slice 1, add the curve as a reading in slice 2, and switch only if the cap
-   leaves the curve off by more than 10 points at distance 2 or 3.
-3. Barrier thickness. Three depths by hop, or a continuous width from the hop count.
-   Recommendation: three depths, because the vegetation sealer and the water carver each
-   need one integer width.
+   at the odds of its distance would match the curve without a cap. Slice 2 added the
+   curve as a reading. The cap with the slice 2 walls reads 98% and 91% at 2 and 3 tiles,
+   16 points above the corpus, past the 10-point bar. Decided after slice 2: the cap
+   stays and the curve stays a reading. The excess means more doors and fewer detours
+   than the corpus, and the curve would bring back walled close pairs.
+3. Barrier thickness. Decided in slice 2: three depths by hop, 1, 3 and 4 tiles at side
+   72, each scaled with the side. The water carver does not read them yet.
 4. Territory area. Count places per territory only, or also the tile area.
    Recommendation: place count only in slices 1 to 3. The corpus `area` field in the
    scratch records lets a later slice add a tile budget if the readings show territories
