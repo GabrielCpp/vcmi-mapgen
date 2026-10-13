@@ -9,9 +9,8 @@ from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 TERRITORY_FILE = "territory_stats.json"
-TERRITORY_VERSION = 5
+TERRITORY_VERSION = 7
 TERRITORY_SOURCE = "vcmi_mapgen.corpus.mine.territories.mine_territories"
-FIELDS = ("player_zones", "neutral_zones", "pair_doors")
 BY_MAP = ("player_doors_by_map", "neutral_doors_by_map")
 COUNTS = "counts_by_map"
 COUNT_FIELDS = ("players", "land", "territories")
@@ -28,17 +27,16 @@ def _by_map(value: JsonValue | None) -> tuple[tuple[int, ...], ...]:
 def _count(value: JsonValue) -> TerritoryCount:
     obj = jv.as_object(value)
     players, land, territories = (jv.as_int(obj.get(f)) for f in COUNT_FIELDS)
-    return TerritoryCount(players, land, territories)
+    homes = _ints(obj.get("homes"))
+    return TerritoryCount(players, land, territories, homes, jv.as_int(obj.get("area")))
 
 
 def _stats(value: JsonValue) -> TerritoryStats:
     obj = jv.as_object(value)
-    player_zones, neutral_zones, pair_doors = (_ints(obj.get(f)) for f in FIELDS)
+    pair_doors = _ints(obj.get("pair_doors"))
     player_doors, neutral_doors = (_by_map(obj.get(f)) for f in BY_MAP)
     counts = tuple(_count(v) for v in jv.as_list(obj.get(COUNTS)))
-    return TerritoryStats(
-        player_zones, neutral_zones, pair_doors, player_doors, neutral_doors, counts
-    )
+    return TerritoryStats(pair_doors, player_doors, neutral_doors, counts)
 
 
 def load_territories(pp_dir: Path) -> dict[int, TerritoryStats]:
@@ -54,8 +52,6 @@ def save_territories(pp_dir: Path, stats: Mapping[int, TerritoryStats]) -> None:
             "_version": TERRITORY_VERSION,
             "levels": {
                 str(lv): {
-                    "player_zones": list(st.player_zones),
-                    "neutral_zones": list(st.neutral_zones),
                     "pair_doors": list(st.pair_doors),
                     "player_doors_by_map": [list(m) for m in st.player_doors_by_map],
                     "neutral_doors_by_map": [list(m) for m in st.neutral_doors_by_map],
@@ -64,6 +60,8 @@ def save_territories(pp_dir: Path, stats: Mapping[int, TerritoryStats]) -> None:
                             "players": c.players,
                             "land": c.land,
                             "territories": c.territories,
+                            "homes": list(c.homes),
+                            "area": c.area,
                         }
                         for c in st.counts_by_map
                     ],

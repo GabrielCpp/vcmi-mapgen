@@ -126,7 +126,7 @@ def test_run_json_records_every_flag(tmp_path: Path) -> None:
     assert set(record) == set(GenerateOptions.__dataclass_fields__)
 
 
-def test_topology_json_holds_the_early_graph_the_territories_the_doors_and_the_rivals(
+def test_topology_json_holds_the_adjacency_the_territories_the_doors_and_the_rivals(
     tmp_path: Path,
 ) -> None:
     door = PlannedDoor((0, 1), (0, 1), (2, None), ((3, 4), (4, 4)))
@@ -143,7 +143,7 @@ def test_topology_json_holds_the_early_graph_the_territories_the_doors_and_the_r
     assert record == {
         "levels": {
             "0": {
-                "early_graph": [[0, 1]],
+                "adjacency": [[0, 1]],
                 "territories": {"0": 0, "1": 1},
                 "owners": [2, None],
                 "doors": [

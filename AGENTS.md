@@ -70,8 +70,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       (`repeats.py`). It reads the value each player claims first within 5, 10, 20 and 40
       hero-days, against the best player's (`claimed.py`). It reads the free land far from
       every object worth the walk (`remote.py`).
-    - `steps/terrain_gen/`: the places terrain model. It lays out a place graph and
-      paints each place. `palette.py` groups the places of the places model into
+    - `steps/terrain_gen/`: the places terrain model. It grows the place shapes on
+      the land, chooses the homes and the roles on them, and paints each place. `palette.py` groups the places of the places model into
       palette regions, one dominant terrain each.
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production

@@ -281,13 +281,13 @@ def write_run(folder: Path, opts: GenerateOptions) -> Path:
 
 
 def topology_record(places: PlaceMap, guards: DoorGuards) -> dict[str, object]:
-    """Each level's planned topology: the early place graph, the territory of each zone, the
-    owner of each territory, and each door with its zones, territories, owners, tiles and
+    """Each level's planned topology: the zone pairs that touch, the territory of each zone,
+    the owner of each territory, and each door with its zones, territories, owners, tiles and
     guard. Then the enemy pairs the rival cut left under a week apart."""
     return {
         "levels": {
             str(level): {
-                "early_graph": [list(pair) for pair in sorted(lp.adjacency)],
+                "adjacency": [list(pair) for pair in sorted(lp.adjacency)],
                 "territories": {str(z): t for z, t in sorted(lp.territories.zones.items())},
                 "owners": list(lp.territories.owners),
                 "doors": [_door_record(d, guards.on(level)) for d in lp.territories.doors],

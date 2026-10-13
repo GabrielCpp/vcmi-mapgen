@@ -43,30 +43,28 @@ def _connected(nodes: set[int], edges: frozenset[tuple[int, int]]) -> bool:
     return len({root(n) for n in nodes}) == 1
 
 
-def test_spanning_forest_spans_and_prefers_planned_edges() -> None:
+def test_spanning_forest_spans_and_prefers_heavy_edges() -> None:
     edges = [(0, 1), (1, 2), (0, 2), (2, 3), (3, 4), (2, 4)]
-    planned = {(0, 2), (2, 4)}
+    heavy = {(0, 2), (2, 4)}
     for seed in range(20):
-        span = BK.spanning_forest(edges, planned, lambda _e: 1.0, random.Random(seed))
+        span = BK.spanning_forest(edges, lambda e: 1.0 if e in heavy else 0.0, random.Random(seed))
         assert len(span) == 4
         assert _connected({0, 1, 2, 3, 4}, span)
-        assert planned <= span
+        assert heavy <= span
 
 
 def test_spanning_forest_spans_each_component() -> None:
     edges = [(0, 1), (1, 2), (5, 6)]
-    span = BK.spanning_forest(edges, (), lambda _e: 0.0, random.Random(1))
+    span = BK.spanning_forest(edges, lambda _e: 0.0, random.Random(1))
     assert span == frozenset(edges)
 
 
 def test_draw_kinds_keep_every_place_reachable() -> None:
     roles = {0: H, 1: M, 2: M, 3: M, 4: H}
     realised = [(0, 1), (1, 2), (0, 2), (2, 3), (3, 4), (2, 4), (1, 3)]
-    planned = {(0, 1), (1, 2), (2, 3), (3, 4)}
     for seed in range(30):
-        kinds = BK.draw_kinds(roles, realised, planned, TABLE, random.Random(seed))
+        kinds = BK.draw_kinds(roles, realised, TABLE, random.Random(seed))
         assert set(kinds) == set(realised)
-        assert all(kinds[e] == CLOSED for e in realised if e not in planned)
         passable = frozenset(e for e, k in kinds.items() if k != CLOSED)
         assert _connected(set(roles), passable)
-        assert kinds == BK.draw_kinds(roles, realised, planned, TABLE, random.Random(seed))
+        assert kinds == BK.draw_kinds(roles, realised, TABLE, random.Random(seed))

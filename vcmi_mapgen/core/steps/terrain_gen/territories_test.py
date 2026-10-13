@@ -2,8 +2,6 @@
 
 import random
 
-import pytest
-
 from vcmi_mapgen.core.model import Entrance
 from vcmi_mapgen.core.planning.entrances import Passages
 from vcmi_mapgen.core.priors.territories import TerritoryCount
@@ -22,8 +20,15 @@ def test_draw_count_ignores_zero_and_falls_back_to_one() -> None:
     assert TR.draw_count([], random.Random(1)) == 1
 
 
-def test_group_neutral_grows_connected_groups_to_their_drawn_size() -> None:
-    groups = TR.group_neutral(range(6), CHAIN, [2], random.Random(4))
+def test_closer_picks_a_place_that_closes_more_of_the_gap_than_it_overshoots() -> None:
+    sizes = [0, 5, 20, 3]
+    for seed in range(5):
+        assert TR.closer({0, 1, 2, 3}, sizes, 10, random.Random(seed)) in {1, 3}
+    assert TR.closer({1, 2}, sizes, 2, random.Random(0)) is None
+
+
+def test_group_neutral_grows_connected_groups_to_their_budget() -> None:
+    groups = TR.group_neutral(range(6), CHAIN, [2] * 6, 4, random.Random(4))
     assert sorted(p for g in groups for p in g) == list(range(6))
     assert all(len(g) == 2 for g in groups)
     for g in groups:
@@ -31,25 +36,38 @@ def test_group_neutral_grows_connected_groups_to_their_drawn_size() -> None:
 
 
 def test_group_neutral_stops_where_no_free_neighbour_is_left() -> None:
-    assert TR.group_neutral([0, 1, 2], [(0, 1)], [5], random.Random(0)) == [[0, 1], [2]]
+    groups = TR.group_neutral([0, 1, 2], [(0, 1)], [5, 5, 5], 20, random.Random(0))
+    assert groups == [[0, 1], [2]]
 
 
-def test_draw_partition_gives_each_home_its_neighbours_and_groups_the_rest() -> None:
+def test_group_neutral_leaves_out_a_place_that_overshoots_the_budget() -> None:
+    groups = TR.group_neutral([0, 1, 2], [(0, 1), (1, 2)], [3, 10, 1], 5, random.Random(0))
+    assert groups == [[0], [1], [2]]
+
+
+def test_the_home_budget_is_the_record_home_share_of_the_land() -> None:
+    assert TR.home_budget(TerritoryCount(2, 900, 5, (100, 300), 1000), 500) == 100
+    assert TR.home_budget(TerritoryCount(2, 900, 4), 500) == 125
+
+
+def test_draw_partition_grows_each_home_to_its_budget_and_groups_the_rest() -> None:
     owners = [0, None, None, None, None, 1]
-    territory = TR.draw_partition(owners, CHAIN, [2], 3, random.Random(2))
-    assert territory[0] == territory[1] == 0
-    assert territory[5] == territory[4] == 1
-    assert territory[2] == territory[3] == 2
+    record = TerritoryCount(2, 12, 3, (4, 4), 12)
+    territory = TR.draw_partition(owners, CHAIN, [2] * 6, record, random.Random(2))
+    assert territory == (0, 0, 2, 2, 1, 1)
 
 
-def test_draw_partition_clamps_a_home_to_the_neighbours_it_has() -> None:
-    territory = TR.draw_partition([0, None], [(0, 1)], [9], 1, random.Random(0))
-    assert territory == (0, 0)
+def test_draw_partition_grows_the_smaller_home_first() -> None:
+    record = TerritoryCount(2, 8, 2)
+    edges = [(0, 1), (1, 2)]
+    assert TR.draw_partition([0, None, 1], edges, [1, 4, 3], record, random.Random(0)) == (0, 0, 1)
+    assert TR.draw_partition([0, None, 1], edges, [3, 4, 1], record, random.Random(0)) == (0, 1, 1)
 
 
-def test_draw_partition_refuses_two_homes_sharing_a_neighbour() -> None:
-    with pytest.raises(ValueError, match="shares a neighbour"):
-        _ = TR.draw_partition([0, None, 1], [(0, 1), (1, 2)], [2], 3, random.Random(0))
+def test_draw_partition_keeps_a_home_alone_when_its_neighbour_overshoots() -> None:
+    record = TerritoryCount(1, 20, 2)
+    territory = TR.draw_partition([0, None], [(0, 1)], [2, 18], record, random.Random(0))
+    assert territory == (0, 1)
 
 
 def test_settle_splits_a_territory_the_growth_cut_in_two() -> None:
@@ -64,16 +82,16 @@ def test_settle_splits_a_territory_the_growth_cut_in_two() -> None:
 def test_draw_doors_opens_a_spanning_forest_of_the_territories() -> None:
     territory = [0, 0, 1, 1, 2]
     realised = [(0, 2), (1, 3), (3, 4), (0, 1), (2, 3)]
-    doors = TR.draw_doors(territory, (realised, [(1, 3), (3, 4)]), [1], random.Random(0))
+    doors = TR.draw_doors(territory, realised, [1], random.Random(0))
     assert doors == {(1, 3): 1, (3, 4): 1}
 
 
 def test_draw_doors_puts_a_second_door_on_another_pair_or_the_same_one() -> None:
     territory = [0, 0, 1, 1]
     realised = [(0, 2), (1, 3)]
-    doors = TR.draw_doors(territory, (realised, [(0, 2)]), [2], random.Random(0))
+    doors = TR.draw_doors(territory, realised, [2], random.Random(0))
     assert doors == {(0, 2): 1, (1, 3): 1}
-    doors = TR.draw_doors([0, 1], ([(0, 1)], []), [5], random.Random(0))
+    doors = TR.draw_doors([0, 1], [(0, 1)], [5], random.Random(0))
     assert doors == {(0, 1): 2}
 
 
@@ -100,20 +118,10 @@ def test_detour_doors_draws_the_same_doors_from_the_same_seed() -> None:
     assert first == TR.detour_doors(RING, PATH, TR.MAX_HOP, random.Random(5))
 
 
-def test_draw_doors_puts_a_detour_door_on_a_planned_zone_pair() -> None:
-    territory = [0, 1, 2, 3, 3]
-    realised = [(0, 1), (1, 2), (2, 3), (0, 4), (0, 3)]
-    planned = [(0, 1), (1, 2), (2, 3), (0, 4)]
-    for seed in range(8):
-        doors = TR.draw_doors(territory, (realised, planned), [1], random.Random(seed))
-        assert set(doors) <= set(planned)
-        assert (0, 4) in doors or (2, 3) in doors
-
-
 def test_draw_doors_closes_every_ring_of_four_territories() -> None:
     ring = [(0, 1), (1, 2), (2, 3), (0, 3)]
     for seed in range(8):
-        doors = TR.draw_doors([0, 1, 2, 3], (ring, ring), [1], random.Random(seed))
+        doors = TR.draw_doors([0, 1, 2, 3], ring, [1], random.Random(seed))
         assert sorted(doors) == sorted(ring)
 
 
@@ -127,7 +135,7 @@ def test_a_gate_counts_as_a_door_hop_so_a_ring_joined_below_needs_no_detour() ->
     assert TR.detour_doors(RING, [*PATH, *hub], TR.MAX_HOP, random.Random(0)) == {}
     ring = [(0, 1), (1, 2), (2, 3), (0, 3)]
     for seed in range(8):
-        doors = TR.draw_doors([0, 1, 2, 3], (ring, ring), [1], random.Random(seed), hub)
+        doors = TR.draw_doors([0, 1, 2, 3], ring, [1], random.Random(seed), hub)
         assert len(doors) == 3
 
 
@@ -142,19 +150,23 @@ def _count(players: int, land: int, territories: int) -> TerritoryCount:
     return TerritoryCount(players, land, territories)
 
 
-def test_draw_territory_count_draws_among_the_nearest_records() -> None:
+def _drawn(counts: list[TerritoryCount], players: int, seed: int) -> int:
+    return TR.draw_territory_record(counts, players, 4000, random.Random(seed)).territories
+
+
+def test_draw_territory_record_draws_among_the_nearest_records() -> None:
     counts = [_count(2, 4000 + i, 8) for i in range(5)] + [_count(4, 4000, 20)]
     counts += [_count(2, 20000, 30)]
     for seed in range(10):
-        assert TR.draw_territory_count(counts, 2, 4000, random.Random(seed)) == 8
+        assert _drawn(counts, 2, seed) == 8
 
 
-def test_draw_territory_count_falls_back_to_the_nearest_player_count_with_enough_maps() -> None:
+def test_draw_territory_record_falls_back_to_the_nearest_player_count_with_enough_maps() -> None:
     counts = [_count(3, 4000, 11)] + [_count(4, 4000 + i, 12) for i in range(5)]
-    assert TR.draw_territory_count(counts, 3, 4000, random.Random(0)) == 12
+    assert _drawn(counts, 3, 0) == 12
     far = [_count(2, 30000 + i, 25) for i in range(5)]
-    assert TR.draw_territory_count(far, 2, 4000, random.Random(0)) == 25
-    assert TR.draw_territory_count([], 2, 4000, random.Random(0)) == 3
+    assert _drawn(far, 2, 0) == 25
+    assert TR.draw_territory_record([], 2, 4000, random.Random(0)) == _count(2, 4000, 3)
 
 
 def test_wall_kinds_keeps_inner_kinds_gates_doors_and_walls_the_rest() -> None:

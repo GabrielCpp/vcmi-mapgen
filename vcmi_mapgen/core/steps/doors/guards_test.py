@@ -62,11 +62,15 @@ def test_the_home_room_is_the_mean_home() -> None:
 
 
 def test_a_cramped_home_leaves_its_door_open() -> None:
-    assert home_doors(PAIR, {0: 100, 1: 900, 3: 500}) == {0}
+    assert home_doors(PAIR, {0: 100, 1: 300, 3: 500}) == {0}
 
 
 def test_a_cramped_home_leaves_open_every_door_it_crosses_to_the_room() -> None:
-    assert home_doors(PAIR, {0: 100, 1: 100, 2: 500, 3: 500}) == {0, 1}
+    assert home_doors(PAIR, {0: 100, 1: 100, 2: 150, 3: 500}) == {0, 1}
+
+
+def test_a_door_that_overshoots_the_room_more_than_it_closes_stays_guarded() -> None:
+    assert home_doors(PAIR, {0: 100, 1: 900, 3: 500}) == frozenset()
 
 
 def test_a_home_as_roomy_as_its_rivals_keeps_its_door_guarded() -> None:
@@ -87,16 +91,25 @@ def test_loot_zones_and_dead_end_treasure_places_stay_open() -> None:
         3: PlannedPlace(PlaceRole.TREASURE, None, Terrain.DIRT),
     }
     door = PlannedDoor((0, 3), (0, 3), (0, None), ((4, 2), (5, 2)))
-    assert open_zones(places, {7}, [door]) == {3, 7}
+    plan = TerritoryPlan({0: 0, 3: 3}, (0, None, None, None), (door,))
+    assert open_zones(places, {7}, plan) == {3, 7}
 
 
 def test_a_treasure_place_with_two_doors_takes_guards() -> None:
     places = {3: PlannedPlace(PlaceRole.TREASURE, None, Terrain.DIRT)}
-    doors = [
+    doors = (
         PlannedDoor((0, 3), (0, 3), (0, None), ((4, 2), (5, 2))),
         PlannedDoor((3, 4), (3, 4), (None, None), ((8, 2), (9, 2))),
-    ]
-    assert open_zones(places, set(), doors) == set()
+    )
+    plan = TerritoryPlan({0: 0, 3: 3, 4: 4}, (0, None, None, None, None), doors)
+    assert open_zones(places, set(), plan) == set()
+
+
+def test_a_treasure_place_inside_a_larger_territory_takes_guards() -> None:
+    places = {3: PlannedPlace(PlaceRole.TREASURE, 1, Terrain.DIRT)}
+    door = PlannedDoor((0, 3), (0, 1), (0, 1), ((4, 2), (5, 2)))
+    plan = TerritoryPlan({0: 0, 3: 1, 5: 1}, (0, 1), (door,))
+    assert open_zones(places, set(), plan) == set()
 
 
 def test_the_guard_takes_the_first_door_tile_it_fits_on() -> None:

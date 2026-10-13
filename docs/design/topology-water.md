@@ -56,6 +56,11 @@ uses the reading's features and the fitted priors.
 | Noise form (variant) | today's order: noise land mask first, then the graph and the layout on it | the fitted water model |
 | Topology form (variant) | the new order: the graph and layout on all land first, then water | the noise mask |
 | Water target | drawing one (share, edge share, mass count) triple | the sampler |
+
+Slice 4 of `docs/plans/territory-topology.md` changed this role. The form gives the land
+first and floods it after the territories. The topology variant floods the walled
+territory fronts, and the mass count is the count of fronts it carves. No place graph is
+left.
 | Mass partition | splitting the graph's places into k masses, homes first, by area | tiles |
 | Strait | the tiles where two masses meet, forced to water | why the masses differ |
 | Water sampler | drawing the mask that meets the target, with forced and protected tiles | place roles |

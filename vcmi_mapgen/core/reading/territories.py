@@ -413,7 +413,8 @@ class TerritoryReading:
     ``side // CLOSE_SIDE`` tiles, at least 2, the doors a hero passes from one to the other,
     None when none leads, and whether a door or a link joins the two. Last, for each pair
     within ``SHARE_TILES`` tiles, the distance between their nearest tiles and whether a door
-    or a link joins the two."""
+    or a link joins the two. ``player_areas`` and ``neutral_areas`` hold the tiles of each
+    player and each neutral territory."""
 
     player_zones: tuple[int, ...]
     neutral_zones: tuple[int, ...]
@@ -425,6 +426,8 @@ class TerritoryReading:
     close_hops: tuple[int | None, ...] = ()
     close_joined: tuple[bool, ...] = ()
     near: tuple[tuple[int, bool], ...] = ()
+    player_areas: tuple[int, ...] = ()
+    neutral_areas: tuple[int, ...] = ()
 
 
 def territory_reading(read: Territories) -> TerritoryReading:
@@ -456,6 +459,8 @@ def territory_reading(read: Territories) -> TerritoryReading:
         close_hops=tuple(hops[a][b] for a, b in close),
         close_joined=tuple(pair in joined for pair in close),
         near=tuple((d, pair in joined) for pair, d in sorted(found.items()) if d <= SHARE_TILES),
+        player_areas=tuple(t.area for t in terrs if not t.neutral),
+        neutral_areas=tuple(t.area for t in terrs if t.neutral),
     )
 
 

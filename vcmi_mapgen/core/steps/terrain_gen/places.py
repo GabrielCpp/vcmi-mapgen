@@ -1,12 +1,13 @@
-"""The place-first terrain model (map-math 4): the surface is a place graph laid out on land,
-each place base-coated with its dominant terrain, then painted with transition bands,
-accents and texture. The underground keeps the macro path for its caves, and its places
+"""The place-first terrain model (map-math 4): the surface's places grow as shapes on its
+land, the homes and the territories stand on them, the water floods, and the roles label
+them. Each place is base-coated with its dominant terrain, then painted with transition
+bands, accents and texture. The underground keeps the macro path for its caves, and its places
 split into territories by the same front as the surface, with no home, the gates between
 the levels counted as doors."""
 
 import collections
 import random
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -16,14 +17,13 @@ from vcmi_mapgen.core.placement.footprint import room_offsets
 from vcmi_mapgen.core.planning.entrances import ENTRANCE_W, plan_passages
 from vcmi_mapgen.core.priors.bundle import Priors, TerrainPriors
 from vcmi_mapgen.core.priors.places import PlaceStats
-from vcmi_mapgen.core.priors.territories import TerritoryStats
+from vcmi_mapgen.core.priors.territories import TerritoryCount, TerritoryStats
 from vcmi_mapgen.core.reading.borders import AdjacencyKind
 from vcmi_mapgen.core.reading.paint import read_paint
 from vcmi_mapgen.core.reading.palette import palette_regions, same_share
-from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.border_kinds import draw_kinds
-from vcmi_mapgen.core.steps.terrain_gen.coastline import SurfaceForm
+from vcmi_mapgen.core.steps.terrain_gen.coastline import Shore, SurfaceForm, target_gap
 from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
 from vcmi_mapgen.core.steps.terrain_gen.gate_sites import (
     Gate,
@@ -32,16 +32,16 @@ from vcmi_mapgen.core.steps.terrain_gen.gate_sites import (
     gate_anchor_points,
     plan_gates,
 )
+from vcmi_mapgen.core.steps.terrain_gen.homes import choose_homes, room_side, room_tiles
 from vcmi_mapgen.core.steps.terrain_gen.identity import (
     Palette,
     assign_dominants,
     town_terrains,
 )
-from vcmi_mapgen.core.steps.terrain_gen.layout import Layout
+from vcmi_mapgen.core.steps.terrain_gen.layout import home_gap
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainDraw, TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.paint import paint_places, paint_priors
 from vcmi_mapgen.core.steps.terrain_gen.palette import draw_palette
-from vcmi_mapgen.core.steps.terrain_gen.place_graph import PlaceGraph
 from vcmi_mapgen.core.steps.terrain_gen.place_map import (
     flood_places,
     front_cells,
@@ -54,12 +54,15 @@ from vcmi_mapgen.core.steps.terrain_gen.result import (
     PlannedDoor,
     PlannedPlace,
 )
+from vcmi_mapgen.core.steps.terrain_gen.roles import label_roles
+from vcmi_mapgen.core.steps.terrain_gen.shapes import grow_shapes, shape_caps
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import (
     Across,
     draw_doors,
     draw_partition,
-    draw_territory_count,
+    draw_territory_record,
+    home_budget,
     islanded,
     settle,
     stranded,
@@ -71,6 +74,8 @@ from vcmi_mapgen.core.steps.terrain_gen.territories import (
 
 UNDERGROUND_SALT = 0x51E9
 UNDERGROUND_ENTRANCE_W = 1
+type Pair = tuple[int, int]
+
 BARRIERS = frozenset((Terrain.WATER.value, Terrain.ROCK.value))
 MAX_BRIDGE_ROUNDS = 8
 
@@ -78,21 +83,13 @@ MAX_BRIDGE_ROUNDS = 8
 @dataclass(frozen=True, slots=True)
 class Front:
     """How ``bordered`` draws one level's front: the level, which keys its streams, the
-    width of each gated passage, and the hop links across to the other level."""
+    width of each gated passage, the hop links across to the other level, and the territory
+    of each place when the caller drew them already."""
 
     level: int = 0
     gated_w: int = ENTRANCE_W
     across: Across = field(default_factory=Across)
-
-
-def plan_of(graph: PlaceGraph, layout: Layout, dominants: Sequence[Terrain]) -> LevelPlaces:
-    """The planned place map: the graph's places, then a pocket per land mass no anchor
-    reached, each with its dominant terrain, and the graph's edges."""
-    extra = layout.places - len(graph.roles)
-    roles = (*graph.roles, *([PlaceRole.POCKET] * extra))
-    owners = (*graph.owners, *([None] * extra))
-    places = {i: PlannedPlace(roles[i], owners[i], dominants[i]) for i in range(layout.places)}
-    return LevelPlaces(layout.label, places, graph.edges)
+    drawn: tuple[int, ...] | None = None
 
 
 def paint(label: Sequence[Sequence[int]], dominants: Sequence[Terrain]) -> list[list[int]]:
@@ -133,14 +130,43 @@ def coast(ids: list[list[int]], thin: Collection[Terrain]) -> list[list[Terrain]
 def surface(
     catalog: Catalog, form: SurfaceForm, priors: Priors, seed: int, options: TerrainOptions
 ) -> tuple[list[list[Terrain]], LevelPlaces, tuple[str, ...]]:
-    """The painted surface, its place map with its bands, and lines on how the layout and
-    the palette went."""
+    """The painted surface, its place map with its bands, and lines on how the shapes, the
+    water and the palette went. The shapes grow on the form's land, the homes and the
+    territories stand on them, the form floods its water, and the roles label the shapes
+    before the palette paints them."""
     macro = priors.terrain[0].macro
     stats = priors.places[0]
-    coastline = form.form(priors, seed, options)
-    graph, layout = coastline.graph, coastline.layout
-    roles = [*graph.roles, *([PlaceRole.POCKET] * (layout.places - len(graph.roles)))]
+    spread = priors.territories.get(0, TerritoryStats())
+    coastline = form.land(priors, seed, options)
+    land = coastline.land
+    caps = shape_caps(
+        stats, options.players, (coastline.planned, land_count_of(land)), stream(seed, "places")
+    )
+    layout = grow_shapes(land, caps, stream(seed, "layout"))
+    record = territory_record(spread, options.players, coastline.planned, seed)
+    budget = home_budget(record, land_count(layout.label))
+    homes = choose_homes(
+        layout, options.players, (target_gap(stats), budget), stream(seed, "homes")
+    )
+    owners: list[int | None] = [None] * layout.places
+    for player, home in enumerate(homes.places):
+        owners[home] = player
+    grown = label_adjacency(layout.label)
+    drawn = draw_territories(owners, (layout.label, grown), record, seed)
+    territory, _ = settle(drawn, owners, grown)
+    doors = draw_doors(territory, grown, spread.pair_doors, stream(seed, "water_doors"))
+    keep = frozenset(t for point in homes.points for t in room_tiles(point, room_side()))
+    shore = Shore(
+        layout,
+        territory,
+        frozenset(doors),
+        wall_depths(territory, doors, options.size),
+        keep,
+    )
+    layout, water_log = form.flood(shore, priors, seed, options)
     adjacency = label_adjacency(layout.label)
+    territory, _ = settle(territory, owners, adjacency)
+    roles = label_roles(layout, homes.places, territory, stats, stream(seed, "roles"))
     k, groups = draw_palette(
         stats.palette_counts, macro.areas, layout.label, adjacency, stream(seed, "palette")
     )
@@ -151,16 +177,19 @@ def surface(
         stream(seed, "identity"),
     )
     grid = coast(paint(layout.label, dominants), catalog.thin_terrains())
+    after = home_gap([[z >= 0 for z in row] for row in layout.label], homes.points)
     line = (
-        f"  places: {len(graph.roles)} planned, {layout.places} grown, "
-        + f"{len(layout.missing)} planned borders missing, home gap {layout.home_gap:.2f}"
+        f"  places: {len(caps)} drawn, {layout.places} grown, "
+        + f"home gap {homes.gap:.2f} ({after:.2f} after water)"
     )
-    spread = priors.territories.get(0, TerritoryStats())
+    places = {i: PlannedPlace(roles[i], owners[i], dominants[i]) for i in range(layout.places)}
+    plan = reconcile_places(grid, LevelPlaces(layout.label, places, adjacency))
     plan = bordered(
-        reconcile_places(grid, plan_of(graph, layout, dominants)),
+        plan,
         (stats, spread),
         options.players,
         seed,
+        Front(drawn=carried(plan.label, layout.label, territory)),
     )
     painted = paint_places(
         grid,
@@ -173,11 +202,95 @@ def surface(
     lines = (
         line,
         *coastline.log,
+        *water_log,
         palette_line(k, painted.grid, plan),
         border_line(plan),
         territory_line(plan),
     )
     return painted.grid, plan, lines
+
+
+def land_count_of(land: Sequence[Sequence[bool]]) -> int:
+    """The land tiles of a land mask."""
+    return sum(1 for row in land for v in row if v)
+
+
+def carried(
+    label: Sequence[Sequence[int]], before: Sequence[Sequence[int]], territory: Sequence[int]
+) -> tuple[int, ...]:
+    """The territory of each place of ``label``: the one most of its tiles held in
+    ``before``, else the one most of its neighbours hold, else a territory of its own. A
+    place cut off from the rest of the territory its tiles held, and not the place holding
+    most of that territory's tiles, takes the one most of its neighbours hold instead."""
+    votes = _votes(label, before, territory)
+    n = 1 + max((z for row in label for z in row), default=-1)
+    out: dict[int, int] = {
+        z: min(votes[z], key=lambda t: (-votes[z][t], t)) for z in range(n) if votes[z]
+    }
+    nbr: dict[int, set[int]] = collections.defaultdict(set)
+    for a, b in label_adjacency(label):
+        nbr[a].add(b)
+        nbr[b].add(a)
+    core = {t: max(out, key=lambda z: (votes[z][t], -z)) for t in set(out.values())}
+    for z in sorted(out):
+        t = out[z]
+        if core[t] != z and not any(out.get(q) == t for q in nbr[z]):
+            out[z] = _most_held(out, nbr[z], t)
+    fresh = max(territory, default=-1) + 1
+    for z in range(n):
+        if z not in out:
+            out[z] = _most_held(out, nbr[z], fresh)
+            if out[z] == fresh:
+                fresh += 1
+    return tuple(out[z] for z in range(n))
+
+
+def _votes(
+    label: Sequence[Sequence[int]], before: Sequence[Sequence[int]], territory: Sequence[int]
+) -> dict[int, collections.Counter[int]]:
+    """For each place of ``label``, how many of its tiles each territory held in
+    ``before``."""
+    votes: dict[int, collections.Counter[int]] = collections.defaultdict(collections.Counter)
+    for row, old in zip(label, before, strict=True):
+        for z, o in zip(row, old, strict=True):
+            if z >= 0 and o >= 0:
+                votes[z][territory[o]] += 1
+    return votes
+
+
+def _most_held(out: Mapping[int, int], near: Iterable[int], default: int) -> int:
+    """The territory most of the places ``near`` hold in ``out``, ``default`` when none
+    holds one."""
+    held = collections.Counter(out[q] for q in near if q in out)
+    return min(held, key=lambda t: (-held[t], t)) if held else default
+
+
+def territory_record(
+    spread: TerritoryStats, players: int, land: int, seed: int, level: int = 0
+) -> TerritoryCount:
+    """The corpus record one level draws its territory count and home budget from: one
+    map near ``players`` and ``land`` tiles."""
+    return draw_territory_record(
+        spread.counts_by_map, players, land, _stream(seed, "territory_count", level)
+    )
+
+
+def draw_territories(
+    owners: Sequence[int | None],
+    places: tuple[Sequence[Sequence[int]], Collection[Pair]],
+    record: TerritoryCount,
+    seed: int,
+    level: int = 0,
+) -> tuple[int, ...]:
+    """The territory of each place of ``places``, a label grid and its adjacency, split to
+    the territory count and the home budget of ``record``."""
+    label, adjacency = places
+    sizes = [0] * len(owners)
+    for row in label:
+        for z in row:
+            if 0 <= z < len(sizes):
+                sizes[z] += 1
+    return draw_partition(owners, adjacency, sizes, record, _stream(seed, "territories", level))
 
 
 def land_count(label: Sequence[Sequence[int]]) -> int:
@@ -196,39 +309,27 @@ def bordered(
     seed: int,
     front: Front | None = None,
 ) -> LevelPlaces:
-    """``plan`` split into territories drawn on its planned adjacency, as many as one
-    corpus map near ``players`` and its land holds, with the kind of every inner pair drawn
+    """``plan`` split into territories, as many as one corpus map near ``players`` and its
+    land holds unless ``front`` brings them drawn, with the kind of every inner pair drawn
     from the corpus table, a door on each border the territories need, every other
     territory border walled, and the passages across them. ``front`` gives the level, the
-    width of its gated passages and the hop links across to the other level."""
+    width of its gated passages, the hop links across to the other level and the drawn
+    territories."""
     stats, spread = priors
     front = front or Front()
     level = front.level
     roles = {p: place.role for p, place in plan.places.items()}
     owners = [plan.places[p].owner for p in sorted(plan.places)]
-    count = draw_territory_count(
-        spread.counts_by_map,
-        players,
-        land_count(plan.label),
-        _stream(seed, "territory_count", level),
-    )
-    drawn = draw_partition(
-        owners, plan.adjacency, spread.player_zones, count, _stream(seed, "territories", level)
-    )
     realised = label_adjacency(plan.label)
+    drawn = front.drawn
+    if drawn is None:
+        record = territory_record(spread, players, land_count(plan.label), seed, level)
+        drawn = draw_territories(owners, (plan.label, realised), record, seed, level)
     territory, lords = settle(drawn, owners, realised)
     inner = [e for e in sorted(realised) if territory[e[0]] == territory[e[1]]]
-    drawn_kinds = draw_kinds(
-        roles, inner, plan.adjacency, stats.adjacency, _stream(seed, "borders", level)
-    )
+    drawn_kinds = draw_kinds(roles, inner, stats.adjacency, _stream(seed, "borders", level))
     links = front.across.links(territory)
-    doors = draw_doors(
-        territory,
-        (realised, plan.adjacency),
-        spread.pair_doors,
-        _stream(seed, "doors", level),
-        links,
-    )
+    doors = draw_doors(territory, realised, spread.pair_doors, _stream(seed, "doors", level), links)
     kinds = wall_kinds(territory, realised, drawn_kinds, doors)
     passages = plan_passages(plan.label, kinds, doors, front.gated_w)
     return replace(

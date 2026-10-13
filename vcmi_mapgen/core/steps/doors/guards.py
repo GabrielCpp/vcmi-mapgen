@@ -33,7 +33,9 @@ def home_reach(
     home: int, doors: Sequence[PlannedDoor], areas: Mapping[int, int], room: float
 ) -> tuple[int, tuple[int, ...]]:
     """How many doors deep a player in territory ``home`` goes before the territories it
-    reaches hold ``room`` tiles, and the index of every door it crosses on the way."""
+    reaches hold ``room`` tiles, and the index of every door it crosses on the way. It
+    stops short of a layer of doors that would overshoot the room by as much as the land
+    falls short of it."""
     seen = {home}
     area = areas.get(home, 0)
     depth = 0
@@ -45,13 +47,14 @@ def home_reach(
             for a, b in (d.territories, d.territories[::-1])
             if a in seen and b not in seen
         ]
-        if not step:
+        fresh = {b for _, b in step}
+        gain = sum(areas.get(t, 0) for t in fresh)
+        if not step or area + gain - room >= room - area:
             break
         depth += 1
         crossed += sorted({i for i, _ in step})
-        fresh = {b for _, b in step}
         seen |= fresh
-        area += sum(areas.get(t, 0) for t in fresh)
+        area += gain
     return depth, tuple(crossed)
 
 
@@ -126,14 +129,21 @@ def door_level(
 def open_zones(
     places: Mapping[int, PlannedPlace],
     loot: AbstractSet[int],
-    doors: Sequence[PlannedDoor],
+    plan: TerritoryPlan,
 ) -> frozenset[int]:
     """The zones whose doors stay unguarded: the loot zones a seal will close and the
-    planned treasure places with a single door. A treasure place with two doors or more is
-    a way through, so its doors take guards."""
-    count = Counter(z for d in doors for z in d.zones)
+    planned treasure places that are a dead end, a territory of their own with a single
+    door. A treasure place with two doors or more, or one that shares its territory, is a
+    way through, so its doors take guards."""
+    count = Counter(z for d in plan.doors for z in d.zones)
+    size = Counter(plan.zones.values())
     return frozenset(loot) | {
-        z for z, p in places.items() if p.role == PlaceRole.TREASURE and count[z] <= 1
+        z
+        for z, p in places.items()
+        if p.role == PlaceRole.TREASURE
+        and count[z] <= 1
+        and z in plan.zones
+        and size[plan.zones[z]] == 1
     }
 
 

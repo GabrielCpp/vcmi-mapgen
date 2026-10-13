@@ -3,7 +3,7 @@ the corpus table p(kind | role pair) once a spanning forest of passable borders 
 place reachable."""
 
 import random
-from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from vcmi_mapgen.core.reading.borders import AdjacencyKind
 from vcmi_mapgen.core.reading.places import PlaceRole
@@ -48,22 +48,19 @@ def _root(parent: dict[int, int], x: int) -> int:
 
 
 def spanning_forest(
-    edges: Iterable[Pair],
-    planned: Collection[Pair],
-    weight: Callable[[Pair], float],
-    rng: random.Random,
+    edges: Iterable[Pair], weight: Callable[[Pair], float], rng: random.Random
 ) -> frozenset[Pair]:
-    """A spanning forest of ``edges``: Kruskal over the planned edges first, then the
-    others, each group in a weighted random order where an edge with a larger ``weight``
-    tends to come first and an edge of weight 0 comes last. One draw of ``rng`` per edge."""
-    keyed: list[tuple[bool, float, Pair]] = []
+    """A spanning forest of ``edges``: Kruskal in a weighted random order where an edge
+    with a larger ``weight`` tends to come first and an edge of weight 0 comes last. One
+    draw of ``rng`` per edge."""
+    keyed: list[tuple[float, Pair]] = []
     for e in sorted(edges):
         w = weight(e)
         u = rng.random()
-        keyed.append((e not in planned, -(u ** (1.0 / w)) if w > 0 else 0.0, e))
+        keyed.append((-(u ** (1.0 / w)) if w > 0 else 0.0, e))
     parent: dict[int, int] = {}
     out: set[Pair] = set()
-    for _late, _key, (p, q) in sorted(keyed):
+    for _key, (p, q) in sorted(keyed):
         rp, rq = _root(parent, p), _root(parent, q)
         if rp != rq:
             parent[rq] = rp
@@ -74,14 +71,12 @@ def spanning_forest(
 def draw_kinds(
     roles: Mapping[int, PlaceRole],
     realised: Iterable[Pair],
-    planned: Collection[Pair],
     table: Mapping[str, int],
     rng: random.Random,
 ) -> dict[Pair, AdjacencyKind]:
-    """The kind of every realised pair. A spanning forest of the realised pairs, planned
-    pairs first and each weighted by how often the corpus leaves its role pair passable,
-    draws gated or open. Every other planned pair draws from the whole table, and every
-    other unplanned pair is closed."""
+    """The kind of every realised pair. A spanning forest of the realised pairs, each
+    weighted by how often the corpus leaves its role pair passable, draws gated or open.
+    Every other pair draws from the whole table."""
     pairs = sorted(realised)
 
     def weights(e: Pair) -> dict[AdjacencyKind, float]:
@@ -92,13 +87,5 @@ def draw_kinds(
         total = sum(w.values())
         return sum(w[k] for k in PASSABLE) / total if total > 0 else 1.0
 
-    span = spanning_forest(pairs, planned, passable, rng)
-    kinds: dict[Pair, AdjacencyKind] = {}
-    for e in pairs:
-        if e in span:
-            kinds[e] = draw_kind(rng, weights(e), PASSABLE)
-        elif e in planned:
-            kinds[e] = draw_kind(rng, weights(e), ALL_KINDS)
-        else:
-            kinds[e] = AdjacencyKind.CLOSED
-    return kinds
+    span = spanning_forest(pairs, passable, rng)
+    return {e: draw_kind(rng, weights(e), PASSABLE if e in span else ALL_KINDS) for e in pairs}

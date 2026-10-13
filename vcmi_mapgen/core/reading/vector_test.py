@@ -102,3 +102,16 @@ def test_door_shares_count_the_joined_pairs_at_each_distance() -> None:
     assert vector["door_share_d3"] == 1
     assert "door_share_d4" not in vector
     assert vector["door_share_d5"] == 0
+
+
+def test_home_areas_read_as_the_ratio_and_the_mean_share() -> None:
+    reading = TerritoryReading((), (), (), (), (), player_areas=(300, 100), neutral_areas=(600,))
+    vector = territory_vector(reading)
+    assert vector["home_area_ratio"] == 3
+    assert vector["home_area_share"] == 0.2
+
+
+def test_one_home_territory_reads_no_area_ratio() -> None:
+    vector = territory_vector(TerritoryReading((), (), (), (), (), player_areas=(300,)))
+    assert "home_area_ratio" not in vector
+    assert vector["home_area_share"] == 1

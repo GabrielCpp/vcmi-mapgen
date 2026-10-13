@@ -459,8 +459,8 @@ def main() -> None:
         choices=list(SURFACE_FORMS),
         default=None,
         dest="water_mode",
-        help="water style: 'topology' draws water around the place layout, the others draw "
-        + f"it from noise first (default: {DEFAULT_WATER})",
+        help="water style: 'topology' carves water on the walls between territories once the "
+        + f"places stand, the others draw it from noise first (default: {DEFAULT_WATER})",
     )
     _ = pg.add_argument(
         "--subterrain",

@@ -75,7 +75,9 @@ def territory_vector(reading: TerritoryReading) -> Vector:
     door path joins, the share of close pairs more than ``FAR_HOP`` doors apart or cut
     off, and the share no door or link joins. Last, ``door_share_d<n>`` for each distance
     ``n`` from 2 to ``SHARE_TILES`` between two territories' nearest tiles: the share of the
-    pairs that far apart a door or a link joins."""
+    pairs that far apart a door or a link joins. Then ``home_area_ratio``, the largest
+    player territory's tiles over the smallest's when two or more read, and
+    ``home_area_share``, the mean player territory's share of every territory's tiles."""
     out: Vector = {}
     _put(out, "zones_player_terr", _mean(reading.player_zones))
     _put(out, "zones_neutral_terr", _mean(reading.neutral_zones))
@@ -94,6 +96,12 @@ def territory_vector(reading: TerritoryReading) -> Vector:
     for d in range(2, SHARE_TILES + 1):
         at = [joined for dist, joined in reading.near if dist == d]
         _put(out, f"door_share_d{d}", _share(at.count(True), len(at)))
+    homes = reading.player_areas
+    if len(homes) > 1 and min(homes):
+        out["home_area_ratio"] = max(homes) / min(homes)
+    total = sum(homes) + sum(reading.neutral_areas)
+    if homes and total:
+        out["home_area_share"] = statistics.mean(homes) / total
     return out
 
 

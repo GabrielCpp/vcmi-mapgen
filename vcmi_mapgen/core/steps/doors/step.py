@@ -119,7 +119,7 @@ class DoorsStep(PipelineStep):
         spread = DoorSpread.draw(self.priors.territories.get(level, TerritoryStats()), rng)
         self._spreads[level] = spread
         plan = lp.territories
-        skip = open_zones(lp.places, self._loot.on(level), plan.doors)
+        skip = open_zones(lp.places, self._loot.on(level), plan)
         areas = territory_areas(lp.label, plan.zones)
         home = home_doors(plan, areas)
         land = home_land(plan, home)

@@ -954,35 +954,40 @@ but not judged.
 
 The run on 2026-10-04 generated seeds 1 to 10 at size 72 with each model and read the 71
 corpus maps of side 72. Each cell is a median. The corpus column adds its quartiles. The
-places column reads the graph-first front of that date. The shapes-first front of 2.1
-must be read again on the same seeds before it replaces that column, and the territory
-readings of section 8 join the table then.
+places column reads the graph-first front of that date. The shapes column reads the
+shapes-first front of 2.1 on the same seeds on 2026-10-13, against the corpus spread of
+that day.
 
-| Reading | Corpus [q1, q3] | places | markov |
-|---|---|---|---|
-| palette regions | 7 [5, 7.5] | 5 | 7 |
-| same share | 0.625 [0.510, 0.756] | 0.760 | 0.394 |
-| raw cut | 0.052 [0.022, 0.111] | 0.042 | 0.062 |
-| open share | 0 [0, 0.020] | 0 | 0 |
-| gated share | 0.457 [0.368, 0.529] | 0.544 | 0.619 |
-| closed share | 0.533 [0.450, 0.629] | 0.456 | 0.372 |
-| walkable share of land | 0.365 [0.334, 0.443] | 0.458 | 0.465 |
-| walkable share in a guard's zone of control | 0.182 [0.139, 0.206] | 0.300 | 0.237 |
-| rewards per 100 walkable tiles | 21.0 [17.7, 24.6] | 14.5 | 13.6 |
-| guards per 100 land tiles | 1.43 [1.18, 1.72] | 2.90 | 2.45 |
-| home separation | 1.07 [0.83, 1.60] | 1.65 | 1.13 |
-| value at hop 0 | 124 [104, 141] | 110 | 116 |
-| value at hop 1 | 127 [102, 153] | 114 | 117 |
-| value at hop 2 | 127 [108, 140] | 144 | 121 |
-| value at hop 3 | 115 [100, 155] | 119 | 102 |
-| value at hop 4 or more | 143 [122, 175] | 126 | 124 |
-| guard level at hop 0 | 1.95 [1.67, 2.56] | 2.52 | 2.53 |
-| guard level at hop 1 | 2.54 [1.96, 2.93] | 2.55 | 2.57 |
-| guard level at hop 2 | 3.00 [2.47, 3.38] | 2.41 | 2.61 |
-| guard level at hop 3 | 2.80 [2.29, 3.53] | 2.43 | 2.56 |
-| guard level at hop 4 or more | 2.83 [2.12, 3.50] | 2.59 | 2.50 |
-| road share of walkable tiles | 0.100 [0.052, 0.217] | 0.124 | 0 |
-| seconds per map | | 3.7 | 3.8 |
+| Reading | Corpus [q1, q3] | places | shapes | markov |
+|---|---|---|---|---|
+| palette regions | 7 [5, 7.5] | 5 | 5 | 7 |
+| same share | 0.625 [0.510, 0.756] | 0.760 | 0.558 | 0.394 |
+| raw cut | 0.052 [0.022, 0.111] | 0.042 | 0.074 | 0.062 |
+| open share | 0 [0, 0.020] | 0 | 0 | 0 |
+| gated share | 0.457 [0.368, 0.529] | 0.544 | 0.593 | 0.619 |
+| closed share | 0.533 [0.450, 0.629] | 0.456 | 0.406 | 0.372 |
+| walkable share of land | 0.365 [0.334, 0.443] | 0.458 | 0.422 | 0.465 |
+| walkable share in a guard's zone of control | 0.182 [0.139, 0.206] | 0.300 | 0.135 | 0.237 |
+| rewards per 100 walkable tiles | 21.0 [17.7, 24.6] | 14.5 | 20.4 | 13.6 |
+| guards per 100 land tiles | 1.43 [1.18, 1.72] | 2.90 | 1.21 | 2.45 |
+| home separation | 1.07 [0.83, 1.60] | 1.65 | 1.65 | 1.13 |
+| value at hop 0 | 124 [104, 141] | 110 | 124 | 116 |
+| value at hop 1 | 127 [102, 153] | 114 | 129 | 117 |
+| value at hop 2 | 127 [108, 140] | 144 | 135 | 121 |
+| value at hop 3 | 115 [100, 155] | 119 | 139 | 102 |
+| value at hop 4 or more | 143 [122, 175] | 126 | 145 | 124 |
+| guard level at hop 0 | 1.95 [1.67, 2.56] | 2.52 | 2.54 | 2.53 |
+| guard level at hop 1 | 2.54 [1.96, 2.93] | 2.55 | 2.72 | 2.57 |
+| guard level at hop 2 | 3.00 [2.47, 3.38] | 2.41 | 2.40 | 2.61 |
+| guard level at hop 3 | 2.80 [2.29, 3.53] | 2.43 | 2.88 | 2.56 |
+| guard level at hop 4 or more | 2.83 [2.12, 3.50] | 2.59 | 2.75 | 2.50 |
+| road share of walkable tiles | 0.100 [0.052, 0.217] | 0.124 | 0.136 | 0 |
+| territories | 11 [9, 13] | | 4 | |
+| territory loops | 1 [0, 3] | | 0.5 | |
+| door hops between close territories | 1.08 [1.00, 1.20] | | 1.06 | |
+| walled share of close territory pairs | 0.16 [0, 0.37] | | 0.06 | |
+| zones per player territory | 2.5 [1.75, 3.75] | | 4.0 | |
+| seconds per map | | 3.7 | 7.4 | 3.8 |
 
 Places sits closer on 12 of the 22 judged readings: same share, raw cut, the gated and
 closed shares, walkable share, rewards, guard level at hops 0, 1 and 4, value at hops 3
@@ -993,6 +998,15 @@ The margin is narrow. Both models place about twice the corpus guard rate and to
 rewards per walkable tile, and both leave too much of the walkable land inside a guard's
 zone of control. Places also lays out homes farther apart than the corpus and merges its
 palettes into fewer regions.
+
+The shapes-first front brings the guard rate, the zone of control and the rewards per
+walkable tile into the corpus spread. It reads 4 territories against the corpus 11. The
+corpus spread pools every side and player count, and the 2-player maps near side 72 hold
+2 to 9 territories, so the draw itself sits low. The reader then merges territories
+across the doors no guard holds, and the door step leaves unguarded every door a player
+crosses before its land reaches the mean home area. A home grown small opens a whole
+layer of doors, so each player territory reads 4 zones against the corpus 2.5. Item 3 of
+section 10 is the choice this raises.
 
 ## 9. Why each failed arm fails, in these terms
 
@@ -1047,18 +1061,22 @@ carries each one with a recommendation and the slice that decides it.
    3 to 2 at side 72, against the corpus 1. A fixed budget of 1 reached 1 on those seeds,
    but a budget of 2 brought a detour back, so the cap stays alone.
 2. Barrier thickness. Settled in slice 2: three depths by hop 1, hop 2 and hop 3 or more,
-   at 1, 3 and 4 tiles on side 72, each a share of the map side. The water of the
-   topology mode does not seek the deepest walls yet. That waits for the shapes-first
-   order of slice 4.
+   at 1, 3 and 4 tiles on side 72, each a share of the map side. Since slice 4 the water
+   of the topology mode floods the walled fronts, the widest wall first.
 3. Territory area. Whether a territory draws a target area as well as a place count.
    Recommendation: a place count only, as today, until the territory-size reading sits
-   outside the corpus spread.
+   outside the corpus spread. Slice 4 puts it outside: homes chosen on grown shapes
+   differ in area by up to four times at side 48, their territories by up to eleven
+   times, and the player territories read 4
+   zones against the corpus 2.5 [1.75, 3.75] at side 72. A tile budget per territory, or
+   a door step that opens a cramped home's doors one at a time, is the next choice.
 4. Home choice. Farthest-first among roomy places, or a draw from several farthest-first
-   candidates scored by claimed value. Recommendation: farthest-first with the corpus
-   home separation as the acceptance test, and fairness by placement after.
+   candidates scored by claimed value. Settled in slice 4: farthest-first with the
+   corpus home separation as the acceptance test, and fairness by placement after.
 5. Pockets and islands. Whether a pocket is a role the walk labels on a degree-1 place
-   or a shape the growth makes on purpose. Recommendation: a label on a degree-1 place
-   first, and a grown pocket only if the pocket rate reads low.
+   or a shape the growth makes on purpose. Settled in slice 4: a label on a degree-1
+   place, and a grown pocket only if the pocket rate reads low. A water island becomes
+   its own territory through the split of cut territories.
 6. Prior pooling. The territory count by player count and land is sparse at 7 and 8
    players and at side 144. Recommendation: pool by players within a size band and
    fall back to the nearest player count with 5 or more maps. Slice 3 draws the

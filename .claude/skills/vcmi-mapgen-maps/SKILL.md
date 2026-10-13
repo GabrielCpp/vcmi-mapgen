@@ -93,7 +93,7 @@ metadata:
   `core/planning/entrances.py` reads it. `label_zones(zones)` rebuilds one from
   hand-built zones in tests.
 - On the surface, the segmentation comes from the place map: each zone is one
-  place of the laid-out place graph. Two adjacent places stay two zones even when they
+  place grown on the land. Two adjacent places stay two zones even when they
   share a terrain.
 - On the underground, `terrain_gen/place_map.py` `flood_places` makes the places, so
   the segmentation is a 4-connected flood fill by terrain type. Water and rock are

@@ -22,7 +22,8 @@ def mine_territories(
 ) -> TerritoryStats:
     """The territories of ``level`` read on every map that has it, pooled, with the door
     levels of each map that has doors kept apart, and the territory count of each map that
-    has territories beside its player count and land tiles."""
+    has territories beside its player count, land tiles and territory areas. A player
+    territory several players share counts as an equal part for each."""
     readings: list[TerritoryReading] = []
     counts: list[TerritoryCount] = []
     for state, own, n in zip(maps, owners, players, strict=True):
@@ -33,10 +34,10 @@ def mine_territories(
         reading = territory_reading(read)
         readings.append(reading)
         if reading.territories:
-            counts.append(TerritoryCount(n, len(ground.land), reading.territories))
+            area = sum(reading.player_areas) + sum(reading.neutral_areas)
+            homes = tuple(t.area // len(t.owners) for t in read.territories for _ in t.owners)
+            counts.append(TerritoryCount(n, len(ground.land), reading.territories, homes, area))
     return TerritoryStats(
-        player_zones=tuple(n for r in readings for n in r.player_zones),
-        neutral_zones=tuple(n for r in readings for n in r.neutral_zones),
         pair_doors=tuple(n for r in readings for n in r.pair_doors),
         player_doors_by_map=tuple(r.player_door_levels for r in readings if r.player_door_levels),
         neutral_doors_by_map=tuple(

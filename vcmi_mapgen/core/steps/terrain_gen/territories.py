@@ -1,9 +1,9 @@
-"""The territories of a place map: a territory count drawn from the corpus maps nearest it,
-each home with a corpus-drawn number of its neighbours, the other places grouped into the
-neutral territories the count leaves, and the doors that join them. A door goes on every
-touching pair of territories more doors apart than ``MAX_HOP`` or not joined at all. A
-Subterranean Gate counts as a door for the hops, so the other level's territories join the
-count through ``Across``. Every border between two territories without a door is walled,
+"""The territories of a place map: one corpus record drawn from the maps nearest it gives
+the territory count and the tiles each home territory grows toward, the other places group
+into neutral territories that share the rest of the land, and the doors join them. A door
+goes on every touching pair of territories more doors apart than ``MAX_HOP`` or not joined
+at all. A Subterranean Gate counts as a door for the hops, so the other level's territories
+join the count through ``Across``. Every border between two territories without a door is walled,
 the wall as wide as ``wall_width`` gives for the doors between them."""
 
 import collections
@@ -18,7 +18,7 @@ from vcmi_mapgen.core.priors.territories import TerritoryCount
 from vcmi_mapgen.core.reading.borders import AdjacencyKind
 from vcmi_mapgen.core.reading.territories import hop_counts
 from vcmi_mapgen.core.steps.terrain_gen.border_kinds import spanning_forest
-from vcmi_mapgen.core.steps.terrain_gen.place_graph import NEAREST_RECORDS
+from vcmi_mapgen.core.steps.terrain_gen.place_draws import NEAREST_RECORDS
 from vcmi_mapgen.core.steps.terrain_gen.result import PlannedDoor, TerritoryPlan
 
 type Pair = tuple[int, int]
@@ -64,66 +64,93 @@ def draw_count(spread: Sequence[int], rng: random.Random) -> int:
     return rng.choice(counts) if counts else 1
 
 
+def closer(
+    frontier: Iterable[int], sizes: Sequence[int], gap: float, rng: random.Random
+) -> int | None:
+    """A random place of ``frontier`` that closes more of ``gap`` tiles than it overshoots,
+    None when none does."""
+    fits = sorted(p for p in frontier if 0 < sizes[p] < 2 * gap)
+    return rng.choice(fits) if fits else None
+
+
 def group_neutral(
-    places: Iterable[int], edges: Iterable[Pair], spread: Sequence[int], rng: random.Random
+    places: Iterable[int],
+    edges: Iterable[Pair],
+    sizes: Sequence[int],
+    budget: float,
+    rng: random.Random,
 ) -> list[list[int]]:
     """``places`` grouped into territories. Each grows from the lowest place still free, by
-    random steps over ``edges`` to free places, to a count drawn from ``spread``."""
+    random steps over ``edges`` to free places, toward ``budget`` tiles, where place ``p``
+    holds ``sizes[p]`` tiles. A group stops when every free neighbour would overshoot the
+    budget more than it closes the gap."""
     free = set(places)
     nbr = _neighbours(edges)
     groups: list[list[int]] = []
     for start in sorted(free):
         if start not in free:
             continue
-        size = draw_count(spread, rng)
         free.discard(start)
         group = [start]
-        while len(group) < size:
-            frontier = sorted({n for p in group for n in nbr[p] if n in free})
-            if not frontier:
-                break
-            pick = rng.choice(frontier)
+        area = sizes[start]
+        while (
+            pick := closer(
+                {n for p in group for n in nbr[p] if n in free}, sizes, budget - area, rng
+            )
+        ) is not None:
             free.discard(pick)
             group.append(pick)
+            area += sizes[pick]
         groups.append(group)
     return groups
+
+
+def home_budget(record: TerritoryCount, land: int) -> float:
+    """The tiles each home territory grows toward on ``land`` tiles: the corpus record's
+    mean player share of its territories' tiles, or an even split over its territory count
+    when it reads no player territory."""
+    share = record.home_share
+    return land * (share if share is not None else 1 / max(1, record.territories))
 
 
 def draw_partition(
     owners: Sequence[int | None],
     edges: Collection[Pair],
-    player_zones: Sequence[int],
-    territories: int,
+    sizes: Sequence[int],
+    record: TerritoryCount,
     rng: random.Random,
 ) -> tuple[int, ...]:
     """The territory of each place, where ``owners[p]`` is the player place ``p`` is home
-    to. Each home in place order takes itself and a random set of its neighbours over
-    ``edges``, a count drawn from ``player_zones`` in all, clamped to the neighbours it
-    has. The other places group into neutral territories of one size, the size that splits
-    them into the territories the homes leave of ``territories``."""
+    to and ``sizes[p]`` its tiles. The homes grow in turns, the smallest first, each by a
+    random neighbouring place no territory holds that brings it closer to the
+    ``home_budget`` of ``record``, until none does. The other places group into neutral
+    territories that share the land the homes leave evenly among the territories the homes
+    leave of the record's count."""
     nbr = _neighbours(edges)
-    territory: dict[int, int] = {}
+    land = sum(sizes)
     homes = [p for p, owner in enumerate(owners) if owner is not None]
-    for t, home in enumerate(homes):
-        near = sorted(nbr[home])
-        if home in territory or any(n in territory for n in near):
-            raise ValueError(f"home {home} shares a neighbour with another home")
-        k = min(draw_count(player_zones, rng), 1 + len(near))
-        for p in (home, *rng.sample(near, k - 1)):
-            territory[p] = t
+    territory = {home: t for t, home in enumerate(homes)}
+    area = [sizes[home] for home in homes]
+    budget = home_budget(record, land)
+    growing = set(range(len(homes)))
+    while growing:
+        t = min(growing, key=lambda t: (area[t], t))
+        held = [p for p, h in territory.items() if h == t]
+        frontier = {n for p in held for n in nbr[p] if n not in territory and owners[n] is None}
+        pick = closer(frontier, sizes, budget - area[t], rng)
+        if pick is None:
+            growing.discard(t)
+            continue
+        territory[pick] = t
+        area[t] += sizes[pick]
     rest = [p for p in range(len(owners)) if p not in territory]
     inner = [(a, b) for a, b in sorted(edges) if a not in territory and b not in territory]
-    spread = neutral_spread(len(rest), territories, len(homes))
-    for t, group in enumerate(group_neutral(rest, inner, spread, rng), len(homes)):
+    neutral = max(1, record.territories - len(homes))
+    left = sum(sizes[p] for p in rest) / neutral
+    for t, group in enumerate(group_neutral(rest, inner, sizes, left, rng), len(homes)):
         for p in group:
             territory[p] = t
     return tuple(territory[p] for p in range(len(owners)))
-
-
-def neutral_spread(free: int, territories: int, homes: int) -> tuple[int]:
-    """The one neutral territory size that splits ``free`` places into the territories the
-    homes leave of ``territories``, at least one."""
-    return (max(1, math.ceil(free / max(1, territories - homes))),)
 
 
 def _pieces(places: Sequence[int], nbr: Mapping[int, set[int]]) -> list[list[int]]:
@@ -175,22 +202,23 @@ def _pool(counts: Sequence[TerritoryCount], players: int) -> list[TerritoryCount
     return [c for c in counts if c.players == best]
 
 
-def draw_territory_count(
+def draw_territory_record(
     counts: Sequence[TerritoryCount], players: int, land: int, rng: random.Random
-) -> int:
-    """A territory count from one corpus record. The records whose land
+) -> TerritoryCount:
+    """One corpus record for the territory count and the home budget. The records whose land
     lies within ``LAND_BAND`` times ``land`` keep the nearest player count that has
     ``NEAREST_RECORDS`` maps, or the whole corpus does when no player count in the band has
     as many. The record is drawn among the ``NEAREST_RECORDS`` of them whose land is
-    closest. Without records the count is one territory more than ``players``."""
+    closest. Without records it is a record of one territory more than ``players`` and no
+    player territory."""
     if not counts or land <= 0:
-        return players + 1
+        return TerritoryCount(players, land, players + 1)
     band = [c for c in counts if abs(math.log(c.land / land)) <= math.log(LAND_BAND)]
     pool = _pool(band, players) if band else []
     if len(pool) < NEAREST_RECORDS:
         pool = _pool(counts, players)
     pool.sort(key=lambda c: (abs(math.log(c.land / land)), c.territories, c.land))
-    return rng.choice(pool[:NEAREST_RECORDS]).territories
+    return rng.choice(pool[:NEAREST_RECORDS])
 
 
 def _fronts(territory: Sequence[int], realised: Iterable[Pair]) -> dict[Pair, list[Pair]]:
@@ -226,31 +254,27 @@ def detour_doors(
 
 def draw_doors(
     territory: Sequence[int],
-    borders: tuple[Iterable[Pair], Collection[Pair]],
+    realised: Iterable[Pair],
     pair_doors: Sequence[int],
     rng: random.Random,
     links: Collection[Pair] = (),
 ) -> dict[Pair, int]:
-    """The door count of each zone pair that holds a door, from ``borders``, the realised
-    zone pairs and the planned ones. A spanning forest over the bordering territory pairs,
-    those a planned zone pair joins first, puts one door on each of its pairs, on one of
-    their planned zone pairs when they have some. ``detour_doors`` then joins every touching
-    pair more than ``MAX_HOP`` hops apart over the forest and ``links``, on the same choice
-    of zone pairs. For each joined territory pair, a count drawn from ``pair_doors`` above
-    one adds a second door on another zone pair of the same territory pair, or on the same
-    zone pair when it is the only one."""
-    realised, planned = borders
-    fronts = _fronts(territory, realised)
-    choices = {tp: [e for e in pairs if e in planned] or pairs for tp, pairs in fronts.items()}
-    first = {tp for tp, pairs in fronts.items() if any(e in planned for e in pairs)}
-    forest = sorted(spanning_forest(fronts, first, lambda _e: 1.0, rng))
+    """The door count of each zone pair that holds a door, among the ``realised`` zone
+    pairs. A spanning forest over the bordering territory pairs puts one door on each of
+    its pairs, on one of their zone pairs. ``detour_doors`` then joins every touching pair
+    more than ``MAX_HOP`` hops apart over the forest and ``links``. For each joined
+    territory pair, a count drawn from ``pair_doors`` above one adds a second door on
+    another zone pair of the same territory pair, or on the same zone pair when it is the
+    only one."""
+    choices = _fronts(territory, realised)
+    forest = sorted(spanning_forest(choices, lambda _e: 1.0, rng))
     doors = {rng.choice(choices[tp]): 1 for tp in forest}
     doors |= detour_doors(choices, {*forest, *links}, MAX_HOP, rng)
     for door in sorted(doors):
         if min(MAX_DOORS, draw_count(pair_doors, rng)) < 2:
             continue
         a, b = territory[door[0]], territory[door[1]]
-        others = [e for e in fronts[(min(a, b), max(a, b))] if e != door]
+        others = [e for e in choices[(min(a, b), max(a, b))] if e != door]
         if others:
             doors[rng.choice(others)] = 1
         else:

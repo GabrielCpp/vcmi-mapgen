@@ -14,7 +14,7 @@ from vcmi_mapgen.core.priors.places import PlaceStats
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen.macro import pair_probs
 from vcmi_mapgen.core.steps.terrain_gen.palette import neighbours
-from vcmi_mapgen.core.steps.terrain_gen.place_graph import Edge
+from vcmi_mapgen.core.steps.terrain_gen.place_draws import Edge
 
 SWEEPS = 60
 CLASH = 1e6

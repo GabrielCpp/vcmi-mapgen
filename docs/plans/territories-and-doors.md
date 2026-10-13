@@ -103,6 +103,10 @@ Two player territories touch in the corpus, always through a guarded door.
 
 ### Drawing the partition
 
+Superseded by slice 4 of `docs/plans/territory-topology.md`: the places grow on the land
+first, and the partition and the border kinds read the realised adjacency. No early place
+graph is left.
+
 The places model draws territories on its early place graph, before zones grow.
 
 - A player territory is the home plus a corpus-drawn number of its early-graph neighbours.
@@ -123,6 +127,10 @@ The terrain step publishes the partition for later steps, and `generate` writes 
 `topology.json` with the early graph and the planned doors.
 
 ### Border kinds
+
+Superseded by slice 4 of `docs/plans/territory-topology.md`: the places grow on the land
+first, and the partition and the border kinds read the realised adjacency. No early place
+graph is left.
 
 - Between territories, a spanning forest picks one door on enough edges to connect every
   territory. Extra doors follow at corpus odds.

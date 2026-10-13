@@ -116,7 +116,7 @@ Roles and interfaces:
     rng) -> int` returns a territory count drawn from one record. It keeps the records
     whose land lies within `LAND_BAND` of the map's, takes the nearest player count with
     `NEAREST_RECORDS` maps, and draws among the `NEAREST_RECORDS` nearest by land as
-    `place_graph.place_count` does. With no record it returns the home count plus one.
+    `place_draws.place_count` does. With no record it returns the home count plus one.
   - `group_neutral(places, edges, spread, rng)` keeps its signature. `bordered` passes a
     one-value spread computed as `ceil(free places / max(1, m - homes))`, so the neutral
     groups land on `m - homes` territories. The pooled `neutral_zones` prior stays in
@@ -486,7 +486,7 @@ Roles and interfaces:
 
 - `core/steps/terrain_gen/shapes.py`, new: `grow_shapes(land: Mask, n: int, rng) ->
   Layout` picks `n` anchors farthest-first on the land and grows them with the existing
-  `grow` from `layout.py`. `n` comes from `place_graph.place_count` on the land count.
+  `grow` from `layout.py`. `n` comes from `place_draws.place_count` on the land count.
   It never retries.
 - `core/steps/terrain_gen/homes.py`, new: `choose_homes(layout: Layout, k: int, rng) ->
   list[int]` picks `k` home places farthest-first among the places `roomy` accepts, and
@@ -535,6 +535,245 @@ Kept: `grow`, `grow_regions`, `roomy`, `home_gap`, `snap`, `spread`, `separate`,
 
 Docs updated in the same change: the stale statements in §5.
 
+Built in slice 4. `surface` runs: the form's land, `shape_caps` and `grow_shapes`,
+`choose_homes`, the territories and their provisional doors, the form's flood, `settle`
+again, `label_roles`, palette, identity, paint, reconcile, and `bordered` with the
+territories `carried` hands the reconciled places. `place_graph.py` keeps only the corpus
+draws the shapes start from. `layout.py` keeps `Layout`, `grow` and the room and spreading
+helpers.
+
+Territories on seeds 1 to 10 at 72 with no underground, medians over the seeds that read 3
+territories or more. Before the slice seed 5 failed with no home reaching a loot zone, and
+after it seeds 1 and 5 read fewer than 3 territories:
+
+| Reading | Corpus | Slice 3 | Slice 4 |
+|---|---|---|---|
+| territories | 11 [9, 13] | 9 | 5.5 |
+| loops | 1 [0, 3] | 2 | 1.5 |
+| doors | | 8 | 6 |
+| close pairs | | 7 | 6.5 |
+| door hops between close pairs | 1.08 [1.00, 1.20] | 1.00 | 1.05 |
+| close pairs 3 hops or more apart | | 0 | 0 |
+| walled close pairs | 0.16 [0, 0.37] | 0 | 0.05 |
+
+Door share by closest-tile distance, every pair of every seed:
+
+| Distance | Corpus | Slice 3 | Slice 4 |
+|---|---|---|---|
+| 2 | 82% | 98% (43 of 44) | 92% (44 of 48) |
+| 3 | 75% | 91% (21 of 23) | 94% (15 of 16) |
+| 4 | 50% | 57% (8 of 14) | 44% (4 of 9) |
+| 5 | 14% | 4% (1 of 26) | 20% (1 of 5) |
+| 6 | 16% | 60% (6 of 10) | 20% (1 of 5) |
+
+The pairs 4 to 6 tiles apart fall from 50 to 19 with fewer territories. Water walls 5 of
+them, against 19 before.
+
+`readings` on the same seeds, the readings that changed side of the corpus spread:
+
+| Reading | Corpus [q1, q3] | Slice 3 | Slice 4 |
+|---|---|---|---|
+| palette regions | 7 [5, 7] | 4 | 5 |
+| territory count | 11 [9, 13] | 9 | 4 |
+| zones per player territory | 2.5 [1.75, 3.75] | 2.75 | 4.0 |
+| home separation | 1.07 [0.83, 1.60] | 1.39 | 1.65 |
+| zone of control share | 0.184 [0.142, 0.210] | 0.155 | 0.135 |
+| guard level at hop 2 | 3.0 [2.6, 3.36] | 3.0 | 2.4 |
+| door share at 4 tiles | 0.50 [0, 0.96] | 0.80 | 1.00 |
+| door share at 5 tiles | 0 [0, 0.33] | 0 | 0.40 |
+| seconds per map | | 11.6 | 7.4 |
+
+The gated share falls from 0.604 to 0.593 and stays above the spread. Value claimed first
+over 40 days rises from 0.54 to 0.74 against the corpus 0.38. Home separation rises, as
+the slice asks.
+
+The territory count falls below the spread. The corpus spread pools every side and
+player count. The 2-player records nearest side 72 hold 2, 3, 4 and 9 territories, so the
+draw gives 2 to 9 and the planned count reads 3 to 18, median 6. Before the slice the
+growth cut the graph's territories apart and `settle` split them into more, median 13.
+The reader then merges every territory joined by a door no guard holds. `home_doors`
+leaves unguarded each door a player crosses before its land holds the mean home area. A
+home place is now any grown place a town fits in, so home areas differ: 670 and 202 tiles
+on seed 3 at 48, and home territories of 1689 and 154 tiles on seed 16. A small home
+crosses a whole layer of doors at once, so a player territory reads 4 zones. Open
+question 4 recommended a tile budget for this case. It is not built: the choice between a
+tile budget per territory and a door step that opens a cramped home's doors one at a time
+is the user's.
+
+The mine promise, as under slice 1:
+
+| Rule | 48, 20 seeds | 72, 10 seeds |
+|---|---|---|
+| Slice 3 | 6 / 4 / 13 | 1 / 4 / 9 |
+| Slice 4 | 3 / 7 / 14 | 1 / 1 / 9 |
+
+At 72 the gap seeds fall from 4 to 1. At 48 they rise from 4 to 7, on seeds 3, 9, 10, 12,
+16, 18 and 19. The same home imbalance drives them: one player's land is a fraction of the
+other's, and the repair finds no spot for its mines close by.
+`test_a_small_map_keeps_the_mine_promise` moves from seed 8 to seed 1, which keeps it.
+
+Whole-map CPU seconds at 144 with 6 players, one `generate` run each, head and slice 4
+alternating on the same machine at a load average near 1:
+
+| Seed | Before | After |
+|---|---|---|
+| 1 | 83.2 | 88.1 |
+| 2 | 77.0 | 85.8 |
+| 3 | 90.4 | 73.6 |
+| Mean | 83.5 | 82.5 |
+
+The two means sit within the run-to-run spread, so slice 4 leaves the time at 144 where it was.
+
+Decisions and deviations:
+
+- The caps come from the corpus: `shape_caps` draws the place count with `place_count`,
+  then a role mix with `draw_roles` and the sizes with `draw_sizes`, and shuffles them. The
+  sketch passed `n` alone, which leaves the sizes unsaid.
+- The anchors stand on the largest land mass only. A piece no anchor reaches becomes a
+  pocket place, as `grow` did before.
+- Water comes before paint and after the territories, not after paint. The flood changes
+  the shapes, so the roles, the palette and the paint must read the flooded map. The form
+  splits in two: `land` and `flood`. `Shore` carries the shapes, territories, provisional
+  doors, wall widths and the tiles that stay land.
+- The flood keeps the land one piece and keeps half of each place's tiles in one piece, so
+  it never strands a home or erases a place.
+- `WaterTarget.masses` reads as the count of walled fronts carved, as §2 says. When the
+  carve stalls short of the share, one more front joins.
+- The provisional doors that place the water come from the stream `water_doors`. The
+  final doors come from `bordered` on the stream `doors` and may differ, so a final door
+  may stand on a front the water walled.
+- A pass needs one neighbour in another territory. The sketch's "touching two
+  territories" reads here as its own and one other.
+- The territory count reads the land count `Coastline.planned`, as the place count does.
+- `roomy` reads the land, so a home room may span two places.
+- Every home draws one shared `player_zones` count. Independent draws gave home territories
+  of 187 and 1734 tiles on seed 3 at 72.
+- `carried` re-homes a place the reconcile cut off from the rest of its territory: it
+  takes the territory most of its neighbours hold. Without it a 4-tile sliver became its
+  own territory with its own door.
+- `spanning_forest` drops its `planned` parameter, dead once no pair is planned.
+- `TerritoryStats.neutral_zones` is deleted with its mining. `player_zones` stayed for
+  `draw_partition`, and the tile budget slice deleted it. The `zones_neutral_terr` reading
+  stays, since the reader measures it on both sides.
+- No `readings` row measures role adjacency or role sizes, so the slice's first reading
+  bar has no column to check.
+
+Open after slice 4, all closed by the tile budget slice below:
+
+- The territory area choice above.
+- `place_graph.py` no longer held a graph. The tile budget slice renamed it to
+  `place_draws.py`.
+- `snap`, `spread` and `separate` stayed in `layout.py` with no caller. The tile budget
+  slice deleted them.
+
+### Tile budget
+
+Each home territory grows toward a share of the land, so each player starts with a
+comparable area. The share comes from the corpus.
+
+- The miner records each corpus map's land and home territory areas in `TerritoryCount`,
+  as `area` and `homes`. A territory several players share counts as an equal part for
+  each. `home_share` is the mean home area over the area of every territory.
+- `draw_territory_record` replaces `draw_territory_count`. It draws one record by the
+  same nearest-record rule, and the level reads both its territory count and its share
+  from it.
+- `home_budget` is the level's land times the record's share. A record without a player
+  territory splits the land evenly over its count.
+- `choose_homes` prefers places at or under the budget, so no home starts above it.
+- `draw_partition` grows the homes in turns, the smallest first. Each turn adds a free
+  neighbouring place that closes more of the gap to the budget than it overshoots. A home
+  stops when no neighbour does.
+- `group_neutral` grows each neutral territory the same way toward its own budget: the
+  land the homes leave, over the territories the homes leave of the record's count.
+- `TerritoryStats.player_zones` and `neutral_spread` are deleted.
+
+Two door rules changed to keep the budget in the read map:
+
+- `home_reach` stops before a layer of doors whose land would overshoot the room by as
+  much as or more than the home falls short of it. Before, a small home crossed a whole
+  layer at once and read twice the room.
+- `open_zones` leaves a treasure place open only when its territory holds that place
+  alone. A treasure place inside a home territory left the door between two homes
+  unguarded, and 8 of 20 seeds at 48 read one home territory. After the rule one seed
+  does.
+
+`readings` at 72 on seeds 1 to 10:
+
+| Reading | Corpus [q1, q3] | Slice 3 | Slice 4 | Tile budget |
+|---|---|---|---|---|
+| territory count | 11 [9, 13] | 9 | 4 | 5 |
+| zones per player territory | 2.5 [1.75, 3.75] | 2.75 | 4.0 | 3.0 |
+| home separation | 1.07 [0.83, 1.60] | 1.39 | 1.65 | 1.91 |
+| zone of control share | 0.184 [0.142, 0.210] | 0.155 | 0.135 | 0.135 |
+| guard level at hop 2 | 3.0 [2.6, 3.36] | 2.5 | 2.4 | 2.76 |
+| gated share | 0.435 [0.359, 0.547] | 0.604 | 0.593 | 0.523 |
+| palette regions | 7 [5, 7] | 4 | 5 | 4 |
+| value claimed within 40 days | 0.379 [0.232, 0.551] | 0.544 | 0.737 | 0.803 |
+| home area ratio | 2.54 [1.63, 3.95] | | | 1.19 |
+| home area share | 0.141 [0.095, 0.237] | | | 0.397 |
+| seconds per map | | 11.6 | 7.4 | 11.3 |
+
+`readings` at 48, seeds 1 to 20 before and 19 seeds after, since seed 18 stops in the
+portal step:
+
+| Reading | Corpus [q1, q3] | Slice 3 | Tile budget |
+|---|---|---|---|
+| territory count | 11 [7, 17] | 3 | 4 |
+| zones per player territory | 2.67 [1.67, 3.9] | 2.0 | 2.0 |
+| home separation | 0.92 [0.71, 1.57] | 1.53 | 1.54 |
+| zone of control share | 0.177 [0.136, 0.212] | 0.156 | 0.161 |
+| guard level at hop 2 | 3.0 [2.5, 3.5] | 2.90 | 2.5 |
+| gated share | 0.424 [0.341, 0.516] | 0.652 | 0.625 |
+| value claimed within 40 days | 0.355 [0.230, 0.589] | 0.680 | 0.511 |
+| home area ratio | 2.54 [1.59, 4.73] | | 1.25 |
+| home area share | 0.132 [0.086, 0.249] | | 0.356 |
+
+The home area ratio, planned and read, median over the seeds with the read quartiles:
+
+| Run | 48 planned | 48 read | 72 planned | 72 read |
+|---|---|---|---|---|
+| Slice 3 | 1.45 | 1.98 [1.42, 2.59] | 2.57 | 1.60 [1.13, 2.67] |
+| Slice 4 | 1.57 | 2.11 [1.10, 3.43] | 1.27 | 1.65 [1.26, 2.96] |
+| Tile budget | 1.28 | 1.50 [1.20, 1.86] | 1.09 | 1.33 [1.16, 1.51] |
+
+The worst read ratio falls from 17.1 to 4.2 at 48 and from 13.2 to 2.0 at 72.
+
+The ratio and the share fall outside the readings spread, and so does the territory
+count. The spread pools every player count. The 13 two-player corpus maps read a home
+ratio of median 3.46 and a share of median 0.40 with quartiles 0.20 and 0.50. The five
+nearest side 48 read a median ratio of 1.09 and a median count of 3. The generated share
+and count match the two-player records the draw reads. Open question 7 covers a readings
+spread pooled by player count.
+
+The mine promise:
+
+| Rule | 48 | 72, 10 seeds |
+|---|---|---|
+| Slice 3, 20 seeds | 6 / 4 / 13 | 1 / 4 / 9 |
+| Slice 4, 20 seeds | 3 / 7 / 14 | 1 / 1 / 9 |
+| Tile budget, 19 seeds | 5 / 6 / 12 | 2 / 2 / 8 |
+
+The gaps at 48 fall on seeds 3, 4, 11, 16, 17 and 19. The target of 6 kept and 4 gaps is
+not met. `test_a_small_map_keeps_the_mine_promise` moves back to seed 8, since seed 1 now
+has its gold mines 10 to 11 days from home.
+`test_every_territory_on_a_home_land_opens_toward_a_home` moves from seeds 1 and 5 to 3
+and 4, since seed 1 now plans two territories.
+
+Seed 18 at 48 stops in the portal step under the full catalog: "L0 has 3 target(s) cut
+off on foot". Pocket place 5 is its own territory and touches the land only on a
+diagonal, so it has no door, and vegetation fills its 3-tile neck. `places.coast` leaves
+the diagonal pinch. Seed 6 at 144 stops for the same reason.
+
+Whole-map CPU seconds at 144 with 6 players, slice 3 and the tile budget alternating on
+the same machine at a load average near 1:
+
+| Seed | Slice 3 | Tile budget |
+|---|---|---|
+| 1 | 82.9 | 72.5 |
+| 2 | 76.9 | 82.4 |
+| 3 | 90.4 | 78.8 |
+| Mean | 83.4 | 77.9 |
+
 ## 4. Open questions
 
 Each carries my recommendation. The implementer takes the recommendation unless the user
@@ -565,6 +804,8 @@ says otherwise.
    scratch records lets a later slice add a tile budget if the readings show territories
    too uneven.
    Taken in slice 3: the underground draws a place count only.
+   Taken in the tile budget slice: each home grows toward a corpus share of the land, and
+   the neutral territories share the rest.
 5. Home choice. Farthest-first with the corpus gap as acceptance, or an energy over the
    fairness readings. Recommendation: farthest-first with acceptance. Fairness by
    placement comes after coverage, as the user's rule says.
@@ -584,6 +825,8 @@ says otherwise.
    as a door or a loop.
 
 ## 5. Stale statements to fix
+
+Slice 4 fixed every line below in the same change.
 
 These lines describe the graph-first front. Slice 4 deletes the code they describe. The
 root `AGENTS.md` and `vcmi_mapgen/AGENTS.md` are generated. The implementer edits the

@@ -8,7 +8,7 @@ from collections import deque
 from collections.abc import Collection, Sequence
 
 from vcmi_mapgen.core.priors.places import PaletteCount
-from vcmi_mapgen.core.steps.terrain_gen.place_graph import NEAREST_RECORDS, Edge
+from vcmi_mapgen.core.steps.terrain_gen.place_draws import NEAREST_RECORDS, Edge
 
 
 def neighbours(n: int, adjacency: Collection[Edge]) -> list[list[int]]:

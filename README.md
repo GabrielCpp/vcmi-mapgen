@@ -23,9 +23,10 @@ economy and guard strength stay balanced.
 Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m` maps) and
 **deterministic** (same seed ⇒ bit-identical map):
 
-1. **Places.** A place graph drawn from corpus statistics, laid out on land:
-   one home per player, treasure grounds and pockets, each with its hop count
-   from the nearest home. Each border between two places is closed, gated or
+1. **Places.** Place shapes grown on the land at the corpus count and sizes,
+   then the homes chosen on them as far apart as the corpus spaces towns, and the
+   roles of the rest: treasure grounds and pockets, each with its hop count from
+   the nearest home. Each border between two places is closed, gated or
    open. Ocean, islands and an underground level linked by Subterranean Gate
    pairs are optional. The underground splits into territories at the corpus
    count of an underground with no home. Its doors follow the surface rule, and
@@ -98,7 +99,7 @@ uv run python -m vcmi_mapgen.cli generate \
 
 `generate` empties the map's folder before it writes, so a rerun leaves no file from an
 earlier run. `run.json` records the seed, the size and every flag of the run.
-`topology.json` records each level's planned topology under `levels`: the early place graph,
+`topology.json` records each level's planned topology under `levels`: the realised place adjacency,
 the territory of each zone, the owner of each territory, and each door with its zones,
 territories, owners and tiles. Each door also records its guard: the tile, the creature level
 and the levels the rival cut raised it by. `rivals` lists the enemy pairs the cut left closer

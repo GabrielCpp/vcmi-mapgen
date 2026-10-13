@@ -99,7 +99,9 @@ Order matters for `MapState` writes, for `ZoneIndex` mutation and for RNG determ
 
 `TerrainStep` provides the `PlaceMap`: each level's places, the kind of each border, its
 `Passages` and its `TerritoryPlan`. The places model splits each level into territories
-joined by one-tile doors and walls every other border between two territories. Inside a
+joined by one-tile doors. A door joins every touching pair more than two doors apart, and
+every other border between two territories is walled, the wall wider the more doors
+apart its territories stand. Inside a
 territory it draws one kind per border: closed, gated or open. The passage plan drives the
 walkable web in
 `VegetationStep` and the entrances of the `ZonePlan`.

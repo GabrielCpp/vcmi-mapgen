@@ -8,7 +8,7 @@ from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.paint import theta_min
 from vcmi_mapgen.core.steps.terrain_gen.place_map import label_adjacency
-from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain, bridge_pinches
+from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain, bridge_pinches, carried
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import unreached
 from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
@@ -45,7 +45,7 @@ def test_every_place_reads_as_its_dominant_and_every_player_keeps_a_home(
 def test_every_territory_on_a_home_land_opens_toward_a_home(
     catalog: Catalog, priors: Priors
 ) -> None:
-    for seed in (1, 5):
+    for seed in (3, 4):
         draw = PlacesTerrain(TopologyForm()).draw(
             catalog, priors, seed, TerrainOptions(size=72, players=2)
         )
@@ -101,3 +101,10 @@ def test_a_diagonal_land_contact_is_bridged_by_the_land_beside_it() -> None:
     assert bridge_pinches(ids)
     assert ids == [[G, G, W], [W, S, S], [W, W, S]]
     assert not bridge_pinches(ids)
+
+
+def test_carried_moves_a_place_cut_off_from_its_territory_to_its_neighbours() -> None:
+    before = [[0, 0, 1, 1, 0]]
+    label = [[0, 0, 1, 1, 2]]
+    assert carried(label, before, (0, 1)) == (0, 1, 1)
+    assert carried([[0, 0, 1, 1, -1]], [[0, 0, 1, 1, -1]], (0, 1)) == (0, 1)

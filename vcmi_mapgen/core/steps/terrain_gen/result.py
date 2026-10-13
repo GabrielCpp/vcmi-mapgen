@@ -65,8 +65,8 @@ class PlannedDoor:
 class TerritoryPlan:
     """One level's planned territories: the territory of each zone, the player each
     territory belongs to, None when it is neutral, and every door between two territories.
-    Every other border between two territories is walled, the wall as wide as the hops
-    between them give."""
+    Every touching pair more than ``MAX_HOP`` doors apart takes a door. Every other border
+    between two territories is walled, the wall as wide as the hops between them give."""
 
     zones: Mapping[int, int] = field(default_factory=dict[int, int])
     owners: tuple[int | None, ...] = ()
@@ -79,10 +79,10 @@ class TerritoryPlan:
 @dataclass(frozen=True, slots=True)
 class LevelPlaces:
     """One level's places: the label grid read ``[y][x]`` with -1 off land, each place by
-    its label, the planned adjacency as pairs ``(a, b)`` with ``a < b``, the tiles of every
-    transition band Paint graded, empty when the level was not painted, the kind of every
-    realised pair, the passages across them, its territories, and the wall width between
-    every zone pair of two territories wider than one tile."""
+    its label, the adjacency the label realises as pairs ``(a, b)`` with ``a < b``, the
+    tiles of every transition band Paint graded, empty when the level was not painted, the
+    kind of every realised pair, the passages across them, its territories, and the wall
+    width between every zone pair of two territories wider than one tile."""
 
     label: ZoneLabel
     places: Mapping[int, PlannedPlace]

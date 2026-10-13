@@ -1,75 +1,72 @@
 """Tests for the topology surface form."""
 
 import random
+from collections import Counter
 from dataclasses import replace
 
 import numpy as np
 
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.water import WaterPriors, WaterTarget
-from vcmi_mapgen.core.reading.places import PlaceRole
+from vcmi_mapgen.core.steps.terrain_gen.coastline import Shore
+from vcmi_mapgen.core.steps.terrain_gen.layout import Layout
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
-from vcmi_mapgen.core.steps.terrain_gen.place_graph import PlaceGraph
-from vcmi_mapgen.core.steps.terrain_gen.place_map import label_adjacency
-from vcmi_mapgen.core.steps.terrain_gen.water import (
-    TopologyForm,
-    bridge_tiles,
-    masses_of,
-    strait_tiles,
-)
+from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm, walled_fronts, water_on_walls
 
-H, T = PlaceRole.HOME, PlaceRole.TREASURE
+SIDE = 24
 
 
-def test_each_home_seeds_its_own_mass_and_every_place_joins_one() -> None:
-    graph = PlaceGraph(
-        (H, T, T, H), (0, None, None, 1), (10, 10, 10, 10), frozenset({(0, 1), (1, 2), (2, 3)})
-    )
-    mass = masses_of(graph, 2, random.Random(1))
-    assert mass[0] != mass[3]
-    assert mass == [mass[0], mass[0], mass[3], mass[3]]
+def _quarters() -> Layout:
+    half = SIDE // 2
+    label = [[(y >= half) * 2 + (x >= half) for x in range(SIDE)] for y in range(SIDE)]
+    anchors = ((half // 2, half // 2), (half + half // 2, half // 2))
+    return Layout(label, (*anchors, (half // 2, SIDE - 3), (SIDE - 3, SIDE - 3)), 4)
 
 
-def test_a_strait_runs_along_both_sides_of_a_mass_border() -> None:
-    grid = np.array([[0, 0, 1, 1]] * 3)
-    assert strait_tiles(grid).tolist() == [[False, True, True, False]] * 3
+def _shore(keep: frozenset[tuple[int, int]] | None = None) -> Shore:
+    doors = frozenset({(0, 1), (0, 2), (1, 3)})
+    return Shore(_quarters(), (0, 1, 2, 3), doors, {}, keep or frozenset())
 
 
-def test_a_map_without_water_targets_stays_all_land(priors: Priors) -> None:
+def test_the_land_is_all_land(priors: Priors) -> None:
+    coast = TopologyForm().land(priors, 2, TerrainOptions(size=36, players=2))
+    assert all(all(row) for row in coast.land)
+
+
+def test_a_map_without_water_targets_floods_nothing(priors: Priors) -> None:
     dry = replace(priors, water=WaterPriors())
-    coast = TopologyForm().form(dry, 2, TerrainOptions(size=36, players=2))
-    assert all(z >= 0 for row in coast.layout.label for z in row)
+    layout, _ = TopologyForm().flood(_shore(), dry, 2, TerrainOptions(size=SIDE, players=2))
+    assert layout == _quarters()
 
 
-def test_the_drawn_share_lands_near_the_target(priors: Priors) -> None:
-    target = WaterTarget(0.3, 0.5, 1)
-    wet = replace(priors, water=replace(priors.water, targets=(target,)))
-    coast = TopologyForm().form(wet, 2, TerrainOptions(size=48, players=2))
-    share = np.mean(np.array(coast.layout.label) < 0)
-    assert abs(share - target.share) < 0.05
+def test_walled_fronts_are_the_touching_territory_pairs_no_door_joins() -> None:
+    label = np.array(_quarters().label, dtype=np.int64)
+    walls = walled_fronts(label, (0, 1, 2, 3), [(0, 1), (0, 2), (1, 3)], {(2, 3): 3})
+    assert walls == {(2, 3): 3}
 
 
-def test_a_bridge_keeps_a_walk_between_the_anchors_of_a_pair_on_one_mass() -> None:
-    label = np.array([[0, 0, 0, 1, 1, 1]] * 5)
-    forced = np.zeros(label.shape, dtype=np.bool_)
-    kept = bridge_tiles(label, [(0, 2), (5, 2)], [(0, 1)], [0, 0], forced)
-    assert kept.tolist() == [[False] * 6] + [[True] * 6] * 3 + [[False] * 6]
-    assert not bridge_tiles(label, [(0, 2), (5, 2)], [(0, 1)], [0, 1], forced).any()
+def test_the_flood_lands_near_the_target_and_keeps_the_land_whole() -> None:
+    keep = frozenset({(2, SIDE - 1), (SIDE - 2, SIDE - 1)})
+    target = WaterTarget(0.15, 0.0, 1)
+    layout, fronts = water_on_walls(_shore(keep), target, SIDE, random.Random(3))
+    water = np.array(layout.label) < 0
+    assert fronts == 1
+    assert abs(float(np.mean(water)) - target.share) < 0.05
+    assert not any(water[y, x] for x, y in keep)
+    seen = {(x, y) for y in range(SIDE) for x in range(SIDE) if not water[y, x]}
+    start = next(iter(seen))
+    stack, reached = [start], {start}
+    while stack:
+        x, y = stack.pop()
+        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if n in seen and n not in reached:
+                reached.add(n)
+                stack.append(n)
+    assert reached == seen
 
 
-def test_a_bridge_detours_around_the_forced_water() -> None:
-    label = np.array([[0, 0, 0, 1, 1, 1]] * 5)
-    forced = np.zeros(label.shape, dtype=np.bool_)
-    forced[1:, 2:4] = True
-    kept = bridge_tiles(label, [(0, 4), (5, 4)], [(0, 1)], [0, 0], forced)
-    assert kept[0, 2] and kept[0, 3]
-    assert not (kept & forced).any()
-
-
-def test_heavy_water_keeps_every_planned_border_on_one_mass(priors: Priors) -> None:
-    target = WaterTarget(0.6, 0.5, 1)
-    wet = replace(priors, water=replace(priors.water, targets=(target,)))
-    for seed in (1, 2, 3):
-        coast = TopologyForm().form(wet, seed, TerrainOptions(size=48, players=2))
-        cut = coast.graph.edges - label_adjacency(coast.layout.label)
-        assert cut <= coast.layout.missing
+def test_the_flood_takes_no_more_than_half_of_a_place() -> None:
+    target = WaterTarget(0.9, 0.0, 1)
+    layout, _ = water_on_walls(_shore(), target, SIDE, random.Random(1))
+    area = Counter(z for row in layout.label for z in row if z >= 0)
+    assert all(area[z] * 2 >= (SIDE // 2) ** 2 for z in range(4))

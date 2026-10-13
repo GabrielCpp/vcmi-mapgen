@@ -172,23 +172,18 @@ def _split_pieces(label: list[list[int]], places: dict[int, PlannedPlace]) -> No
                 label[y][x] = target
 
 
-def _renumber(
-    label: list[list[int]], places: Mapping[int, PlannedPlace], planned: frozenset[tuple[int, int]]
-) -> LevelPlaces:
+def _renumber(label: list[list[int]], places: Mapping[int, PlannedPlace]) -> LevelPlaces:
     alive = sorted(_tiles_of(label))
     new = {old: i for i, old in enumerate(alive)}
     grid = [[new[z] if z >= 0 else -1 for z in row] for row in label]
-    adjacency = frozenset(
-        (min(new[a], new[b]), max(new[a], new[b])) for a, b in planned if a in new and b in new
-    )
-    return LevelPlaces(grid, {new[p]: places[p] for p in alive}, adjacency)
+    return LevelPlaces(grid, {new[p]: places[p] for p in alive}, label_adjacency(grid))
 
 
 def reconcile_places(grid: Grid, plan: LevelPlaces) -> LevelPlaces:
     """The place map ``plan`` once the terrain under it became ``grid``. Barrier tiles leave
     their place. A land tile whose terrain differs from its place's moves to a touching
     place of its terrain, or with its region becomes a pocket. Each place keeps one piece.
-    Places come out numbered from 0 in their old order."""
+    Places come out numbered from 0 in their old order, with the adjacency they realise."""
     places = dict(plan.places)
     label = [
         [z if Terrain(t).is_land else -1 for t, z in zip(row_t, row_z, strict=True)]
@@ -198,4 +193,4 @@ def reconcile_places(grid: Grid, plan: LevelPlaces) -> LevelPlaces:
         _follow_terrain(grid, label, places)
         _orphans(grid, label, places)
     _split_pieces(label, places)
-    return _renumber(label, places, plan.adjacency)
+    return _renumber(label, places)
