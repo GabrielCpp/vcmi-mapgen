@@ -12,19 +12,37 @@ from vcmi_mapgen.cli.readings import (
     SIDE_COPIES,
     TOWN_CURVE,
     TOWNS,
+    CorpusSide,
     count_line,
     table_lines,
 )
+from vcmi_mapgen.core.reading.spread import Column
 
-CORPUS = {"a": [0.0, 1.0, 2.0, 3.0, 4.0]}
+CORPUS = {"a": Column((2, 3), (0.0, 1.0, 2.0, 3.0, 4.0))}
 GENERATED = {"a": [2.0], "seconds": [1.5]}
+EMPTY: dict[str, float] = {}
 
 
 def test_table_lines_show_the_corpus_spread_and_the_generated_median() -> None:
     head, a, seconds = table_lines(CORPUS, GENERATED)
-    assert head.split()[-1] == "generated"
-    assert a.split() == ["a", "2.000", "[1.000,", "3.000]", "2.000"]
-    assert seconds.split() == ["seconds", "-", "1.500"]
+    assert head.split()[-3:] == ["players", "maps", "generated"]
+    assert a.split() == ["a", "2.000", "[1.000,", "3.000]", "2,3", "5", "2.000"]
+    assert seconds.split() == ["seconds", "-", "-", "-", "1.500"]
+
+
+def test_table_lines_flag_a_generated_median_outside_the_quartiles() -> None:
+    _head, low = table_lines(CORPUS, {"a": [0.5]})
+    _head, high = table_lines(CORPUS, {"a": [3.5, 4.0]})
+    assert low.split()[-1] == "below"
+    assert high.split()[-1] == "above"
+
+
+def test_the_corpus_line_names_the_side_and_the_player_count() -> None:
+    assert CorpusSide(72, [(2, EMPTY)] * 5).line(2) == (
+        "read 5 corpus maps of side 72; each reading keeps the player counts nearest 2"
+        " until 5 maps read it"
+    )
+    assert CorpusSide(None, []).line(6).startswith("read 0 corpus maps of every side;")
 
 
 def test_count_line_shows_each_count_beside_its_curve() -> None:

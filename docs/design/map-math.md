@@ -945,9 +945,22 @@ wrong.
 ### 8.1 The default terrain model
 
 `python -m vcmi_mapgen.cli readings` prints these readings for generated maps beside the
-corpus spread. One reader from `core/reading/` measures both sides. The section above
-states no rule for choosing between two terrain models, so the choice uses a fallback
-rule. The candidate replaces the default when its median sits closer to the corpus median
+corpus spread. One reader from `core/reading/` measures both sides.
+
+The corpus spread is split by player count, settled on 2026-10-13. The report reads the
+corpus maps of the generated side, or of every side when none shares it. Each reading
+then keeps the maps with the generated player count that read it. When fewer than 5 such
+maps read it, the nearest player counts join, the smaller first on a tie, until 5 maps
+do. The territory count draw starts the same way, from the nearest player count with 5
+maps. Each row prints the player counts and the map count it reads, and flags a
+generated median below or above the quartiles. A 2-player map of side 72 reads against
+the five 2-player maps of that side. Those maps hold 8 territories [4, 9] against 11
+[9, 13] pooled. Their worst player claims 0.87 of the best player's value within 40 days,
+against 0.38 pooled. The quartiles of five maps are narrow, so more readings sit outside
+them than outside the pooled spread.
+
+The section above states no rule for choosing between two terrain models, so the choice
+uses a fallback rule. The candidate replaces the default when its median sits closer to the corpus median
 on a strict majority of the readings. No reading may sit farther from the corpus median
 than the default's by more than the corpus interquartile range. Pipeline time is printed
 but not judged.
@@ -1000,9 +1013,10 @@ zone of control. Places also lays out homes farther apart than the corpus and me
 palettes into fewer regions.
 
 The shapes-first front brings the guard rate, the zone of control and the rewards per
-walkable tile into the corpus spread. It reads 4 territories against the corpus 11. The
-corpus spread pools every side and player count, and the 2-player maps near side 72 hold
-2 to 9 territories, so the draw itself sits low. The reader then merges territories
+walkable tile into the corpus spread. It reads 4 territories against the corpus 11. That
+spread pooled every player count of side 72, and the 2-player maps near side 72 hold 2 to
+9 territories, so the draw itself sits low. Against the 2-player maps alone, 8 [4, 9],
+the 5 territories of the tile budget front sit inside. The reader then merges territories
 across the doors no guard holds, and the door step leaves unguarded every door a player
 crosses before its land reaches the mean home area. A home grown small opens a whole
 layer of doors, so each player territory reads 4 zones against the corpus 2.5. Item 3 of
@@ -1081,5 +1095,6 @@ carries each one with a recommendation and the slice that decides it.
    players and at side 144. Recommendation: pool by players within a size band and
    fall back to the nearest player count with 5 or more maps. Slice 3 draws the
    underground count the same way, from the level 1 records mined with no player.
+   Settled on 2026-10-13 for the readings as well: 8.1 states the rule.
 7. Gates in the loop count. Settled in slice 3: a Subterranean Gate counts as one door
    hop on both levels and never as a loop.

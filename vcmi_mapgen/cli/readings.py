@@ -3,7 +3,7 @@ import io
 import statistics
 import time
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+from dataclasses import dataclass
 
 from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.cli.steps import StepConfig, build_steps
@@ -18,12 +18,12 @@ from vcmi_mapgen.core.reading.mines import land_area
 from vcmi_mapgen.core.reading.places import owners_of
 from vcmi_mapgen.core.reading.promise import player_maps
 from vcmi_mapgen.core.reading.repeats import NEAR, SIDE, nearest_copies, repeat_share
-from vcmi_mapgen.core.reading.spread import Spread, columns
+from vcmi_mapgen.core.reading.spread import MIN_MAPS, Column, Spread, columns, nearest_columns
 from vcmi_mapgen.core.reading.vector import Vector, map_vector
 from vcmi_mapgen.core.reading.way import close_share, player_ways, rare_mines
 from vcmi_mapgen.corpus.maps import named_corpus_maps
 from vcmi_mapgen.corpus.mine.counts import map_mines, map_towns
-from vcmi_mapgen.corpus.mine.places import map_players
+from vcmi_mapgen.corpus.mine.places import MapPlayers, map_players
 from vcmi_mapgen.corpus.priors import load_priors
 
 SECONDS = "seconds"
@@ -40,7 +40,6 @@ NEAR_COPIES = "copies within 10"
 SIDE_COPIES = "copies within 6"
 
 type Columns = Mapping[str, Sequence[float]]
-type Named = tuple[str, MapState]
 
 
 def count_reading(catalog: Catalog, state: MapState, players: int, priors: Priors) -> Vector:
@@ -126,18 +125,39 @@ def _generated(catalog: Catalog, priors: Priors, config: StepConfig) -> Vector:
     return {**map_vector(catalog, state, owners), **counts, **ways, **value, SECONDS: seconds}
 
 
-def _corpus_vector(catalog: Catalog, h3m_dir: Path, priors: Priors, named: Named) -> Vector:
-    name, state = named
-    players = map_players(h3m_dir, name)
+def _corpus_vector(
+    catalog: Catalog, priors: Priors, state: MapState, players: MapPlayers
+) -> Vector:
     counts = count_reading(catalog, state, players.players, priors)
     value = value_reading(catalog, state, players.owners, priors)
     return {**map_vector(catalog, state, players.owners), **counts, **value}
 
 
-def _corpus(catalog: Catalog, settings: Settings, size: int, priors: Priors) -> list[Vector]:
+@dataclass(frozen=True, slots=True)
+class CorpusSide:
+    """The corpus maps a generated map reads against: their side, None when no corpus map
+    shares the generated side and every side counts, and each map's player count and
+    reading vector."""
+
+    side: int | None
+    maps: Sequence[tuple[int, Vector]]
+
+    def line(self, players: int) -> str:
+        side = f"side {self.side}" if self.side is not None else "every side"
+        return (
+            f"read {len(self.maps)} corpus maps of {side}; each reading keeps the player"
+            f" counts nearest {players} until {MIN_MAPS} maps read it"
+        )
+
+
+def _corpus(catalog: Catalog, settings: Settings, size: int, priors: Priors) -> CorpusSide:
     named = named_corpus_maps(settings.maps_dir)
-    sized = [(name, state) for name, state in named if state.size == size] or named
-    return [_corpus_vector(catalog, settings.h3m_dir, priors, n) for n in sized]
+    sized = [(name, state) for name, state in named if state.size == size]
+    maps: list[tuple[int, Vector]] = []
+    for name, state in sized or named:
+        players = map_players(settings.h3m_dir, name)
+        maps.append((players.players, _corpus_vector(catalog, priors, state, players)))
+    return CorpusSide(size if sized else None, maps)
 
 
 def _cell(spread: Spread | None) -> str:
@@ -146,18 +166,40 @@ def _cell(spread: Spread | None) -> str:
     return f"{spread.median:.3f} [{spread.q1:.3f}, {spread.q3:.3f}]"
 
 
+def _players(column: Column | None) -> str:
+    return ",".join(str(p) for p in column.players) if column is not None else "-"
+
+
+def _flag(spread: Spread | None, values: Sequence[float] | None) -> str:
+    if spread is None or not values:
+        return ""
+    median = statistics.median(values)
+    if median < spread.q1:
+        return "below"
+    if median > spread.q3:
+        return "above"
+    return ""
+
+
 def _median(values: Sequence[float] | None) -> str:
     return f"{statistics.median(values):.3f}" if values else "-"
 
 
-def table_lines(corpus: Columns, generated: Columns) -> list[str]:
-    """One row per reading: the corpus median and quartiles, then the generated median."""
+def table_lines(corpus: Mapping[str, Column], generated: Columns) -> list[str]:
+    """One row per reading: the corpus median and quartiles, the player counts and the
+    number of the corpus maps they come from, then the generated median, flagged when it
+    sits below or above the quartiles."""
     readings = list(dict.fromkeys([*corpus, *generated]))
-    head = f"{'reading':22} {'corpus median [q1, q3]':28} {'generated':>9}"
-    rows = [
-        f"{r:22} {_cell(Spread.of(corpus.get(r, ()))):28} {_median(generated.get(r)):>9}"
-        for r in readings
-    ]
+    head = (
+        f"{'reading':22} {'corpus median [q1, q3]':28} {'players':>7} {'maps':>4} {'generated':>9}"
+    )
+    rows: list[str] = []
+    for r in readings:
+        column, values = corpus.get(r), generated.get(r)
+        spread = Spread.of(column.values) if column is not None else None
+        maps = str(spread.n) if spread is not None else "-"
+        row = f"{r:22} {_cell(spread):28} {_players(column):>7} {maps:>4} {_median(values):>9}"
+        rows.append(f"{row} {_flag(spread, values)}".rstrip())
     return [head, *rows]
 
 
@@ -171,8 +213,7 @@ def readings(
     print(f"generated {len(vectors)} maps")
     for seed, vector in zip(seeds, vectors, strict=True):
         print(count_line(seed, vector))
-    corpus_vectors = _corpus(catalog, settings, size, priors)
-    corpus = columns(corpus_vectors)
-    print(f"read {len(corpus_vectors)} corpus maps")
-    for line in table_lines(corpus, generated):
+    corpus = _corpus(catalog, settings, size, priors)
+    print(corpus.line(players))
+    for line in table_lines(nearest_columns(corpus.maps, players), generated):
         print(line)

@@ -129,7 +129,11 @@ uv run python -m vcmi_mapgen.cli readings --seeds 1 2 3 4 5 6 7 8 9 10 --size 72
 is one. `--densities` prints the per-terrain gameplay densities instead. `extract-vmap` rebuilds
 `data/corpus/vmap/` from `data/corpus/h3m/`. `corpus-match` compares where gameplay
 objects sit in corpus zones and in generated zones. `readings` generates maps and prints
-the map-math 8 readings beside the corpus median and quartiles. Each seed's line puts its
+the map-math 8 readings beside the corpus median and quartiles. The corpus side holds the
+maps of the generated side, or of every side when none shares it, with the generated
+player count. When fewer than 5 maps share that count, the nearest player counts join
+until they reach 5. The report names the player counts and the map count it reads, and
+flags each generated median below or above the quartiles. Each seed's line puts its
 resource mines and towns beside their corpus curves. It then counts the players whose way
 out repeats a rare resource before meeting every one, and the share of rare mines with one
 of their resource within 10 tiles. Last come the gold mines, those within 8 days of a home

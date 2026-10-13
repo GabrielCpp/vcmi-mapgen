@@ -818,6 +818,15 @@ says otherwise.
    fewer. A fitted line waits until side 144 has enough maps.
    Taken in slice 3: the underground draws from the level 1 records, mined with 0
    players, by the same nearest-record rule.
+   Settled on 2026-10-13 for the readings spread as well. `readings` compares each
+   reading against the corpus maps of the generated side with the generated player
+   count. When fewer than 5 of them read it, the nearest player counts join until 5
+   do. Each row names its player counts and map count. At side 72 with 2 players the
+   territory count reads 5 against 8 [4, 9] and sits inside. Home separation reads 1.91
+   against 1.49 [1.07, 1.61] from the 3- and 4-player maps, since no 2-player map of side
+   72 reads it, and stays above. The zone of control share reads 0.135 against
+   0.106 [0.106, 0.119] and moves from below to above. The home area ratio reads 1.19
+   against 3.17 [1.91, 3.68] from the 2- and 3-player maps and stays below.
 8. Subterranean gates in the surface loop count. A gate joins two levels, so counting it
    in either level's loops double counts. Recommendation: count gates as doors for hops
    and not for loops. Taken in slice 3: `Across` joins each territory to the one across
