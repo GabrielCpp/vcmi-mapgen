@@ -7,8 +7,10 @@ from vcmi_mapgen.core.reading.paint import read_paint
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.paint import theta_min
+from vcmi_mapgen.core.steps.terrain_gen.place_map import label_adjacency
 from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain, bridge_pinches
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
+from vcmi_mapgen.core.steps.terrain_gen.territories import unreached
 from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
 
 
@@ -38,6 +40,18 @@ def test_every_place_reads_as_its_dominant_and_every_player_keeps_a_home(
     owners = sorted(p.owner for p in level.places.values() if p.owner is not None)
     assert owners == [0, 1, 2, 3]
     assert all(p.role == PlaceRole.HOME for p in level.places.values() if p.owner is not None)
+
+
+def test_every_territory_on_a_home_land_opens_toward_a_home(
+    catalog: Catalog, priors: Priors
+) -> None:
+    for seed in (1, 5):
+        draw = PlacesTerrain(TopologyForm()).draw(
+            catalog, priors, seed, TerrainOptions(size=72, players=2)
+        )
+        level = draw.places.levels[0]
+        assert len(level.territories.owners) > 2
+        assert unreached(level.territories, label_adjacency(level.label)) == []
 
 
 def test_a_stream_depends_on_its_seed_and_parts_only() -> None:

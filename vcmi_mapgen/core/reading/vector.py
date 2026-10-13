@@ -21,6 +21,7 @@ from vcmi_mapgen.core.reading.territories import (
 )
 
 HOP_CAP = 4
+FAR_HOP = 2
 LEVEL = 0
 
 type Vector = dict[str, float]
@@ -68,13 +69,25 @@ def _median(values: Sequence[int]) -> float | None:
 
 def territory_vector(reading: TerritoryReading) -> Vector:
     """The mean zones per player and per neutral territory, the mean doors per bordering
-    pair, and the median door level out of a player territory and between neutral ones."""
+    pair, and the median door level out of a player territory and between neutral ones.
+    Then the territory count, the loops, the mean doors between two close territories a
+    door path joins, the share of close pairs more than ``FAR_HOP`` doors apart or cut
+    off, and the share no door or link joins."""
     out: Vector = {}
     _put(out, "zones_player_terr", _mean(reading.player_zones))
     _put(out, "zones_neutral_terr", _mean(reading.neutral_zones))
     _put(out, "doors_per_pair", _mean(reading.pair_doors))
     _put(out, "door_level_player", _median(reading.player_door_levels))
     _put(out, "door_level_neutral", _median(reading.neutral_door_levels))
+    if reading.territories:
+        out["territory_count"] = float(reading.territories)
+        out["territory_loops"] = float(reading.loops)
+    reached = [h for h in reading.close_hops if h is not None]
+    _put(out, "close_pair_hops", statistics.mean(reached) if reached else None)
+    far = sum(1 for h in reading.close_hops if h is None or h > FAR_HOP)
+    _put(out, "close_pair_far", _share(far, len(reading.close_hops)))
+    walled = reading.close_joined.count(False)
+    _put(out, "close_pair_walled", _share(walled, len(reading.close_joined)))
     return out
 
 

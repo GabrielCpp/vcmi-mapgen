@@ -81,3 +81,15 @@ def test_territory_readings_take_means_of_counts_and_medians_of_levels() -> None
         "doors_per_pair": 1.5,
         "door_level_player": 3,
     }
+
+
+def test_territory_readings_count_close_pairs_far_apart_or_walled() -> None:
+    reading = TerritoryReading(
+        (), (), (), (), (), 6, 1, (1, 3, None, 1), (True, False, False, True)
+    )
+    vector = territory_vector(reading)
+    assert vector["territory_count"] == 6
+    assert vector["territory_loops"] == 1
+    assert vector["close_pair_hops"] == 5 / 3
+    assert vector["close_pair_far"] == 0.5
+    assert vector["close_pair_walled"] == 0.5

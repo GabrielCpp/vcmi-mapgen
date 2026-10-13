@@ -4,15 +4,17 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from vcmi_mapgen.core.model import JsonValue
-from vcmi_mapgen.core.priors.territories import TerritoryStats
+from vcmi_mapgen.core.priors.territories import TerritoryCount, TerritoryStats
 from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 TERRITORY_FILE = "territory_stats.json"
-TERRITORY_VERSION = 2
+TERRITORY_VERSION = 4
 TERRITORY_SOURCE = "vcmi_mapgen.corpus.mine.territories.mine_territories"
 FIELDS = ("player_zones", "neutral_zones", "pair_doors")
 BY_MAP = ("player_doors_by_map", "neutral_doors_by_map")
+COUNTS = "counts_by_map"
+COUNT_FIELDS = ("players", "land", "territories")
 
 
 def _ints(value: JsonValue | None) -> tuple[int, ...]:
@@ -23,11 +25,20 @@ def _by_map(value: JsonValue | None) -> tuple[tuple[int, ...], ...]:
     return tuple(_ints(v) for v in jv.as_list(value))
 
 
+def _count(value: JsonValue) -> TerritoryCount:
+    obj = jv.as_object(value)
+    players, land, territories = (jv.as_int(obj.get(f)) for f in COUNT_FIELDS)
+    return TerritoryCount(players, land, territories)
+
+
 def _stats(value: JsonValue) -> TerritoryStats:
     obj = jv.as_object(value)
     player_zones, neutral_zones, pair_doors = (_ints(obj.get(f)) for f in FIELDS)
     player_doors, neutral_doors = (_by_map(obj.get(f)) for f in BY_MAP)
-    return TerritoryStats(player_zones, neutral_zones, pair_doors, player_doors, neutral_doors)
+    counts = tuple(_count(v) for v in jv.as_list(obj.get(COUNTS)))
+    return TerritoryStats(
+        player_zones, neutral_zones, pair_doors, player_doors, neutral_doors, counts
+    )
 
 
 def load_territories(pp_dir: Path) -> dict[int, TerritoryStats]:
@@ -48,6 +59,14 @@ def save_territories(pp_dir: Path, stats: Mapping[int, TerritoryStats]) -> None:
                     "pair_doors": list(st.pair_doors),
                     "player_doors_by_map": [list(m) for m in st.player_doors_by_map],
                     "neutral_doors_by_map": [list(m) for m in st.neutral_doors_by_map],
+                    COUNTS: [
+                        {
+                            "players": c.players,
+                            "land": c.land,
+                            "territories": c.territories,
+                        }
+                        for c in st.counts_by_map
+                    ],
                 }
                 for lv, st in stats.items()
             },

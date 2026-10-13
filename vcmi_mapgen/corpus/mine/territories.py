@@ -4,9 +4,13 @@ from collections.abc import Mapping, Sequence
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
-from vcmi_mapgen.core.priors.territories import TerritoryStats
-from vcmi_mapgen.core.reading.ground import TownKey
-from vcmi_mapgen.core.reading.territories import read_territories, territory_reading
+from vcmi_mapgen.core.priors.territories import TerritoryCount, TerritoryStats
+from vcmi_mapgen.core.reading.ground import TownKey, read_ground
+from vcmi_mapgen.core.reading.territories import (
+    TerritoryReading,
+    read_territories,
+    territory_reading,
+)
 
 
 def mine_territories(
@@ -14,14 +18,22 @@ def mine_territories(
     level: int,
     maps: Sequence[MapState],
     owners: Sequence[Mapping[TownKey, int]],
+    players: Sequence[int],
 ) -> TerritoryStats:
     """The territories of ``level`` read on every map that has it, pooled, with the door
-    levels of each map that has doors kept apart."""
-    readings = [
-        territory_reading(read)
-        for state, own in zip(maps, owners, strict=True)
-        if (read := read_territories(catalog, state, level, own)) is not None
-    ]
+    levels of each map that has doors kept apart, and the territory count of each map that
+    has territories beside its player count and land tiles."""
+    readings: list[TerritoryReading] = []
+    counts: list[TerritoryCount] = []
+    for state, own, n in zip(maps, owners, players, strict=True):
+        read = read_territories(catalog, state, level, own)
+        ground = read_ground(catalog, state, level)
+        if read is None or ground is None:
+            continue
+        reading = territory_reading(read)
+        readings.append(reading)
+        if reading.territories:
+            counts.append(TerritoryCount(n, len(ground.land), reading.territories))
     return TerritoryStats(
         player_zones=tuple(n for r in readings for n in r.player_zones),
         neutral_zones=tuple(n for r in readings for n in r.neutral_zones),
@@ -30,4 +42,5 @@ def mine_territories(
         neutral_doors_by_map=tuple(
             r.neutral_door_levels for r in readings if r.neutral_door_levels
         ),
+        counts_by_map=tuple(counts),
     )

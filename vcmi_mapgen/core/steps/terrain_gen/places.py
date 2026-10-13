@@ -43,11 +43,14 @@ from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import (
     draw_doors,
     draw_partition,
+    draw_territory_count,
     group_neutral,
     islanded,
+    neutral_spread,
     settle,
     stranded,
     territory_plan,
+    unreached,
     wall_kinds,
 )
 
@@ -128,7 +131,12 @@ def surface(
         + f"{len(layout.missing)} planned borders missing, home gap {layout.home_gap:.2f}"
     )
     spread = priors.territories.get(0, TerritoryStats())
-    plan = bordered(reconcile_places(grid, plan_of(graph, layout, dominants)), stats, spread, seed)
+    plan = bordered(
+        reconcile_places(grid, plan_of(graph, layout, dominants)),
+        (stats, spread),
+        options.players,
+        seed,
+    )
     painted = paint_places(
         grid,
         plan,
@@ -147,20 +155,26 @@ def surface(
     return painted.grid, plan, lines
 
 
+def land_count(label: Sequence[Sequence[int]]) -> int:
+    """The tiles of ``label`` that belong to a place."""
+    return sum(1 for row in label for z in row if z >= 0)
+
+
 def bordered(
-    plan: LevelPlaces, stats: PlaceStats, spread: TerritoryStats, seed: int
+    plan: LevelPlaces, priors: tuple[PlaceStats, TerritoryStats], players: int, seed: int
 ) -> LevelPlaces:
-    """``plan`` split into territories drawn on its planned adjacency, with the kind of
-    every inner pair drawn from the corpus table, a door on each border the territories
-    need, every other territory border walled, and the passages across them."""
+    """``plan`` split into territories drawn on its planned adjacency, as many as one
+    corpus map near ``players`` and its land holds, with the kind of every inner pair drawn
+    from the corpus table, a door on each border the territories need, every other
+    territory border walled, and the passages across them."""
+    stats, spread = priors
     roles = {p: place.role for p, place in plan.places.items()}
     owners = [plan.places[p].owner for p in sorted(plan.places)]
+    count = draw_territory_count(
+        spread.counts_by_map, players, land_count(plan.label), stream(seed, "territory_count")
+    )
     drawn = draw_partition(
-        owners,
-        plan.adjacency,
-        spread.player_zones,
-        spread.neutral_zones,
-        stream(seed, "territories"),
+        owners, plan.adjacency, spread.player_zones, count, stream(seed, "territories")
     )
     realised = label_adjacency(plan.label)
     territory, lords = settle(drawn, owners, realised)
@@ -193,19 +207,22 @@ def walled(
 
 
 def underground_places(
-    grid: Sequence[Sequence[Terrain]], spread: TerritoryStats, seed: int
+    grid: Sequence[Sequence[Terrain]], spread: TerritoryStats, players: int, seed: int
 ) -> LevelPlaces:
     """The underground's places, one per same-terrain region, grouped on the borders they
-    share into neutral territories sized from the corpus spread. Inner borders stay gated,
-    each passage ``UNDERGROUND_ENTRANCE_W`` wide, and the territories meet at doors."""
+    share into neutral territories, as many as one corpus underground near ``players`` and
+    its land holds. Inner borders stay gated, each passage ``UNDERGROUND_ENTRANCE_W`` wide,
+    and the territories meet at doors."""
     plan = flood_places(grid, UNDERGROUND_ENTRANCE_W)
     realised = label_adjacency(plan.label)
     owners = [None] * len(plan.places)
     drawn = [0] * len(plan.places)
+    count = draw_territory_count(
+        spread.counts_by_map, players, land_count(plan.label), stream(seed, "territory_count", 1)
+    )
     rng = stream(seed, "territories", 1)
-    for t, group in enumerate(
-        group_neutral(range(len(owners)), realised, spread.neutral_zones, rng)
-    ):
+    size = neutral_spread(len(owners), count, 0)
+    for t, group in enumerate(group_neutral(range(len(owners)), realised, size, rng)):
         for p in group:
             drawn[p] = t
     territory, lords = settle(drawn, owners, realised)
@@ -216,7 +233,8 @@ def underground_places(
 
 def territory_line(plan: LevelPlaces, name: str = "territories") -> str:
     """How many territories each kind of owner holds, their doors, the homes no door opens
-    on a land border, and the homes water parts from every other territory."""
+    on a land border, the homes water parts from every other territory, and the
+    territories on a home's land no home reaches over the doors."""
     tp = plan.territories
     players = sum(o is not None for o in tp.owners)
     walls = sum(
@@ -226,11 +244,13 @@ def territory_line(plan: LevelPlaces, name: str = "territories") -> str:
     )
     realised = label_adjacency(plan.label)
     lost, islands = stranded(tp, realised), islanded(tp, realised)
+    cut = unreached(tp, realised)
     return (
         f"  {name}: {len(tp.owners)}, {players} player, {len(tp.owners) - players} "
         + f"neutral, {len(tp.doors)} doors, {walls} walled borders"
         + (f", stranded players {lost}" if lost else "")
         + (f", players alone on their land {islands}" if islands else "")
+        + (f", territories no home reaches {cut}" if cut else "")
     )
 
 
@@ -287,7 +307,9 @@ class PlacesTerrain:
             return TerrainDraw({0: grid0}, frozenset(), PlaceMap({0: plan0}), lines)
         raw1, tunnels = underground(priors.terrain[1], grid0, seed, options.size)
         grid1 = despeckle(raw1, catalog.thin_terrains(), tunnels)
-        plan1 = underground_places(grid1, priors.territories.get(1, TerritoryStats()), seed)
+        plan1 = underground_places(
+            grid1, priors.territories.get(1, TerritoryStats()), options.players, seed
+        )
         protect = tunnels - front_cells(plan1.label)
         lines = (*lines, territory_line(plan1, "underground territories"))
         return TerrainDraw({0: grid0, 1: grid1}, protect, PlaceMap({0: plan0, 1: plan1}), lines)

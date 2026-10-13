@@ -12,8 +12,11 @@ from vcmi_mapgen.core.reading.territories import (
     BarrierKind,
     PlannedTopology,
     Territories,
+    close_pairs,
     disagreements,
+    hop_counts,
     islands,
+    loop_count,
     read_territories,
     territory_reading,
 )
@@ -126,6 +129,35 @@ def test_the_reading_splits_doors_by_whether_a_player_owns_a_side(catalog: Catal
     assert reading.pair_doors == (1,)
     assert reading.player_door_levels == (3,)
     assert reading.neutral_door_levels == ()
+
+
+def test_the_reading_counts_territories_and_the_doors_between_close_ones(
+    catalog: Catalog,
+) -> None:
+    reading = territory_reading(_guarded(catalog))
+    assert reading.territories == 2
+    assert reading.loops == 0
+    assert reading.close_hops == (1,)
+    assert reading.close_joined == (True,)
+
+
+def test_two_close_territories_a_wall_parts_have_no_door_path(catalog: Catalog) -> None:
+    reading = territory_reading(_read(catalog, _wall(gap=False), {}))
+    assert reading.close_hops == (None,)
+    assert reading.close_joined == (False,)
+
+
+def test_close_pairs_finds_the_nearest_tiles_of_each_pair_within_reach() -> None:
+    labels = ((0, 0, NONE, 1), (0, NONE, NONE, NONE), (NONE,) * 4, (NONE, NONE, NONE, 2))
+    assert close_pairs(labels, 2) == {(0, 1): 2}
+    assert close_pairs(labels, 3) == {(0, 1): 2, (0, 2): 3, (1, 2): 3}
+
+
+def test_hops_and_loops_follow_the_door_graph() -> None:
+    edges = [(0, 1), (1, 2), (2, 0), (3, 4)]
+    assert hop_counts(5, edges, 0) == [0, 1, 1, None, None]
+    assert loop_count(5, edges) == 1
+    assert loop_count(5, [(0, 1), (1, 0)]) == 0
 
 
 def _planned(read: Territories, owners: tuple[tuple[int, ...], ...]) -> PlannedTopology:

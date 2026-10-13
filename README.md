@@ -131,7 +131,10 @@ and those no enemy reaches within 3 days of the first player. The line ends with
 share of repeated visitables with a copy of their kind within 10 tiles and within 6. The
 same two shares appear as rows beside the corpus spread. Its territory rows
 compare the zones per player and per neutral territory, the doors per territory pair
-and the guard level at a door.
+and the guard level at a door. They also compare the territory count, the loops the
+doors close, and the door hops between two territories that come within a 24th of the
+map side. Last come the share of those close pairs more than 2 doors apart or cut off,
+and the share no door joins directly.
 
 `inspect` prints what the readers see on one map. The map is a `.vmap` from any folder
 (`--vmap`), a corpus map by name (`--corpus`), or a seed generated in memory with the

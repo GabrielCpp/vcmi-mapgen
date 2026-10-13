@@ -12,9 +12,13 @@ teleport, a one-way monolith or a subterranean gate links two territories and sp
 from __future__ import annotations
 
 import collections
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
+
+import numpy as np
+from numpy.typing import NDArray
 
 from vcmi_mapgen.core.catalog import Catalog, Crossing
 from vcmi_mapgen.core.grid.splits import MIN_AREA
@@ -25,6 +29,7 @@ from vcmi_mapgen.core.reading.places import read_places
 from vcmi_mapgen.core.reading.routes import RouteMap, route_map
 
 NONE = -1
+CLOSE_SIDE = 24
 
 type Grid = tuple[tuple[int, ...], ...]
 type Pair = tuple[int, int]
@@ -327,22 +332,103 @@ def read_territories(
     return territories_from(catalog, map_state, route_map(catalog, map_state), level, owners)
 
 
+def close_pairs(labels: Grid, within: int) -> dict[Pair, int]:
+    """The Chebyshev distance between the nearest tiles of each pair of territories whose
+    tiles come within ``within`` of each other."""
+    grid: NDArray[np.int64] = np.asarray(labels, dtype=np.int64).reshape(len(labels), -1)
+    h, w = grid.shape
+    span = max((t for row in labels for t in row), default=NONE) + 1
+    found: dict[Pair, int] = {}
+    for d in range(1, within + 1):
+        ring = [
+            (dx, dy)
+            for dy in range(0, d + 1)
+            for dx in range(-d, d + 1)
+            if max(abs(dx), dy) == d and (dy > 0 or dx > 0)
+        ]
+        for dx, dy in ring:
+            a = grid[: h - dy, max(0, -dx) : w - max(0, dx)]
+            b = grid[dy:, max(0, dx) : w - max(0, -dx)]
+            both = cast("NDArray[np.bool_]", (a != NONE) & (b != NONE) & (a != b))
+            keys = np.minimum(a, b)[both] * span + np.maximum(a, b)[both]
+            for k in cast("list[int]", np.unique(keys).tolist()):
+                pair = (k // span, k % span)
+                if pair not in found:
+                    found[pair] = d
+    return found
+
+
+def door_pairs(read: Territories) -> frozenset[Pair]:
+    """The territory pairs a door or a link joins."""
+    return frozenset(read.pairs()) | frozenset(read.links)
+
+
+def hop_counts(count: int, edges: Iterable[Pair], start: int) -> list[int | None]:
+    """The fewest ``edges`` from ``start`` to each of ``count`` nodes, None where none
+    leads."""
+    nbr: dict[int, list[int]] = collections.defaultdict(list)
+    for a, b in edges:
+        nbr[a].append(b)
+        nbr[b].append(a)
+    out: list[int | None] = [None] * count
+    out[start] = 0
+    queue = collections.deque([start])
+    while queue:
+        u = queue.popleft()
+        for v in nbr[u]:
+            if out[v] is None:
+                out[v] = cast("int", out[u]) + 1
+                queue.append(v)
+    return out
+
+
+def loop_count(count: int, edges: Iterable[Pair]) -> int:
+    """The independent loops ``edges`` close over ``count`` nodes: the edges past a
+    spanning forest."""
+    parent = list(range(count))
+
+    def root(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    loops = 0
+    for a, b in {(min(e), max(e)) for e in edges}:
+        ra, rb = root(a), root(b)
+        if ra == rb:
+            loops += 1
+        else:
+            parent[rb] = ra
+    return loops
+
+
 @dataclass(frozen=True, slots=True)
 class TerritoryReading:
     """One level's territory spread: the zones of each player and each neutral territory,
     the doors between each bordering pair, and the known level of each door out of a player
-    territory and each door between neutral territories."""
+    territory and each door between neutral territories. Then its territory count, the
+    loops its doors and links close, and for each pair of territories within
+    ``side // CLOSE_SIDE`` tiles, at least 2, the doors a hero passes from one to the other,
+    None when none leads, and whether a door or a link joins the two."""
 
     player_zones: tuple[int, ...]
     neutral_zones: tuple[int, ...]
     pair_doors: tuple[int, ...]
     player_door_levels: tuple[int, ...]
     neutral_door_levels: tuple[int, ...]
+    territories: int = 0
+    loops: int = 0
+    close_hops: tuple[int | None, ...] = ()
+    close_joined: tuple[bool, ...] = ()
 
 
 def territory_reading(read: Territories) -> TerritoryReading:
     """The spread ``read`` gives."""
     terrs = read.territories
+    joined = door_pairs(read)
+    close = sorted(close_pairs(read.labels, max(2, len(read.labels) // CLOSE_SIDE)))
+    hops = {a: hop_counts(len(terrs), joined, a) for a in {a for a, _ in close}}
     player: list[int] = []
     neutral: list[int] = []
     for door in read.doors:
@@ -359,6 +445,10 @@ def territory_reading(read: Territories) -> TerritoryReading:
         pair_doors=tuple(len(d) for d in read.pairs().values()),
         player_door_levels=tuple(player),
         neutral_door_levels=tuple(neutral),
+        territories=len(terrs),
+        loops=loop_count(len(terrs), joined),
+        close_hops=tuple(hops[a][b] for a, b in close),
+        close_joined=tuple(pair in joined for pair in close),
     )
 
 

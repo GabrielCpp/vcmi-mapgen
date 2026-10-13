@@ -38,7 +38,7 @@ def _breaches(catalog: Catalog, priors: Priors, config: StepConfig) -> list[str]
 
 
 def test_a_small_map_keeps_the_mine_promise(catalog: Catalog, priors: Priors) -> None:
-    assert _breaches(catalog, priors, StepConfig(3, 48)) == []
+    assert _breaches(catalog, priors, StepConfig(8, 48)) == []
 
 
 @pytest.mark.slow

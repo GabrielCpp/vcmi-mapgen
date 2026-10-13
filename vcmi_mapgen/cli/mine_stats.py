@@ -120,9 +120,11 @@ def _remote(m: MineInput) -> None:
 
 
 def _territories(m: MineInput) -> None:
-    owners = [map_players(m.h3m_dir, name).owners for name in m.names]
+    mp = [map_players(m.h3m_dir, name) for name in m.names]
+    owners, players = [p.owners for p in mp], [p.players for p in mp]
     save_territories(
-        m.pp_dir, {lv: mine_territories(m.catalog, lv, m.maps, owners) for lv in LEVELS}
+        m.pp_dir,
+        {lv: mine_territories(m.catalog, lv, m.maps, owners, players) for lv in LEVELS},
     )
 
 

@@ -239,7 +239,7 @@ The order is shapes, then roles, then paint. Reading left to right:
    different territories.
 5. $p(D \mid \theta, \zeta)$, Doors. One door on each pair of a spanning forest over
    the touching territory pairs, then a door on every touching pair whose door-hop
-   distance exceeds 2 while the loop count stays inside the corpus loop budget, then a
+   distance exceeds 2, then a
    second door on a doored pair at the corpus odds. The door objective is the detour a
    player walks between two territories that touch, measured in hero-days, and the
    corpus median is 1 hop. Section 10 names the open choices.
@@ -301,7 +301,7 @@ clock, the file system order or an unseeded library call.
 | Shapes | region shape | capacity-constrained growth, watershed, frame warp |
 | Territories | territory count and home choice | corpus count by players and land, farthest-first homes |
 | Roles | labelling walk | role adjacency energy with size cost |
-| Doors | door objective | spanning forest with a detour cap and a loop budget |
+| Doors | door objective | spanning forest with a detour cap |
 | Identity | theme rule | role and faction table |
 | Borders | border strategy per kind | water, rock, mountain, forest, river, transition |
 | Paint | texture | Markov Gibbs inside a place, plain coat |
@@ -1034,8 +1034,9 @@ The shapes-first order of 2.1 leaves these open. `docs/plans/territory-topology.
 carries each one with a recommendation and the slice that decides it.
 
 1. The door objective. A detour cap on close pairs, a loop budget, or both.
-   Recommendation: both, the cap at 2 door hops on pairs within 3 tiles and the budget
-   from the corpus loop count by territory count.
+   Settled in slice 1: the cap alone, at 2 door hops on every touching pair. A loop
+   budget from the nearest corpus maps is 0 on most 2-player maps and leaves the detours.
+   The loop count stays a reading, revisited once barriers thicken.
 2. Barrier thickness. A wall's depth by the door-hop distance of its pair, with the
    water of the topology mode as the deepest kind. Recommendation: three depths, thin,
    wide and water, by hop 1, hop 2 and hop 3 or more, each width a share of the map

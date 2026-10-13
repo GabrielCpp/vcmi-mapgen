@@ -78,8 +78,8 @@ the missing door. The door rule removed the crash in every run.
 - The front is top-down. The generator counts territories first, grows them, and splits
   them into places. A new prior gives the territory count per map by players and land.
 - Doors go on the ground. A spanning forest links the territories, then every touching
-  pair whose door-hop distance exceeds 2 gets a door, within a loop budget drawn from the
-  corpus. A second door on one pair follows at the corpus odds.
+  pair whose door-hop distance exceeds 2 gets a door, with no loop budget. A second door on
+  one pair follows at the corpus odds. Open question 1 records why the hop rule wins.
 - Water comes after the territories. In topology mode it is the thick wall kind on
   doorless pairs, with a width. Islands mode keeps its noise mask.
 - Both levels share one front. The underground is the case with no home. Subterranean
@@ -103,45 +103,41 @@ Roles and interfaces:
 
 - `core/priors/territories.py`: `TerritoryStats` gains
   `counts_by_map: tuple[TerritoryCount, ...]`. `TerritoryCount(players: int, land: int,
-  territories: int, loops: int)` is a frozen dataclass beside it. `land` is the count of
+  territories: int)` is a frozen dataclass beside it. `land` is the count of
   walkable land tiles on the level.
 - `corpus/mine/territories.py` `mine_territories` records one `TerritoryCount` per map
-  from `read_territories`: territories is `len(read.territories)`, loops is the edge
-  count over `set(read.pairs()) | set(read.links)` minus territories plus connected
-  components. The players value comes from `map_players(...).players`, as `mine_stats.py`
+  from `read_territories`: territories is `len(read.territories)`. The players value comes from `map_players(...).players`, as `mine_stats.py`
   already passes owners.
-- `corpus/territories.py`: `TERRITORY_VERSION` becomes 3, `BY_MAP` gains
-  `counts_by_map`, and the loader reads the four fields of each record.
+- `corpus/territories.py`: `TERRITORY_VERSION` becomes 4, the file gains
+  `counts_by_map`, and the loader reads the three fields of each record.
   `mine-stats --only territories` rewrites `data/pp/territory_stats.json`.
 - `core/steps/terrain_gen/territories.py`:
   - `draw_territory_count(counts: Sequence[TerritoryCount], players: int, land: int,
-    rng) -> tuple[int, int]` returns a drawn territory count and loop budget from one
-    record. It sorts the records by player distance then land distance and draws among the
-    nearest `NEAREST_RECORDS` as `place_graph.place_count` does. With no record it returns
-    the home count plus one and a loop budget of 1.
+    rng) -> int` returns a territory count drawn from one record. It keeps the records
+    whose land lies within `LAND_BAND` of the map's, takes the nearest player count with
+    `NEAREST_RECORDS` maps, and draws among the `NEAREST_RECORDS` nearest by land as
+    `place_graph.place_count` does. With no record it returns the home count plus one.
   - `group_neutral(places, edges, spread, rng)` keeps its signature. `bordered` passes a
     one-value spread computed as `ceil(free places / max(1, m - homes))`, so the neutral
     groups land on `m - homes` territories. The pooled `neutral_zones` prior stays in
     the file for the readings and goes out of the draw.
-  - `detour_doors(territory: Sequence[int], realised: Iterable[Pair], doors: dict[Pair,
-    int], planned: Collection[Pair], max_hop: int, budget: int, rng) -> dict[Pair, int]`
-    walks the touching territory pairs in sorted order. For each pair whose door-hop
-    distance over the current doors exceeds `max_hop`, it adds one door on a planned zone
-    pair of that front if any, else on a drawn zone pair. It stops adding when the loop
-    count reaches `budget`. A pair that is unreachable over the doors always gets its door,
-    budget or not, because connectivity comes before the budget.
+  - `detour_doors(choices: Mapping[Pair, Sequence[Pair]], joined: Iterable[Pair],
+    max_hop: int, rng) -> dict[Pair, int]` walks the touching territory pairs in sorted
+    order. For each pair whose door-hop distance over the doors so far exceeds `max_hop`,
+    or that no door path joins, it adds one door on a zone pair drawn from that pair's
+    choices. `draw_doors` builds the choices: the planned zone pairs of the front when it
+    has some, else all of them. No loop budget stops it.
   - `draw_doors` calls `detour_doors` after the forest and before the second-door draw.
-    It gains `loop_budget: int` as a parameter. `MAX_HOP = 2` sits beside `MAX_DOORS`.
-  - `reachable_from_homes(plan: TerritoryPlan, realised: Iterable[Pair]) -> list[int]`
+    Its signature keeps `pair_doors`. `MAX_HOP = 2` sits beside `MAX_DOORS`.
+  - `unreached(plan: TerritoryPlan, realised: Iterable[Pair]) -> list[int]`
     returns the territories no home reaches over the doors within one land component.
     `bordered` logs them beside the stranded and islanded lines.
 - `core/steps/terrain_gen/places.py`:
   - `bordered` takes `players: int` and the land tile count. It calls
     `draw_territory_count` before `draw_partition`, passes the computed neutral spread to
-    `group_neutral` through `draw_partition`, and passes the loop budget to
-    `draw_doors`.
+    `group_neutral` through `draw_partition`, and calls `draw_doors`.
   - `underground_places` calls the same `draw_territory_count` with `players=0` and the
-    level's land count, and the same `draw_doors` with the loop budget.
+    level's land count, and the same `draw_doors`.
 - `core/reading/vector.py` `territory_vector` gains `territory_count`, `territory_loops`,
   `close_pair_hops`, `close_pair_far` and `close_pair_walled`. `core/reading/territories.py`
   gains `close_pairs(labels, within: int) -> dict[Pair, int]` from `topo.py`, with
@@ -152,23 +148,45 @@ Corpus priors: `counts_by_map` as above. No other prior changes.
 
 Tests:
 
-- `territories_test.py`: `detour_doors` leaves every touching pair within `MAX_HOP`
-  when the budget allows; it stops at the budget and still connects an unreachable pair; it
-  prefers a planned zone pair; the same seed gives the same doors.
+- `territories_test.py`: `detour_doors` leaves every touching pair within `MAX_HOP`; it
+  joins every far pair and every cut-off pair, however many loops they close; it prefers
+  a planned zone pair; the same seed gives the same doors.
   `draw_territory_count` draws among the nearest records by players then land, and falls
   back without records.
 - `places_test.py`: `bordered` on a fixed grid gives `m` territories when the records
-  allow, and `reachable_from_homes` is empty.
+  allow, and `unreached` is empty.
 - `corpus/mine/territories_test.py`: one synthetic map yields one `TerritoryCount`
-  with the right loop count.
+  with the right territory count, and the saved table loads back the same.
 - `cli/generate_test.py`, marked `slow`: `generate --seed 5 --size 72` completes. The
   sweep also runs it through `make sweep`.
 - `golden_test.py`: hashes refreshed.
 
 Readings that must move, on seeds 1 to 10 at size 72, level 0: territory count from 15 to
 the corpus 11, within 8 to 13; close-pair hops from 1.40 to 1.0 to 1.1; 3+ hops share from
-0.05, with seeds 3, 9 and 10 at 0.23 to 0.55, to 0; walled close pairs from 0.38 to 0.16;
-loops from 1 to 1 or 2.
+0.05, with seeds 3, 9 and 10 at 0.23 to 0.55, to 0; walled close pairs from 0.38 to 0.16.
+Loops rise from 1 to 3 without the budget. Slice 2 should bring them back toward the
+corpus, as open question 1 says.
+
+Measured after slice 1, seeds 1 to 10 at size 72, level 0 medians. Seed 5 fails only in
+the measuring harness, which runs the bare catalog. The CLI generates it.
+
+| Rule | Territories | Loops | Close-pair hops | 3+ hops share | Walled close pairs | Seeds |
+|---|---|---|---|---|---|---|
+| Before slice 1 | 15 | 1 | 1.40 | 0.05 | 0.38 | 9 |
+| Loop budget at the corpus map's loops | 9 | 1 | 1.39 | 0.05 | 0.29 | 10 |
+| Loop budget one above the corpus map's | 9 | 1 | 1.43 | 0.12 | 0.29 | 9 |
+| No loop budget, kept | 9 | 3 | 1.15 | 0.00 | 0.15 | 9 |
+| Corpus | 11 | 1 | 1.04 | 0.06 | 0.16 | 159 maps |
+
+The mine promise under each rule: seeds that keep it, seeds with a basic mine more than 3
+days further for one player, and seeds with a gold mine within 14 days of a home.
+
+| Rule | 48, 20 seeds | 72, 10 seeds |
+|---|---|---|
+| Before slice 1 | 4 / 5 / 16 | 1 / 2 / 7 |
+| Loop budget at the corpus map's loops | 2 / 8 / 18 | 4 / 3 / 4 |
+| Loop budget one above the corpus map's | 2 / 6 / 17 | 1 / 1 / 8 |
+| No loop budget, kept | 3 / 4 / 17 | 1 / 4 / 7 |
 
 Golden hashes: both maps change.
 
@@ -318,9 +336,14 @@ Docs updated in the same change: the stale statements in §5.
 Each carries my recommendation. The implementer takes the recommendation unless the user
 says otherwise.
 
-1. Door objective. A hop cap alone gives 5 loops against the corpus 1. A loop budget
-   alone leaves detours. Recommendation: both, as slice 1 writes it, with the unreachable
-   pair exempt from the budget. Revisit after the readings of slice 1 land.
+1. Door objective. Decided after slice 1: the hop cap alone, with no loop budget. The
+   player's complaint is detours, so the hop rule wins over the loop count. Slice 1
+   measured both. A budget at the corpus map's loops kept loops at 1 and close-pair hops at
+   1.39. A budget one above it kept hops at 1.43. The hop cap alone brought hops to 1.15,
+   the 3+ hops share to 0 and walled close pairs to 0.15, at 3 loops against the corpus 1.
+   The tables under slice 1 hold the numbers. Slice 2 thickens the walls, so a walled pair
+   stops counting as close and stops drawing a detour door. That should bring the loops
+   back toward the corpus. Revisit the budget after slice 2 lands.
 2. Replacing the hop cap with the distance curve. The corpus door share falls with the
    closest-tile distance: 82%, 75%, 50%, 14%. A rule that draws a door per touching pair
    at the odds of its distance would match the curve without a cap. Recommendation: keep
@@ -343,7 +366,7 @@ says otherwise.
    fitted line on land. Recommendation: nearest records, players first, within the same
    side band. Fall back to the nearest player count with 5 or more maps when the band has
    fewer. A fitted line waits until side 144 has enough maps.
-8. Subterranean gates in the surface loop budget. A gate joins two levels, so counting it
+8. Subterranean gates in the surface loop count. A gate joins two levels, so counting it
    in either level's loops double counts. Recommendation: count gates as doors for hops
    and not for loops.
 
