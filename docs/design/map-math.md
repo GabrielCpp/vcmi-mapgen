@@ -36,7 +36,8 @@ two rules are what make a palette a gameplay choice and not only a look.
 
 ### 1.2 Place graph
 
-The place graph is $P = (\Pi, A, \rho, \sigma, \omega)$.
+The place graph is $P = (\Pi, A, \rho, \sigma, \omega)$. The generator reads it off
+grown shapes. It draws no graph before the ground. Section 2.1 gives the order.
 
 - $\Pi$ is a finite set of places, $n = |\Pi|$.
 - $\rho : \Pi \to \mathcal{R}$ assigns a role. The role set is
@@ -59,6 +60,16 @@ The place graph is $P = (\Pi, A, \rho, \sigma, \omega)$.
 $(\Pi, A)$ is a graph. Its connected subgraph on $\kappa \neq \mathrm{closed}$ must be
 connected. That is the graph form of reachability, stated in section 4.
 
+Territories. A territory is a set of places a hero walks between without passing a
+guard. The territory map $\theta : \Pi \to \{1, \dots, m\}$ partitions the places.
+Each fibre is connected on $A$. A player territory holds that player's home. A neutral
+territory holds no home. Two territories touch when a place of one borders a place of the
+other. The door set $D$ picks touching territory pairs and gives each one or two
+one-tile crossings, each one a guard's post. A touching pair outside $D$ is walled. The
+door graph $(\{1, \dots, m\}, D)$ is the graph a player reads: its hop count from a
+home is the number of fights to a place, and section 5 prices content by it. Section 3.2
+reads the same object off a corpus map, so $m$ and $D$ carry corpus statistics.
+
 Symmetry. Let $\Gamma$ be the symmetric group on the $k$ players. A plan is
 $\Gamma$-fair when for every permutation $\gamma$ there is a graph automorphism
 $\phi_\gamma$ of $(\Pi, A, \rho, \kappa)$ with $\omega \circ \phi_\gamma = \gamma \circ
@@ -74,8 +85,9 @@ target.
 
 A region has a boundary $\partial R_p = \{u \in R_p : \exists v \text{ 4-adjacent to } u,
 v \notin R_p\}$. The realised adjacency is $\hat A(\zeta) = \{\{p, q\} : \exists u \in
-R_p, v \in R_q, u \sim_4 v\}$. Layout must deliver $A \subseteq \hat A(\zeta)$. Extra
-realised adjacencies are allowed and become closed borders.
+R_p, v \in R_q, u \sim_4 v\}$. The shapes come before the graph, so $A = \hat A(\zeta)$
+by construction. No border exists in the plan that the ground does not realise, and no
+realised border is missing from the plan.
 
 ### 1.4 Palettes
 
@@ -188,49 +200,90 @@ profile put Roads at 44 of 53 and Region layout at 40, the two largest.
 The joint distribution of a map is
 
 $$
-p(P, G, \zeta, \Theta, B, \tau, X, \mathrm{Road})
-= p(P) \, p(G \mid P) \, p(\zeta \mid P, G) \, p(\pi \mid P, \zeta) \,
-p(\Theta \mid \pi, P) \, p(B \mid P, \zeta, \Theta) \, p(\tau \mid \zeta, \Theta, B) \,
-p(X \mid P, \zeta, B, \tau) \, p(\mathrm{Road} \mid X, B, \tau).
+p(G, \zeta, \theta, \rho, D, \Theta, B, \tau, X, \mathrm{Road})
+= p(G) \, p(\zeta \mid G) \, p(\theta, \omega \mid \zeta, k) \,
+p(\rho \mid \zeta, \theta) \, p(D \mid \theta, \zeta) \,
+p(\pi \mid \zeta) \, p(\Theta \mid \pi, \rho) \,
+p(B \mid \zeta, \theta, D, \Theta) \, p(\tau \mid \zeta, \Theta, B) \,
+p(X \mid \rho, \theta, D, \zeta, B, \tau) \, p(\mathrm{Road} \mid X, B, \tau).
 $$
 
 Each factor is one part. Each part is a role with swappable variants. Vegetation is not a
 factor here: it is a given, a map from $(W, \tau, X)$ to blocking decor that fills every
 barrier tile and dresses the rest.
 
-Reading left to right:
+The order is shapes, then roles, then paint. Reading left to right:
 
-1. $p(P)$, Places. Draw $n$, the roles, the sizes and the adjacency graph from corpus
-   statistics indexed by player count and level set.
-2. $p(G \mid P)$, Ground. Draw land, water and rock. Conditioning on $P$ lets a planned
-   closed or water adjacency pull water to where the border will fall. Today's water mask
-   is the unconditioned variant.
-3. $p(\zeta \mid P, G)$, Layout. Place anchors, grow regions to size, deliver
-   $A \subseteq \hat A(\zeta)$.
-4. $p(\pi \mid P, \zeta) \, p(\Theta \mid \pi, P)$, Identity, with $d_p := d_{\pi(p)}$.
-   - $p(\pi \mid P, \zeta)$, the palette partition. Draw $K$ from
+1. $p(G)$, Ground. Draw the land mask. The topology water mode gives all land here and
+   draws its water in Borders, step 7. The islands mode draws a noise mask here, so that
+   islands exist before any shape grows on them.
+2. $p(\zeta \mid G)$, Shapes. Draw $n$ from $p(n \mid k, |\mathrm{Land}|)$. Seed $n$
+   anchors farthest-first on land and grow regions by capacity-bound multi-source
+   Dijkstra with jittered costs, the existing growth. The result is a partition of the
+   land into $n$ compact regions with no role, no owner and no target size beyond the
+   capacity bound. The realised adjacency $\hat A(\zeta)$ is the place graph's edge set.
+3. $p(\theta, \omega \mid \zeta, k)$, Territories. Draw $m$ from $p(m \mid k,
+   |\mathrm{Land}|)$, the corpus territory count by player count and land. Pick $k$
+   home places farthest-first by geodesic distance among the places with room for a town,
+   and read the corpus home separation as the acceptance test. Grow each home territory
+   over its neighbours to a corpus-drawn place count, then group the remaining places on
+   $\hat A$ into $m - k$ neutral territories, each connected. Every territory border is a
+   realised border, because the grouping walks the realised adjacency.
+4. $p(\rho \mid \zeta, \theta)$, Roles. A labelling walk over the fixed adjacency.
+   Home places are labelled. Every other place draws a role from the role marginal and
+   the walk moves one label at a time under the energy $-\sum_{pq \in \hat A} \log
+   p(\rho_p, \rho_q \mid \text{adjacent}) + \lambda_\sigma \sum_p c(|R_p|, \rho_p)$,
+   where $c$ prices the realised area against the corpus size by role. Size is a cost on
+   the label, not a target the shape must meet. A pocket needs one way in, so the walk
+   admits the pocket label on a place of degree 1 only. A pass needs two neighbours in
+   different territories.
+5. $p(D \mid \theta, \zeta)$, Doors. One door on each pair of a spanning forest over
+   the touching territory pairs, then a door on every touching pair whose door-hop
+   distance exceeds 2 while the loop count stays inside the corpus loop budget, then a
+   second door on a doored pair at the corpus odds. The door objective is the detour a
+   player walks between two territories that touch, measured in hero-days, and the
+   corpus median is 1 hop. Section 10 names the open choices.
+6. $p(\pi \mid \zeta) \, p(\Theta \mid \pi, \rho)$, Identity, with $d_p :=
+   d_{\pi(p)}$.
+   - $p(\pi \mid \zeta)$, the palette partition. Draw $K$ from
      $p(K \mid n, |\mathrm{Land}|)$. Draw $K$ capacities from the macro terrain-blob
      areas, renormalised to the sum of place sizes. Seed the $K$ regions farthest-first
      on $\hat A$ by hop distance, one seed per connected component of $\hat A$ first.
      Grow by capacity-constrained BFS over places, so each region is a union of whole
      places connected on $\hat A$.
-   - $p(\Theta \mid \pi, P)$, the region palettes. Draw one dominant per region with
-     energy $E(d) = \sum_k \sum_{p \in \Lambda_k} c_{\rho_p}(d_k) + \sum_{k \sim l}
-     -\log p_{\mathrm{macro}}(d_k, d_l)$, where $c_\rho$ is the role cost and
+   - $p(\Theta \mid \pi, \rho)$, the region palettes. Draw one dominant per region
+     with energy $E(d) = \sum_k \sum_{p \in \Lambda_k} c_{\rho_p}(d_k) + \sum_{k \sim
+     l} -\log p_{\mathrm{macro}}(d_k, d_l)$, where $c_\rho$ is the role cost and
      $d_k \neq d_l$ is hard for adjacent regions. A region that holds a home draws from
      the town terrains only.
-5. $p(B \mid P, \zeta, \Theta)$, Borders. For each realised adjacency draw a kind, a band
-   depth, barrier tiles and passages.
-6. $p(\tau \mid \zeta, \Theta, B)$, Paint. Base coat, accent patches, transition grading,
-   then a texture variant inside each place. Markov is one texture variant.
-7. $p(X \mid P, \zeta, B, \tau)$, Content. A marked point process whose intensity reads
-   the role, the distance to passages and homes, and the openness.
-8. $p(\mathrm{Road} \mid X, B, \tau)$, Roads. Shortest paths in the passable graph from
-   towns through passages, with a learned stopping rule.
+7. $p(B \mid \zeta, \theta, D, \Theta)$, Borders. For each realised adjacency draw a
+   kind, a band depth, barrier tiles and passages. A border inside a territory draws
+   its kind from the corpus role-pair table. A door is a gated border one tile wide. A
+   walled territory border is a barrier whose depth grows with the door-hop distance
+   between its two territories: a thin wall where the pair sits one door apart, water or
+   a wide mountain band where the pair sits three or more doors apart. The width scales
+   with the map side. The topology water mode draws its water here, along the walled
+   fronts, so a doorless pair that touches reads as a coast and not as a fence.
+8. $p(\tau \mid \zeta, \Theta, B)$, Paint. Base coat, accent patches, transition
+   grading, then a texture variant inside each place. Markov is one texture variant.
+9. $p(X \mid \rho, \theta, D, \zeta, B, \tau)$, Content. A marked point process whose
+   intensity reads the role, the door hops from the nearest home, the distance to
+   passages, and the openness.
+10. $p(\mathrm{Road} \mid X, B, \tau)$, Roads. Shortest paths in the passable graph from
+    towns through passages, with a learned stopping rule.
 
-The order is a choice. Two other orders were considered and rejected in `map-terrain.md`:
-terrain first with places read off paint, and content first with terrain fitted around it.
-Section 6 gives the mathematical reason the first fails.
+Both levels run the same front. The underground is the case $k = 0$: no home, every
+territory neutral, and the subterranean gates count as doors into the surface's door
+graph, so a hop count from a home runs through a gate like through any other door.
+
+The order is a choice. Three other orders were considered. Content first with terrain
+fitted around it fails for the reason in 6.3. Terrain first with places segmented from
+paint fails for the reasons in 6.2. The earlier order of this note, a place graph drawn
+before any shape and laid out by scaling into the plane, failed in practice: on seeds 1
+to 10 at side 72, 83 of 288 planned borders never formed, 232 unplanned borders formed,
+and the doors drawn on the plan walled 145 of 159 touching territory pairs that the plan
+never saw. Section 6.2 says why shapes first keeps every gain that order was meant to
+keep.
 
 ### 2.2 Randomness and determinism
 
@@ -244,9 +297,11 @@ clock, the file system order or an unseeded library call.
 
 | Part | Role | Variants named today |
 |---|---|---|
-| Places | plan source | corpus statistics per player count |
-| Ground | ground sampler | thresholded value noise, cavern blobs with tunnels |
-| Layout | region shape | capacity-constrained growth, watershed, frame warp |
+| Ground | ground sampler | all land, thresholded value noise, cavern blobs with tunnels |
+| Shapes | region shape | capacity-constrained growth, watershed, frame warp |
+| Territories | territory count and home choice | corpus count by players and land, farthest-first homes |
+| Roles | labelling walk | role adjacency energy with size cost |
+| Doors | door objective | spanning forest with a detour cap and a loop budget |
 | Identity | theme rule | role and faction table |
 | Borders | border strategy per kind | water, rock, mountain, forest, river, transition |
 | Paint | texture | Markov Gibbs inside a place, plain coat |
@@ -704,6 +759,31 @@ a $\zeta$ segmented from it, and still no $\rho$. Content stayed roleless, and t
 stayed. In the place-first factorisation the oracle would have handed content a real
 $\hat\zeta$ and real roles.
 
+Shapes first is not terrain first. The objection above is to $\zeta =
+\mathrm{segment}(\tau)$, a place map read off paint. The order of 2.1 draws $\zeta$
+before $\tau$ and draws $\rho$ between them. Each of the three consequences fails to
+follow.
+
+1. Roles exist. $\rho$ is drawn conditioned on $\zeta$ and $\theta$, so
+   $I(\rho ; \zeta) > 0$: the role of a place reads its area, its degree and its door
+   hops from a home. Content reads $\rho$ as before. The valley rate is a role rate, and
+   the model has the role.
+2. Borders are not cuts. $B$ is drawn from $\zeta$ and $\Theta$, and Paint grades or
+   textures each border by its kind. A same-dominant border inside one palette region
+   carries no terrain change at all. The raw cut stays a free parameter Identity sets,
+   as in the graph-first order.
+3. Accents stay inside places. Paint grows an accent inside $R_p$ after $\zeta$ is
+   fixed, so an accent never becomes a place and never draws a total or a guard.
+
+Shapes first gains what the graph-first order lost. Every planned border is a realised
+border, so no door falls on a pair the ground never joined and no wall closes a pair the
+plan never saw. The layout needs no scaling into the plane and no retry, because the
+shapes are the layout. The roles become a labelling of a fixed graph, which is a
+Metropolis walk over $n$ labels instead of a walk over edge sets that the layout may
+then fail to embed. The cost is that a role's size is a cost on the label and not a
+target on the shape, and that home separation is a choice among grown regions and not a
+graph constraint. Section 3.4's home separation statistic prices that choice.
+
 ### 6.3 Why content first is also wrong
 
 The reverse order $p(X) \, p(\tau \mid X)$ puts towns before land. A town needs a region
@@ -729,27 +809,27 @@ The budget is about one second per map in Python with numba. Today's pipeline fi
 with Markov as the hot loop, already compiled. Every sampler below is $O(|V| \log |V|)$
 or less per level, with $|V| = 5184$. Constants are the question, not orders.
 
-Places. Draw $n$ from $p(n \mid k, |\mathrm{Land}|)$. Assign $k$ homes. Draw the remaining
-roles from the role marginal. Draw sizes from $p(\sigma / |\mathrm{Land}| \mid \rho)$ and
-renormalise. Draw the adjacency graph by a Metropolis walk over edge sets with energy
-$-\sum_{pq \in A} \log p(\rho_p, \rho_q \mid \text{adjacent}) + \lambda_{\deg} \sum_p
-(\deg p - \bar d_{\rho_p})^2$, with the constraint that the graph is planar and connected
-on non-closed edges. With $n$ about 26 places per level and a few hundred moves this is
+Ground. Value noise thresholded at the corpus barrier-fraction quantile for the islands
+mode, $O(|V|)$. All land for the topology mode, whose water is a Borders draw.
+
+Shapes. Draw $n$ from $p(n \mid k, |\mathrm{Land}|)$. Anchors farthest-first on land
+by geodesic distance, $O(n |V|)$. Regions by capacity-constrained multi-source Dijkstra
+with jittered costs, the existing growth, $O(|V| \log |V|)$. No retry: whatever borders
+form are the graph.
+
+Territories. Draw $m$ from $p(m \mid k, |\mathrm{Land}|)$. Homes farthest-first among
+the places whose region holds 150 passable tiles, the existing `roomy` floor, with the
+corpus home separation as the acceptance test, $O(k n)$. Grow each home territory to a
+corpus-drawn place count and group the rest on $\hat A$ by random steps to free places,
+the existing `group_neutral`, $O(n)$. Split off every piece a territory lost, the
+existing `settle`.
+
+Roles. A Metropolis walk over the $n$ labels with the energy of 2.1, from the role
+marginal, $O(n \cdot \text{sweeps})$. With $n$ about 26 and 40 sweeps this is
 milliseconds.
-Planarity is checked by the layout, not here: Layout rejects a graph it cannot embed.
 
-Ground. Value noise thresholded at the corpus barrier-fraction quantile, as today,
-$O(|V|)$. The conditioned variant adds a low-frequency pull toward water along the
-planned closed adjacencies. It needs anchors first, so Ground and Layout alternate once:
-anchors on a provisional land mask, water pulled, anchors refined.
-
-Layout. Anchors by multidimensional scaling of the graph distance on $(\Pi, A)$ into the
-plane, $O(n^3)$, then snapped to land and spread by one max-min pass. Regions by
-capacity-constrained multi-source Dijkstra with jittered costs, the existing growth,
-$O(|V| \log |V|)$. Check $A \subseteq \hat A(\zeta)$. On failure, move the anchor of the
-missing pair toward each other by one step of the graph distance and regrow, at most
-five tries. The watershed and frame arms are alternative region-shape variants with the
-same contract.
+Doors. Kruskal over the touching territory pairs, then one BFS over the door graph per
+touching pair without a door, $O(m^2)$. Then the second doors at the corpus odds.
 
 Identity. The palette partition first: draw $K$ from the corpus records nearest
 $(n, |\mathrm{Land}|)$, scaled by $n$ over the record's place count and floored at the
@@ -774,14 +854,15 @@ the rest of every front, and the border guard step guards its passages. An open 
 passage is its whole front. The border guard step keeps its crossing sealer as a safety
 net and logs how many leaks it sealed, which reads how well the barrier held.
 
-Implementation note, the deviations of slice 5. A realised pair the place graph never
-planned is closed, because nothing in the plan asked for it. The spanning set of passable
-pairs is a spanning forest over the realised pairs, planned pairs first and each weighted
-by the share of its role pair the corpus leaves passable, so a level split by water keeps
-one tree per piece. Its pairs draw gated or open, every other planned pair draws from the
-whole table. The content plan counts hops over the passable pairs only. No barrier of
-depth $w$ is carved: a closed front closes by the vegetation's densification and its
-border sealer, as before. The sealer may close a tile of a zone's web only when that
+Implementation note. Every realised pair is a planned pair, so no pair closes for
+want of a plan. Inside a territory the spanning set of passable pairs is a spanning
+forest over the realised pairs, each weighted by the share of its role pair the corpus
+leaves passable, so a level split by water keeps one tree per piece. Its pairs draw gated
+or open, every other inner pair draws from the whole table. The content plan counts hops
+over the door graph. A walled territory border carves a barrier whose depth follows the
+door-hop distance of its pair, and the topology water mode lays its water in the deepest
+of them. A thin wall still closes by the vegetation's densification and its border
+sealer, as before. The sealer may close a tile of a zone's web only when that
 tile's neighbours inside the same zone stay joined, because a detour through the
 neighbouring zone is the very crossing it is closing. Markov keeps one gated pair per
 realised adjacency with every passage `plan_entrances` plans, so its maps do not change.
@@ -809,10 +890,10 @@ each, at most a few dozen runs.
 
 Reading. All statistics of 3.4 on the generated map, each $O(|V|)$ or $O(n^2)$.
 
-Total: a few tens of $O(|V| \log |V|)$ passes and the Markov sweeps. Today's generator
-runs the same number of passes with a different order. The place-first order adds no
-iterative solver and no map-wide optimisation. The one new loop is the Layout retry,
-bounded at five.
+Total: a few tens of $O(|V| \log |V|)$ passes and the Markov sweeps. The shapes-first
+order adds no iterative solver and no map-wide optimisation. It drops the layout retry and
+the scaling into the plane, so the terrain part runs fewer passes than the graph-first
+order did.
 
 ## 8. Judge-free readings per part
 
@@ -822,12 +903,14 @@ readings fall inside the hand-made spread.
 
 | Part | Reading | Definition |
 |---|---|---|
-| Places | place count | $n$ against $p(n \mid k, |\mathrm{Land}|)$ |
-| Places | role coverage | one home per player, at least one treasure ground and one pocket per level at the corpus rate |
-| Places | home separation | $d_g(h_i, h_j) / N$ |
-| Layout | compactness | $|\partial R_p|^2 / |R_p|$ by role |
-| Layout | roughness | boundary length over hull perimeter |
-| Layout | straight coast | share of coast in straight runs of 6 or more |
+| Shapes | place count | $n$ against $p(n \mid k, |\mathrm{Land}|)$ |
+| Shapes | compactness | $|\partial R_p|^2 / |R_p|$ by role |
+| Shapes | roughness | boundary length over hull perimeter |
+| Shapes | straight coast | share of coast in straight runs of 6 or more |
+| Territories | territory count | $m$ against $p(m \mid k, |\mathrm{Land}|)$, corpus median 11 at side 72 |
+| Territories | home separation | $d_g(h_i, h_j) / N$ |
+| Territories | close-pair detour | mean door hops between territories within 3 tiles, corpus 1.0, and the share needing 3 or more, corpus 0 |
+| Roles | role coverage | one home per player, at least one treasure ground and one pocket per level at the corpus rate |
 | Identity | dominant share | $\min_p \hat\Theta_p(d_p)$ and its mean |
 | Identity | same share | share of $\hat A$ pairs with $d_p = d_q$, corpus 0.71 pooled |
 | Identity | palette regions | components of same-dominant places on $\hat A$, corpus median 6 |
@@ -863,7 +946,10 @@ than the default's by more than the corpus interquartile range. Pipeline time is
 but not judged.
 
 The run on 2026-10-04 generated seeds 1 to 10 at size 72 with each model and read the 71
-corpus maps of side 72. Each cell is a median. The corpus column adds its quartiles.
+corpus maps of side 72. Each cell is a median. The corpus column adds its quartiles. The
+places column reads the graph-first front of that date. The shapes-first front of 2.1
+must be read again on the same seeds before it replaces that column, and the territory
+readings of section 8 join the table then.
 
 | Reading | Corpus [q1, q3] | places | markov |
 |---|---|---|---|
@@ -939,20 +1025,30 @@ Content readings did not. The judge counted what did not move.
 
 ## 10. Open decisions
 
-Three choices are left open by this note. Each has a recommendation.
+Three choices this note once left open are settled. Place inference on the corpus uses
+the passability version of 3.2, and `core/reading/territories.py` reads it. The content
+sampler is sequential, with the value link read as a table. Fairness is a tolerance on
+value claimed over 40 hero-days, after coverage and the full plan.
 
-1. Place inference on the corpus. Section 3.2 defines $\hat\zeta$ by a geodesic Voronoi
-   on passability seeded by towns and cut by guards. An alternative seeds by terrain
-   blobs and merges. The passability version matches how a player reads a hand-made map,
-   and it is the one that makes accents stay inside places. Recommendation: the
-   passability version, checked on a handful of corpus maps by eye before any statistic is
-   trusted.
-2. The content sampler. Section 5.3 keeps the sequential sampler as the default and a
-   birth-death chain as a variant. The sequential sampler cannot pull guard level toward
-   the value link once a guard is placed, and the chain can. Recommendation: sequential
-   first, with the value link applied at the moment a guard is drawn, and the chain only
-   if the guard-link reading stays outside the hand-made spread.
-3. Fairness. Section 4.4 makes fairness a tolerance on three functionals with bounded
-   resampling, and section 1.2 defines the exact symmetric alternative. Recommendation:
-   the tolerance. Hand-made maps are not mirror images, the corpus spread between a map's
-   own homes gives the tolerance for free, and exact symmetry is a template.
+The shapes-first order of 2.1 leaves these open. `docs/plans/territory-topology.md`
+carries each one with a recommendation and the slice that decides it.
+
+1. The door objective. A detour cap on close pairs, a loop budget, or both.
+   Recommendation: both, the cap at 2 door hops on pairs within 3 tiles and the budget
+   from the corpus loop count by territory count.
+2. Barrier thickness. A wall's depth by the door-hop distance of its pair, with the
+   water of the topology mode as the deepest kind. Recommendation: three depths, thin,
+   wide and water, by hop 1, hop 2 and hop 3 or more, each width a share of the map
+   side.
+3. Territory area. Whether a territory draws a target area as well as a place count.
+   Recommendation: a place count only, as today, until the territory-size reading sits
+   outside the corpus spread.
+4. Home choice. Farthest-first among roomy places, or a draw from several farthest-first
+   candidates scored by claimed value. Recommendation: farthest-first with the corpus
+   home separation as the acceptance test, and fairness by placement after.
+5. Pockets and islands. Whether a pocket is a role the walk labels on a degree-1 place
+   or a shape the growth makes on purpose. Recommendation: a label on a degree-1 place
+   first, and a grown pocket only if the pocket rate reads low.
+6. Prior pooling. The territory count by player count and land is sparse at 7 and 8
+   players and at side 144. Recommendation: pool by players within a size band and
+   fall back to the nearest player count with 5 or more maps.
