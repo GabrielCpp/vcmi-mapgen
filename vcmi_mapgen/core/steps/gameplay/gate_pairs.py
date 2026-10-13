@@ -1,13 +1,14 @@
 """Subterranean Gate pairs placed against the vegetated field. A pair is one `avtcave` at the
 same (x, y) on both levels, inside one zone per level, with its entrance reachable from both
 zones' webs. Among the anchors near a spread-admitted tile the one whose sprite tops rest
-most against unwalkable tiles, summed over both levels, wins."""
+most against unwalkable tiles, summed over both levels, wins. The gates the terrain model
+planned go first, each kept in its planned zone on both levels."""
 
 from __future__ import annotations
 
 import math
 import random
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from typing import final
@@ -19,11 +20,14 @@ from vcmi_mapgen.core.placement.guards import NO_TILES, Fit
 from vcmi_mapgen.core.placement.site import NEIGHBOURHOOD, SiteIndex, ZoneSite, cheb
 from vcmi_mapgen.core.priors.gates import GateStats
 from vcmi_mapgen.core.steps.gameplay.result import GateResult
+from vcmi_mapgen.core.steps.terrain_gen.result import PlannedDoor
 
 GUARD_P = 0.65
+PIN_RINGS = 4
 GUARD_SALT = 0x6A7F
 
 type Side = tuple[ZoneSite, Fit]
+type Pin = tuple[Tile, tuple[int, int] | None]
 
 
 def _side(idx: SiteIndex) -> GateSide:
@@ -52,20 +56,33 @@ class _GatePlacer:
     def _cover(self, t: Tile, a: Side, b: Side) -> int:
         return a[0].cover(self.ident, t) + b[0].cover(self.ident, t)
 
-    def place(self, c: Tile, spread: Spread) -> Tile | None:
-        cands: list[tuple[int, int, Tile, Side, Side]] = []
-        for dx in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1):
-            for dy in range(-NEIGHBOURHOOD, NEIGHBOURHOOD + 1):
-                t = (c[0] + dx, c[1] + dy)
-                if not spread.admits(t):
-                    continue
-                a, b = self._fit(0, t), self._fit(1, t)
-                if a is not None and b is not None:
-                    cands.append((-self._cover(t, a, b), cheb(t, c), t, a, b))
-        cands.sort(key=lambda k: (k[0], k[1], k[2]))
-        for _cover, _d, t, a, b in cands:
-            if self._commit(t, a, b):
-                return t
+    def zones_at(self, t: Tile) -> tuple[int, int] | None:
+        z0, z1 = self.idx[0].zone_of.get(t), self.idx[1].zone_of.get(t)
+        return None if z0 is None or z1 is None else (z0, z1)
+
+    def place(self, pin: Pin, spread: Spread) -> Tile | None:
+        """The anchor of a gate pair committed near the pin's tile, None when none fits.
+        A free pin looks ``NEIGHBOURHOOD`` tiles around it. A planned pin keeps to its zones
+        and widens its search ring by ring up to ``PIN_RINGS`` times as far."""
+        c, zones = pin
+        rings = 1 if zones is None else PIN_RINGS
+        for ring in range(rings):
+            lo, hi = ring * NEIGHBOURHOOD, (ring + 1) * NEIGHBOURHOOD
+            cands: list[tuple[int, int, Tile, Side, Side]] = []
+            for dx in range(-hi, hi + 1):
+                for dy in range(-hi, hi + 1):
+                    t = (c[0] + dx, c[1] + dy)
+                    if ring and max(abs(dx), abs(dy)) <= lo:
+                        continue
+                    if not spread.admits(t) or (zones is not None and self.zones_at(t) != zones):
+                        continue
+                    a, b = self._fit(0, t), self._fit(1, t)
+                    if a is not None and b is not None:
+                        cands.append((-self._cover(t, a, b), cheb(t, c), t, a, b))
+            cands.sort(key=lambda k: (k[0], k[1], k[2]))
+            for _cover, _d, t, a, b in cands:
+                if self._commit(t, a, b):
+                    return t
         return None
 
     def _commit(self, t: Tile, a: Side, b: Side) -> bool:
@@ -92,14 +109,21 @@ class _GatePlacer:
 def place_gate_pairs(
     catalog: Catalog,
     indexes: tuple[SiteIndex, SiteIndex],
-    stats: GateStats,
+    plan: tuple[GateStats, Sequence[PlannedDoor]],
     size: int,
     seed: int,
 ) -> GateResult:
+    """The gate pairs and the tiles they block, the planned gates of ``plan`` first."""
+    stats, planned = plan
     idx0, idx1 = indexes
     placer = _GatePlacer(catalog, idx0, idx1, seed)
-    anchors = gate_anchors((_side(idx0), _side(idx1)), stats, size, seed, placer.place)
-    print(f"  gates: {len(anchors)} Subterranean Gate pair(s) placed")
+    pins = [(g.tiles[0], g.zones) for g in planned]
+    anchors = gate_anchors((_side(idx0), _side(idx1)), (stats, pins), size, seed, placer.place)
+    kept = sum(placer.zones_at(a) in {z for _, z in pins} for a in anchors)
+    print(
+        f"  gates: {len(anchors)} Subterranean Gate pair(s) placed"
+        + (f", {kept} of {len(pins)} planned" if pins else "")
+    )
     return GateResult(
         gate_objs=placer.objs,
         gate_blk={lvl: frozenset(blk) for lvl, blk in placer.blk.items()},
@@ -139,32 +163,37 @@ class Spread:
 
 def gate_anchors(
     sides: tuple[GateSide, GateSide],
-    stats: GateStats,
+    plan: tuple[GateStats, Sequence[Pin]],
     size: int,
     seed: int,
-    place: Callable[[Tile, Spread], Tile | None],
+    place: Callable[[Pin, Spread], Tile | None],
 ) -> list[Tile]:
-    """Walk the tiles land on both levels in a seeded order and let ``place`` put a gate
-    pair near each one the spread admits. ``place`` returns the anchor it used, or None.
-    The count is drawn from ``stats`` at the map width and is an upper bound. Each zone
-    on either level hosts at most one gate, and no two gates sit closer than the corpus
-    spacing floor."""
+    """Walk the planned pins of ``plan``, then the tiles land on both levels in a seeded
+    order, and let ``place`` put a gate pair near each one the spread admits. A pin holds
+    its tile and the zones the gate keeps to on both levels, None for any. ``place``
+    returns the anchor it used, or None. The count is one per planned pin, or drawn from
+    the stats at the map width without a plan, and is an upper bound. Each zone on either
+    level hosts at most one gate, and no two gates sit closer than the corpus spacing
+    floor."""
     side0, side1 = sides
+    stats, planned = plan
     rng = random.Random(seed ^ 0x6A7E)
     ts_both = side0.ts & side1.ts
     if not ts_both:
         return []
     target = stats.draw_count(size, rng)
+    target = len(planned) or target
     spread = Spread(side0, side1, stats.min_gap(size))
     cands = sorted(ts_both)
     rng.shuffle(cands)
+    pins: list[Pin] = [*planned, *((c, None) for c in cands)]
     out: list[Tile] = []
-    for c in cands:
+    for pin in pins:
         if len(out) >= target:
             break
-        if not spread.admits(c):
+        if not spread.admits(pin[0]):
             continue
-        anchor = place(c, spread)
+        anchor = place(pin, spread)
         if anchor is None:
             continue
         spread.take(anchor)

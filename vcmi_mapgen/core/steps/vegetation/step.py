@@ -74,6 +74,23 @@ def _doors(places: PlaceMap, level: int) -> frozenset[Tile]:
     return frozenset(t for d in lp.territories.doors for t in d.tiles) if lp else NO_TILES
 
 
+def _gates(catalog: Catalog, places: PlaceMap) -> tuple[frozenset[Tile], frozenset[Tile]]:
+    """The room each planned gate keeps free of trees on both levels, and the approach
+    tiles alone, kept on the web."""
+    if not places.gates:
+        return NO_TILES, NO_TILES
+    fp = catalog.subterranean_gate().footprint
+    room = FP.room_offsets(fp)
+    held: set[Tile] = set()
+    approaches: set[Tile] = set()
+    for g in places.gates:
+        (ax, ay), approach = g.tiles[0], FP.footprint_cells(fp, *g.tiles[0])[2]
+        held.update((ax + dx, ay + dy) for dx, dy in room)
+        if approach is not None:
+            approaches.add(approach)
+    return frozenset(held), frozenset(approaches)
+
+
 def _depths(places: PlaceMap, level: int) -> Mapping[tuple[int, int], int]:
     lp = places.levels.get(level)
     return lp.depths if lp else {}
@@ -173,8 +190,9 @@ class VegetationStep(PipelineStep):
         patches = _patches(catalog, map_state, plan)
         terrains = sorted({name for lp in patches.values() for zp in lp.values() for name in zp})
         models = vegetation_models(catalog, self.priors.vegetation, plan, terrains)
+        gates = _gates(catalog, self._places)
         pre_taken = {
-            lvl: _taken(map_state, lvl, pl, _doors(self._places, lvl))
+            lvl: _taken(map_state, lvl, pl, _doors(self._places, lvl) | gates[0])
             for lvl, pl in plan.levels.items()
         }
         grown = {
@@ -245,6 +263,7 @@ class VegetationStep(PipelineStep):
         bands: set[Tile] = set()
         avoid: set[Tile] = set(pl.landings.blk | pl.landings.appr)
         web: set[Tile] = set(pl.landings.blk | pl.landings.appr) | _doors(self._places, level)
+        web |= _gates(catalog, self._places)[1]
         avoid |= taken
         if level == 1:
             avoid |= self._tunnel_protect

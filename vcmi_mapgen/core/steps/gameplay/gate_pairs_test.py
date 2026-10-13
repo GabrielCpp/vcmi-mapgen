@@ -2,12 +2,12 @@
 
 import math
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from itertools import combinations
 
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.priors.gates import GateStats
-from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateSide, gate_anchors
+from vcmi_mapgen.core.steps.gameplay.gate_pairs import GateSide, Pin, gate_anchors
 
 S = 40
 
@@ -20,8 +20,10 @@ def _side(zone_of: dict[Tile, int]) -> GateSide:
     return GateSide(frozenset(zone_of), set(), zone_of=zone_of)
 
 
-def _anchors(sides: tuple[GateSide, GateSide], stats: GateStats, seed: int) -> list[Tile]:
-    return gate_anchors(sides, stats, S, seed, lambda c, _spread: c)
+def _anchors(
+    sides: tuple[GateSide, GateSide], stats: GateStats, seed: int, pins: Sequence[Pin] = ()
+) -> list[Tile]:
+    return gate_anchors(sides, (stats, pins), S, seed, lambda pin, _spread: pin[0])
 
 
 def _open(label: Callable[[int, int], int]) -> dict[Tile, int]:
@@ -60,3 +62,12 @@ def test_gate_count_never_exceeds_the_draw() -> None:
     zone_of = _open(lambda x, y: x * S + y)
     for seed in range(20):
         assert 1 <= len(_anchors((_side(zone_of), _side(zone_of)), stats, seed)) <= 2
+
+
+def test_planned_gates_go_first_and_set_the_count() -> None:
+    """The planned pins take the first gates, and their count replaces the corpus draw."""
+    stats = _stats((6,), frac=0.0)
+    zone_of = _open(lambda x, y: x * S + y)
+    pins: list[Pin] = [((3, 4), (3 * S + 4, 3 * S + 4)), ((30, 20), (30 * S + 20, 30 * S + 20))]
+    for seed in range(20):
+        assert _anchors((_side(zone_of), _side(zone_of)), stats, seed, pins) == [(3, 4), (30, 20)]

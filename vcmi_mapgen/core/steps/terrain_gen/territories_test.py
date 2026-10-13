@@ -64,16 +64,16 @@ def test_settle_splits_a_territory_the_growth_cut_in_two() -> None:
 def test_draw_doors_opens_a_spanning_forest_of_the_territories() -> None:
     territory = [0, 0, 1, 1, 2]
     realised = [(0, 2), (1, 3), (3, 4), (0, 1), (2, 3)]
-    doors = TR.draw_doors(territory, realised, [(1, 3), (3, 4)], [1], random.Random(0))
+    doors = TR.draw_doors(territory, (realised, [(1, 3), (3, 4)]), [1], random.Random(0))
     assert doors == {(1, 3): 1, (3, 4): 1}
 
 
 def test_draw_doors_puts_a_second_door_on_another_pair_or_the_same_one() -> None:
     territory = [0, 0, 1, 1]
     realised = [(0, 2), (1, 3)]
-    doors = TR.draw_doors(territory, realised, [(0, 2)], [2], random.Random(0))
+    doors = TR.draw_doors(territory, (realised, [(0, 2)]), [2], random.Random(0))
     assert doors == {(0, 2): 1, (1, 3): 1}
-    doors = TR.draw_doors([0, 1], [(0, 1)], [], [5], random.Random(0))
+    doors = TR.draw_doors([0, 1], ([(0, 1)], []), [5], random.Random(0))
     assert doors == {(0, 1): 2}
 
 
@@ -105,7 +105,7 @@ def test_draw_doors_puts_a_detour_door_on_a_planned_zone_pair() -> None:
     realised = [(0, 1), (1, 2), (2, 3), (0, 4), (0, 3)]
     planned = [(0, 1), (1, 2), (2, 3), (0, 4)]
     for seed in range(8):
-        doors = TR.draw_doors(territory, realised, planned, [1], random.Random(seed))
+        doors = TR.draw_doors(territory, (realised, planned), [1], random.Random(seed))
         assert set(doors) <= set(planned)
         assert (0, 4) in doors or (2, 3) in doors
 
@@ -113,8 +113,29 @@ def test_draw_doors_puts_a_detour_door_on_a_planned_zone_pair() -> None:
 def test_draw_doors_closes_every_ring_of_four_territories() -> None:
     ring = [(0, 1), (1, 2), (2, 3), (0, 3)]
     for seed in range(8):
-        doors = TR.draw_doors([0, 1, 2, 3], ring, ring, [1], random.Random(seed))
+        doors = TR.draw_doors([0, 1, 2, 3], (ring, ring), [1], random.Random(seed))
         assert sorted(doors) == sorted(ring)
+
+
+def test_across_numbers_the_other_level_after_this_one() -> None:
+    across = TR.Across(gates=((0, 1), (3, 0)), doors=frozenset({(0, 1)}))
+    assert across.links([0, 0, 1, 2]) == {(0, 4), (2, 3), (3, 4)}
+
+
+def test_a_gate_counts_as_a_door_hop_so_a_ring_joined_below_needs_no_detour() -> None:
+    hub = TR.Across(gates=((0, 0), (1, 0), (2, 0), (3, 0))).links([0, 1, 2, 3])
+    assert TR.detour_doors(RING, [*PATH, *hub], TR.MAX_HOP, random.Random(0)) == {}
+    ring = [(0, 1), (1, 2), (2, 3), (0, 3)]
+    for seed in range(8):
+        doors = TR.draw_doors([0, 1, 2, 3], (ring, ring), [1], random.Random(seed), hub)
+        assert len(doors) == 3
+
+
+def test_a_gate_link_narrows_the_wall_between_territories_it_brings_close() -> None:
+    territory = [0, 0, 1, 2]
+    links = TR.Across(gates=((0, 0), (3, 0))).links(territory)
+    assert TR.wall_depths(territory, [(1, 2)], 72, links)[(0, 3)] == 3
+    assert TR.wall_depths(territory, [(1, 2)], 72)[(0, 3)] == 4
 
 
 def _count(players: int, land: int, territories: int) -> TerritoryCount:

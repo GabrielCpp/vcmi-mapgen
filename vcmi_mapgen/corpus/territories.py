@@ -9,7 +9,7 @@ from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 TERRITORY_FILE = "territory_stats.json"
-TERRITORY_VERSION = 4
+TERRITORY_VERSION = 5
 TERRITORY_SOURCE = "vcmi_mapgen.corpus.mine.territories.mine_territories"
 FIELDS = ("player_zones", "neutral_zones", "pair_doors")
 BY_MAP = ("player_doors_by_map", "neutral_doors_by_map")

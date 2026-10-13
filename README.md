@@ -27,7 +27,9 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    one home per player, treasure grounds and pockets, each with its hop count
    from the nearest home. Each border between two places is closed, gated or
    open. Ocean, islands and an underground level linked by Subterranean Gate
-   pairs are optional.
+   pairs are optional. The underground splits into territories at the corpus
+   count of an underground with no home. Its doors follow the surface rule, and
+   each gate counts as one door between the levels.
 2. **Terrain.** Each palette region of places takes one dominant terrain, and
    corpus-learned transition bands and accents paint it so coastlines and
    terrain borders look hand-drawn.

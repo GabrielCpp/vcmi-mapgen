@@ -44,7 +44,8 @@ class PlannedPlace:
 @dataclass(frozen=True, slots=True)
 class PlannedDoor:
     """One door the terrain model planned: the zone pair ``(a, b)``, ``a < b``, it crosses,
-    the territory and the owner on each side in the same order, and its tile on each side."""
+    the territory and the owner on each side in the same order, and its tile on each side.
+    A planned Subterranean Gate holds its surface side first and the same tile on both."""
 
     zones: tuple[int, int]
     territories: tuple[int, int]
@@ -64,7 +65,8 @@ class PlannedDoor:
 class TerritoryPlan:
     """One level's planned territories: the territory of each zone, the player each
     territory belongs to, None when it is neutral, and every door between two territories.
-    Every other border between two territories is walled."""
+    Every other border between two territories is walled, the wall as wide as the hops
+    between them give."""
 
     zones: Mapping[int, int] = field(default_factory=dict[int, int])
     owners: tuple[int | None, ...] = ()
@@ -101,9 +103,11 @@ class LevelPlaces:
 
 @dataclass(frozen=True, slots=True)
 class PlaceMap:
-    """Each level's places, the zones every later step reads."""
+    """Each level's places, the zones every later step reads, and the Subterranean Gates
+    planned between the levels."""
 
     levels: Mapping[int, LevelPlaces]
+    gates: tuple[PlannedDoor, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

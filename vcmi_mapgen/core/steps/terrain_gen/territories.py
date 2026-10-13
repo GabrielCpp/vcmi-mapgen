@@ -1,14 +1,16 @@
 """The territories of a place map: a territory count drawn from the corpus maps nearest it,
 each home with a corpus-drawn number of its neighbours, the other places grouped into the
 neutral territories the count leaves, and the doors that join them. A door goes on every
-touching pair of territories more doors apart than ``MAX_HOP`` or not joined at all. Every
-border between two territories without a door is walled, the wall as wide as
-``wall_width`` gives for the doors between them."""
+touching pair of territories more doors apart than ``MAX_HOP`` or not joined at all. A
+Subterranean Gate counts as a door for the hops, so the other level's territories join the
+count through ``Across``. Every border between two territories without a door is walled,
+the wall as wide as ``wall_width`` gives for the doors between them."""
 
 import collections
 import math
 import random
 from collections.abc import Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass
 
 from vcmi_mapgen.core.model import Entrance
 from vcmi_mapgen.core.planning.entrances import Passages
@@ -29,6 +31,23 @@ WALL_WIDTHS = ((1, 72), (3, 24), (4, 18))
 door apart, two doors apart, and three or more apart or cut off. Measured on the corpus:
 territories a door joins sit 3 tiles apart at the median, and the walled pairs sit at least
 4 to 6 tiles apart at the first quartile at every map side."""
+
+
+@dataclass(frozen=True, slots=True)
+class Across:
+    """The other level as hop links: each gate as the zone it opens on this level and the
+    territory it opens on the other, and the territory pairs the other level's doors join.
+    A gate counts as one door hop. Gates never count in a level's loops."""
+
+    gates: tuple[Pair, ...] = ()
+    doors: frozenset[Pair] = frozenset()
+
+    def links(self, territory: Sequence[int]) -> set[Pair]:
+        """The links over one numbering: this level's territories by ``territory``, then
+        the other level's after them."""
+        base = max(territory, default=-1) + 1
+        out = {(territory[z], base + t) for z, t in self.gates}
+        return out | {(base + a, base + b) for a, b in self.doors}
 
 
 def _neighbours(edges: Iterable[Pair]) -> dict[int, set[int]]:
@@ -193,8 +212,8 @@ def detour_doors(
     ``max_hop`` of the ``joined`` territory pairs part or none joins. The walk goes in sorted
     order, each door counts for the pairs after it, and each stands on a zone pair drawn
     from the pair's ``choices``."""
-    count = max((t for tp in choices for t in tp), default=-1) + 1
     graph = set(joined)
+    count = max((t for tp in (*choices, *graph) for t in tp), default=-1) + 1
     out: dict[Pair, int] = {}
     for (ta, tb), pairs in sorted(choices.items()):
         hop = hop_counts(count, graph, ta)[tb]
@@ -207,24 +226,26 @@ def detour_doors(
 
 def draw_doors(
     territory: Sequence[int],
-    realised: Iterable[Pair],
-    planned: Collection[Pair],
+    borders: tuple[Iterable[Pair], Collection[Pair]],
     pair_doors: Sequence[int],
     rng: random.Random,
+    links: Collection[Pair] = (),
 ) -> dict[Pair, int]:
-    """The door count of each zone pair that holds a door. A spanning forest over the
-    bordering territory pairs, those a planned zone pair joins first, puts one door on each
-    of its pairs, on one of their planned zone pairs when they have some. ``detour_doors``
-    then joins every touching pair more than ``MAX_HOP`` doors apart, on the same choice of
-    zone pairs. For each joined territory pair, a count drawn from ``pair_doors`` above one
-    adds a second door on another zone pair of the same territory pair, or on the same
+    """The door count of each zone pair that holds a door, from ``borders``, the realised
+    zone pairs and the planned ones. A spanning forest over the bordering territory pairs,
+    those a planned zone pair joins first, puts one door on each of its pairs, on one of
+    their planned zone pairs when they have some. ``detour_doors`` then joins every touching
+    pair more than ``MAX_HOP`` hops apart over the forest and ``links``, on the same choice
+    of zone pairs. For each joined territory pair, a count drawn from ``pair_doors`` above
+    one adds a second door on another zone pair of the same territory pair, or on the same
     zone pair when it is the only one."""
+    realised, planned = borders
     fronts = _fronts(territory, realised)
     choices = {tp: [e for e in pairs if e in planned] or pairs for tp, pairs in fronts.items()}
     first = {tp for tp, pairs in fronts.items() if any(e in planned for e in pairs)}
     forest = sorted(spanning_forest(fronts, first, lambda _e: 1.0, rng))
     doors = {rng.choice(choices[tp]): 1 for tp in forest}
-    doors |= detour_doors(choices, forest, MAX_HOP, rng)
+    doors |= detour_doors(choices, {*forest, *links}, MAX_HOP, rng)
     for door in sorted(doors):
         if min(MAX_DOORS, draw_count(pair_doors, rng)) < 2:
             continue
@@ -245,13 +266,16 @@ def wall_width(hops: int | None, side: int) -> int:
     return max(least, side // per)
 
 
-def wall_depths(territory: Sequence[int], doors: Collection[Pair], side: int) -> dict[Pair, int]:
+def wall_depths(
+    territory: Sequence[int], doors: Collection[Pair], side: int, links: Collection[Pair] = ()
+) -> dict[Pair, int]:
     """The wall width between every zone pair ``(a, b)``, ``a < b``, of two territories,
-    from the door hops between their territories on a map ``side`` tiles wide. A pair
-    left out walls one tile wide."""
-    count = max(territory, default=-1) + 1
-    joined = {(territory[a], territory[b]) for a, b in doors}
-    hops = [hop_counts(count, joined, t) for t in range(count)]
+    from the hops between their territories over the doors and ``links`` on a map ``side``
+    tiles wide. A pair left out walls one tile wide."""
+    own = max(territory, default=-1) + 1
+    joined = {(territory[a], territory[b]) for a, b in doors} | set(links)
+    count = max([own, *(t + 1 for tp in joined for t in tp)])
+    hops = [hop_counts(count, joined, t) for t in range(own)]
     out: dict[Pair, int] = {}
     for b, tb in enumerate(territory):
         for a in range(b):

@@ -1,14 +1,18 @@
 """The place-first terrain model (map-math 4): the surface is a place graph laid out on land,
 each place base-coated with its dominant terrain, then painted with transition bands,
-accents and texture. The underground keeps the macro path."""
+accents and texture. The underground keeps the macro path for its caves, and its places
+split into territories by the same front as the surface, with no home, the gates between
+the levels counted as doors."""
 
 import collections
-from collections.abc import Collection, Mapping, Sequence
-from dataclasses import replace
+import random
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass, field, replace
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement.footprint import room_offsets
 from vcmi_mapgen.core.planning.entrances import ENTRANCE_W, plan_passages
 from vcmi_mapgen.core.priors.bundle import Priors, TerrainPriors
 from vcmi_mapgen.core.priors.places import PlaceStats
@@ -21,7 +25,13 @@ from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.border_kinds import draw_kinds
 from vcmi_mapgen.core.steps.terrain_gen.coastline import SurfaceForm
 from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
-from vcmi_mapgen.core.steps.terrain_gen.gate_sites import carve_gate_sites, gate_anchor_points
+from vcmi_mapgen.core.steps.terrain_gen.gate_sites import (
+    Gate,
+    GateGround,
+    carve_gate_sites,
+    gate_anchor_points,
+    plan_gates,
+)
 from vcmi_mapgen.core.steps.terrain_gen.identity import (
     Palette,
     assign_dominants,
@@ -38,15 +48,19 @@ from vcmi_mapgen.core.steps.terrain_gen.place_map import (
     label_adjacency,
     reconcile_places,
 )
-from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlaceMap, PlannedPlace
+from vcmi_mapgen.core.steps.terrain_gen.result import (
+    LevelPlaces,
+    PlaceMap,
+    PlannedDoor,
+    PlannedPlace,
+)
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import (
+    Across,
     draw_doors,
     draw_partition,
     draw_territory_count,
-    group_neutral,
     islanded,
-    neutral_spread,
     settle,
     stranded,
     territory_plan,
@@ -59,6 +73,16 @@ UNDERGROUND_SALT = 0x51E9
 UNDERGROUND_ENTRANCE_W = 1
 BARRIERS = frozenset((Terrain.WATER.value, Terrain.ROCK.value))
 MAX_BRIDGE_ROUNDS = 8
+
+
+@dataclass(frozen=True, slots=True)
+class Front:
+    """How ``bordered`` draws one level's front: the level, which keys its streams, the
+    width of each gated passage, and the hop links across to the other level."""
+
+    level: int = 0
+    gated_w: int = ENTRANCE_W
+    across: Across = field(default_factory=Across)
 
 
 def plan_of(graph: PlaceGraph, layout: Layout, dominants: Sequence[Terrain]) -> LevelPlaces:
@@ -161,77 +185,107 @@ def land_count(label: Sequence[Sequence[int]]) -> int:
     return sum(1 for row in label for z in row if z >= 0)
 
 
+def _stream(seed: int, name: str, level: int) -> random.Random:
+    return stream(seed, name, level) if level else stream(seed, name)
+
+
 def bordered(
-    plan: LevelPlaces, priors: tuple[PlaceStats, TerritoryStats], players: int, seed: int
+    plan: LevelPlaces,
+    priors: tuple[PlaceStats, TerritoryStats],
+    players: int,
+    seed: int,
+    front: Front | None = None,
 ) -> LevelPlaces:
     """``plan`` split into territories drawn on its planned adjacency, as many as one
     corpus map near ``players`` and its land holds, with the kind of every inner pair drawn
     from the corpus table, a door on each border the territories need, every other
-    territory border walled, and the passages across them."""
+    territory border walled, and the passages across them. ``front`` gives the level, the
+    width of its gated passages and the hop links across to the other level."""
     stats, spread = priors
+    front = front or Front()
+    level = front.level
     roles = {p: place.role for p, place in plan.places.items()}
     owners = [plan.places[p].owner for p in sorted(plan.places)]
     count = draw_territory_count(
-        spread.counts_by_map, players, land_count(plan.label), stream(seed, "territory_count")
+        spread.counts_by_map,
+        players,
+        land_count(plan.label),
+        _stream(seed, "territory_count", level),
     )
     drawn = draw_partition(
-        owners, plan.adjacency, spread.player_zones, count, stream(seed, "territories")
+        owners, plan.adjacency, spread.player_zones, count, _stream(seed, "territories", level)
     )
     realised = label_adjacency(plan.label)
     territory, lords = settle(drawn, owners, realised)
     inner = [e for e in sorted(realised) if territory[e[0]] == territory[e[1]]]
-    drawn_kinds = draw_kinds(roles, inner, plan.adjacency, stats.adjacency, stream(seed, "borders"))
+    drawn_kinds = draw_kinds(
+        roles, inner, plan.adjacency, stats.adjacency, _stream(seed, "borders", level)
+    )
+    links = front.across.links(territory)
     doors = draw_doors(
-        territory, realised, plan.adjacency, spread.pair_doors, stream(seed, "doors")
+        territory,
+        (realised, plan.adjacency),
+        spread.pair_doors,
+        _stream(seed, "doors", level),
+        links,
     )
     kinds = wall_kinds(territory, realised, drawn_kinds, doors)
-    return walled(plan, (territory, lords), kinds, doors, ENTRANCE_W)
-
-
-def walled(
-    plan: LevelPlaces,
-    partition: tuple[Sequence[int], Sequence[int | None]],
-    kinds: Mapping[tuple[int, int], AdjacencyKind],
-    doors: Mapping[tuple[int, int], int],
-    gated_w: int,
-) -> LevelPlaces:
-    """``plan`` with its territories, the kind of every realised pair, the passages
-    across them, each door ``DOOR_W`` wide and each other gated passage ``gated_w``, and
-    the wall widths between its territories."""
-    territory, lords = partition
-    passages = plan_passages(plan.label, kinds, doors, gated_w)
+    passages = plan_passages(plan.label, kinds, doors, front.gated_w)
     return replace(
         plan,
         kinds=kinds,
         passages=passages,
         territories=territory_plan(territory, lords, doors, passages),
-        depths=wall_depths(territory, doors, len(plan.label)),
+        depths=wall_depths(territory, doors, len(plan.label), links),
+    )
+
+
+def relinked(plan: LevelPlaces, across: Across) -> LevelPlaces:
+    """``plan`` with its wall widths from the hops over its doors and ``across``."""
+    tp = plan.territories
+    territory = [tp.zones[z] for z in sorted(tp.zones)]
+    doors = {d.zones for d in tp.doors}
+    return replace(
+        plan, depths=wall_depths(territory, doors, len(plan.label), across.links(territory))
     )
 
 
 def underground_places(
-    grid: Sequence[Sequence[Terrain]], spread: TerritoryStats, players: int, seed: int
+    plan: LevelPlaces,
+    priors: tuple[PlaceStats, TerritoryStats],
+    seed: int,
+    links: Across | None = None,
 ) -> LevelPlaces:
-    """The underground's places, one per same-terrain region, grouped on the borders they
-    share into neutral territories, as many as one corpus underground near ``players`` and
-    its land holds. Inner borders stay gated, each passage ``UNDERGROUND_ENTRANCE_W`` wide,
-    and the territories meet at doors."""
-    plan = flood_places(grid, UNDERGROUND_ENTRANCE_W)
-    realised = label_adjacency(plan.label)
-    owners = [None] * len(plan.places)
-    drawn = [0] * len(plan.places)
-    count = draw_territory_count(
-        spread.counts_by_map, players, land_count(plan.label), stream(seed, "territory_count", 1)
+    """The underground's places ``plan``, one per same-terrain region as ``flood_places``
+    gives them, split by ``bordered`` with no home into as many territories as one corpus
+    underground and its land holds. Each gated passage is ``UNDERGROUND_ENTRANCE_W`` wide,
+    and ``links`` joins the territories through the gates to the surface."""
+    front = Front(1, UNDERGROUND_ENTRANCE_W, links or Across())
+    return bordered(plan, priors, 0, seed, front)
+
+
+def gate_doors(
+    gates: Sequence[Gate], plans: tuple[LevelPlaces, LevelPlaces]
+) -> tuple[PlannedDoor, ...]:
+    """Each planned gate as a door: its zone, territory and owner on the surface, then
+    underground, and its tile on both."""
+    sides = [p.territories for p in plans]
+    out: list[PlannedDoor] = []
+    for tile, zones in gates:
+        ts = tuple(tp.zones[z] for tp, z in zip(sides, zones, strict=True))
+        owners = tuple(tp.owners[t] for tp, t in zip(sides, ts, strict=True))
+        out.append(PlannedDoor(zones, (ts[0], ts[1]), (owners[0], owners[1]), (tile, tile)))
+    return tuple(out)
+
+
+def gate_links(gates: Sequence[Gate], level: int, other: LevelPlaces) -> Across:
+    """The hop links from ``level`` to the ``other`` level: each gate from its zone here to
+    its territory there, and the territory pairs the other level's doors join."""
+    tp = other.territories
+    return Across(
+        tuple((zones[level], tp.zones[zones[1 - level]]) for _, zones in gates),
+        frozenset(d.territories for d in tp.doors),
     )
-    rng = stream(seed, "territories", 1)
-    size = neutral_spread(len(owners), count, 0)
-    for t, group in enumerate(group_neutral(range(len(owners)), realised, size, rng)):
-        for p in group:
-            drawn[p] = t
-    territory, lords = settle(drawn, owners, realised)
-    doors = draw_doors(territory, realised, realised, spread.pair_doors, stream(seed, "doors", 1))
-    kinds = wall_kinds(territory, realised, dict.fromkeys(realised, AdjacencyKind.GATED), doors)
-    return walled(plan, (territory, lords), kinds, doors, UNDERGROUND_ENTRANCE_W)
 
 
 def territory_line(plan: LevelPlaces, name: str = "territories") -> str:
@@ -283,16 +337,20 @@ def palette_line(k: int, grid: Sequence[Sequence[Terrain]], plan: LevelPlaces) -
 
 
 def underground(
-    priors: TerrainPriors, surface_grid: Sequence[Sequence[Terrain]], seed: int, size: int
+    priors: TerrainPriors,
+    surface_grid: Sequence[Sequence[Terrain]],
+    anchors: list[Tile],
+    seed: int,
+    size: int,
 ) -> tuple[list[list[int]], frozenset[Tile]]:
-    """Today's underground with its gate sites carved, and its tunnel cells. The surface
-    copy the carving paints is thrown away."""
+    """Today's underground with its gate sites carved around ``anchors``, and its tunnel
+    cells. The surface copy the carving paints is thrown away."""
     protect: set[Tile] = set()
     grid1 = MTOPO.generate(
         size, seed ^ UNDERGROUND_SALT, priors, MTOPO.MacroOptions(level=1), protect_out=protect
     )
     scratch = [[t.value for t in row] for row in surface_grid]
-    protect |= carve_gate_sites(scratch, grid1, gate_anchor_points(size, size, seed), seed)
+    protect |= carve_gate_sites(scratch, grid1, anchors, seed)
     return grid1, frozenset(protect)
 
 
@@ -308,11 +366,29 @@ class PlacesTerrain:
         grid0, plan0, lines = surface(catalog, self.form, priors, seed, options)
         if not options.subterrain:
             return TerrainDraw({0: grid0}, frozenset(), PlaceMap({0: plan0}), lines)
-        raw1, tunnels = underground(priors.terrain[1], grid0, seed, options.size)
+        size = options.size
+        anchors = gate_anchor_points(size, size, seed)
+        raw1, tunnels = underground(priors.terrain[1], grid0, anchors, seed, size)
         grid1 = despeckle(raw1, catalog.thin_terrains(), tunnels)
+        flood = flood_places(grid1, UNDERGROUND_ENTRANCE_W)
+        rng = stream(seed, "gates")
+        spacing = (priors.gates.draw_count(size, rng), priors.gates.min_gap(size))
+        fronts = front_cells(plan0.label) | front_cells(flood.label)
+        room = room_offsets(catalog.subterranean_gate().footprint)
+        ground = GateGround((plan0.label, flood.label), fronts, room)
+        gates = plan_gates(anchors, ground, spacing, rng)
         plan1 = underground_places(
-            grid1, priors.territories.get(1, TerritoryStats()), options.players, seed
+            flood,
+            (priors.places[1], priors.territories.get(1, TerritoryStats())),
+            seed,
+            gate_links(gates, 1, plan0),
         )
+        plan0 = relinked(plan0, gate_links(gates, 0, plan1))
         protect = tunnels - front_cells(plan1.label)
-        lines = (*lines, territory_line(plan1, "underground territories"))
-        return TerrainDraw({0: grid0, 1: grid1}, protect, PlaceMap({0: plan0, 1: plan1}), lines)
+        lines = (
+            *lines,
+            territory_line(plan1, "underground territories"),
+            f"  gates: {len(gates)} planned of {spacing[0]} drawn",
+        )
+        places = PlaceMap({0: plan0, 1: plan1}, gate_doors(gates, (plan0, plan1)))
+        return TerrainDraw({0: grid0, 1: grid1}, protect, places, lines)

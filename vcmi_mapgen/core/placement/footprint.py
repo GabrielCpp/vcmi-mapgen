@@ -101,3 +101,15 @@ def cell_offsets(fp: Footprint) -> tuple[tuple[Tile, ...], tuple[Tile, ...], Til
         elif role is Role.VISIT and approach is None:
             approach = (tx, ty)
     return tuple(allc), tuple(blk), approach
+
+
+@cache
+def room_offsets(fp: Footprint) -> tuple[Tile, ...]:
+    """The offsets from the anchor of the cells ``fp`` covers, its approach tile and the
+    ring around them: the room an object kept clear in advance needs, so its body never
+    parts its own overlay cells from the land around it."""
+    allc, _blk, approach = cell_offsets(fp)
+    core = {*allc, *(() if approach is None else (approach,))}
+    return tuple(
+        sorted({(x + dx, y + dy) for x, y in core for dx in (-1, 0, 1) for dy in (-1, 0, 1)})
+    )

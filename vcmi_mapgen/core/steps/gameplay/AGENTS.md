@@ -18,6 +18,6 @@
 - `result.py`: `GameplayResult`, each zone's placed objects and remaining tiles with the
   `Shortfall` of the slots no site took, and `GateResult`, `TownsIndex` and `PromisedWays`,
   which `GameplayStep` publishes.
-- `gate_pairs.py`: the Subterranean Gate pairs placed against the vegetated field, and the spread that keeps them apart.
+- `gate_pairs.py`: the Subterranean Gate pairs placed against the vegetated field, and the spread that keeps them apart. The gates the terrain model planned in `PlaceMap.gates` go first, each kept in its planned zone on both levels, and their count sets the map's gate count. Without a plan the count comes from the corpus curve.
 - `shipyards.py`: which shipyard anchors are legal and which one each shore gets. A shipyard counts only when a hero boards its boat water from a walkable tile beside it. `place_link` stands one more shipyard on a player's land for a `Link`.
 - `sea_links.py`: `SeaLinks`, the land each player walks and the seas it boards and lands from. Right after the shipyards, `GameplayStep` gives each player apart from a rival by land a shipyard whose sea lands on that rival's land, and warns when none fits. `sea_way` is the way a hero walks and sails to a rival town. `PromisedWays` keeps its land tiles open, so later guards and objects leave every landing free.

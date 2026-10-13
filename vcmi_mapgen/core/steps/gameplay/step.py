@@ -81,7 +81,7 @@ from vcmi_mapgen.core.steps.gameplay.result import (
 from vcmi_mapgen.core.steps.gameplay.sea_links import SeaLinks, sea_way
 from vcmi_mapgen.core.steps.gameplay.shipyards import Link, Shore, place_link, place_shipyards
 from vcmi_mapgen.core.steps.gameplay.supply import stand_pairs
-from vcmi_mapgen.core.steps.terrain_gen.result import Accents, Segmentation
+from vcmi_mapgen.core.steps.terrain_gen.result import Accents, PlaceMap, Segmentation
 from vcmi_mapgen.core.steps.vegetation.result import LootZones, VegetationResult
 
 NO_TILES: frozenset[Tile] = frozenset()
@@ -136,6 +136,7 @@ class GameplayStep(PipelineStep):
     The ``LootZones`` when present: no object stands in a zone chosen to be sealed.
     The ``DoorGuards`` when present: their enemy pairs set the contest each gold mine stands
     in. Without them every pair of players is enemies.
+    The ``PlaceMap`` when present: its planned gates go first, each in its planned zones.
     The step publishes the player zones the zone plan picked, then commits the sea objects
     the zone plan drew. Gates stay off each player town's kept room.
     A player town that finds no spot in its zone moves to the largest zone with room for it.
@@ -196,6 +197,7 @@ class GameplayStep(PipelineStep):
         self._sea_ways: dict[int, frozenset[Tile]] = {}
         self._home_ways: dict[int, frozenset[Tile]] = {}
         self._doors: DoorGuards | None = None
+        self._places = PlaceMap({})
 
     @override
     def inject(self, ctx: ProviderRegistry) -> None:
@@ -207,6 +209,7 @@ class GameplayStep(PipelineStep):
         self._accents = ctx.get(Accents, Accents())
         self._loot = ctx.get(LootZones, LootZones())
         self._doors = ctx.get(DoorGuards)
+        self._places = ctx.get(PlaceMap, PlaceMap({}))
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -386,7 +389,8 @@ class GameplayStep(PipelineStep):
         gates = GateResult()
         if self.subterrain and 0 in indexes and 1 in indexes:
             pair = (indexes[0], indexes[1])
-            gates = place_gate_pairs(catalog, pair, self.priors.gates, map_state.size, self.seed)
+            plan = (self.priors.gates, self._places.gates)
+            gates = place_gate_pairs(catalog, pair, plan, map_state.size, self.seed)
         for level, idx in indexes.items():
             idx.lf.avoid = landings if level == 0 else NO_TILES
         map_state.gate_blk = gates.gate_blk

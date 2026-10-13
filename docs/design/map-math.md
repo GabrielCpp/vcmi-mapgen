@@ -274,7 +274,9 @@ The order is shapes, then roles, then paint. Reading left to right:
 
 Both levels run the same front. The underground is the case $k = 0$: no home, every
 territory neutral, and the subterranean gates count as doors into the surface's door
-graph, so a hop count from a home runs through a gate like through any other door.
+graph, so a hop count from a home runs through a gate like through any other door. A
+gate counts for hops and not for loops, since a loop through a gate would count on both
+levels.
 
 The order is a choice. Three other orders were considered. Content first with terrain
 fitted around it fails for the reason in 6.3. Terrain first with places segmented from
@@ -1059,4 +1061,7 @@ carries each one with a recommendation and the slice that decides it.
    first, and a grown pocket only if the pocket rate reads low.
 6. Prior pooling. The territory count by player count and land is sparse at 7 and 8
    players and at side 144. Recommendation: pool by players within a size band and
-   fall back to the nearest player count with 5 or more maps.
+   fall back to the nearest player count with 5 or more maps. Slice 3 draws the
+   underground count the same way, from the level 1 records mined with no player.
+7. Gates in the loop count. Settled in slice 3: a Subterranean Gate counts as one door
+   hop on both levels and never as a loop.

@@ -54,6 +54,41 @@ def test_every_territory_on_a_home_land_opens_toward_a_home(
         assert unreached(level.territories, label_adjacency(level.label)) == []
 
 
+def _joined(pairs: list[tuple[int, int]], start: int) -> set[int]:
+    seen, todo = {start}, [start]
+    while todo:
+        a = todo.pop()
+        for x, y in pairs:
+            for here, there in ((x, y), (y, x)):
+                if here == a and there not in seen:
+                    seen.add(there)
+                    todo.append(there)
+    return seen
+
+
+def test_the_underground_is_a_territory_front_without_homes_joined_by_planned_gates(
+    catalog: Catalog, priors: Priors
+) -> None:
+    for seed in (1, 2):
+        draw = PlacesTerrain(TopologyForm()).draw(
+            catalog, priors, seed, TerrainOptions(size=72, players=2, subterrain=True)
+        )
+        below = draw.places.levels[1]
+        tp = below.territories
+        assert len(tp.owners) > 1
+        assert all(owner is None for owner in tp.owners)
+        doors = [d.territories for d in tp.doors]
+        for a, b in label_adjacency(below.label):
+            assert tp.zones[b] in _joined(doors, tp.zones[a])
+        gates = draw.places.gates
+        assert gates
+        for level in (0, 1):
+            zones = [g.zones[level] for g in gates]
+            assert len(set(zones)) == len(zones)
+            owners = draw.places.levels[level].territories.zones
+            assert [g.territories[level] for g in gates] == [owners[z] for z in zones]
+
+
 def test_a_stream_depends_on_its_seed_and_parts_only() -> None:
     assert stream(5, "layout").random() == stream(5, "layout").random()
     assert stream(5, "layout").random() != stream(5, "places").random()
