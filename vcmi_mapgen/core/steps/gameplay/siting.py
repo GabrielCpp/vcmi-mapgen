@@ -57,6 +57,14 @@ from vcmi_mapgen.core.steps.gameplay.bands import Slot
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.pick import Pick, Picker
 from vcmi_mapgen.core.steps.gameplay.reach import SLACK, Bands, Reach
+from vcmi_mapgen.core.steps.gameplay.result import (
+    GROUPS_KEEP,
+    RANKED_KEEP,
+    GroupStep,
+    RankedTile,
+    SlotRanking,
+    Stood,
+)
 from vcmi_mapgen.core.steps.gameplay.turn import Stop, Turn, near
 
 MAX_SITES = 4
@@ -73,6 +81,7 @@ type Key = tuple[int, int, int]
 type Tier = tuple[int, int, int]
 type Group = tuple[Tier, ZoneSite, NDArray[np.intp]]
 type Shape = Callable[[Footing], Footing]
+type View = tuple[list[Group], tuple[str, ...], tuple[Codes, ...]]
 
 PASSES: tuple[tuple[bool, Shape], ...] = (
     (False, SnugFooting),
@@ -82,6 +91,7 @@ PASSES: tuple[tuple[bool, Shape], ...] = (
     (True, SidedFooting),
     (True, OpenFooting),
 )
+FOOTINGS = ("snug", "sided", "open")
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +227,15 @@ class Siting:
     _rows: dict[int, tuple[list[Bands], NDArray[np.intp]]] = field(
         default_factory=dict[int, tuple[list[Bands], NDArray[np.intp]]]
     )
+    ranking: list[SlotRanking] = field(default_factory=list[SlotRanking])
+    _first_view: View | None = None
+    _last_view: View | None = None
+    _pool: list[Group] = field(default_factory=list[Group])
+    _stood: Stood | None = None
+    _smaller: bool = False
+    _centre: tuple[int, tuple[int, int]] = (-1, (0, 0))
+    _walk: tuple[tuple[GroupStep, ...], int] = ((), 0)
+    _ranked: tuple[RankedTile, ...] = ()
 
     def price(self, maps: Sequence[EffortMap]) -> None:
         """Price every site tile for each player from ``maps``, as the effort to visit an
@@ -256,9 +275,74 @@ class Siting:
         site takes any, and nothing stands."""
         purpose = family_purpose(slot.family)
         guard = min(self.draws.draw(self.rng, slot.family), self._top())
+        self._first_view = self._last_view = self._stood = None
+        self._walk, self._ranked = ((), 0), ()
+        stood = self._stand_drawn(slot, purpose, guard)
+        self.record(slot, guard, self._stood)
+        return stood
+
+    def record(self, slot: Slot, guard: int, stood: Stood | None) -> None:
+        """Append the ranking of ``slot``: the tiles of the group it stood in, or of the first
+        group it saw when nothing stood, with the groups it walked."""
+        view = self._first_view
+        keys = () if view is None else view[1]
+        ranked = self._ranked
+        if stood is None and view is not None and view[0]:
+            ranked = self.ranked(view[0][0], view[2])
+        walk, seen = self._walk
+        self.ranking.append(
+            SlotRanking(
+                len(self.ranking),
+                slot.family,
+                slot.player,
+                slot.band,
+                slot.target,
+                guard,
+                keys,
+                ranked,
+                walk,
+                seen,
+                stood,
+            )
+        )
+
+    def ranked(self, group: Group, cols: tuple[Codes, ...]) -> tuple[RankedTile, ...]:
+        """The first RANKED_KEEP tiles of ``group`` in sort order, with their zone and the
+        value of each sort column."""
+        tiles = self.tiles
+        assert tiles is not None
+        _tier, site, rows = group
+        out: list[RankedTile] = []
+        for k in cast(list[int], rows[:RANKED_KEEP].tolist()):
+            level, x, y = tiles.keys[k]
+            out.append(RankedTile(level, x, y, site.zid, self._values(cols, k)))
+        return tuple(out)
+
+    @staticmethod
+    def _values(cols: tuple[Codes, ...], k: int) -> tuple[int, ...]:
+        return tuple(int(cast(int, c[k])) for c in cols)
+
+    def _step(self, at: int, group: Group, cols: tuple[Codes, ...], outcome: str) -> GroupStep:
+        tiles = self.tiles
+        assert tiles is not None
+        _tier, site, rows = group
+        k = cast(list[int], rows[:1].tolist())[0]
+        level, x, y = tiles.keys[k]
+        return GroupStep(at, level, x, y, site.zid, len(rows), self._values(cols, k), outcome)
+
+    def note(
+        self, groups: list[Group], names: tuple[str, ...], cols: tuple[Codes, ...]
+    ) -> list[Group]:
+        view = (groups, names, cols)
+        if self._first_view is None:
+            self._first_view = view
+        self._last_view = view
+        return groups
+
+    def _stand_drawn(self, slot: Slot, purpose: str, guard: int) -> tuple[str, PlacedObject] | None:
         if self.gold is not None and slot.family == GOLD_FAMILY:
             return self._stand_gold(slot, purpose, guard)
-        groups = self._groups(slot, purpose, guard)
+        groups = self._pool = self._groups(slot, purpose, guard)
         picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
         stops = self._stops(slot.family)
         for strict in (True, False) if stops is not None and groups else (False,):
@@ -271,7 +355,7 @@ class Siting:
     def _stand_gold(self, slot: Slot, purpose: str, guard: int) -> tuple[str, PlacedObject] | None:
         picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
         for loose in (False, True):
-            groups = self._groups(slot, purpose, guard, loose)
+            groups = self._pool = self._groups(slot, purpose, guard, loose)
             stood = self._stand(slot.family, groups, (picks, None), False)
             if stood is not None:
                 return stood
@@ -286,20 +370,53 @@ class Siting:
     ) -> tuple[str, PlacedObject] | None:
         every = family_purpose(dealt) in (Purpose.MINE, Purpose.TOWN)
         limit = len(self.sites) if every else MAX_SITES
-        for fallback, shape in PASSES:
+        cols = () if self._last_view is None else self._last_view[2]
+        index = {id(g[2]): i for i, g in enumerate(self._pool)}
+        for footing, (fallback, shape) in enumerate(PASSES):
             tried: Counter[Tier] = Counter()
-            for tier, site, rows in groups:
+            walk: list[GroupStep] = []
+            count = 0
+            for group in groups:
+                tier, site, rows = group
+                count += 1
+                parts: list[tuple[str, Pick, NDArray[np.intp]]] = []
                 if tried[tier] >= limit:
-                    continue
-                parts = self._parts(dealt, site, rows, seen, strict)
-                tried[tier] += bool(parts)
+                    outcome = "tier_tried"
+                else:
+                    parts = self._parts(dealt, site, rows, seen, strict)
+                    tried[tier] += bool(parts)
+                    outcome = "no_room" if parts else "no_object"
                 for family, pick, part in parts:
                     centres = self._centres(part)
                     guard = self._even_guard(family, cast(list[int], part[:1].tolist())[0], tier[1])
                     obj = self._try(family, site, centres, pick, (fallback, shape, guard))
                     if obj is not None:
                         self._took(family, site, obj)
+                        at = index[id(rows)]
+                        kept = walk[: GROUPS_KEEP - 1] if len(walk) >= GROUPS_KEEP else walk
+                        here = self._step(at, group, cols, "stood")
+                        self._walk = (tuple([*kept, here]), count)
+                        self._ranked = self.ranked(group, cols)
+                        tried_at, centre = self._centre
+                        heads = self._centres(rows)
+                        self._stood = Stood(
+                            site.lf.level,
+                            obj.x,
+                            obj.y,
+                            family,
+                            guard,
+                            FOOTINGS[footing % len(FOOTINGS)],
+                            self._smaller,
+                            at,
+                            strict,
+                            centre,
+                            heads.index(centre) if centre in heads else -1,
+                            tried_at,
+                        )
                         return family, obj
+                if len(walk) < GROUPS_KEEP:
+                    walk.append(self._step(index[id(rows)], group, cols, outcome))
+            self._walk = (tuple(walk), count)
         return None
 
     def _even_guard(self, family: str, k: int, guard: int) -> int:
@@ -417,6 +534,15 @@ class Siting:
             spots = self.picker.clear_first(ident, site.lf.level, at)
             obj = site.place(purpose, ident, spots, footing, guard)
             if obj is not None:
+                self._smaller = fallback and ident != pick.ident
+                self._centre = next(
+                    (
+                        (i, c)
+                        for i, c in enumerate(spots)
+                        if max(abs(c[0] - obj.x), abs(c[1] - obj.y)) <= NEIGHBOURHOOD
+                    ),
+                    (-1, (obj.x, obj.y)),
+                )
                 self.picker.use(ident, obj)
                 self.track(family, obj, 0 if purpose in UNGUARDED else guard)
                 return obj
@@ -445,12 +571,14 @@ class Siting:
         level = 0 if purpose in UNGUARDED else guard
         held = np.full(n, guard, dtype=np.int64)
         code, band, target = zero, zero, zero
+        names = ("spread", "arrival")
         ok = np.ones(n, dtype=np.bool_)
         days = cast(Codes, tiles.days[0])
         if self.gold is not None and slot.family == GOLD_FAMILY:
             gold = replace(self.gold, guard=self.toll[guard])
             ok, target = gold.rank(days, loose)
             code = self._code(slot.family, level, zero)
+            names = ("spread", "arrival", "target")
         elif purpose == Purpose.TOWN and slot.player is None:
             code = self._code(slot.family, level, zero)
             spread = code // ARRIVALS
@@ -458,14 +586,16 @@ class Siting:
             ok = town_room(tiles, self.sites) >= TOWN_ROOM
             order = cast(NDArray[np.intp], np.lexsort((r, -gap, spread)))
             kept = order[ok[order]]
-            return self._grouped(tiles, kept, np.stack((spread, held, zero))[:, kept])
+            grouped = self._grouped(tiles, kept, np.stack((spread, held, zero))[:, kept])
+            return self.note(grouped, ("spread", "gap"), (spread, gap))
         elif slot.player is None and slot.band is not None and slot.target is not None:
             reached, at, arrival = self._arrival(level)
             off = np.where(reached, np.abs(arrival - slot.band), BANDS)
             target = np.where(reached, np.abs(at - slot.target), 0)
             gap = self._gaps()
             order = cast(NDArray[np.intp], np.lexsort((r, target, -gap, off)))
-            return self._grouped(tiles, order, np.stack((off, held, zero))[:, order])
+            grouped = self._grouped(tiles, order, np.stack((off, held, zero))[:, order])
+            return self.note(grouped, ("band_off", "gap", "target"), (off, gap, target))
         elif slot.player is not None and slot.band is not None and slot.target is not None:
             mine = days[:, slot.player]
             own = np.where(mine < 0, 2, (mine > soonest(days)).astype(np.int64))
@@ -473,10 +603,13 @@ class Siting:
             band = np.where(mine < 0, 0, np.abs(self._band[at] - slot.band))
             target = np.where(mine < 0, 0, np.abs(at - slot.target))
             code = self._code(slot.family, level, own)
+            names = ("spread", "arrival", "band_off", "target")
         spread, own = np.divmod(code, ARRIVALS)
         order = cast(NDArray[np.intp], np.lexsort((r, target, band, own, spread)))
         kept = order[ok[order]]
-        return self._grouped(tiles, kept, np.stack((spread, held, own))[:, kept])
+        grouped = self._grouped(tiles, kept, np.stack((spread, held, own))[:, kept])
+        columns = {"spread": spread, "arrival": own, "band_off": band, "target": target}
+        return self.note(grouped, names, tuple(columns[n] for n in names))
 
     def _code(self, family: str, level: int, own: Codes) -> Codes:
         """Per tile, the worst tier code within NEIGHBOURHOOD of it, the object behind a guard

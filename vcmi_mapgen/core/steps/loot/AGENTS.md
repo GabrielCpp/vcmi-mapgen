@@ -13,5 +13,5 @@
   town-to-mine routes a pocket guard must not cut. Pocket detection and dedupe live in
   `core/grid/pockets.py`.
 - `quests.py`: the seer-hut quests, each linking an artifact to the hut that asks for it. No quest asks for a set part or a combined artifact.
-- `result.py`: `LootResult`, which carries the pockets and the held prize slots `LootStep` publishes.
+- `result.py`: `LootResult`, which carries the pockets, the held prize slots, the `QuestDecision` of each seer-hut quest and the `PocketDecision` of each pocket examined, with its outcome and the reason a pocket stood empty. `LootStep` publishes it.
 - `step.py`: `LootStep`.

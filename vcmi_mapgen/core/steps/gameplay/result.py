@@ -42,6 +42,81 @@ class Shortfall:
         ]
 
 
+RANKED_KEEP = 10
+GROUPS_KEEP = 40
+
+
+@dataclass(frozen=True, slots=True)
+class RankedTile:
+    """One site tile a slot ranked, with its zone and the values of the sort columns."""
+
+    level: int
+    x: int
+    y: int
+    zid: int
+    values: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class GroupStep:
+    """One group a slot visited: its head tile, zone and size, the values of the sort columns
+    at the head, and what came of it: ``tier_tried``, ``no_object``, ``no_room`` or
+    ``stood``."""
+
+    index: int
+    level: int
+    x: int
+    y: int
+    zid: int
+    size: int
+    values: tuple[int, ...]
+    outcome: str
+
+
+@dataclass(frozen=True, slots=True)
+class Stood:
+    """Where a slot's object stood and how: the family it stood as, the guard it stood
+    behind, the footing pass, whether the smaller-object fallback stood it, the index of the
+    group it stood in and whether the strict turn pass took it. ``centre`` is the centre whose
+    window produced the anchor, ``rank`` its place among the group's tiles in sort order (-1
+    when absent) and ``tried_at`` its place among the centres in the order the site tried
+    them."""
+
+    level: int
+    x: int
+    y: int
+    family: str
+    guard: int
+    footing: str
+    smaller: bool
+    group: int
+    strict: bool
+    centre: tuple[int, int]
+    rank: int
+    tried_at: int
+
+
+@dataclass(frozen=True, slots=True)
+class SlotRanking:
+    """One slot of the map-wide pass: its family, player, band, target and drawn guard, the
+    names of the sort columns in priority order, the first tiles of the group it stood in (of
+    the first group when nothing stood), the groups it walked with their outcomes (at most
+    GROUPS_KEEP, the stood one always kept), how many groups the pass visited and where its
+    object stood, None when nothing stood."""
+
+    order: int
+    family: str
+    player: int | None
+    band: int | None
+    target: int | None
+    guard: int
+    keys: tuple[str, ...]
+    ranked: tuple[RankedTile, ...]
+    groups: tuple[GroupStep, ...]
+    groups_seen: int
+    stood: Stood | None
+
+
 @dataclass(frozen=True, slots=True)
 class GameplayResult:
     """Each zone after placement by level and zid, each level's seaport landings recomputed
@@ -53,6 +128,7 @@ class GameplayResult:
     town_of_zone: Mapping[int, Mapping[int, PlacedObject]]
     log: tuple[str, ...] = ()
     shortfall: Shortfall = Shortfall({}, {})
+    ranking: tuple[SlotRanking, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from vcmi_mapgen.cli.decisions import write_decisions
 from vcmi_mapgen.cli.settings import Settings
 from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
@@ -363,6 +364,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     if (places := pipeline.ctx.get(PlaceMap)) is not None:
         guards = pipeline.ctx.get(DoorGuards, DoorGuards())
         print(f"  {write_topology(folder, places, guards)}")
+    print(f"  {write_decisions(folder, catalog, pipeline.ctx, map_state)}")
 
     if "png" in renderers:
         index = sprite_source(install, catalog)

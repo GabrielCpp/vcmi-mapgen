@@ -13,6 +13,7 @@ from vcmi_mapgen.core.placement.place import PlaceSpec, PlaceTarget, place_one
 from vcmi_mapgen.core.placement.rewards import creatures_of, seerhut_quest
 from vcmi_mapgen.core.planning.zone_index import ZoneRecord
 from vcmi_mapgen.core.priors.gameplay import GameplayStats
+from vcmi_mapgen.core.steps.loot.result import QuestDecision
 
 SEERHUT_ZONE_RATIO = 4  # ~1 seer-hut quest per 4 eligible zones -- zone_engine.py's own
 # corpus-replay convention for the same object
@@ -28,6 +29,7 @@ class SeerHutContext:
     existing_objs: Sequence[PlacedObject] = ()
     used_artifacts: set[str] | None = None
     cover: CoverIndex | None = None
+    level: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +42,7 @@ class _QuestEnv:
     bounds: tuple[int, int] | None
     cover: CoverIndex
     gameplay: GameplayStats
+    level: int = 0
 
 
 def place_seer_hut_quests(
@@ -48,7 +51,7 @@ def place_seer_hut_quests(
     context: SeerHutContext,
     seed: int = 1,
     bounds: tuple[int, int] | None = None,
-) -> tuple[list[PlacedObject], int]:
+) -> tuple[list[PlacedObject], list[QuestDecision]]:
     """One or more Seer Hut quests for the WHOLE level (VCMI RMG convention: a seer hut's
     mission gates on a single named artifact the hero must find and hand-carry to it). Each
     quest links two placements in DIFFERENT zones -- the quest's target artifact (an
@@ -67,38 +70,50 @@ def place_seer_hut_quests(
     vanilla H3, so one quest's target must never double as another level's target too.
 
     `zone_records` is a list of {"zid", "terrain", "ts", "open_set", "passable", "reach"}
-    (see `pp_map._run_level`/`place_pocket_caches`). Returns (objs, n_quests)."""
+    (see `pp_map._run_level`/`place_pocket_caches`). Returns (objs, quests), one
+    ``QuestDecision`` per quest placed."""
     cover = context.cover if context.cover is not None else CoverIndex(context.existing_objs)
     eligible = [zr for zr in zone_records if len(zr.reach - cover.claims) >= SEERHUT_MIN_REACH]
     if len(eligible) < 2:
-        return [], 0
+        return [], []
     n = min(MAX_SEER_HUTS, max(1, len(eligible) // SEERHUT_ZONE_RATIO))
 
     rng_pair = random.Random(seed ^ 0xEE47)
     objs: list[PlacedObject] = []
     used_artifacts = context.used_artifacts if context.used_artifacts is not None else set[str]()
-    placed = 0
+    decisions: list[QuestDecision] = []
     # Pre-compute which zones have pocket tiles so the per-attempt loop can skip quickly.
     _ptiles_global = context.pocket_tiles
     env = _QuestEnv(
-        catalog, eligible, _ptiles_global, used_artifacts, objs, bounds, cover, context.gameplay
+        catalog,
+        eligible,
+        _ptiles_global,
+        used_artifacts,
+        objs,
+        bounds,
+        cover,
+        context.gameplay,
+        context.level,
     )
 
     for i in range(n):
         idx_hut, idx_art = rng_pair.sample(range(len(eligible)), 2)
         rng = random.Random(seed ^ (i * 92821) ^ 0xEE47)
-        if _place_quest(env, rng, idx_hut, idx_art):
-            placed += 1
-    return objs, placed
+        decision = _place_quest(env, rng, idx_hut, idx_art)
+        if decision is not None:
+            decisions.append(decision)
+    return objs, decisions
 
 
-def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int) -> bool:
+def _place_quest(
+    env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int
+) -> QuestDecision | None:
     eligible = env.eligible
     hut_zr = eligible[idx_hut]
 
     pool_hut = env.catalog.quest_givers(hut_zr.terrain)
     if not pool_hut:
-        return False
+        return None
     hut_ident = rng.choice(pool_hut)
 
     # Find an art zone with a ≥3-tile pocket; start with the random pick then
@@ -109,21 +124,25 @@ def _place_quest(env: _QuestEnv, rng: random.Random, idx_hut: int, idx_art: int)
     ]
     art_zr, art_ident = _pick_art_zone(env, rng, art_zr_order)
     if art_zr is None or art_ident is None or art_ident.subtype is None:
-        return False  # no eligible art zone with a ≥3-tile pocket
+        return None  # no eligible art zone with a ≥3-tile pocket
 
     mark = env.cover.mark()
-    if _place_art(env, rng, art_zr, art_ident) is None:
-        return False
+    art_tile = _place_art(env, rng, art_zr, art_ident)
+    if art_tile is None:
+        return None
 
     if not _place_hut(env, rng, hut_zr, hut_ident, art_ident.subtype):
         # no room for the hut => a dangling quest artifact nobody asked for; drop it
         # rather than leave an orphaned reference
         _ = env.objs.pop()
         env.cover.rollback(mark)
-        return False
+        return None
 
     env.used_artifacts.add(art_ident.subtype)
-    return True
+    hut = env.objs[-1]
+    return QuestDecision(
+        env.level, (hut.x, hut.y), hut_zr.zid, art_tile, art_zr.zid, art_ident.subtype
+    )
 
 
 def set_artifacts(catalog: Catalog) -> set[str]:

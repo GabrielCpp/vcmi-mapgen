@@ -42,7 +42,7 @@ from vcmi_mapgen.core.steps.gameplay.quota import (
     paired,
 )
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
-from vcmi_mapgen.core.steps.gameplay.result import Shortfall
+from vcmi_mapgen.core.steps.gameplay.result import Shortfall, SlotRanking
 from vcmi_mapgen.core.steps.gameplay.siting import (
     GOLD_FAMILY,
     Siting,
@@ -193,8 +193,9 @@ class Placement:
         picker: Picker,
         price: Callable[[], Sequence[EffortMap]],
         supply: Supply,
-    ) -> Shortfall:
-        """Stand every slot of ``plan`` and tally what stood against what the plan asked.
+    ) -> tuple[Shortfall, tuple[SlotRanking, ...]]:
+        """Stand every slot of ``plan`` and tally what stood against what the plan asked,
+        with the ranking each slot tried.
         The towns stand first, then ``supply`` stands each new town's own mines. Each of
         those takes one object off the paired families, which are dealt then. Each rare mine
         takes its family from the turn where it stands."""
@@ -231,7 +232,8 @@ class Placement:
             if f in RARE_FAMILIES:
                 siting.turn.guards[o.level, o.x, o.y] = door_guard(guards, o)
         placed += place_slots(siting, rest, rank, price)
-        return Shortfall(Counter(s.family for s in [*towns, *rest]), placed)
+        short = Shortfall(Counter(s.family for s in [*towns, *rest]), placed)
+        return short, tuple(siting.ranking)
 
     def _pairs(self, plan: Plan, towns: int, stood: int, maps: Sequence[EffortMap]) -> list[Slot]:
         """The slots of the paired families, less the ``stood`` own mines of the ``towns``

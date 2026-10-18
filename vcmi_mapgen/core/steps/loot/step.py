@@ -24,7 +24,7 @@ from vcmi_mapgen.core.steps.loot import pickups as PK
 from vcmi_mapgen.core.steps.loot import pocket_plan as PP
 from vcmi_mapgen.core.steps.loot import quests as QU
 from vcmi_mapgen.core.steps.loot.pockets import access_tiles, occupied_tiles
-from vcmi_mapgen.core.steps.loot.result import LootResult
+from vcmi_mapgen.core.steps.loot.result import LootResult, PocketDecision, QuestDecision
 
 
 def _precompute_pockets(
@@ -124,7 +124,7 @@ class LootStep(PipelineStep):
         if plan is not None:
             _raw_pkt = _with_rooms(_raw_pkt, zone_records, access | occupied)
         cover = CoverIndex(objs, self._claims.get(level, ()), rules)
-        qobjs, n_quests = QU.place_seer_hut_quests(
+        qobjs, quests = QU.place_seer_hut_quests(
             catalog,
             zone_records,
             seed=seed,
@@ -135,11 +135,12 @@ class LootStep(PipelineStep):
                 existing_objs=objs,
                 used_artifacts=seerhut_artifacts,
                 cover=cover,
+                level=level,
             ),
         )
         targets.extend((o.x, o.y) for o in qobjs)
-        if n_quests:
-            print(f"  L{level} seer hut quests: {n_quests}")
+        if quests:
+            print(f"  L{level} seer hut quests: {len(quests)}")
 
         fill = PK.place_pocket_caches(
             catalog,
@@ -167,7 +168,9 @@ class LootStep(PipelineStep):
             f"  L{level} pockets: {fill.n_pockets} found, cache res={res} "
             + f"art={art} held={len(fill.held)} guard={ck.get(Purpose.GUARD, 0)}"
         )
-        return PK.PocketFill([*qobjs, *cobjs], fill.n_pockets, fill.depth, fill.held)
+        return PK.PocketFill(
+            [*qobjs, *cobjs], fill.n_pockets, fill.depth, fill.held, fill.decisions, quests
+        )
 
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
@@ -176,6 +179,8 @@ class LootStep(PipelineStep):
         seerhut_artifacts = QU.set_artifacts(catalog)
         pockets_by_level: Pockets = {}
         held: list[HeldPrize] = []
+        quests: list[QuestDecision] = []
+        decisions: list[PocketDecision] = []
         for level in sorted(objs_by_level):
             fill = self._place_level_loot(
                 catalog,
@@ -189,6 +194,10 @@ class LootStep(PipelineStep):
             self.objs.extend(fill.objs)
             pockets_by_level[level] = fill.depth
             held.extend(fill.held)
+            quests.extend(fill.quests)
+            decisions.extend(fill.decisions)
 
         map_state.add_objs(self.objs)
-        self._ctx.provide(LootResult(pockets=pockets_by_level, held=tuple(held)))
+        self._ctx.provide(
+            LootResult(pockets_by_level, tuple(held), tuple(quests), tuple(decisions))
+        )

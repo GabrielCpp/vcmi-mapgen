@@ -31,6 +31,7 @@ from vcmi_mapgen.core.steps.loot.pockets import (
     reach8,
     reachable,
 )
+from vcmi_mapgen.core.steps.loot.result import PocketDecision, PocketOutcome, QuestDecision
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +55,8 @@ class PocketFill:
     n_pockets: int
     depth: dict[Tile, float]
     held: list[HeldPrize]
+    decisions: list[PocketDecision] = field(default_factory=list[PocketDecision])
+    quests: list[QuestDecision] = field(default_factory=list[QuestDecision])
 
 
 def place_pocket_caches(
@@ -213,6 +216,16 @@ class _PocketCachePass:
         self.plan = context.plan
         self.prize_guard = context.guard
         self.filled = 0
+        self.decisions: list[PocketDecision] = []
+        self._reset()
+
+    def _reset(self) -> None:
+        self._why: PocketOutcome | None = None
+        self._zone: int | None = None
+        self._planned = False
+        self._used: PP.Candidate | None = None
+        self._guard: tuple[Tile, int] | None = None
+        self._ward: tuple[Tile, ArtifactTier] | None = None
 
     def _absorb(self, zr: ZoneRecord) -> None:
         zid = zr.zid
@@ -298,17 +311,57 @@ class _PocketCachePass:
 
     def run(self) -> PocketFill:
         for candidates in self.blobs:
-            zid = self._planned_zone(candidates)
-            if zid is not None:
-                self._fill_planned(candidates, zid)
-                continue
-            # Find the best guardable candidate (guard fits at the ZoC-centre position
-            # whose ZoC seals the pocket and both mouth tiles are within it).
-            pick = self._choose(candidates)
-            if pick is None:
-                continue
-            self._fill_pocket(pick)
-        return PocketFill(self.objs, len(self.blobs), self.pocket_depth_by_tile, self.held)
+            n0, h0 = len(self.objs), len(self.held)
+            self._reset()
+            self._examine(candidates)
+            self.decisions.append(self._decision(candidates, n0, h0))
+        return PocketFill(
+            self.objs, len(self.blobs), self.pocket_depth_by_tile, self.held, self.decisions
+        )
+
+    def _examine(self, candidates: Sequence[PP.Candidate]) -> None:
+        zid = self._planned_zone(candidates)
+        if zid is not None:
+            self._planned, self._zone = True, zid
+            self._fill_planned(candidates, zid)
+            return
+        # Find the best guardable candidate (guard fits at the ZoC-centre position
+        # whose ZoC seals the pocket and both mouth tiles are within it).
+        pick = self._choose(candidates)
+        if pick is None:
+            self._why = PocketOutcome.NO_ZONE
+            return
+        self._zone = pick.zid
+        self._used = (pick.ref_g, pick.pocket, pick.mouth)
+        self._fill_pocket(pick)
+
+    def _decision(self, candidates: Sequence[PP.Candidate], n0: int, h0: int) -> PocketDecision:
+        used = self._used if self._used is not None else PP.largest(candidates)
+        new = self.objs[n0:]
+        ward = self._ward
+        held = {h.tile for h in self.held[h0:]}
+        if self._why is not None:
+            outcome = self._why
+        elif self._guard is not None:
+            outcome = PocketOutcome.GUARDED
+        elif new or held:
+            outcome = PocketOutcome.UNGUARDED
+        else:
+            outcome = PocketOutcome.EMPTY
+        return PocketDecision(
+            level=self.level,
+            zone=self._zone,
+            planned=self._planned,
+            kind=self._kind(used).value if self._planned else None,
+            tiles=tuple(sorted(used[1])),
+            mouth=tuple(sorted(used[2])),
+            outcome=outcome,
+            guard=self._guard,
+            ward=None if ward is None else ward[0],
+            ward_tier=None if ward is None else ward[1],
+            ward_held=ward is not None and ward[0] in held,
+            placed=tuple(((o.x, o.y), o.purpose) for o in new),
+        )
 
     def _planned_zone(self, candidates: Sequence[PP.Candidate]) -> int | None:
         for g, _pocket, mouth in sorted(candidates, key=lambda c: -len(c[1])):
@@ -319,6 +372,7 @@ class _PocketCachePass:
 
     def _fill_planned(self, candidates: Sequence[PP.Candidate], zid: int) -> None:
         big = PP.largest(candidates)
+        self._used = big
         if self._kind(big) is PP.PocketKind.DEEP:
             for cand in candidates:
                 if self._kind(cand) is not PP.PocketKind.DEEP:
@@ -376,11 +430,15 @@ class _PocketCachePass:
         target = self._target(self.global_place, draw)
         level = self.prize_guard.level(draw.rng, zid)
         if spots and self._place_ward(target, draw, spots[-1], ward_tier(level)):
+            self._ward = (spots[-1], ward_tier(level))
             for t in spots[:-1]:
                 self._loose_fill(target, draw, t)
             if self._place_guard(g, level, draw):
                 self._record_filled(cand, n0)
+                self._used = cand
+                self._guard = (g, level)
                 return True
+        self._ward = None
         self.cover.rollback(mark)
         del self.objs[n0:]
         del self.held[h0:]
@@ -492,6 +550,7 @@ class _PocketCachePass:
 
         # Every pocket requires a guard — skip if none could be placed.
         if guard_tile is None:
+            self._why = PocketOutcome.NO_GUARD_SPOT
             return
 
         # Reference point for distance-sorting.
@@ -519,6 +578,7 @@ class _PocketCachePass:
             and self._on_terrain(t, terrain)
         ]
         if not cache_spots:
+            self._why = PocketOutcome.NO_CACHE_SPOT
             return
 
         # Sort nearest-to-ref (index 0) → deepest (index -1).
@@ -547,11 +607,14 @@ class _PocketCachePass:
         tier = ward_tier(lvl)
 
         if guard_tile is not None and not self._place_guard(guard_tile, lvl, draw):
+            self._why = PocketOutcome.GUARD_REFUSED
             return
+        self._guard = None if guard_tile is None else (guard_tile, lvl)
 
         avail = [t for t in cache_spots if t not in self.cover.claims and self._pickup_fits(t)]
         avail.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
         if not avail:
+            self._why = PocketOutcome.NO_FREE_TILE
             return
 
         self._record_depths(pick, cache_spots)
@@ -565,6 +628,7 @@ class _PocketCachePass:
         # `cache_spots`/`global_place`, so it CAN take something -- it must not stay
         # empty under the tile it was recorded as pocket depth for.
         if art_spot:
+            self._ward = (art_spot[0], tier)
             self._place_artifact(art_spot[0], self.catalog.random_artifact(tier), draw)
 
         # Use global_place so fill and artifact never stack on top of gameplay objects.

@@ -32,7 +32,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
 
 - **`vcmi_mapgen/`**, the package, in four layers:
   - `cli/`: the CLI. `__main__.py` holds the subcommands, `generate.py` runs one map and
-    `steps.py` `build_steps` builds the pipeline. The corpus and report tools sit beside
+    `steps.py` `build_steps` builds the pipeline. `decisions.py` writes each map's
+    `decisions.json` beside its `run.json`: the loot zones, the cut-off treasure, the quests,
+    each pocket's outcome and each gameplay slot's ranking, with tiles. The corpus and report tools sit beside
     them: `extract_vmap.py`, `corpus_match.py`, `mine_stats.py`, `audit.py` and
     `readings.py`, which prints the map-math 8 readings beside the corpus spread, with each player's value claimed first, `effort_report.py`, which prints each gated place's hero-days,
     band and top prize, and `patch_report.py`, which prints how the corpus and

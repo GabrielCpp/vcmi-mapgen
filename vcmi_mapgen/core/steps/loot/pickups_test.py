@@ -21,6 +21,7 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.loot import pickups as CA
 from vcmi_mapgen.core.steps.loot.pocket_plan import PocketPlan
 from vcmi_mapgen.core.steps.loot.pockets import access_tiles, occupied_tiles
+from vcmi_mapgen.core.steps.loot.result import PocketOutcome
 
 
 def _scatter_zone(
@@ -368,3 +369,58 @@ def test_a_shallow_pocket_is_filled_without_a_guard(catalog: Catalog, priors: Pr
     assert not any(o.kind in _artifacts(catalog) for o in objs)
     assert [(o.x, o.y) for o in objs] == [(5, 5)]
     assert set(depth) == {(5, 5)}
+
+
+def test_a_deep_pocket_records_its_guard_and_its_tiles(catalog: Catalog, priors: Priors) -> None:
+    """Defect caught: a guarded pocket whose decision loses the guard tile, its level or the
+    pocket tiles, so decisions.json cannot say why a guard stands there."""
+    fill = _planned(catalog, priors, ROOM6)
+    [decision] = fill.decisions
+    guard = next(o for o in fill.objs if o.purpose == Purpose.GUARD)
+    assert decision.outcome == PocketOutcome.GUARDED
+    assert decision.planned and decision.kind == "deep" and decision.zone == 0
+    assert decision.guard is not None and decision.guard[0] == (guard.x, guard.y)
+    assert decision.guard[1] == int(re.sub(r"\D", "", _type_of(catalog, guard)))
+    assert set(decision.tiles) == ROOM6
+    assert decision.ward is not None and decision.ward_held
+    assert ((guard.x, guard.y), Purpose.GUARD) in decision.placed
+
+
+def test_a_shallow_pocket_records_unguarded(catalog: Catalog, priors: Priors) -> None:
+    """Defect caught: a shallow pocket reported as guarded or as empty."""
+    [decision] = _planned(catalog, priors, {(5, 5)}).decisions
+    assert decision.outcome == PocketOutcome.UNGUARDED
+    assert decision.kind == "shallow" and decision.guard is None
+
+
+def test_a_pocket_outside_every_zone_records_no_zone(catalog: Catalog, priors: Priors) -> None:
+    """Defect caught: a blob dropped for lack of a zone leaves no record, so the pockets of a
+    map cannot be counted against the blobs found."""
+    zr = replace(_field_with_room(ROOM6, {(5, 4)}), ts=frozenset())
+    fill = CA.place_pocket_caches(
+        catalog,
+        [zr],
+        CA.PocketContext(priors.gameplay[0], find_rooms(zr.passable, ())),
+        3,
+        (20, 20),
+    )
+    [decision] = fill.decisions
+    assert decision.outcome == PocketOutcome.NO_ZONE and decision.zone is None
+    assert not fill.objs
+
+
+def test_every_blob_records_one_decision(catalog: Catalog, priors: Priors) -> None:
+    """Defect caught: a decision skipped on an early return, so the count of decisions
+    drifts from the count of pockets found."""
+    room = ROOM6 | {(x + 6, y) for x, y in ROOM6}
+    zr = _field_with_room(room, {(5, 4), (11, 4)}, field_w=20)
+    fill = CA.place_pocket_caches(
+        catalog,
+        [zr],
+        CA.PocketContext(
+            priors.gameplay[0], find_rooms(zr.passable, ()), plan=PocketPlan(frozenset({0}))
+        ),
+        3,
+        (30, 30),
+    )
+    assert len(fill.decisions) == fill.n_pockets >= 1

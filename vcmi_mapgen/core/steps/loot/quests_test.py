@@ -24,14 +24,14 @@ def test_seer_hut_asks_for_the_artifact_placed_for_it(catalog: Catalog, priors: 
     records = [_record(0, 0), _record(1, 12)]
     pocket: set[Tile] = {t for zr in records for t in zr.ts if t[1] >= 9}
     used: set[str] = set()
-    objs, n = place_seer_hut_quests(
+    objs, quests = place_seer_hut_quests(
         catalog,
         records,
         seed=5,
         bounds=(24, 12),
         context=SeerHutContext(priors.gameplay[0], pocket_tiles=pocket, used_artifacts=used),
     )
-    assert n == 1
+    assert len(quests) == 1
     arts = [o for o in objs if o.purpose == Purpose.REWARD_PICKUP]
     huts = [o for o in objs if o.purpose == Purpose.QUEST_GATE]
     assert len(arts) == 1 and len(huts) == 1

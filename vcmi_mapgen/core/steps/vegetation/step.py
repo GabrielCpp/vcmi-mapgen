@@ -117,7 +117,7 @@ def _loot_zones(
     land = land_area(map_state)
     gates = stoch_round(rng, priors.keymasters.expected(land, players))
     pairs = stoch_round(rng, priors.portals.expected(land, players))
-    return LootZones(*draw_loot_zones(candidates, gates, pairs, rng))
+    return LootZones(*draw_loot_zones(candidates, gates, pairs, rng), candidates)
 
 
 def _patches(

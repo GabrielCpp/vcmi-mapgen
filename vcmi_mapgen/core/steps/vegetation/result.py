@@ -31,11 +31,12 @@ class VegetationResult:
 @dataclass(frozen=True, slots=True)
 class LootZones:
     """The zones a gate or a monolith pair will seal, by level, and the zones among them a
-    monolith pair seals. No door guard stands at their door and no gameplay object stands in
-    them."""
+    monolith pair seals. ``candidates`` holds the zones the draw chose from. No door guard
+    stands at their door and no gameplay object stands in them."""
 
     levels: Mapping[int, frozenset[int]] = field(default_factory=dict[int, frozenset[int]])
     monoliths: Mapping[int, frozenset[int]] = field(default_factory=dict[int, frozenset[int]])
+    candidates: Mapping[int, frozenset[int]] = field(default_factory=dict[int, frozenset[int]])
 
     def on(self, level: int) -> frozenset[int]:
         return self.levels.get(level, frozenset())

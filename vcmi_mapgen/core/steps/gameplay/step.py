@@ -76,6 +76,7 @@ from vcmi_mapgen.core.steps.gameplay.result import (
     GateResult,
     PromisedWays,
     Shortfall,
+    SlotRanking,
     TownsIndex,
 )
 from vcmi_mapgen.core.steps.gameplay.sea_links import SeaLinks, sea_way
@@ -182,6 +183,7 @@ class GameplayStep(PipelineStep):
         self.objs: list[PlacedObject] = []
         self._log: list[str] = []
         self._short = Shortfall({}, {})
+        self._ranking: tuple[SlotRanking, ...] = ()
         self._ctx = ProviderRegistry()
         self._plan = ZPL.ZonePlan({}, ())
         self._veg = VegetationResult()
@@ -328,7 +330,7 @@ class GameplayStep(PipelineStep):
         has_water = any(Terrain.WATER in row for grid in self._grids.values() for row in grid)
         picker = Picker(catalog, rng, has_water, self.subterrain)
         variants = site_variants(catalog)
-        short = placement.place(
+        short, self._ranking = placement.place(
             plan, picker, price, lambda new: stand_pairs(sites, variants, new, self._guarding)
         )
         self._log += [f"WARNING: gameplay shortfall: {line}" for line in short.lines()]
@@ -588,7 +590,9 @@ class GameplayStep(PipelineStep):
         map_state.player_towns = self._player_towns(towns)
         tie_dwellings(catalog, map_state, self.priors.effort.toll)
         self._ctx.provide(
-            GameplayResult(zones, landings, town_of_zone, tuple(self._log), self._short)
+            GameplayResult(
+                zones, landings, town_of_zone, tuple(self._log), self._short, self._ranking
+            )
         )
 
     def _player_towns(self, towns: dict[tuple[int, int], list[PlacedObject]]) -> list[PlacedObject]:
