@@ -33,7 +33,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     band and top prize, and `patch_report.py`, which prints how the corpus and
     generated maps dress their small enclosed patches. `inspect_map.py` prints one tile,
     the objects near a tile, or the cheapest hero route between two tiles or two players,
-    on a `.vmap`, a corpus map or a seed generated in memory. `inspect_territories.py`
+    on a `.vmap`, a corpus map or a seed generated in memory. `crop.py` cuts a map PNG
+    down to the tiles around one tile. `inspect_territories.py`
     prints the same map's territories, their doors and an ASCII map of them.
   - `core/`: the pure generator. It imports nothing from `vcmi/`, `corpus/` or `renderers/`.
     - `pipeline.py`: `PipelineStep`, `Pipeline` and `ProviderRegistry`.
@@ -123,6 +124,7 @@ uv run python -m vcmi_mapgen.cli inspect --seed 25 --size 72 route P0 P1 --verbo
 uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" tile 23,8
 uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" territories
 uv run python -m vcmi_mapgen.cli inspect --vmap out/ppmap_s7_72/ppmap_s7_72.vmap near 30,30 --radius 4
+uv run python -m vcmi_mapgen.cli crop --at 5,138 --tiles-around 20 out/ppmap_s1029_144/surface.png
 make check
 make golden
 ```

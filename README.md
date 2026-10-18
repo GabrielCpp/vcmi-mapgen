@@ -169,6 +169,13 @@ uv run python -m vcmi_mapgen.cli inspect --corpus "All for One" territories
 A route end is a tile `x,y` or a player `P0`, `P1` and so on, which stands for that
 player's home town. `--level 1` reads the underground.
 
+`crop` cuts a rendered map PNG down to the tiles around one tile and outlines that tile.
+It saves the piece beside the input as `<name>_crop_<x>_<y>_r<n>.png`, or at `--out`.
+
+```bash
+uv run python -m vcmi_mapgen.cli crop --at 5,138 --tiles-around 20 out/ppmap_s1029_144/surface.png
+```
+
 ## Map
 
 - `vcmi_mapgen/`: the Python package. It generates, renders and reads maps, and extracts the corpus.

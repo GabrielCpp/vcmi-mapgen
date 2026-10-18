@@ -25,6 +25,7 @@ Subcommands:
                      between two tiles or two players, or the territories of one level, on
                      a .vmap, a corpus map or a seed generated in memory.
   render-sprites  -> render a .vmap with real H3 sprites, optionally beside a corpus map.
+  crop            -> cut a map PNG down to the tiles around one tile, with that tile outlined.
   regen-ontology  -> rebuild data/catalog/*.json from the editor's objects.txt.
 
 `generate` and `render-vegetation` build and run a ``Pipeline`` (see
@@ -43,6 +44,7 @@ from typing import final
 
 from vcmi_mapgen.cli.audit import audit, densities
 from vcmi_mapgen.cli.corpus_match import corpus_match
+from vcmi_mapgen.cli.crop import crop
 from vcmi_mapgen.cli.effort_report import ReportOptions, effort_report
 from vcmi_mapgen.cli.extract_vmap import extract_vmap
 from vcmi_mapgen.cli.generate import (
@@ -140,6 +142,8 @@ class Args(argparse.Namespace):
     radius: int = 3
     ends: Sequence[End] = ()
     verbose: bool = False
+    png: str = ""
+    tiles_around: int = 20
 
 
 def _open_catalog(settings: Settings) -> VcmiInstall:
@@ -262,6 +266,10 @@ def cmd_render_sprites(args: Args) -> None:
     if args.vmap is None:
         raise SystemExit("render-sprites needs a .vmap path")
     render_sprites(install, settings, args.vmap, args.compare, args.out)
+
+
+def cmd_crop(args: Args) -> None:
+    _ = crop(Path(args.png), args.at, args.tiles_around, Path(args.out) if args.out else None)
 
 
 def cmd_inspect(args: Args) -> None:
@@ -424,6 +432,19 @@ def main() -> None:
     _ = prs.add_argument("--compare", default=None, help="corpus map name to render alongside")
     _ = prs.add_argument("--out", default=None, help="output PNG path (default auto)")
     _ = prs.set_defaults(func=cmd_render_sprites)
+
+    pcr = sub.add_parser(
+        "crop",
+        help="cut a map PNG down to the tiles around one tile, saved beside it as "
+        + "<name>_crop_<x>_<y>_r<n>.png",
+    )
+    _ = pcr.add_argument("png", help="a map PNG at 32 pixels per tile, such as surface.png")
+    _ = pcr.add_argument("--at", type=parse_tile, required=True, help="the tile, x,y")
+    _ = pcr.add_argument(
+        "--tiles-around", type=int, default=20, help="tiles kept on each side (default: 20)"
+    )
+    _ = pcr.add_argument("--out", default=None, help="output PNG path (default: beside the input)")
+    _ = pcr.set_defaults(func=cmd_crop)
 
     pro_regen = sub.add_parser(
         "regen-ontology", help="rebuild data/catalog/*.json from the editor's objects.txt"
