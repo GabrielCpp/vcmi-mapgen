@@ -23,6 +23,7 @@ from vcmi_mapgen.core.placement import water as WT
 from vcmi_mapgen.core.placement.footprint import footprint_cells, overlay_cells
 from vcmi_mapgen.core.placement.guards import inflate_gap
 from vcmi_mapgen.core.placement.site import door_cells, path_to_web
+from vcmi_mapgen.core.planning.borders import wall_shares
 from vcmi_mapgen.core.planning.entrances import Passages, all_passages
 from vcmi_mapgen.core.planning.player_zones import select_player_zones
 from vcmi_mapgen.core.planning.web import WebOptions, ZoneRef, protected_web
@@ -48,7 +49,8 @@ NO_ROOM = TownRoom(NO_TILES, NO_TILES, NO_TILES, ())
 class PlanZone:
     """One zone before any tree grows: its terrain and tiles, its planned entrances and their
     bands, its 8-connected rim, the walkable web, and the room kept for a player town
-    (``NO_ROOM`` in any other zone)."""
+    (``NO_ROOM`` in any other zone), and the zone's share of the walls between it and its
+    walled neighbours."""
 
     terrain: str
     ts: frozenset[Tile]
@@ -57,6 +59,7 @@ class PlanZone:
     rim8: frozenset[Tile]
     ent_bands: frozenset[Tile]
     town: TownRoom = NO_ROOM
+    wall: frozenset[Tile] = NO_TILES
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +251,8 @@ class _LevelPlan:
     zone_label: ZoneLabel
     passages: Passages
     gstats: Mapping[str, TerrainStats]
+    depths: Mapping[tuple[int, int], int]
+    kept: frozenset[Tile]
 
 
 @final
@@ -256,6 +261,17 @@ class _ZonePlanner:
         self.lp = lp
         self.entrance_plan = lp.passages.entrances
         self.rim_all = _rim8(lp.zones)
+        owner = {
+            t: zid
+            for zid, z in lp.zones.items()
+            if not z.terrain_type.is_barrier
+            for t in z.tiles_set
+        }
+        openings = set(lp.kept)
+        for entries in self.entrance_plan.values():
+            for _rep, band, _other in entries:
+                openings |= band
+        self.walls = wall_shares(owner, lp.depths, openings)
 
     def zone(self, zid: int, z: Zone, terrain: str) -> PlanZone:
         lp = self.lp
@@ -265,6 +281,7 @@ class _ZonePlanner:
         seedt = min(ts, key=lambda t: (t[0] - round(zcx)) ** 2 + (t[1] - round(zcy)) ** 2)
         ent_bands: set[Tile] = set[Tile]().union(*(b for _r, b, _o in z_entr)) if z_entr else set()
         rim8 = self.rim_all & ts
+        wall = self.walls.get(zid, NO_TILES)
         prot = protected_web(
             ZoneRef(ts, lp.zone_label, zid, z.centroid),
             edge_dist(ts),
@@ -272,7 +289,7 @@ class _ZonePlanner:
             WebOptions(
                 open_frac=lp.gstats[terrain].border_open_frac,
                 entrances=z_entr,
-                keep_off=rim8,
+                keep_off=rim8 | wall,
             ),
         )
         return PlanZone(
@@ -282,6 +299,7 @@ class _ZonePlanner:
             prot=frozenset(prot),
             rim8=frozenset(rim8),
             ent_bands=frozenset(ent_bands),
+            wall=frozenset(wall),
         )
 
     def level(self) -> PlanLevel:
@@ -388,13 +406,19 @@ def plan_player_zones(
 @dataclass(frozen=True, slots=True)
 class PlanTerrain:
     """What a zone plan reads of the terrain: each level's zones and zone label grid, each
-    level's ``Terrain`` grid and each level's passages. A
-    level with no passages gets ``all_passages`` over its zone label."""
+    level's ``Terrain`` grid and each level's passages. A level with no passages gets
+    ``all_passages`` over its zone label. ``depths`` holds each level's wall widths by zone
+    pair, and ``kept`` each level's tiles the map keeps open that the passages do not name:
+    doors, gate rooms and approaches, and tunnel cells."""
 
     zones: Mapping[int, Mapping[int, Zone]]
     zone_label: Mapping[int, ZoneLabel]
     grids: Mapping[int, list[list[Terrain]]]
     passages: Mapping[int, Passages] = field(default_factory=dict[int, Passages])
+    depths: Mapping[int, Mapping[tuple[int, int], int]] = field(
+        default_factory=dict[int, Mapping[tuple[int, int], int]]
+    )
+    kept: Mapping[int, frozenset[Tile]] = field(default_factory=dict[int, frozenset[Tile]])
 
 
 def plan_zones(
@@ -415,6 +439,8 @@ def plan_zones(
                 label,
                 all_passages(label) if passages is None else passages,
                 gameplay[level],
+                terrain.depths.get(level, {}),
+                terrain.kept.get(level, NO_TILES),
             )
         )
         pl = planner.level()

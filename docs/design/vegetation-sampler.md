@@ -70,7 +70,7 @@ drawing from the Corpus model. Finishing seals, checks and publishes.
 
 | Concept | Owns | Never knows |
 |---|---|---|
-| Zone brief (value) | The tiles one zone must keep clear, its web, its walls, its rim to thicken | The algorithm |
+| Zone brief (value) | The tiles one zone must keep clear, its web, its walls, its rim and its wall share to cover | The algorithm |
 | Level grower | Walking a level's zones and building each brief | Which algorithm grows a zone |
 
 **Growing**
@@ -79,7 +79,7 @@ drawing from the Corpus model. Finishing seals, checks and publishes.
 |---|---|---|
 | Sampler (role) | The one question: "grow this zone's vegetation from this brief" | Any algorithm |
 | Gibbs sampler (variant) | Birth and death moves under a fitted Gibbs process | The field sampler, the level, the CLI |
-| Field sampler (variant) | Drawing a cellular mask, then covering it with decorations | The Gibbs sampler, the level, the CLI |
+| Field sampler (variant) | Drawing a cellular mask, then covering it with decorations, the forced tiles first from the zone edge inward | The Gibbs sampler, the level, the CLI |
 | Cellular field | The Worley `F2 - F1` field and its coverage per edge bin | Decorations |
 | Zone growth (value) | The objects placed in one zone and the tiles they block | How they were chosen |
 

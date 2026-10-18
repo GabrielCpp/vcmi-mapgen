@@ -72,6 +72,16 @@ def test_protected_web_covers_gate_bands() -> None:
         assert g.band <= prot, "every gate-band tile must be protected from vegetation"
 
 
+def test_protected_web_keeps_its_nodes_off_keep_off() -> None:
+    ts = {(x, y) for x in range(30) for y in range(16)}
+    label = label_zones({1: _zone(ts, 14.5, 7.5)})
+    keep_off = {(x, y) for x, y in ts if x < 12}
+    ref = ZoneRef(ts, label, 1, (14.5, 7.5))
+    prot = protected_web(ref, edge_dist(ts), (20, 8), WebOptions(entrances=[], keep_off=keep_off))
+    assert prot
+    assert not prot & keep_off, "the backbone nodes stay off keep_off while an interior exists"
+
+
 def test_protected_web_leaves_out_an_entrance_its_zone_cannot_reach() -> None:
     main = {(x, y) for x in range(10) for y in range(10)}
     scrap = {(x, y) for x in range(12, 14) for y in range(2)}

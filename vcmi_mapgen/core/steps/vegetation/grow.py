@@ -92,11 +92,11 @@ def grow_level(
     sampler: Sampler,
 ) -> Grown:
     """Grow each zone's vegetation with `sampler` off the taken tiles, the landings and the
-    town rooms, and densify it along the rim outside the entrance bands. Each patch of another
-    terrain then grows with its own terrain's model, walled by what the zone grew. Every zone
-    keeps the whole level's web and land open, walled by the towns and by what earlier zones
-    grew. A zone whose terrains have no vegetation category keeps an empty
-    ``VegetatedZone``."""
+    town rooms, and densify it along the rim and the zone's wall share, outside the entrance
+    bands. Each patch of another terrain then grows with its own terrain's model, walled by
+    what the zone grew. Every zone keeps the whole level's web and land open, walled by the
+    towns and by what earlier zones grew. A zone whose terrains have no vegetation category
+    keeps an empty ``VegetatedZone``."""
     landings = lv.plan.landings.blk | lv.plan.landings.appr
     plan_zones = lv.plan.zones.values()
     web = frozenset[Tile]().union(*(z.prot for z in plan_zones))
@@ -128,7 +128,7 @@ def grow_level(
                 SampleOptions(
                     prot=web,
                     forbid=run_forbid,
-                    border=frozenset(zone.rim8 - zone.ent_bands - run_forbid),
+                    border=frozenset((zone.rim8 | zone.wall) - zone.ent_bands - run_forbid),
                     land=land,
                     impassable=towns | level_blocked,
                     ground=lv.ground,

@@ -99,9 +99,10 @@ def protected_web(
     the border model from corpus-open to ISOLATED: only the planned entrance bands are
     protected — the rest of the front is left plantable, and the Gibbs sampler's border bias
     actively densifies it (the map-level isolation redesign). `keep_off` (the caller's 8-connected
-    rim: every tile with an 8-neighbour in another zone) further restricts backbone
-    ROUTING in that mode — a web corridor pinned to the rim would both hold the ridge open
-    and be unsealable by `pp_map.seal_zone_borders`."""
+    rim, every tile with an 8-neighbour in another zone, plus the zone's wall share) keeps the
+    backbone nodes off it and further restricts backbone ROUTING in that mode — a web
+    corridor pinned to the rim would both hold the ridge open and be unsealable by
+    `pp_map.seal_zone_borders`."""
     ts, zone_label, zid = zone.ts, zone.zone_label, zone.zid
     avoid, keep_off, entrances = opts.avoid, opts.keep_off, opts.entrances
     ts_free = ts - set(avoid)
@@ -123,7 +124,9 @@ def protected_web(
         gate_bands = zone_gate_bands(ts, zone_label, zid, open_frac=opts.open_frac)
         path_ts = ts_free
     gates = [g.rep for g in gate_bands]
-    interior = [t for t in ts_free if edist.get(t, 0) >= 2] or list(ts_free)
+    off = set(keep_off)
+    deep = [t for t in ts_free if edist.get(t, 0) >= 2]
+    interior = [t for t in deep if t not in off] or deep or list(ts_free)
     nodes = farthest_points(ts_free, seedt, opts.spacing, cand=interior)
     for g in list(gates) + [n for n in opts.extra_nodes if n in ts_free]:
         if g in ts_free and g not in nodes:

@@ -17,14 +17,16 @@
   behind `try_place` and `try_remove`.
 - `field/`: `FieldSampler`, the default sampler, which covers a cellular field's blocked mask with decorations.
   `cellular.py` draws the field and the per-edge-bin coverage that shapes the mask.
-  `sampler.py` tries `FILL_TRIES` identities per uncovered tile, each at its first legal
-  position over that tile, and checks the best `FILL_CHECKS` with the canvas.
+  `sampler.py` fills the forced tiles first, from the zone edge inward, then the rest. It
+  tries `FILL_TRIES` identities per uncovered tile, each at its first legal position over
+  that tile, and checks the best `FILL_CHECKS` with the canvas.
 - `gibbs/`: `GibbsSampler`, the marked-point-process sampler fitted to `VegetationStats` from
   `core/priors/vegetation.py`. Births and deaths go through the canvas. `energy.py` holds the
   compiled local interaction energy.
 - `grow.py`: `grow_level`, one level's vegetation grown zone by zone with the `Sampler` it is
   given, and `vegetation_models`, one fitted model per terrain. Each zone's brief holds the
-  whole level's web and land, walled by the towns and by what earlier zones grew.
+  whole level's web and land, walled by the towns and by what earlier zones grew. Its forced
+  border is the zone's rim and wall share, less the entrance bands.
 - `mix.py`: `ZoneMix`, a zone's corpus-expected category counts and the category and identity
   draws both samplers make from them.
 - `model.py`: `VegModel`, the per-terrain model both samplers read, and `build_model`. `RINT`
@@ -36,4 +38,4 @@
   `render-vegetation --vegetation gibbs` and `generate --vegetation gibbs` select the Gibbs
   sampler through `cli/steps.py` `SAMPLERS`.
 - `result.py`: `VegetationResult`, which `VegetationStep` publishes.
-- `step.py`: `VegetationStep`, which takes its `Sampler` and its `ContentPlanner` in the constructor. It plans the content first, picks the plan's homes as the player zones, and provides the `ContentPlan` beside the `ZonePlan`.
+- `step.py`: `VegetationStep`, which takes its `Sampler` and its `ContentPlanner` in the constructor. It plans the content first, picks the plan's homes as the player zones, and provides the `ContentPlan` beside the `ZonePlan`. It hands the zone plan each level's wall widths and the tiles the map keeps open: doors, gate rooms and approaches, and tunnels on level 1.

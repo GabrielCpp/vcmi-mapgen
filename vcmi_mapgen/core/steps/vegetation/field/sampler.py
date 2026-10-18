@@ -58,7 +58,8 @@ class _FieldRun:
         """Place decorations until the field's target mask is covered, one uncovered target
         tile at a time: draw a category from the corpus mix, try FILL_TRIES identities, each
         at the first position that blocks that tile legally, and keep the one that blocks the
-        most uncovered target tiles for the fewest uncovered tiles off the mask."""
+        most uncovered target tiles for the fewest uncovered tiles off the mask. The forced border
+        tiles fill first, from the zone edge inward."""
         cv = self.canvas
         dom = cv.inz & ~cv.protm & ~cv.box_mask(cv.forbid)
         tiles_per_ebin = np.bincount(cv.eb[dom].ravel(), minlength=EBINS)
@@ -74,10 +75,20 @@ class _FieldRun:
             )
         ]
         self.rng.shuffle(order)
-        for t in order:
+        for t in self._forced_first(order):
             if cv.blkcnt[t[1] - cv.y0, t[0] - cv.x0] == 0:
                 self._fill_tile(t, target)
         return cv.result()
+
+    def _forced_first(self, order: list[Tile]) -> list[Tile]:
+        cv = self.canvas
+
+        def forced(t: Tile) -> bool:
+            return cast(bool, cv.border[t[1] - cv.y0, t[0] - cv.x0])
+
+        edge = [t for t in order if forced(t)]
+        edge.sort(key=lambda t: cast(int, cv.eb[t[1] - cv.y0, t[0] - cv.x0]))
+        return edge + [t for t in order if not forced(t)]
 
     def _fill_tile(self, t: Tile, target: NDArray[np.bool_]) -> None:
         rng, model, cv = self.rng, self.model, self.canvas

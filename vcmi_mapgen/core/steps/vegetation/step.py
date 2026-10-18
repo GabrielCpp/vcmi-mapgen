@@ -96,6 +96,15 @@ def _depths(places: PlaceMap, level: int) -> Mapping[tuple[int, int], int]:
     return lp.depths if lp else {}
 
 
+def _kept(
+    catalog: Catalog, places: PlaceMap, level: int, tunnel: frozenset[Tile]
+) -> frozenset[Tile]:
+    """The tiles the map keeps open on ``level`` that the passages do not name: the doors, the
+    gate rooms and approaches, and the tunnel cells on the lower level."""
+    gates = _gates(catalog, places)
+    return _doors(places, level) | gates[0] | gates[1] | (tunnel if level == 1 else NO_TILES)
+
+
 def _sealed(zone: VegetatedZone, mine: frozenset[Tile]) -> VegetatedZone:
     return VegetatedZone(zone.open_set - mine, zone.passable - mine)
 
@@ -144,7 +153,8 @@ class VegetationStep(PipelineStep):
     then builds the ``ZonePlan`` with ``zone_plan.plan_zones`` and
     ``zone_plan.plan_player_zones``, the plan's homes first, before any tree grows. Each
     ``PlanZone`` supplies the web, the rim, the entrance bands and the town room kept clear
-    of trees.
+    of trees. The zone plan also holds each zone's share of the walls, which the web keeps off
+    and the sampler covers.
 
     Produces: extends ``map_state.objs`` with this step's own new vegetation objects
     (``self.objs`` keeps just the new ones, for callers that want that distinction). Into ctx:
@@ -228,6 +238,11 @@ class VegetationStep(PipelineStep):
             seg.zone_label,
             map_state.terrain,
             {level: lp.passages for level, lp in self._places.levels.items()},
+            {level: _depths(self._places, level) for level in seg.zones},
+            {
+                level: _kept(catalog, self._places, level, self._tunnel_protect)
+                for level in seg.zones
+            },
         )
         return ZPL.plan_player_zones(
             catalog,
