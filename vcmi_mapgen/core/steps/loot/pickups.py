@@ -44,6 +44,7 @@ class PocketContext:
     plan: PocketPlan | None = None
     guard: PrizeGuard = field(default_factory=PrizeGuard)
     level: int = 0
+    approach: frozenset[Tile] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,6 +216,7 @@ class _PocketCachePass:
         ]
         self.plan = context.plan
         self.prize_guard = context.guard
+        self.approach = context.approach
         self.filled = 0
         self.decisions: list[PocketDecision] = []
         self._reset()
@@ -500,7 +502,9 @@ class _PocketCachePass:
 
     def _guard_fits(self, cand_g: Tile) -> bool:
         guard_mask = self.guard_mask
-        if cand_g in self.cover.claims or not guard_spaced(cand_g, self.guards):
+        if cand_g in self.approach or cand_g in self.cover.claims:
+            return False
+        if not guard_spaced(cand_g, self.guards):
             return False
         if not all(
             c in self.global_place and c not in self.cover.claims

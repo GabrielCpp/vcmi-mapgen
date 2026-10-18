@@ -39,5 +39,5 @@ def test_parse_masks_rejects_a_malformed_drawing(text: str, reason: str) -> None
         _ = parse_masks(text)
 
 
-def test_shipped_masks_load_with_thirty_three_shapes(priors: Priors) -> None:
-    assert len({m.name for m in priors.pocket_masks}) == 33
+def test_shipped_masks_load_with_thirty_four_shapes(priors: Priors) -> None:
+    assert len({m.name for m in priors.pocket_masks}) == 34

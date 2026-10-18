@@ -325,9 +325,12 @@ def test_pocket_chest_fill_uses_only_the_allowed_types(catalog: Catalog, priors:
 
 
 ROOM6 = {(5, 5), (6, 5), (5, 6), (6, 6), (5, 7), (6, 7)}
+NO_APPROACH: frozenset[Tile] = frozenset()
 
 
-def _planned(catalog: Catalog, priors: Priors, room: set[Tile]) -> CA.PocketFill:
+def _planned(
+    catalog: Catalog, priors: Priors, room: set[Tile], approach: frozenset[Tile] = NO_APPROACH
+) -> CA.PocketFill:
     zr = _field_with_room(room, {(5, 4)})
     fill = CA.place_pocket_caches(
         catalog,
@@ -336,6 +339,7 @@ def _planned(catalog: Catalog, priors: Priors, room: set[Tile]) -> CA.PocketFill
             priors.gameplay[0],
             find_rooms(zr.passable, ()),
             plan=PocketPlan(frozenset({0})),
+            approach=approach,
         ),
         3,
         (20, 20),
@@ -360,6 +364,16 @@ def test_a_deep_pocket_guards_an_artifact_or_a_box(catalog: Catalog, priors: Pri
     wards = held + [(o.x, o.y) for o in _boxes(catalog, fill.objs)]
     assert wards and all(w in ROOM6 for w in wards)
     assert set(fill.depth) <= ROOM6
+
+
+def test_a_deep_pocket_behind_an_approach_tile_is_filled_without_a_guard(
+    catalog: Catalog, priors: Priors
+) -> None:
+    fill = _planned(catalog, priors, ROOM6, frozenset({(5, 4)}))
+    assert not any(o.purpose == Purpose.GUARD for o in fill.objs)
+    assert fill.objs and all((o.x, o.y) in ROOM6 for o in fill.objs)
+    [decision] = fill.decisions
+    assert decision.outcome == PocketOutcome.UNGUARDED
 
 
 def test_a_shallow_pocket_is_filled_without_a_guard(catalog: Catalog, priors: Priors) -> None:

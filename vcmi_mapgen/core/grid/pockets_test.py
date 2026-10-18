@@ -79,6 +79,13 @@ def test_find_pockets_rejects_a_pocket_holding_an_access_tile() -> None:
     assert PK.find_pockets(_reach(CORRIDOR), MASKS, frozenset({(3, 3)}), NO_ACCESS) == {}
 
 
+def test_find_pockets_takes_a_mouth_on_an_access_tile() -> None:
+    assert PK.find_pockets(_reach(CORRIDOR), MASKS, frozenset({(3, 1)}), NO_ACCESS) == {
+        (3, 1): (frozenset({(3, 2), (3, 3)}), frozenset({(3, 1)})),
+        (3, 2): (frozenset({(3, 3)}), frozenset({(3, 2)})),
+    }
+
+
 def test_find_pockets_keeps_the_guard_off_an_occupied_tile() -> None:
     assert PK.find_pockets(_reach(CORRIDOR), MASKS, NO_ACCESS, frozenset({(3, 1)})) == {
         (3, 2): (frozenset({(3, 3)}), frozenset({(3, 2)}))

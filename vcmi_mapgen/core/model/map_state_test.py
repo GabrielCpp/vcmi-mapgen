@@ -87,6 +87,19 @@ def test_gameplay_overlay_over_an_approach_tile_is_refused() -> None:
         state.add_objs([mine, sprite])
 
 
+def test_pickup_overlay_may_overhang_an_approach_tile() -> None:
+    mine = _obj(2, 2, ("X",), purpose=Purpose.MINE)
+    pickup = _obj(3, 3, ("VA",), purpose=Purpose.REWARD_PICKUP)
+    assert CoverIndex([mine]).try_add(pickup)
+    assert CoverIndex([pickup]).try_add(mine)
+
+
+def test_pickup_visit_on_an_approach_tile_is_refused() -> None:
+    mine = _obj(2, 2, ("X",), purpose=Purpose.MINE)
+    pickup = _obj(2, 3, ("A",), purpose=Purpose.REWARD_PICKUP)
+    assert not CoverIndex([mine]).try_add(pickup)
+
+
 def test_guard_may_stand_on_an_approach_tile() -> None:
     mine = _obj(2, 2, ("X",), purpose=Purpose.MINE)
     guard = _obj(2, 3, ("B",), purpose=Purpose.GUARD)

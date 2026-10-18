@@ -571,7 +571,7 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
     _DIRS8 = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
     saw_two_of_a_type = False
     for seed in range(1, 20):
-        zone_records, objs_existing = _rect_zone_records(6, 5)
+        zone_records, objs_existing = _rect_zone_records(7, 5)
         objs, n_placed, _zids = _place(
             catalog,
             GatedLevel(zone_records, objs_existing, priors.gameplay[0]),
@@ -597,7 +597,7 @@ def test_loot_zone_fill_places_two_instances_of_each_hero_structure_apart_from_e
 
 def _rect_zone_records(w: int, h: int) -> tuple[list[ZoneRecord], list[PlacedObject]]:
     """A wxh rectangular zone (zid 0) with a single boundary along its bottom edge to a
-    large neighbour (zid 1) -- a plain single-entrance loot-zone fixture. Sized 6x5 (30
+    large neighbour (zid 1) -- a plain single-entrance loot-zone fixture. Sized 7x5 (35
     tiles) it leaves room for two of each hero structure with its open approach tile."""
     ts0 = {(x, y) for x in range(w) for y in range(h)}
     ts1 = {(x, y) for x in range(40) for y in range(h, h + 30)}
@@ -615,7 +615,7 @@ def test_loot_zone_fill_places_every_whitelisted_hero_structure_tile_budget_perm
     least one seed."""
     counts: list[int] = []
     for seed in range(1, 20):
-        zone_records, objs_existing = _rect_zone_records(6, 5)
+        zone_records, objs_existing = _rect_zone_records(7, 5)
         objs, n_placed, _zids = _place(
             catalog,
             GatedLevel(zone_records, objs_existing, priors.gameplay[0]),

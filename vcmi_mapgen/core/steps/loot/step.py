@@ -156,6 +156,7 @@ class LootStep(PipelineStep):
                 plan=plan,
                 guard=prize_guard(self.priors.places, self._plan, level),
                 level=level,
+                approach=access,
             ),
         )
         cobjs = fill.objs

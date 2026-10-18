@@ -50,7 +50,7 @@ def find_pockets(
 ) -> dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]]:
     found: dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]] = {}
     for g in sorted(reach):
-        if g in access or g in occupied:
+        if g in occupied:
             continue
         blocked = sum(1 for dx, dy in NB8 if (g[0] + dx, g[1] + dy) not in reach)
         if blocked == 0:
