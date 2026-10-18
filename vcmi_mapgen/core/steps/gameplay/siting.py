@@ -3,10 +3,11 @@ corpus record, and every tile is ranked once under that guard. An object of no p
 first on the tiles that keep the players' reach of its family even, nearest its band, furthest
 from every object already standing, nearest its target in days. A rare mine stands first on
 the even tiles its player reaches first, nearest its band and its target. Either tries an
-uneven tile only after every even one, and tries the few zone sites that hold the best of
-them. A neutral town stands on the even tiles furthest from every
-town already standing. A gold mine stands where the gold rule admits it, the best of its rank
-first, and where the loose gold rule admits it when no such tile takes it.
+uneven tile only after every even one. Every object tries every group in rank order, so it
+fills every site of its band before it drops to a worse band. A neutral town stands on the even
+tiles furthest from every town already standing. A gold mine stands where the gold rule admits
+it, the best of its rank first, and where the loose gold rule admits it when no such tile takes
+it.
 
 A tile's tier code is its spread change times ARRIVALS plus its arrival rank, so codes order
 as the pair does and a code below ARRIVALS widens no gap."""
@@ -67,7 +68,6 @@ from vcmi_mapgen.core.steps.gameplay.result import (
 )
 from vcmi_mapgen.core.steps.gameplay.turn import Stop, Turn, near
 
-MAX_SITES = 4
 CENTRES = 40
 TOWN_ROOM = 238
 REPRICE = 12
@@ -274,9 +274,9 @@ class Siting:
         snug for its size, then for a spot with one closed side, then for any spot in the open.
         It then gives way to a smaller object of the same family, which looks for the same
         spots in the same order. A large object, and any object in the open, tries the most
-        open ground of a group first. A mine or a town tries every site, any other object the
-        best few. A rare mine takes its family from the turn where it stands. None when no
-        site takes any, and nothing stands."""
+        open ground of a group first. Every object tries every group in rank order. A rare mine
+        takes its family from the turn where it stands. None when no site takes any, and nothing
+        stands."""
         purpose = family_purpose(slot.family)
         guard = min(self.draws.draw(self.rng, slot.family), self._top())
         self._first_view = self._last_view = self._stood = None
@@ -388,26 +388,20 @@ class Siting:
         strict: bool,
     ) -> tuple[str, PlacedObject] | None:
         purpose = family_purpose(dealt)
-        every = purpose in (Purpose.MINE, Purpose.TOWN)
         capping = self._capping(purpose)
-        limit = len(self.sites) if every else MAX_SITES
         cols = () if self._last_view is None else self._last_view[2]
         index = {id(g[2]): i for i, g in enumerate(self._pool)}
         for footing, (fallback, shape) in enumerate(PASSES):
-            tried: Counter[Tier] = Counter()
             walk: list[GroupStep] = []
             count = 0
             for group in groups:
                 tier, site, rows = group
                 count += 1
                 parts: list[tuple[str, Pick, NDArray[np.intp]]] = []
-                if tried[tier] >= limit:
-                    outcome = "tier_tried"
-                elif capping and self._full(site):
+                if capping and self._full(site):
                     outcome = "zone_full"
                 else:
                     parts = self._parts(dealt, site, rows, seen, strict)
-                    tried[tier] += bool(parts)
                     outcome = "no_room" if parts else "no_object"
                 for family, pick, part in parts:
                     centres = self._centres(part)

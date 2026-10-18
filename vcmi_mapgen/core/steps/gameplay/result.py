@@ -60,8 +60,7 @@ class RankedTile:
 @dataclass(frozen=True, slots=True)
 class GroupStep:
     """One group a slot visited: its head tile, zone and size, the values of the sort columns
-    at the head, and what came of it: ``tier_tried``, ``zone_full``, ``no_object``,
-    ``no_room`` or ``stood``."""
+    at the head, and what came of it: ``zone_full``, ``no_object``, ``no_room`` or ``stood``."""
 
     index: int
     level: int
