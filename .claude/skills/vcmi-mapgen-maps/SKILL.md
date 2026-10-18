@@ -113,6 +113,10 @@ metadata:
   game lacks from each mod's `sprites` folder.
   `renderers/sprites_test.py` checks that every terrain tile decodes, the decode
   coverage across corpus sprites, and that rendering is deterministic.
+- Every map PNG keeps that 32px tile, so pixel `(32x, 32y)` is the corner of tile `x,y`.
+  `cli/crop.py`, the `crop` subcommand, relies on it to cut a PNG to the tiles within
+  `--tiles-around` of `--at x,y`. It outlines that tile and saves the piece beside the
+  input as `<name>_crop_<x>_<y>_r<n>.png`.
 - All of these tests skip when the H3 LOD files are absent.
 
 ## History that is not the current design

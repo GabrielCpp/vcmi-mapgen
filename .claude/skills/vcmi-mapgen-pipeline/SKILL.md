@@ -136,7 +136,8 @@ variant of a role the step takes in its constructor, as `VegetationStep` takes a
 `Sampler`. The step stays one class and publishes the same values, so the later steps
 never know which variant ran. Never subclass a step to swap an algorithm.
 `render-ontology` renders the object catalog through `renderers/ontology_render.py`. It
-builds no pipeline and never touches a generated map.
+builds no pipeline and never touches a generated map. `crop` builds none either. It reads
+a PNG that `generate` already wrote and cuts it to the tiles around one tile.
 
 After `pipeline.run()`, `cli/generate.py` reads results back from `pipeline.ctx` by type,
 for example `pipeline.ctx.get(LootResult, LootResult())`.
