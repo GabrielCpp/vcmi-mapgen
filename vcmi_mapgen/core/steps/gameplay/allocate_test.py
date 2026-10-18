@@ -1,5 +1,6 @@
 import random
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
+from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -56,6 +57,15 @@ def test_the_rare_offer_keeping_the_gap_wins(catalog: Catalog) -> None:
     assert rank(even, best, "gemPond") < rank(wide, best, "gemPond")
 
 
+def test_the_rare_offer_bringing_a_late_player_in_time_wins_over_the_gap(
+    catalog: Catalog,
+) -> None:
+    site = _site(catalog)
+    near, idle = _offer(site, catalog, (5, None)), _offer(site, catalog, (20, 20))
+    best: Days = (15, 10)
+    assert rank(near, best, "gemPond") < rank(idle, best, "gemPond")
+
+
 def test_a_wood_offer_serves_its_own_player(catalog: Catalog) -> None:
     site = _site(catalog)
     near_first, near_second = _offer(site, catalog, (3, 9)), _offer(site, catalog, (9, 4))
@@ -85,6 +95,29 @@ def test_one_rare_mine_serves_both_players(catalog: Catalog) -> None:
     assert kept.warnings == ()
     assert _mines(site) == 1
     assert len(calls) == 2
+
+
+_REGIONS: tuple[Days, ...] = ((5, 12), (14, 9), (12, 4))
+
+
+class _Regions(Pricer):
+    @override
+    def days(self, spot: Spot, level: int, shut: frozenset[Spot]) -> Days:
+        return _REGIONS[min(spot.x * len(_REGIONS) // _SIDE, len(_REGIONS) - 1)]
+
+    @override
+    def prime(self, level: int, wants: Iterable[tuple[Spot, frozenset[Spot]]]) -> None:
+        return None
+
+
+def test_rare_mines_pull_each_player_in_until_the_gap_closes(catalog: Catalog) -> None:
+    site = _site(catalog)
+    have: Mapping[str, Days] = {
+        r: (None, None) if r == "gemPond" else (4, 4) for r in BASIC_MINE_RES
+    }
+    kept = keep_promise([site], site_variants(catalog), lambda: (_Regions([]), have))
+    assert kept.warnings == ()
+    assert [o.days for o in kept.stood] == [_REGIONS[1], _REGIONS[0], _REGIONS[2]]
 
 
 def test_each_player_gets_its_own_wood_mine(catalog: Catalog) -> None:

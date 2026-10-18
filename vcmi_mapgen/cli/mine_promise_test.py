@@ -1,7 +1,7 @@
 """Every player reaches a mine of each basic resource within PROMISE_DAYS hero-days of its
-town, the players stay within PROMISE_GAP days of each other, and no gold mine stands that
-near. The promise is a target: the small map keeps it, and the seed sweep prints each
-breach instead of failing on it."""
+town, the players stay within PROMISE_GAP days of each other, and no gold mine stands within
+FAR_FLOOR days of a town. The promise is a target: the small map keeps it, and the seed sweep
+prints each breach instead of failing on it."""
 
 import contextlib
 import io
@@ -13,8 +13,9 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.pipeline import ProviderRegistry
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.contest import FAR_FLOOR
 from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES
-from vcmi_mapgen.core.reading.promise import PROMISE_DAYS, promise_of
+from vcmi_mapgen.core.reading.promise import promise_of
 
 GOLD = "goldMine"
 SWEEP_SEEDS = range(1, 11)
@@ -32,7 +33,7 @@ def _breaches(catalog: Catalog, priors: Priors, config: StepConfig) -> list[str]
     near = [
         f"player {p} {GOLD}: {d[GOLD]} days"
         for p, d in enumerate(gold.days)
-        if (v := d[GOLD]) is not None and v <= PROMISE_DAYS
+        if (v := d[GOLD]) is not None and v <= FAR_FLOOR
     ]
     return basic + near
 

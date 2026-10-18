@@ -5,11 +5,12 @@ An offer is a mine anchor in a zone site, priced per player at the tile its guar
 on: the travel there plus the toll of the stronger of the guards met on the way and the
 mine's own. Each player gets a wood and an ore mine of its own, the nearest that keeps the
 gap within PROMISE_GAP. A rare mine may serve several players: a player waits while it is
-past PROMISE_DAYS or more than PROMISE_GAP days behind the nearest player. The offer serving
-the most waiting players wins, then the one keeping the gap, then the one nearest
-RARE_TARGET days. When no offer reaches a late player in time, the nearest one past the
-limit takes the mine and a warning says so. A player only behind on the gap gets no mine
-that leaves it behind."""
+past PROMISE_DAYS or more than PROMISE_GAP days behind the nearest player. The shortfall
+counts a late player as _FAR days and any other the days it waits past the gap. The offer
+leaving the least shortfall wins, then the one nearest RARE_TARGET days. Each mine must
+shrink the shortfall, or keep it and bring the waiting players nearer, so a mine may pull one
+player in close and leave another waiting for the next mine. When no offer reaches a late
+player in time, the nearest one past the limit takes the mine and a warning says so."""
 
 from __future__ import annotations
 
@@ -171,8 +172,21 @@ def keeps_even(best: Days, days: Days) -> bool:
     return set(_behind(new)) <= set(_behind(best)) and _excess(new) <= _excess(best)
 
 
-def _served(days: Days, best: Days) -> int:
-    return len(_behind(best)) - len(_behind(_with(best, days, range(len(best)))))
+def _shortfall(best: Days) -> int:
+    reached = [b for b in best if b is not None and not _late(b)]
+    floor = min(reached, default=PROMISE_DAYS)
+    return sum(_FAR if b is None or _late(b) else max(0, b - floor - PROMISE_GAP) for b in best)
+
+
+def _standing(best: Days) -> tuple[int, int]:
+    waits = sum(
+        PROMISE_DAYS + 1 if (b := best[p]) is None or _late(b) else b for p in _behind(best)
+    )
+    return _shortfall(best), waits
+
+
+def _serves(days: Days, best: Days) -> bool:
+    return _standing(_with(best, days, range(len(best)))) < _standing(best)
 
 
 def rank(offer: Offer, best: Days, res: str, player: int = 0) -> tuple[int, ...]:
@@ -188,7 +202,7 @@ def _merit(days: Days, best: Days, res: str, player: int) -> tuple[int, ...]:
         return (_excess(after), _miss(days[player], 0))
     after = _with(best, days, range(len(best)))
     miss = sum(_miss(days[p], RARE_TARGET) for p in _behind(best))
-    return (-_served(days, best), _excess(after), miss)
+    return (_shortfall(after), miss)
 
 
 def _tail(offer: Offer) -> tuple[int, ...]:
@@ -246,14 +260,14 @@ def _own(pool: list[Offer], best: Days, res: str, kept: _Ledger, level: int) -> 
 def _shared(pool: list[Offer], best: Days, res: str, kept: _Ledger, level: int) -> Days:
     while behind := _behind(best):
         _order(pool, best, res)
-        useful = pool if _waiting(best) else [o for o in pool if _served(o.days, best) > 0]
+        useful = pool if _waiting(best) else [o for o in pool if _serves(o.days, best)]
         taken = next((o for o in useful if _stand(o, level)), None)
         if taken is None:
             kept.warnings.append(f"{res}: no spot for players {behind}")
             return best
         pool.remove(taken)
         kept.stood.append(taken)
-        if _served(taken.days, best) <= 0:
+        if not _serves(taken.days, best):
             kept.warnings.append(f"{res}: players {behind} past {PROMISE_DAYS} days")
             return best
         best = _with(best, taken.days, range(len(best)))
