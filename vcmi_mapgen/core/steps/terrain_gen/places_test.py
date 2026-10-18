@@ -3,12 +3,20 @@
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.reading.paint import read_paint
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.paint import theta_min
-from vcmi_mapgen.core.steps.terrain_gen.place_map import label_adjacency
-from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain, bridge_pinches, carried
+from vcmi_mapgen.core.steps.terrain_gen.place_map import label_adjacency, label_borders
+from vcmi_mapgen.core.steps.terrain_gen.places import (
+    Front,
+    PlacesTerrain,
+    bordered,
+    bridge_pinches,
+    carried,
+)
+from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlannedPlace
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import unreached
 from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
@@ -108,3 +116,28 @@ def test_carried_moves_a_place_cut_off_from_its_territory_to_its_neighbours() ->
     label = [[0, 0, 1, 1, 2]]
     assert carried(label, before, (0, 1)) == (0, 1, 1)
     assert carried([[0, 0, 1, 1, -1]], [[0, 0, 1, 1, -1]], (0, 1)) == (0, 1)
+
+
+def test_label_borders_count_the_touching_tile_pairs_of_each_label_pair() -> None:
+    label = [[0, 0, 1], [0, 2, 1], [-1, 2, 2]]
+    assert label_borders(label) == {(0, 1): 1, (0, 2): 2, (1, 2): 2}
+
+
+def test_bordered_joins_a_neutral_territory_the_grown_places_left_under_the_floor(
+    priors: Priors,
+) -> None:
+    label = [
+        [0] * 4 + [1] * 2 + [2] * 4 if y < 5 else [-1] * 4 + [1] * 2 + [2] * 4 for y in range(10)
+    ]
+    places = {
+        0: PlannedPlace(PlaceRole.HOME, 0, Terrain.GRASS),
+        1: PlannedPlace(PlaceRole.MIDDLE, None, Terrain.GRASS),
+        2: PlannedPlace(PlaceRole.HOME, 1, Terrain.GRASS),
+    }
+    plan = LevelPlaces(label, places, label_adjacency(label))
+    spread = (priors.places[0], TerritoryStats())
+    kept = bordered(plan, spread, 2, 1, Front(drawn=(0, 1, 2)))
+    assert kept.territories.owners == (0, None, 1)
+    merged = bordered(plan, spread, 2, 1, Front(drawn=(0, 1, 2), floor=30))
+    assert merged.territories.zones == {0: 0, 1: 1, 2: 1}
+    assert merged.territories.owners == (0, 1)

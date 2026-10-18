@@ -113,6 +113,7 @@ class Args(argparse.Namespace):
     no_water: bool = False
     players: int = 2
     density: float = 1.0
+    zone_quota: bool = False
     teams: str = "ffa"
     water_mode: str | None = None
     subterrain: bool = False
@@ -192,6 +193,7 @@ def cmd_generate(args: Args) -> None:
             vegetation=args.vegetation,
             content=_content(args),
             density=args.density,
+            zone_quota=args.zone_quota,
             name=args.name,
             install=args.install,
         ),
@@ -450,6 +452,11 @@ def main() -> None:
         type=float,
         default=1.0,
         help="multiplier on the corpus count of gameplay objects per tile",
+    )
+    _ = pg.add_argument(
+        "--zone-quota",
+        action="store_true",
+        help="cap each zone's dwellings, banks and visitables at a share proportional to its tiles",
     )
     _ = pg.add_argument(
         "--teams", default="ffa", help="team matrix: 'ffa', '2v2'-style, or explicit '0,0,1,1'"

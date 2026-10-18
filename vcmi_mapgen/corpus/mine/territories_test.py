@@ -1,5 +1,5 @@
-"""The territory miner keeps each map's territory count beside its players and land, and
-the saved table loads back the same."""
+"""The territory miner keeps each map's territory count beside its players, land and
+prizes, and the saved table loads back the same."""
 
 from pathlib import Path
 
@@ -7,6 +7,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, MapState, PlacedObject, Role
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.priors.territories import TerritoryCount
 from vcmi_mapgen.corpus.mine.territories import mine_territories
 from vcmi_mapgen.corpus.territories import load_territories, save_territories
 
@@ -36,7 +37,23 @@ def test_each_map_records_its_territories_beside_its_players_and_land(
     assert count.land > SIZE * (SIZE - 2)
 
 
+def test_each_map_counts_the_objects_worth_a_mine_as_prizes(catalog: Catalog) -> None:
+    state = _map(catalog)
+    ident = catalog.mines_by_resource("grass")["goldMine"][0]
+    state.objs.append(PlacedObject(10, 12, 0, Purpose.MINE, ident.kind, ident.footprint))
+    state.objs.append(PlacedObject(3, 3, 1, Purpose.MINE, ident.kind, ident.footprint))
+    (count,) = mine_territories(catalog, 0, [state], [{}], [2]).counts_by_map
+    assert count.prizes == 1
+    assert count.prize_tiles == count.land
+
+
 def test_the_saved_counts_load_back_the_same(catalog: Catalog, tmp_path: Path) -> None:
     stats = mine_territories(catalog, 0, [_map(catalog)], [{}], [2])
     save_territories(tmp_path, {0: stats})
     assert load_territories(tmp_path)[0].counts_by_map == stats.counts_by_map
+
+
+def test_a_level_without_land_or_prizes_has_no_prize_floor() -> None:
+    assert TerritoryCount(2, 100, 3, (), 90, 4).prize_tiles == 25
+    assert TerritoryCount(2, 100, 3, (), 90, 0).prize_tiles is None
+    assert TerritoryCount(2, 0, 3, (), 0, 4).prize_tiles is None

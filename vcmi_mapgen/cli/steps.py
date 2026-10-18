@@ -73,6 +73,7 @@ class StepConfig:
     vegetation: str = DEFAULT_VEGETATION
     density: float = 1.0
     teams: tuple[int, ...] = ()
+    zone_quota: bool = False
 
 
 def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineStep]]:
@@ -83,11 +84,13 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     terrain = TerrainOptions(size, config.water_mode, subterrain, players)
     sampler = SAMPLERS[config.vegetation]
     model = PlacesTerrain(SURFACE_FORMS[config.water_mode])
+    gameplay = GameplayStep(priors, seed, players, subterrain, config.density)
+    gameplay.zone_quota = config.zone_quota
     return [
         ("terrain", TerrainStep(priors, model, seed, terrain)),
         ("vegetation", VegetationStep(priors, sampler, seed, players, HopContent())),
         ("doors", DoorsStep(priors, seed, config.teams)),
-        ("gameplay", GameplayStep(priors, seed, players, subterrain, config.density)),
+        ("gameplay", gameplay),
         ("gated", GatedStep(priors, seed, size)),
         ("treasure", TreasureStep(priors, seed, size)),
         ("portal", PortalStep(priors, seed, size)),

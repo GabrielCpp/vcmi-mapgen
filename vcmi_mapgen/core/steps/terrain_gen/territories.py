@@ -1,6 +1,7 @@
 """The territories of a place map: one corpus record drawn from the maps nearest it gives
 the territory count and the tiles each home territory grows toward, the other places group
-into neutral territories that share the rest of the land, and the doors join them. A door
+into neutral territories that share the rest of the land, each neutral territory too small
+to expect a prize joins its longest-bordering neighbour, and the doors join them. A door
 goes on every touching pair of territories more doors apart than ``MAX_HOP`` or not joined
 at all. A Subterranean Gate counts as a door for the hops, so the other level's territories
 join the count through ``Across``. Every border between two territories without a door is walled,
@@ -151,6 +152,44 @@ def draw_partition(
         for p in group:
             territory[p] = t
     return tuple(territory[p] for p in range(len(owners)))
+
+
+def merge_dull(
+    territory: Sequence[int],
+    owners: Sequence[int | None],
+    borders: Mapping[Pair, int],
+    sizes: Sequence[int],
+    floor: float | None,
+) -> tuple[int, ...]:
+    """``territory`` with its dull territories merged away. A neutral territory under
+    ``floor`` tiles is dull, where place ``p`` holds ``sizes[p]`` tiles, ``owners[p]`` is the
+    player it is home to and ``borders[(a, b)]`` counts the touching tile pairs of places
+    ``a < b``. The smallest dull territory with a neighbour, the lowest id among equals,
+    joins the neighbour it shares the most border tile pairs with, the lowest id among
+    equals. The sizes are read again after each merge. The ids keep their gaps. Without a
+    ``floor`` nothing merges."""
+    out = list(territory)
+    if floor is None:
+        return tuple(out)
+    while True:
+        area: dict[int, int] = collections.defaultdict(int)
+        homed: set[int] = set()
+        for p, t in enumerate(out):
+            area[t] += sizes[p]
+            if owners[p] is not None:
+                homed.add(t)
+        shared: dict[int, dict[int, int]] = collections.defaultdict(dict)
+        for (a, b), n in borders.items():
+            ta, tb = out[a], out[b]
+            if ta != tb:
+                shared[ta][tb] = shared[ta].get(tb, 0) + n
+                shared[tb][ta] = shared[tb].get(ta, 0) + n
+        dull = [t for t in area if t not in homed and area[t] < floor and shared[t]]
+        if not dull:
+            return tuple(out)
+        small = min(dull, key=lambda t: (area[t], t))
+        into = min(shared[small], key=lambda t: (-shared[small][t], t))
+        out = [into if t == small else t for t in out]
 
 
 def _pieces(places: Sequence[int], nbr: Mapping[int, set[int]]) -> list[list[int]]:

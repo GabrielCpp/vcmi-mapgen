@@ -9,7 +9,7 @@ from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 TERRITORY_FILE = "territory_stats.json"
-TERRITORY_VERSION = 7
+TERRITORY_VERSION = 8
 TERRITORY_SOURCE = "vcmi_mapgen.corpus.mine.territories.mine_territories"
 BY_MAP = ("player_doors_by_map", "neutral_doors_by_map")
 COUNTS = "counts_by_map"
@@ -28,7 +28,8 @@ def _count(value: JsonValue) -> TerritoryCount:
     obj = jv.as_object(value)
     players, land, territories = (jv.as_int(obj.get(f)) for f in COUNT_FIELDS)
     homes = _ints(obj.get("homes"))
-    return TerritoryCount(players, land, territories, homes, jv.as_int(obj.get("area")))
+    area, prizes = jv.as_int(obj.get("area")), jv.as_int(obj.get("prizes"))
+    return TerritoryCount(players, land, territories, homes, area, prizes)
 
 
 def _stats(value: JsonValue) -> TerritoryStats:
@@ -62,6 +63,7 @@ def save_territories(pp_dir: Path, stats: Mapping[int, TerritoryStats]) -> None:
                             "territories": c.territories,
                             "homes": list(c.homes),
                             "area": c.area,
+                            "prizes": c.prizes,
                         }
                         for c in st.counts_by_map
                     ],

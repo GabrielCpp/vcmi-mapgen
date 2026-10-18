@@ -57,6 +57,45 @@ def test_draw_partition_grows_each_home_to_its_budget_and_groups_the_rest() -> N
     assert territory == (0, 0, 2, 2, 1, 1)
 
 
+def test_a_dull_territory_joins_the_neighbour_with_the_longest_border() -> None:
+    owners = [0, None, 1, None]
+    borders = {(0, 1): 2, (1, 2): 5, (1, 3): 1}
+    assert TR.merge_dull([0, 1, 2, 3], owners, borders, [100, 10, 100, 100], 50) == (0, 2, 2, 3)
+
+
+def test_a_dull_territory_with_tied_borders_joins_the_lowest_id() -> None:
+    owners = [0, None, 1]
+    borders = {(0, 1): 3, (1, 2): 3}
+    assert TR.merge_dull([0, 1, 2], owners, borders, [100, 10, 100], 50) == (0, 0, 2)
+
+
+def test_a_home_territory_under_the_floor_stays() -> None:
+    owners = [0, None]
+    assert TR.merge_dull([0, 1], owners, {(0, 1): 4}, [10, 100], 50) == (0, 1)
+
+
+def test_a_neutral_territory_at_the_floor_stays() -> None:
+    owners = [0, None]
+    assert TR.merge_dull([0, 1], owners, {(0, 1): 4}, [100, 50], 50) == (0, 1)
+
+
+def test_the_smaller_of_two_dull_neighbours_joins_first_and_the_union_is_read_again() -> None:
+    owners = [0, None, None, 1]
+    borders = {(0, 1): 1, (1, 2): 9, (2, 3): 1}
+    assert TR.merge_dull([0, 1, 2, 3], owners, borders, [100, 30, 20, 100], 40) == (0, 1, 1, 3)
+    assert TR.merge_dull([0, 1, 2, 3], owners, borders, [100, 30, 20, 100], 60) == (0, 0, 0, 3)
+
+
+def test_no_floor_changes_nothing() -> None:
+    owners = [0, None]
+    assert TR.merge_dull([0, 1], owners, {(0, 1): 4}, [100, 1], None) == (0, 1)
+
+
+def test_a_dull_territory_with_no_neighbour_stays() -> None:
+    owners = [0, None]
+    assert TR.merge_dull([0, 1], owners, {}, [100, 1], 50) == (0, 1)
+
+
 def test_draw_partition_grows_the_smaller_home_first() -> None:
     record = TerritoryCount(2, 8, 2)
     edges = [(0, 1), (1, 2)]

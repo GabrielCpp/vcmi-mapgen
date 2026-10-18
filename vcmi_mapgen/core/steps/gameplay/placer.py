@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
-from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.guard_draw import GuardDraw
 from vcmi_mapgen.core.placement.site import MINE_GUARD_LVL, ZoneSite
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
@@ -40,6 +40,7 @@ from vcmi_mapgen.core.steps.gameplay.quota import (
     family_quota,
     group_rules,
     paired,
+    split,
 )
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
 from vcmi_mapgen.core.steps.gameplay.result import Shortfall, SlotRanking
@@ -68,6 +69,7 @@ class Demand:
     density: float = 1.0
     enemies: tuple[tuple[int, int], ...] = ()
     families: FamilyCurves = field(default_factory=FamilyCurves)
+    zone_quota: bool = False
 
     @property
     def players(self) -> int:
@@ -231,9 +233,36 @@ class Placement:
         for f, o in [*plan.standing, *stood]:
             if f in RARE_FAMILIES:
                 siting.turn.guards[o.level, o.x, o.y] = door_guard(guards, o)
+        shares = self._cap(siting, rest) if self.demand.zone_quota else None
         placed += place_slots(siting, rest, rank, price)
+        if shares is not None:
+            self._report(siting, shares)
         short = Shortfall(Counter(s.family for s in [*towns, *rest]), placed)
         return short, tuple(siting.ranking)
+
+    def _cap(self, siting: Siting, rest: Sequence[Slot]) -> dict[str, int]:
+        capped = frozenset([Purpose.DWELLING, Purpose.BANK, *VISIT_PURPOSES])
+        siting.capped = capped
+        total = sum(family_purpose(s.family) in capped for s in rest) + sum(
+            o.purpose in capped for s in self.sites for o in s.objs
+        )
+        shares = split(total, {str(i): float(len(s.ts)) for i, s in enumerate(self.sites)})
+        siting.caps = {
+            i: max(0, shares[str(i)] - sum(o.purpose in capped for o in s.objs))
+            for i, s in enumerate(self.sites)
+        }
+        tiles = sum(len(s.ts) for s in self.sites)
+        print(f"  zone quota: {total / max(tiles, 1) * 100:.2f} capped objects per 100 tiles")
+        return shares
+
+    def _report(self, siting: Siting, shares: Mapping[str, int]) -> None:
+        print(f"  zone quota overflow: {siting.overflow}")
+        for i, s in enumerate(self.sites):
+            stood = sum(o.purpose in siting.capped for o in s.objs)
+            print(
+                f"  zone quota: level {s.lf.level} zid {s.zid} tiles {len(s.ts)}"
+                + f" share {shares[str(i)]} stood {stood}"
+            )
 
     def _pairs(self, plan: Plan, towns: int, stood: int, maps: Sequence[EffortMap]) -> list[Slot]:
         """The slots of the paired families, less the ``stood`` own mines of the ``towns``

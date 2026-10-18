@@ -1,12 +1,14 @@
 import random
 from types import SimpleNamespace
-from typing import cast, final, override
+from typing import ClassVar, cast, final, override
 
 import numpy as np
 from numpy.typing import NDArray
 
 from vcmi_mapgen.core.model import PlacedObject, Tile
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import ZoneSite
+from vcmi_mapgen.core.reading.families import dwelling_family, family_purpose
 from vcmi_mapgen.core.steps.gameplay.bands import Slot
 from vcmi_mapgen.core.steps.gameplay.pick import Pick, Picker
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
@@ -67,6 +69,53 @@ def test_two_levels_never_mix() -> None:
         ),
     )
     assert grid.worst_within(np.array([0, 2]), 3).tolist() == [0, 2]
+
+
+class _Site:
+    zid: int = 0
+
+
+class _Spy(Siting):
+    asked: ClassVar[list[object]] = []
+
+    @override
+    def _parts(
+        self,
+        dealt: str,
+        site: ZoneSite,
+        rows: NDArray[np.intp],
+        seen: object,
+        strict: bool,
+    ) -> list[tuple[str, Pick, NDArray[np.intp]]]:
+        self.asked.append(site)
+        return []
+
+
+def test_a_site_with_no_cap_left_gets_no_capped_object() -> None:
+    full, open_ = cast(ZoneSite, cast(object, _Site())), cast(ZoneSite, cast(object, _Site()))
+    spy = _Spy(
+        [full, open_],
+        cast(Picker, cast(object, None)),
+        lambda d: d,
+        random.Random(0),
+        Reach(0),
+        tiles=_ranked_siting([]).tiles,
+    )
+    spy.caps = {0: 0, 1: 1}
+    spy.capped = frozenset({Purpose.DWELLING})
+    tier: Tier = (0, 0, 0)
+    groups: list[Group] = [
+        (tier, full, np.zeros(1, dtype=np.intp)),
+        (tier, open_, np.zeros(1, dtype=np.intp)),
+    ]
+    spy._pool = groups  # pyright: ignore[reportPrivateUsage]
+    family = dwelling_family(1)
+    assert family_purpose(family) == Purpose.DWELLING
+    _spy_asked = _Spy.asked
+    _spy_asked.clear()
+    assert spy._stand(family, groups, ({}, None), False) is None  # pyright: ignore[reportPrivateUsage]
+    assert open_ in _spy_asked
+    assert full not in _spy_asked
 
 
 @final

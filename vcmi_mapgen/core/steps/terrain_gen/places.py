@@ -46,6 +46,7 @@ from vcmi_mapgen.core.steps.terrain_gen.place_map import (
     flood_places,
     front_cells,
     label_adjacency,
+    label_borders,
     reconcile_places,
 )
 from vcmi_mapgen.core.steps.terrain_gen.result import (
@@ -64,6 +65,7 @@ from vcmi_mapgen.core.steps.terrain_gen.territories import (
     draw_territory_record,
     home_budget,
     islanded,
+    merge_dull,
     settle,
     stranded,
     territory_plan,
@@ -84,12 +86,14 @@ MAX_BRIDGE_ROUNDS = 8
 class Front:
     """How ``bordered`` draws one level's front: the level, which keys its streams, the
     width of each gated passage, the hop links across to the other level, and the territory
-    of each place when the caller drew them already."""
+    of each place when the caller drew them already, with the tiles under which a neutral
+    territory is dull."""
 
     level: int = 0
     gated_w: int = ENTRANCE_W
     across: Across = field(default_factory=Across)
     drawn: tuple[int, ...] | None = None
+    floor: float | None = None
 
 
 def paint(label: Sequence[Sequence[int]], dominants: Sequence[Terrain]) -> list[list[int]]:
@@ -132,7 +136,8 @@ def surface(
 ) -> tuple[list[list[Terrain]], LevelPlaces, tuple[str, ...]]:
     """The painted surface, its place map with its bands, and lines on how the shapes, the
     water and the palette went. The shapes grow on the form's land, the homes and the
-    territories stand on them, the form floods its water, and the roles label the shapes
+    territories stand on them, a neutral territory too small to expect a prize joins its
+    neighbour, the form floods its water, and the roles label the shapes
     before the palette paints them."""
     macro = priors.terrain[0].macro
     stats = priors.places[0]
@@ -189,7 +194,7 @@ def surface(
         (stats, spread),
         options.players,
         seed,
-        Front(drawn=carried(plan.label, layout.label, territory)),
+        Front(drawn=carried(plan.label, layout.label, territory), floor=record.prize_tiles),
     )
     painted = paint_places(
         grid,
@@ -275,6 +280,16 @@ def territory_record(
     )
 
 
+def place_sizes(label: Sequence[Sequence[int]], places: int) -> list[int]:
+    """The tiles of each of ``places`` places in ``label``."""
+    sizes = [0] * places
+    for row in label:
+        for z in row:
+            if 0 <= z < places:
+                sizes[z] += 1
+    return sizes
+
+
 def draw_territories(
     owners: Sequence[int | None],
     places: tuple[Sequence[Sequence[int]], Collection[Pair]],
@@ -283,14 +298,13 @@ def draw_territories(
     level: int = 0,
 ) -> tuple[int, ...]:
     """The territory of each place of ``places``, a label grid and its adjacency, split to
-    the territory count and the home budget of ``record``."""
+    the territory count and the home budget of ``record``. A neutral territory under the
+    record's ``prize_tiles`` expects no prize, so it joins the neighbour it shares the
+    longest border with. The ids of the territories that merged away stay empty."""
     label, adjacency = places
-    sizes = [0] * len(owners)
-    for row in label:
-        for z in row:
-            if 0 <= z < len(sizes):
-                sizes[z] += 1
-    return draw_partition(owners, adjacency, sizes, record, _stream(seed, "territories", level))
+    sizes = place_sizes(label, len(owners))
+    drawn = draw_partition(owners, adjacency, sizes, record, _stream(seed, "territories", level))
+    return merge_dull(drawn, owners, label_borders(label), sizes, record.prize_tiles)
 
 
 def land_count(label: Sequence[Sequence[int]]) -> int:
@@ -313,18 +327,22 @@ def bordered(
     land holds unless ``front`` brings them drawn, with the kind of every inner pair drawn
     from the corpus table, a door on each border the territories need, every other
     territory border walled, and the passages across them. ``front`` gives the level, the
-    width of its gated passages, the hop links across to the other level and the drawn
-    territories."""
+    width of its gated passages, the hop links across to the other level, the drawn
+    territories and the floor under which a neutral territory is dull. A neutral territory
+    the grown places left under that floor joins its longest-bordering neighbour."""
     stats, spread = priors
     front = front or Front()
     level = front.level
     roles = {p: place.role for p, place in plan.places.items()}
     owners = [plan.places[p].owner for p in sorted(plan.places)]
     realised = label_adjacency(plan.label)
-    drawn = front.drawn
+    drawn, floor = front.drawn, front.floor
     if drawn is None:
         record = territory_record(spread, players, land_count(plan.label), seed, level)
         drawn = draw_territories(owners, (plan.label, realised), record, seed, level)
+        floor = record.prize_tiles
+    sizes = place_sizes(plan.label, len(owners))
+    drawn = merge_dull(drawn, owners, label_borders(plan.label), sizes, floor)
     territory, lords = settle(drawn, owners, realised)
     inner = [e for e in sorted(realised) if territory[e[0]] == territory[e[1]]]
     drawn_kinds = draw_kinds(roles, inner, stats.adjacency, _stream(seed, "borders", level))

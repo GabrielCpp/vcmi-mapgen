@@ -218,6 +218,10 @@ class Siting:
     turn: Turn | None = None
     gold: GoldSpot | None = None
     homes: Sequence[PlacedObject] = ()
+    caps: dict[int, int] | None = None
+    capped: frozenset[str] = frozenset()
+    overflow: int = 0
+    _lax: bool = False
     _band: Codes = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     _firsts: dict[int, tuple[NDArray[np.bool_], Codes, Codes]] = field(
         default_factory=dict[int, tuple[NDArray[np.bool_], Codes, Codes]]
@@ -278,6 +282,13 @@ class Siting:
         self._first_view = self._last_view = self._stood = None
         self._walk, self._ranked = ((), 0), ()
         stood = self._stand_drawn(slot, purpose, guard)
+        if stood is None and self._capping(purpose):
+            self._lax = True
+            try:
+                stood = self._stand_drawn(slot, purpose, guard)
+            finally:
+                self._lax = False
+            self.overflow += stood is not None
         self.record(slot, guard, self._stood)
         return stood
 
@@ -339,6 +350,14 @@ class Siting:
         self._last_view = view
         return groups
 
+    def _capping(self, purpose: str) -> bool:
+        return self.caps is not None and not self._lax and purpose in self.capped
+
+    def _full(self, site: ZoneSite) -> bool:
+        caps = self.caps
+        assert caps is not None
+        return caps.get(self.sites.index(site), 0) <= 0
+
     def _stand_drawn(self, slot: Slot, purpose: str, guard: int) -> tuple[str, PlacedObject] | None:
         if self.gold is not None and slot.family == GOLD_FAMILY:
             return self._stand_gold(slot, purpose, guard)
@@ -368,7 +387,9 @@ class Siting:
         seen: tuple[dict[tuple[ZoneSite, str, int], Pick | None], Sequence[Stop] | None],
         strict: bool,
     ) -> tuple[str, PlacedObject] | None:
-        every = family_purpose(dealt) in (Purpose.MINE, Purpose.TOWN)
+        purpose = family_purpose(dealt)
+        every = purpose in (Purpose.MINE, Purpose.TOWN)
+        capping = self._capping(purpose)
         limit = len(self.sites) if every else MAX_SITES
         cols = () if self._last_view is None else self._last_view[2]
         index = {id(g[2]): i for i, g in enumerate(self._pool)}
@@ -382,6 +403,8 @@ class Siting:
                 parts: list[tuple[str, Pick, NDArray[np.intp]]] = []
                 if tried[tier] >= limit:
                     outcome = "tier_tried"
+                elif capping and self._full(site):
+                    outcome = "zone_full"
                 else:
                     parts = self._parts(dealt, site, rows, seen, strict)
                     tried[tier] += bool(parts)
@@ -409,6 +432,7 @@ class Siting:
                             self._smaller,
                             at,
                             strict,
+                            self._lax,
                             centre,
                             heads.index(centre) if centre in heads else -1,
                             tried_at,
@@ -447,6 +471,9 @@ class Siting:
         return tuple(best)
 
     def _took(self, family: str, site: ZoneSite, obj: PlacedObject) -> None:
+        if self.caps is not None and family_purpose(family) in self.capped:
+            i = self.sites.index(site)
+            self.caps[i] = max(0, self.caps.get(i, 0) - 1)
         turn = self.turn
         if turn is not None and family in turn.offered:
             turn.took(family)

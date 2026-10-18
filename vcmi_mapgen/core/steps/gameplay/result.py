@@ -60,8 +60,8 @@ class RankedTile:
 @dataclass(frozen=True, slots=True)
 class GroupStep:
     """One group a slot visited: its head tile, zone and size, the values of the sort columns
-    at the head, and what came of it: ``tier_tried``, ``no_object``, ``no_room`` or
-    ``stood``."""
+    at the head, and what came of it: ``tier_tried``, ``zone_full``, ``no_object``,
+    ``no_room`` or ``stood``."""
 
     index: int
     level: int
@@ -77,10 +77,10 @@ class GroupStep:
 class Stood:
     """Where a slot's object stood and how: the family it stood as, the guard it stood
     behind, the footing pass, whether the smaller-object fallback stood it, the index of the
-    group it stood in and whether the strict turn pass took it. ``centre`` is the centre whose
-    window produced the anchor, ``rank`` its place among the group's tiles in sort order (-1
-    when absent) and ``tried_at`` its place among the centres in the order the site tried
-    them."""
+    group it stood in, whether the strict turn pass took it and whether it stood past its
+    zone cap. ``centre`` is the centre whose window produced the anchor, ``rank`` its place
+    among the group's tiles in sort order (-1 when absent) and ``tried_at`` its place among the
+    centres in the order the site tried them."""
 
     level: int
     x: int
@@ -91,6 +91,7 @@ class Stood:
     smaller: bool
     group: int
     strict: bool
+    lax: bool
     centre: tuple[int, int]
     rank: int
     tried_at: int

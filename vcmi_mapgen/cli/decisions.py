@@ -212,6 +212,7 @@ def _slot(standing: _Standing, r: SlotRanking) -> Record:
             "smaller": stood.smaller,
             "group": stood.group,
             "strict": stood.strict,
+            "lax": stood.lax,
             "centre": list(stood.centre),
             "rank": stood.rank,
             "tried_at": stood.tried_at,

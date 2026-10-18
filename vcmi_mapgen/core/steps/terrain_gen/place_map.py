@@ -34,6 +34,24 @@ def label_adjacency(label: ZoneLabel) -> frozenset[tuple[int, int]]:
     return frozenset(pairs)
 
 
+def label_borders(label: ZoneLabel) -> dict[tuple[int, int], int]:
+    """For every pair ``(a, b)``, ``a < b``, of labels that touch, the tile pairs across
+    an edge that join them."""
+    H, W = len(label), len(label[0])
+    counts: dict[tuple[int, int], int] = {}
+    for y in range(H):
+        for x in range(W):
+            a = label[y][x]
+            if a < 0:
+                continue
+            for nx, ny in ((x + 1, y), (x, y + 1)):
+                if nx < W and ny < H and label[ny][nx] >= 0 and label[ny][nx] != a:
+                    b = label[ny][nx]
+                    pair = (min(a, b), max(a, b))
+                    counts[pair] = counts.get(pair, 0) + 1
+    return counts
+
+
 def front_cells(label: ZoneLabel) -> frozenset[Tile]:
     """Every labelled tile with an 8-neighbour of another label."""
     H, W = len(label), len(label[0])

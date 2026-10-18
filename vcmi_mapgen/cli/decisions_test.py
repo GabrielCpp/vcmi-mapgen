@@ -39,7 +39,7 @@ def _registry(catalog: Catalog) -> tuple[ProviderRegistry, MapState, str | None,
         ward_held=True,
     )
     quest = QuestDecision(0, (4, 5), 1, (4, 5), 2, "x")
-    stood = Stood(0, 4, 5, "F", 0, "snug", False, 0, True, (4, 5), 0, 0)
+    stood = Stood(0, 4, 5, "F", 0, "snug", False, 0, True, False, (4, 5), 0, 0)
     ranking = SlotRanking(0, "F", None, None, None, 0, (), (), (), 0, stood)
     ctx = ProviderRegistry()
     ctx.provide(LootResult(held=(held,), quests=(quest,), decisions=(pocket,)))

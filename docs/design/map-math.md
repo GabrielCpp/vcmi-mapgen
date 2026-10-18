@@ -823,7 +823,7 @@ Territories. Draw $m$ from $p(m \mid k, |\mathrm{Land}|)$. Homes farthest-first 
 the places whose region holds 150 passable tiles, the existing `roomy` floor, with the
 corpus home separation as the acceptance test, $O(k n)$. Grow each home territory to a
 corpus-drawn place count and group the rest on $\hat A$ by random steps to free places,
-the existing `group_neutral`, $O(n)$. Split off every piece a territory lost, the
+the existing `group_neutral`, $O(n)$. Merge each neutral territory under the corpus land per prize into its longest-bordering neighbour, smallest first, `merge_dull`. Split off every piece a territory lost, the
 existing `settle`.
 
 Roles. A Metropolis walk over the $n$ labels with the energy of 2.1, from the role

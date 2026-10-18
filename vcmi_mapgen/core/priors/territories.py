@@ -7,13 +7,22 @@ from dataclasses import dataclass
 class TerritoryCount:
     """One corpus map's level: its player count, its walkable land tiles and its territory
     count, then the tiles of each player's territory, an equal part of one several players
-    share, and of all its territories together."""
+    share, and of all its territories together, and the prizes it holds: its towns and its
+    objects worth a mine or more."""
 
     players: int
     land: int
     territories: int
     homes: tuple[int, ...] = ()
     area: int = 0
+    prizes: int = 0
+
+    @property
+    def prize_tiles(self) -> float | None:
+        """The land tiles per prize, None when the level reads no land or no prize."""
+        if self.land <= 0 or self.prizes <= 0:
+            return None
+        return self.land / self.prizes
 
     @property
     def home_share(self) -> float | None:
