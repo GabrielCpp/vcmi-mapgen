@@ -373,7 +373,7 @@ def test_a_shallow_pocket_is_filled_without_a_guard(catalog: Catalog, priors: Pr
 
 def test_a_deep_pocket_records_its_guard_and_its_tiles(catalog: Catalog, priors: Priors) -> None:
     """Defect caught: a guarded pocket whose decision loses the guard tile, its level or the
-    pocket tiles, so decisions.json cannot say why a guard stands there."""
+    pocket tiles, so decisions.jsonl cannot say why a guard stands there."""
     fill = _planned(catalog, priors, ROOM6)
     [decision] = fill.decisions
     guard = next(o for o in fill.objs if o.purpose == Purpose.GUARD)

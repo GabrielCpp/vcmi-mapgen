@@ -8,7 +8,7 @@ arguments in `__main__.py` and calls one module per subcommand.
 - `__main__.py`: argument parsing and the subcommand table.
 - `audit.py`: the `audit` subcommand. It reports the corpus objects the generator cannot reproduce, or prints the gameplay densities.
 - `corpus_match.py`: the `corpus-match` subcommand. It generates maps from `build_steps` and prints the corpus comparison.
-- `decisions.py`: writes each map's `decisions.json` beside `run.json`: the loot zones, cut-off treasure, quests, pocket outcomes and the gameplay ranking, with tiles.
+- `decisions.py`: writes each map's `decisions.jsonl` beside `run.json`, one compact record per line led by its `section` and `level`: the loot candidates and zones, cut-off treasure and portal places, quests, pocket outcomes and the gameplay slots, with tiles written `[x,y]` so a grep for a tile finds every decision on it.
 - `extract_vmap.py`: the `extract-vmap` subcommand. It regenerates `data/corpus/vmap/` from the `.h3m` corpus. `--h3m-dir` and `--out-dir` convert another folder, `--mods` enables mods such as `hota`, whose map format renames the objects of a HotA map, and `--png-dir` renders each converted map.
 - `generate.py`: the `generate` subcommand: pipeline run, overlays and renderers. It writes each map into its own folder, `out/<name>/`, which holds `<name>.vmap`, `surface.png`, `underground.png`, `overlays.png` and `run.json`. A rerun empties the folder first.
 - `inspect_map.py`: the `inspect` subcommand. It opens one map, a `.vmap` from any folder, a corpus map by name or a seed generated in memory, and prints one of four views from the shared readers: `tile`, `near`, `route` and `territories`. A route end is a tile or a player, and a player stands for the visit tiles of the towns it owns.

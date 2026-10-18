@@ -1,5 +1,5 @@
-"""``decisions.json``: what the loot, treasure, quest, pocket and gameplay passes chose, with
-tile coordinates, assembled from the results the steps provided."""
+"""``decisions.jsonl``: what the loot, treasure, quest, pocket and gameplay passes chose, one
+decision per line with tile coordinates, assembled from the results the steps provided."""
 
 from __future__ import annotations
 
@@ -59,18 +59,27 @@ def _zone_tiles(ctx: ProviderRegistry, level: int, zid: int) -> frozenset[Tile]:
     return frozenset() if zone is None else zone.tiles_set
 
 
-def _loot_zones(ctx: ProviderRegistry) -> Record:
+def _loot_zones(ctx: ProviderRegistry) -> list[Record]:
     zones = ctx.get(LootZones, LootZones())
     access = ctx.get(GatedResult, GatedResult()).access
-    levels: dict[str, object] = {}
+    out: list[Record] = []
     for level in sorted({*zones.candidates, *zones.levels}):
-        drawn: list[Record] = []
-        for zid in sorted(zones.on(level)):
+        drawn = sorted(zones.on(level))
+        out.append(
+            {
+                "section": "loot_candidates",
+                "level": level,
+                "zones": sorted(zones.candidates.get(level, ())),
+                "drawn": drawn,
+            }
+        )
+        for zid in drawn:
             sealed = access.get(level, {}).get(zid)
-            drawn.append(
+            out.append(
                 {
+                    "section": "loot_zone",
+                    "level": level,
                     "zone": zid,
-                    "tiles": _tiles(_zone_tiles(ctx, level, zid)),
                     "seal": "monolith" if zid in zones.monoliths_on(level) else "gate",
                     "sealed": sealed is not None,
                     "access": None
@@ -80,18 +89,17 @@ def _loot_zones(ctx: ProviderRegistry) -> Record:
                         "footprint": _tiles(sealed.footprint),
                         "visit": _tiles(sealed.interactive),
                     },
+                    "tiles": _tiles(_zone_tiles(ctx, level, zid)),
                 }
             )
-        levels[str(level)] = {
-            "candidates": sorted(zones.candidates.get(level, ())),
-            "drawn": drawn,
-        }
-    return {"levels": levels}
+    return out
 
 
-def _place(standing: _Standing, level: int, zid: int, place: CutoffPlace) -> Record:
+def _place(standing: _Standing, section: str, level: int, zid: int, place: CutoffPlace) -> Record:
     price = place.price
     return {
+        "section": section,
+        "level": level,
         "zone": zid,
         "opener": str(place.opener),
         "price": {
@@ -107,21 +115,21 @@ def _place(standing: _Standing, level: int, zid: int, place: CutoffPlace) -> Rec
     }
 
 
-def _treasure(ctx: ProviderRegistry, standing: _Standing) -> Record:
-    out: dict[str, object] = {}
-    for section, places in (
-        ("treasure", ctx.get(TreasureResult, TreasureResult()).places),
-        ("portal", ctx.get(PortalResult, PortalResult()).places),
-    ):
-        out[section] = {
-            str(level): [_place(standing, level, zid, p) for zid, p in sorted(by_zone.items())]
-            for level, by_zone in sorted(places.items())
-        }
-    return out
+def _treasure(ctx: ProviderRegistry, standing: _Standing) -> list[Record]:
+    return [
+        _place(standing, section, level, zid, p)
+        for section, places in (
+            ("treasure", ctx.get(TreasureResult, TreasureResult()).places),
+            ("portal", ctx.get(PortalResult, PortalResult()).places),
+        )
+        for level, by_zone in sorted(places.items())
+        for zid, p in sorted(by_zone.items())
+    ]
 
 
 def _quest(standing: _Standing, q: QuestDecision) -> Record:
     return {
+        "section": "quest",
         "level": q.level,
         "hut": standing.tile(q.level, q.hut),
         "hut_zone": q.hut_zone,
@@ -144,6 +152,7 @@ def _pocket(standing: _Standing, d: PocketDecision) -> Record:
         else {**standing.tile(level, d.ward), "tier": d.ward_tier, "held": d.ward_held}
     )
     return {
+        "section": "pocket",
         "level": level,
         "zone": d.zone,
         "planned": d.planned,
@@ -159,7 +168,10 @@ def _pocket(standing: _Standing, d: PocketDecision) -> Record:
 
 def _slot(standing: _Standing, r: SlotRanking) -> Record:
     stood = r.stood
+    level = stood.level if stood is not None else r.ranked[0].level if r.ranked else None
     return {
+        "section": "gameplay",
+        "level": level,
         "order": r.order,
         "family": r.family,
         "player": r.player,
@@ -207,30 +219,32 @@ def _slot(standing: _Standing, r: SlotRanking) -> Record:
     }
 
 
-def decisions_record(
-    catalog: Catalog, ctx: ProviderRegistry, map_state: MapState
-) -> dict[str, object]:
-    """The loot zones, the cut-off treasure, the seer-hut quests, the pocket outcomes and the
-    gameplay ranking of one run, read from what the steps provided. A run stopped early
-    holds the sections it reached."""
+def decisions_records(catalog: Catalog, ctx: ProviderRegistry, map_state: MapState) -> list[Record]:
+    """One record per decision of one run, each led by its ``section`` and ``level``: the loot
+    candidates and zones, the cut-off treasure and portal places, the seer-hut quests, the
+    pocket outcomes and the gameplay slots, read from what the steps provided. A run stopped
+    early holds the records it reached."""
     standing = _Standing(catalog, map_state)
     loot = ctx.get(LootResult, LootResult())
     gameplay = ctx.get(GameplayResult)
     ranking = () if gameplay is None else gameplay.ranking
-    return {
-        "loot_zones": _loot_zones(ctx),
-        "treasure": _treasure(ctx, standing),
-        "quests": [_quest(standing, q) for q in loot.quests],
-        "pockets": [_pocket(standing, d) for d in loot.decisions],
-        "gameplay": [_slot(standing, r) for r in ranking],
-    }
+    return [
+        *_loot_zones(ctx),
+        *_treasure(ctx, standing),
+        *(_quest(standing, q) for q in loot.quests),
+        *(_pocket(standing, d) for d in loot.decisions),
+        *(_slot(standing, r) for r in ranking),
+    ]
 
 
 def write_decisions(
     folder: Path, catalog: Catalog, ctx: ProviderRegistry, map_state: MapState
 ) -> Path:
-    """Write ``decisions.json`` into the map's folder and return its path."""
-    path = folder / "decisions.json"
-    record = decisions_record(catalog, ctx, map_state)
-    _ = path.write_text(json.dumps(record, indent=2) + "\n")
+    """Write ``decisions.jsonl`` into the map's folder, one compact record per line, and
+    return its path."""
+    path = folder / "decisions.jsonl"
+    lines = (
+        json.dumps(r, separators=(",", ":")) for r in decisions_records(catalog, ctx, map_state)
+    )
+    _ = path.write_text("".join(f"{line}\n" for line in lines))
     return path

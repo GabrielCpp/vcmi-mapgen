@@ -1,8 +1,10 @@
 """Tests for the decisions record."""
 
+import json
+from pathlib import Path
 from typing import cast
 
-from vcmi_mapgen.cli.decisions import decisions_record
+from vcmi_mapgen.cli.decisions import decisions_records, write_decisions
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState, PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -18,9 +20,7 @@ from vcmi_mapgen.core.steps.loot.result import (
 from vcmi_mapgen.core.steps.vegetation.result import LootZones
 
 
-def test_a_held_slot_shows_the_artifact_that_finally_stands_there(catalog: Catalog) -> None:
-    """Defect caught: the record names the artifact the loot step would have placed, not the
-    one the sets step dealt onto the held slot."""
+def _registry(catalog: Catalog) -> tuple[ProviderRegistry, MapState, str | None, str | None]:
     fallback = catalog.random_artifact("treasure")
     dealt = catalog.random_artifact("relic")
     obj = PlacedObject.at(dealt, (4, 5), purpose=Purpose.REWARD_PICKUP)
@@ -45,19 +45,38 @@ def test_a_held_slot_shows_the_artifact_that_finally_stands_there(catalog: Catal
     ctx.provide(LootResult(held=(held,), quests=(quest,), decisions=(pocket,)))
     ctx.provide(LootZones(candidates={0: frozenset({1})}))
     ctx.provide(GameplayResult({}, {}, {}, ranking=(ranking,)))
-    record = decisions_record(catalog, ctx, map_state)
-    assert set(record) == {"loot_zones", "treasure", "quests", "pockets", "gameplay"}
-    ward = cast(dict[str, object], cast(list[dict[str, object]], record["pockets"])[0]["ward"])
-    shown = cast(dict[str, object], ward["object"])
-    assert shown["type"] == dealt.type
-    assert shown["type"] != fallback.type
-    gameplay = cast(list[dict[str, object]], record["gameplay"])
-    assert cast(dict[str, object], gameplay[0]["stood"])["tile"] == [4, 5]
+    return ctx, map_state, dealt.type, fallback.type
 
 
-def test_a_run_stopped_early_still_has_all_five_sections(catalog: Catalog) -> None:
+def test_a_held_slot_shows_the_artifact_that_finally_stands_there(catalog: Catalog) -> None:
+    """Defect caught: the record names the artifact the loot step would have placed, not the
+    one the sets step dealt onto the held slot."""
+    ctx, map_state, dealt, fallback = _registry(catalog)
+    records = decisions_records(catalog, ctx, map_state)
+    pocket = next(r for r in records if r["section"] == "pocket")
+    shown = cast(dict[str, object], cast(dict[str, object], pocket["ward"])["object"])
+    assert shown["type"] == dealt
+    assert shown["type"] != fallback
+    slot = next(r for r in records if r["section"] == "gameplay")
+    assert cast(dict[str, object], slot["stood"])["tile"] == [4, 5]
+
+
+def test_every_line_is_one_record_led_by_its_section_and_level(
+    catalog: Catalog, tmp_path: Path
+) -> None:
+    """Defect caught: a record spans lines or hides its section, so a grep for a tile or a
+    section returns fragments instead of whole decisions."""
+    ctx, map_state, _, _ = _registry(catalog)
+    lines = write_decisions(tmp_path, catalog, ctx, map_state).read_text().splitlines()
+    records = [cast(dict[str, object], json.loads(line)) for line in lines]
+    assert [list(r)[:2] for r in records] == [["section", "level"]] * len(records)
+    assert {r["section"] for r in records} == {"loot_candidates", "quest", "pocket", "gameplay"}
+    assert all("[4,5]" in line for line in lines if '"section":"pocket"' in line)
+
+
+def test_a_run_stopped_early_still_writes_its_records(catalog: Catalog, tmp_path: Path) -> None:
     """Defect caught: a --stop-after run crashes on a missing result instead of writing the
-    sections it has."""
-    record = decisions_record(catalog, ProviderRegistry(), MapState(size=4))
-    assert set(record) == {"loot_zones", "treasure", "quests", "pockets", "gameplay"}
-    assert record["pockets"] == [] and record["gameplay"] == []
+    records it has."""
+    assert decisions_records(catalog, ProviderRegistry(), MapState(size=4)) == []
+    path = write_decisions(tmp_path, catalog, ProviderRegistry(), MapState(size=4))
+    assert path.name == "decisions.jsonl" and path.read_text() == ""
