@@ -14,3 +14,4 @@ __pycache__/
 .agents/local.compose.yaml
 .agents/agents-context.json
 .agents/agents-context.*.json
+.agents/agents.mk

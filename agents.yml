@@ -2,19 +2,10 @@ agents:
   claude: true
 
 skills:
-  - projects/vcmi-mapgen/*
   - process/target-architecture
   - stacks/python/python-dead-code
 packs:
   - python
 
-localInstructions:
-  - skills:
-      - vcmi-mapgen
-    paths: ["."]
-    includeReadme: none
-  - skill: vcmi-mapgen-maps # loaded when working under vcmi_mapgen/ (formats, engine, rendering)
-    paths: ["vcmi_mapgen"]
-    includeReadme: none
 workflow:
   branch: main

@@ -3,10 +3,6 @@ name: vcmi-mapgen-maps
 description: "VCMI maps domain: h3m and vmap formats, object identity from VCMI config and the ontology, footprint masks, the corpus, terrain segmentation, and editor-quality sprite rendering. Load when changing vcmi_mapgen/ code."
 metadata:
   name: vcmi-mapgen-maps
-  generated_by: farrier
-  source: library/skills/projects/vcmi-mapgen/vcmi-mapgen-maps/SKILL.md
-  resolve: "farrier source .claude/skills/vcmi-mapgen-maps/SKILL.md"
-  do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [python, backend, standards]
 ---
 

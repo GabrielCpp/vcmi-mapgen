@@ -142,10 +142,12 @@ through `VCMI_HOME`. The rendering tests skip when those files are absent.
   density, openness and frequency weights. It never decides object identity, mask or
   category.
 - Generated artifacts live in `out/`. Do not copy them into the VCMI `Maps/` folder.
-- The root and `vcmi_mapgen/` `AGENTS.md` and everything under `.claude/` are generated
-  by farrier. Edit the library source that `farrier source <file>` prints, then
-  run `make agent-install`. `core/steps/AGENTS.md` and `core/model/AGENTS.md` are hand-written and
-  edited in place. `[code-review]` in `.agent-checks.toml` configures the `code-review`
+- Farrier generates each `.claude/skills/` folder whose `SKILL.md` says
+  `generated_by: farrier`. Edit the library source that `farrier source <file>` prints,
+  then run `make agent-install`. The `vcmi-mapgen`, `vcmi-mapgen-maps` and
+  `vcmi-mapgen-pipeline` skills live only in this repo, as does every `AGENTS.md`. Edit
+  them in place. The root `AGENTS.md` repeats the `vcmi-mapgen` skill and
+  `vcmi_mapgen/AGENTS.md` repeats `vcmi-mapgen-maps`, so a change to one goes in both. `[code-review]` in `.agent-checks.toml` configures the `code-review`
   reviewer.
 - **A rename or deletion updates the docs in the same change.** When you rename, move or
   delete a module, class, function or CLI subcommand, grep for the old name in the
