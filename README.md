@@ -76,7 +76,7 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
 
 ```bash
 # One 72x72 two-player island map -> out/ppmap_s7_72/ holds the playable
-# ppmap_s7_72.vmap, surface.png, overlays.png, run.json and topology.json (each player slot is
+# ppmap_s7_72.vmap, surface.png, territories.png, overlays.png, run.json and topology.json (each player slot is
 # wired to its own starting town, so the map is playable immediately — victory:
 # defeat all)
 uv run python -m vcmi_mapgen.cli generate \

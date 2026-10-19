@@ -81,8 +81,10 @@ from vcmi_mapgen.cli.render_sprites import render_sprites
 from vcmi_mapgen.cli.render_vmaps import render_vmaps
 from vcmi_mapgen.cli.settings import Settings, load_settings, open_install
 from vcmi_mapgen.cli.steps import (
+    DEFAULT_FRONT,
     DEFAULT_VEGETATION,
     DEFAULT_WATER,
+    FRONTS,
     GENERATE_STOP_POINTS,
     SAMPLERS,
     SURFACE_FORMS,
@@ -129,6 +131,7 @@ class Args(argparse.Namespace):
     level: int | None = None
     densities: bool = False
     vegetation: str = DEFAULT_VEGETATION
+    front: str = DEFAULT_FRONT
     mods: Sequence[str] = ()
     ban: Sequence[str] = ()
     h3m_dir: str | None = None
@@ -200,6 +203,7 @@ def cmd_generate(args: Args) -> None:
             zone_quota=args.zone_quota,
             name=args.name,
             install=args.install,
+            front=args.front,
         ),
     )
 
@@ -489,6 +493,14 @@ def main() -> None:
         dest="water_mode",
         help="water style: 'topology' carves water on the walls between territories once the "
         + f"places stand, the others draw it from noise first (default: {DEFAULT_WATER})",
+    )
+    _ = pg.add_argument(
+        "--front",
+        choices=list(FRONTS),
+        default=DEFAULT_FRONT,
+        help="how the surface territories are drawn: 'shapes' grows the places first and groups "
+        + "them, 'planned' borrows one corpus map's arrangement and cuts places inside "
+        + f"each territory (default: {DEFAULT_FRONT})",
     )
     _ = pg.add_argument(
         "--subterrain",

@@ -43,7 +43,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       owns claims, plus the plain data types `PlacedObject`, `Cell`, `Tile` and `Zone`.
     - `steps/`: one subpackage per pipeline step, each with a `step.py` and a `result.py`
       for the values it publishes.
-    - `grid/`: pure grid algorithms: segmentation (`segment.py`), components, geodesic
+    - `grid/`: pure grid algorithms: segmentation (`segment.py`), the quota flood (`quota.py`), components, geodesic
       paths, pockets, edge distance and noise.
     - `placement/`: where an object stands: footprint cells (`footprint.py`), the ground
       rule that every solid cell stands on terrain its identity allows (`ground.py`),
@@ -76,7 +76,9 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       every object worth the walk (`remote.py`). It reads the lanes and rooms of the walkable land: the share of tiles outside every open 2x2 square, the share inside an open 3x3, the count, median size and largest share of the core rooms, and the largest blocked component's share (`rooms.py`).
     - `steps/terrain_gen/`: the places terrain model. It grows the place shapes on
       the land, chooses the homes and the roles on them, and paints each place. `palette.py` groups the places of the places model into
-      palette regions, one dominant terrain each.
+      palette regions, one dominant terrain each. A `TerritoryFront` draws the layout, homes and
+      territories: `ShapesFirst` (`shapes_first.py`) grows the shapes first, and `PlannedFront`
+      (`planned.py`) cuts the land by a corpus territory plan first. `--front shapes|planned` picks it.
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production
     `Catalog`, with its tables in `data/catalog/`. `content/` resolves the enabled mods
@@ -90,7 +92,8 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
     corpus-versus-generated tally (`match.py`) and the miners in `mine/`.
   - `renderers/`: `PngRenderer` with real H3 sprites (`png.py`, `sprites.py`), the
     terrain colours (`palette.py`), `VmapRenderer` for playable `.vmap` export
-    (`vmap.py`), the debug overlays (`overlays/`), and the `render-ontology` catalog
+    (`vmap.py`), the debug overlays (`overlays/`), the territory view `generate` writes as
+    `territories.png` (`territories.py`), and the `render-ontology` catalog
     (`ontology_render.py`).
 - **`data/`**: every map and data file the project keeps. `corpus/h3m/` holds the
   `.h3m` corpus, 159 maps. `corpus/vmap/` holds one `.vmap` per corpus map, regenerated

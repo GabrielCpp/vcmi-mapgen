@@ -11,9 +11,9 @@ from pathlib import Path
 
 from vcmi_mapgen.cli.decisions import write_decisions
 from vcmi_mapgen.cli.settings import Settings
-from vcmi_mapgen.cli.steps import DEFAULT_VEGETATION, StepConfig, build_steps
+from vcmi_mapgen.cli.steps import DEFAULT_FRONT, DEFAULT_VEGETATION, StepConfig, build_steps
 from vcmi_mapgen.core.grid.pockets import Pockets
-from vcmi_mapgen.core.model import Zone
+from vcmi_mapgen.core.model import MapState, Zone
 from vcmi_mapgen.core.pipeline import Pipeline
 from vcmi_mapgen.core.steps.doors.result import DoorGuard, DoorGuards
 from vcmi_mapgen.core.steps.gameplay.result import GameplayResult, TownsIndex
@@ -34,6 +34,7 @@ from vcmi_mapgen.renderers.overlays import (
     TileTypeOverlay,
     ZoneOverlay,
 )
+from vcmi_mapgen.renderers.territories import render_territories
 from vcmi_mapgen.vcmi.catalog.adapter import VcmiCatalog
 from vcmi_mapgen.vcmi.content.enabled import (
     BASE_CONTENT,
@@ -152,6 +153,7 @@ class GenerateOptions:
     zone_quota: bool = False
     name: str | None = None
     install: bool = False
+    front: str = DEFAULT_FRONT
 
 
 @dataclass(frozen=True, slots=True)
@@ -244,12 +246,14 @@ def install_map(vmap: str, install: VcmiInstall) -> Path:
 def map_folder(opts: GenerateOptions) -> str:
     """The name of the folder that holds one map's files, and of its .vmap: the map name
     when the user gave one, otherwise the seed, the size and a vegetation tag when the
-    sampler is not the default."""
+    sampler or the territory front is not the default."""
     if opts.name is not None:
         return file_stem(opts.name)
     stem = f"ppmap_s{opts.seed}_{opts.size}"
     if opts.vegetation != DEFAULT_VEGETATION:
         stem = f"{stem}_{opts.vegetation}"
+    if opts.front != DEFAULT_FRONT:
+        stem = f"{stem}_{opts.front}"
     return stem
 
 
@@ -316,6 +320,27 @@ def _door_record(door: PlannedDoor, guards: Sequence[DoorGuard]) -> dict[str, ob
     }
 
 
+def write_territories(
+    folder: Path, places: PlaceMap, map_state: MapState, underground: bool
+) -> str:
+    """Write ``territories.png`` for the surface and, when the map has an underground,
+    ``territories_underground.png`` into the map's folder, and return their paths, one per line."""
+    names = {0: "territories.png", 1: "territories_underground.png"}
+    paths: list[Path] = []
+    for level, name in names.items():
+        lp = places.levels.get(level)
+        if lp is None or (level == 1 and not underground):
+            continue
+        plan = lp.territories
+        homes = [(t.x, t.y) for t in map_state.player_towns if t.level == level]
+        doors = [tile for door in plan.doors for tile in door.tiles]
+        image = render_territories(lp.label, plan.zones, plan.owners, doors, homes)
+        path = folder / name
+        image.save(path)
+        paths.append(path)
+    return "\n  ".join(str(p) for p in paths)
+
+
 def write_topology(folder: Path, places: PlaceMap, guards: DoorGuards) -> Path:
     """Write ``topology.json`` into the map's folder and return its path."""
     path = folder / "topology.json"
@@ -337,6 +362,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.density,
         tuple(parse_teams(opts.teams, opts.players)),
         opts.zone_quota,
+        opts.front,
     )
     catalog = open_catalog(install, opts.content)
     pipeline = _run_pipeline(catalog, settings, config, opts.stop_after)
@@ -366,6 +392,7 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
     if (places := pipeline.ctx.get(PlaceMap)) is not None:
         guards = pipeline.ctx.get(DoorGuards, DoorGuards())
         print(f"  {write_topology(folder, places, guards)}")
+        print(f"  {write_territories(folder, places, map_state, opts.subterrain)}")
     print(f"  {write_decisions(folder, catalog, pipeline.ctx, map_state)}")
 
     if "png" in renderers:

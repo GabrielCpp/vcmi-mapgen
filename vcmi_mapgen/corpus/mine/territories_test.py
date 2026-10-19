@@ -3,6 +3,8 @@ prizes, and the saved table loads back the same."""
 
 from pathlib import Path
 
+import pytest
+
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, MapState, PlacedObject, Role
 from vcmi_mapgen.core.model.purpose import Purpose
@@ -57,3 +59,22 @@ def test_a_level_without_land_or_prizes_has_no_prize_floor() -> None:
     assert TerritoryCount(2, 100, 3, (), 90, 4).prize_tiles == 25
     assert TerritoryCount(2, 100, 3, (), 90, 0).prize_tiles is None
     assert TerritoryCount(2, 0, 3, (), 0, 4).prize_tiles is None
+
+
+def test_each_map_keeps_its_territories_as_sites_with_shares_and_owners(
+    catalog: Catalog,
+) -> None:
+    stats = mine_territories(catalog, 0, [_map(catalog)], [{}], [2])
+    (plan,) = stats.plans_by_map
+    assert plan.record == stats.counts_by_map[0]
+    assert len(plan.sites) == 2
+    assert sum(s.share for s in plan.sites) == pytest.approx(1.0)
+    left, right = sorted(plan.sites, key=lambda s: s.x)
+    assert left.x < 0.5 < right.x
+    assert left.owner is None and right.owner is None
+
+
+def test_the_saved_plans_load_back_the_same(catalog: Catalog, tmp_path: Path) -> None:
+    stats = mine_territories(catalog, 0, [_map(catalog)], [{}], [2])
+    save_territories(tmp_path, {0: stats})
+    assert load_territories(tmp_path)[0].plans_by_map == stats.plans_by_map

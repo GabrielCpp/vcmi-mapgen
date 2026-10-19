@@ -32,6 +32,7 @@ from vcmi_mapgen.core.steps.terrain_gen.coastline import NoiseForm
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain
 from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlaceMap
+from vcmi_mapgen.core.steps.terrain_gen.shapes_first import ShapesFirst
 from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
 
 SIZE = 48
@@ -50,7 +51,10 @@ class RoadRun:
 def _steps(priors: Priors) -> list[PipelineStep]:
     return [
         TerrainStep(
-            priors, PlacesTerrain(NoiseForm()), SEED, TerrainOptions(SIZE, "normal", False, PLAYERS)
+            priors,
+            PlacesTerrain(NoiseForm(), ShapesFirst()),
+            SEED,
+            TerrainOptions(SIZE, "normal", False, PLAYERS),
         ),
         VegetationStep(priors, FieldSampler(), SEED, PLAYERS, HopContent()),
         GameplayStep(priors, SEED, PLAYERS, False),

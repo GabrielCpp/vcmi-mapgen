@@ -34,6 +34,26 @@ class TerritoryCount:
 
 
 @dataclass(frozen=True, slots=True)
+class TerritorySite:
+    """One corpus territory placed on the unit square: its centroid ``(x, y)``, its share of
+    the map's territory area and its player, None when it is neutral."""
+
+    x: float
+    y: float
+    share: float
+    owner: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class TerritoryPlan:
+    """One corpus map's arrangement of territories: the ``sites`` of its territories, each
+    held by at most one player, beside the ``record`` of the same map."""
+
+    record: TerritoryCount
+    sites: tuple[TerritorySite, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class TerritoryStats:
     """One level's territories pooled over the corpus: the door count of each bordering
     pair. Each corpus map keeps its own creature levels of the doors out of a player
@@ -45,3 +65,4 @@ class TerritoryStats:
     player_doors_by_map: tuple[tuple[int, ...], ...] = ()
     neutral_doors_by_map: tuple[tuple[int, ...], ...] = ()
     counts_by_map: tuple[TerritoryCount, ...] = ()
+    plans_by_map: tuple[TerritoryPlan, ...] = ()

@@ -17,6 +17,7 @@ from vcmi_mapgen.core.steps.terrain_gen.places import (
     carried,
 )
 from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlannedPlace
+from vcmi_mapgen.core.steps.terrain_gen.shapes_first import ShapesFirst
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import unreached
 from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
@@ -24,8 +25,8 @@ from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
 
 def test_the_same_seed_draws_the_same_place_map(catalog: Catalog, priors: Priors) -> None:
     options = TerrainOptions(size=48, players=2)
-    first = PlacesTerrain(TopologyForm()).draw(catalog, priors, 3, options)
-    again = PlacesTerrain(TopologyForm()).draw(catalog, priors, 3, options)
+    first = PlacesTerrain(TopologyForm(), ShapesFirst()).draw(catalog, priors, 3, options)
+    again = PlacesTerrain(TopologyForm(), ShapesFirst()).draw(catalog, priors, 3, options)
     assert first.places == again.places
     assert first.grids == again.grids
 
@@ -33,7 +34,7 @@ def test_the_same_seed_draws_the_same_place_map(catalog: Catalog, priors: Priors
 def test_every_place_reads_as_its_dominant_and_every_player_keeps_a_home(
     catalog: Catalog, priors: Priors
 ) -> None:
-    draw = PlacesTerrain(TopologyForm()).draw(
+    draw = PlacesTerrain(TopologyForm(), ShapesFirst()).draw(
         catalog, priors, 2, TerrainOptions(size=48, players=4)
     )
     level = draw.places.levels[0]
@@ -54,7 +55,7 @@ def test_every_territory_on_a_home_land_opens_toward_a_home(
     catalog: Catalog, priors: Priors
 ) -> None:
     for seed in (3, 4):
-        draw = PlacesTerrain(TopologyForm()).draw(
+        draw = PlacesTerrain(TopologyForm(), ShapesFirst()).draw(
             catalog, priors, seed, TerrainOptions(size=72, players=2)
         )
         level = draw.places.levels[0]
@@ -78,7 +79,7 @@ def test_the_underground_is_a_territory_front_without_homes_joined_by_planned_ga
     catalog: Catalog, priors: Priors
 ) -> None:
     for seed in (1, 2):
-        draw = PlacesTerrain(TopologyForm()).draw(
+        draw = PlacesTerrain(TopologyForm(), ShapesFirst()).draw(
             catalog, priors, seed, TerrainOptions(size=72, players=2, subterrain=True)
         )
         below = draw.places.levels[1]

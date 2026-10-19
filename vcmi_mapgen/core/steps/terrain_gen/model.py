@@ -9,6 +9,10 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.priors.places import PlaceStats
+from vcmi_mapgen.core.priors.territories import TerritoryCount, TerritoryStats
+from vcmi_mapgen.core.steps.terrain_gen.homes import Homes
+from vcmi_mapgen.core.steps.terrain_gen.layout import Land, Layout
 from vcmi_mapgen.core.steps.terrain_gen.result import PlaceMap
 
 
@@ -39,4 +43,34 @@ class TerrainModel(Protocol):
         self, catalog: Catalog, priors: Priors, seed: int, options: TerrainOptions
     ) -> TerrainDraw:
         """Every level's terrain and places, the same for the same seed."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class FrontDraw:
+    """What a territory front hands back: the grown place ``layout``, the ``homes`` on it,
+    the territory of each place, the player of each home place (None elsewhere), the corpus
+    ``record`` the territory count and floor came from, how many places the front drew and
+    the lines it reports."""
+
+    layout: Layout
+    homes: Homes
+    territory: tuple[int, ...]
+    owners: list[int | None]
+    record: TerritoryCount
+    drawn: int
+    log: tuple[str, ...] = ()
+
+
+class TerritoryFront(Protocol):
+    def draw(
+        self,
+        land: Land,
+        priors: tuple[PlaceStats, TerritoryStats],
+        planned: int,
+        seed: int,
+        options: TerrainOptions,
+    ) -> FrontDraw:
+        """The places on ``land``, the homes and the territory of each place, the same for
+        the same seed. ``planned`` is the land count the corpus records are read at."""
         ...

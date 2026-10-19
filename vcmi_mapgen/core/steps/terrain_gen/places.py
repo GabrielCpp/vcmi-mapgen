@@ -23,7 +23,7 @@ from vcmi_mapgen.core.reading.paint import read_paint
 from vcmi_mapgen.core.reading.palette import palette_regions, same_share
 from vcmi_mapgen.core.steps.terrain_gen import macro as MTOPO
 from vcmi_mapgen.core.steps.terrain_gen.border_kinds import draw_kinds
-from vcmi_mapgen.core.steps.terrain_gen.coastline import Shore, SurfaceForm, target_gap
+from vcmi_mapgen.core.steps.terrain_gen.coastline import Shore, SurfaceForm
 from vcmi_mapgen.core.steps.terrain_gen.despeckle import despeckle
 from vcmi_mapgen.core.steps.terrain_gen.gate_sites import (
     Gate,
@@ -32,14 +32,14 @@ from vcmi_mapgen.core.steps.terrain_gen.gate_sites import (
     gate_anchor_points,
     plan_gates,
 )
-from vcmi_mapgen.core.steps.terrain_gen.homes import choose_homes, room_side, room_tiles
+from vcmi_mapgen.core.steps.terrain_gen.homes import room_side, room_tiles
 from vcmi_mapgen.core.steps.terrain_gen.identity import (
     Palette,
     assign_dominants,
     town_terrains,
 )
 from vcmi_mapgen.core.steps.terrain_gen.layout import home_gap
-from vcmi_mapgen.core.steps.terrain_gen.model import TerrainDraw, TerrainOptions
+from vcmi_mapgen.core.steps.terrain_gen.model import TerrainDraw, TerrainOptions, TerritoryFront
 from vcmi_mapgen.core.steps.terrain_gen.paint import paint_places, paint_priors
 from vcmi_mapgen.core.steps.terrain_gen.palette import draw_palette
 from vcmi_mapgen.core.steps.terrain_gen.place_map import (
@@ -56,14 +56,12 @@ from vcmi_mapgen.core.steps.terrain_gen.result import (
     PlannedPlace,
 )
 from vcmi_mapgen.core.steps.terrain_gen.roles import label_roles
-from vcmi_mapgen.core.steps.terrain_gen.shapes import grow_shapes, shape_caps
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import (
     Across,
     draw_doors,
     draw_partition,
     draw_territory_record,
-    home_budget,
     islanded,
     merge_dull,
     settle,
@@ -132,33 +130,32 @@ def coast(ids: list[list[int]], thin: Collection[Terrain]) -> list[list[Terrain]
 
 
 def surface(
-    catalog: Catalog, form: SurfaceForm, priors: Priors, seed: int, options: TerrainOptions
+    catalog: Catalog,
+    models: tuple[SurfaceForm, TerritoryFront],
+    priors: Priors,
+    seed: int,
+    options: TerrainOptions,
 ) -> tuple[list[list[Terrain]], LevelPlaces, tuple[str, ...]]:
     """The painted surface, its place map with its bands, and lines on how the shapes, the
     water and the palette went. The shapes grow on the form's land, the homes and the
     territories stand on them, a neutral territory too small to expect a prize joins its
     neighbour, the form floods its water, and the roles label the shapes
     before the palette paints them."""
+    form, front = models
     macro = priors.terrain[0].macro
     stats = priors.places[0]
     spread = priors.territories.get(0, TerritoryStats())
     coastline = form.land(priors, seed, options)
     land = coastline.land
-    caps = shape_caps(
-        stats, options.players, (coastline.planned, land_count_of(land)), stream(seed, "places")
+    fd = front.draw(land, (stats, spread), coastline.planned, seed, options)
+    layout, homes, territory, owners, record = (
+        fd.layout,
+        fd.homes,
+        fd.territory,
+        fd.owners,
+        fd.record,
     )
-    layout = grow_shapes(land, caps, stream(seed, "layout"))
-    record = territory_record(spread, options.players, coastline.planned, seed)
-    budget = home_budget(record, land_count(layout.label))
-    homes = choose_homes(
-        layout, options.players, (target_gap(stats), budget), stream(seed, "homes")
-    )
-    owners: list[int | None] = [None] * layout.places
-    for player, home in enumerate(homes.places):
-        owners[home] = player
     grown = label_adjacency(layout.label)
-    drawn = draw_territories(owners, (layout.label, grown), record, seed)
-    territory, _ = settle(drawn, owners, grown)
     doors = draw_doors(territory, grown, spread.pair_doors, stream(seed, "water_doors"))
     keep = frozenset(t for point in homes.points for t in room_tiles(point, room_side()))
     shore = Shore(
@@ -184,7 +181,7 @@ def surface(
     grid = coast(paint(layout.label, dominants), catalog.thin_terrains())
     after = home_gap([[z >= 0 for z in row] for row in layout.label], homes.points)
     line = (
-        f"  places: {len(caps)} drawn, {layout.places} grown, "
+        f"  places: {fd.drawn} drawn, {layout.places} grown, "
         + f"home gap {homes.gap:.2f} ({after:.2f} after water)"
     )
     places = {i: PlannedPlace(roles[i], owners[i], dominants[i]) for i in range(layout.places)}
@@ -206,6 +203,7 @@ def surface(
     plan = replace(plan, bands=painted.bands)
     lines = (
         line,
+        *fd.log,
         *coastline.log,
         *water_log,
         palette_line(k, painted.grid, plan),
@@ -476,13 +474,14 @@ def underground(
 class PlacesTerrain:
     """A place-first surface on the land its surface form gives, and today's underground."""
 
-    def __init__(self, form: SurfaceForm) -> None:
+    def __init__(self, form: SurfaceForm, front: TerritoryFront) -> None:
         self.form: SurfaceForm = form
+        self.front: TerritoryFront = front
 
     def draw(
         self, catalog: Catalog, priors: Priors, seed: int, options: TerrainOptions
     ) -> TerrainDraw:
-        grid0, plan0, lines = surface(catalog, self.form, priors, seed, options)
+        grid0, plan0, lines = surface(catalog, (self.form, self.front), priors, seed, options)
         if not options.subterrain:
             return TerrainDraw({0: grid0}, frozenset(), PlaceMap({0: plan0}), lines)
         size = options.size

@@ -20,8 +20,10 @@ from vcmi_mapgen.core.steps import (
 )
 from vcmi_mapgen.core.steps.roads.network import PassageRoads
 from vcmi_mapgen.core.steps.terrain_gen.coastline import NoiseForm, SurfaceForm
-from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
+from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions, TerritoryFront
 from vcmi_mapgen.core.steps.terrain_gen.places import PlacesTerrain
+from vcmi_mapgen.core.steps.terrain_gen.planned import PlannedFront
+from vcmi_mapgen.core.steps.terrain_gen.shapes_first import ShapesFirst
 from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
 from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
@@ -57,13 +59,19 @@ SURFACE_FORMS: dict[str, SurfaceForm] = {
 }
 DEFAULT_WATER = "topology"
 
+FRONTS: dict[str, TerritoryFront] = {
+    "shapes": ShapesFirst(),
+    "planned": PlannedFront(),
+}
+DEFAULT_FRONT = "shapes"
+
 
 @dataclass(frozen=True, slots=True)
 class StepConfig:
     """What one generation asks for: the seed, the map side, the player count, the
     SURFACE_FORMS entry that draws the water, whether the map has an underground level,
-    which SAMPLERS entry grows the vegetation, and the team of each player, empty when every
-    player plays alone."""
+    which SAMPLERS entry grows the vegetation, which FRONTS entry draws the surface
+    territories, and the team of each player, empty when every player plays alone."""
 
     seed: int
     size: int
@@ -74,6 +82,7 @@ class StepConfig:
     density: float = 1.0
     teams: tuple[int, ...] = ()
     zone_quota: bool = False
+    front: str = DEFAULT_FRONT
 
 
 def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineStep]]:
@@ -83,7 +92,7 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     seed, size, players, subterrain = config.seed, config.size, config.players, config.subterrain
     terrain = TerrainOptions(size, config.water_mode, subterrain, players)
     sampler = SAMPLERS[config.vegetation]
-    model = PlacesTerrain(SURFACE_FORMS[config.water_mode])
+    model = PlacesTerrain(SURFACE_FORMS[config.water_mode], FRONTS[config.front])
     gameplay = GameplayStep(priors, seed, players, subterrain, config.density)
     gameplay.zone_quota = config.zone_quota
     return [
