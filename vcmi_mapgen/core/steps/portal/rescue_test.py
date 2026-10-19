@@ -92,6 +92,23 @@ def test_unreachable_targets_reports_vegetation_walls_only() -> None:
     assert RS.unreachable_targets(size, grid, hard_wall + picks, targets) == []
 
 
+def test_unreachable_targets_leaves_out_land_that_touches_only_at_a_corner() -> None:
+    """Two land masses that meet only at one diagonal corner are two islands, as the
+    passage plan and the portal rescue read them, so trees sealing that corner cut off
+    nothing."""
+    size = 12
+    water = int(Terrain.WATER)
+    grid = [
+        [GRASS if (x < 6 and y < 6) or (x >= 6 and y >= 6) else water for x in range(size)]
+        for y in range(size)
+    ]
+    pine = Identity("pineTrees", "pineTrees", "pine", Footprint.one(Role.BLOCKING))
+    seal = [_obj(pine, (5, 5), ""), _obj(pine, (6, 6), "")]
+    targets = [(2, 2), (9, 9)]
+    assert RS.unreachable_targets(size, grid, seal, targets) == []
+    assert RS.unreachable_targets(size, grid, [], targets) == []
+
+
 def _world(objs: list[PlacedObject]) -> RS.PortalWorld:
     size = 12
     return RS.PortalWorld(

@@ -8,7 +8,7 @@ from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.geometry import centre_key
-from vcmi_mapgen.core.grid.reach import STEPS8, land_reach, reach
+from vcmi_mapgen.core.grid.reach import STEPS4, STEPS8, land_reach, reach
 from vcmi_mapgen.core.model import CoverIndex, Guard, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -43,7 +43,9 @@ def unreachable_targets(
 
     Guards and pickups count as passable, since a hero fights or collects them. Vegetation
     and every other object blocks. A target that no land path could reach even through
-    vegetation sits on another island and is left out, because a boat or portal serves it."""
+    vegetation sits on another island and is left out, because a boat or portal serves it.
+    That land path joins tiles along their edges, as ``land_reach`` and the passage plan do,
+    so land that touches only at a corner is another island."""
     land = {(x, y) for y in range(size) for x in range(size) if grid[y][x] < 8}
     walk, hard = _walk_and_hard_cells(objs)
     open_set = land - walk - hard
@@ -56,7 +58,7 @@ def unreachable_targets(
     if not bad:
         return []
     through_veg = land - hard
-    through = reach(through_veg, [root], STEPS8)
+    through = reach(through_veg, [root], STEPS4)
     return [t for t in bad if t in through]
 
 
