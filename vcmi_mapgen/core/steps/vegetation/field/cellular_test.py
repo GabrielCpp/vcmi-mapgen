@@ -5,6 +5,7 @@ from typing import cast
 
 import numpy as np
 
+from vcmi_mapgen.core.reading.rooms import component_sizes
 from vcmi_mapgen.core.steps.vegetation.field.cellular import (
     MAX_COVERAGE,
     cellular_field,
@@ -41,3 +42,14 @@ def test_target_mask_hits_coverage_and_keeps_forced_tiles() -> None:
     assert bool(mask[0, :].all())
     free_share = cast(int, mask[1:, :].sum()) / (29 * 30)
     assert abs(free_share - 0.3) < 0.02
+
+
+def test_target_mask_walls_the_edges_and_leaves_rooms() -> None:
+    field = cellular_field(40, 40, random.Random(5), 0.01)
+    dom = np.ones((40, 40), dtype=np.bool_)
+    ebins = np.zeros((40, 40), dtype=np.int8)
+    forced = np.zeros((40, 40), dtype=np.bool_)
+    mask = target_mask(field, dom, ebins, np.array([0.5]), forced)
+    blocked = component_sizes(mask)
+    assert max(blocked) > sum(blocked) / 2
+    assert sum(1 for n in component_sizes(~mask) if n >= 10) >= 4

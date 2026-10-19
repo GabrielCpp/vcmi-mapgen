@@ -17,7 +17,7 @@
 - `connect.py`: `keeps_connected` and `frees_connected`, the compiled connectivity checks
   behind `try_place` and `try_remove`.
 - `field/`: `FieldSampler`, the default sampler, which covers a cellular field's blocked mask with decorations.
-  `cellular.py` draws the field and the per-edge-bin coverage that shapes the mask.
+  `cellular.py` draws a Worley field from blue-noise seeds and the per-edge-bin coverage that shapes the mask. The mask blocks the tiles nearest the Voronoi edges, so walls close around rooms in the cells, and the canvas's connectivity rule leaves each room an opening.
   `sampler.py` fills the forced tiles first, from the zone edge inward, then the rest. It
   tries `FILL_TRIES` identities per uncovered tile, each at its first legal position over
   that tile, and checks the best `FILL_CHECKS` with the canvas.

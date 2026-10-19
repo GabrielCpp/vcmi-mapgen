@@ -6,6 +6,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.segment import label_zones
 from vcmi_mapgen.core.model import Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement.ground import solid_tiles
 from vcmi_mapgen.core.planning.zone_plan import PlanLevel, PlanZone, ZonePlan
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
@@ -79,5 +80,12 @@ def test_a_patch_of_another_terrain_grows_its_own_vegetation(
     grown = grow_level(models, lv, 5, FieldSampler())
     on_lava = [o for o in grown.objs if (o.x, o.y) in lava]
     assert on_lava
-    assert not [o for o in grow_level(models, bare, 5, FieldSampler()).objs if (o.x, o.y) in lava]
+    bare_objs = grow_level(models, bare, 5, FieldSampler()).objs
+    specs = [catalog.spec(o.kind) for o in bare_objs]
+    assert all(specs)
+    assert not [
+        o
+        for o, spec in zip(bare_objs, specs, strict=True)
+        if spec and set(solid_tiles(spec.footprint, (o.x, o.y))) & lava
+    ]
     assert grown == grow_level(models, lv, 5, FieldSampler())

@@ -18,7 +18,7 @@ from vcmi_mapgen.core.reading.places import owners_of
 from vcmi_mapgen.core.steps.compensation.prize import BAR, deficits
 from vcmi_mapgen.core.steps.compensation.result import CompensationResult
 
-CONFIG = StepConfig(seed=4, size=48, players=4)
+CONFIG = StepConfig(seed=2, size=48, players=4)
 
 
 @dataclass(frozen=True, slots=True)

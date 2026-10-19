@@ -14,6 +14,7 @@ from vcmi_mapgen.core.reading.ground import Ground, TownKey, read_ground
 from vcmi_mapgen.core.reading.measures import home_separation, raw_cut_share, soft_borders
 from vcmi_mapgen.core.reading.palette import palette_regions, same_share
 from vcmi_mapgen.core.reading.places import InferredPlaces, PlaceRole, read_places
+from vcmi_mapgen.core.reading.rooms import RoomReading, read_rooms
 from vcmi_mapgen.core.reading.territories import (
     SHARE_TILES,
     TerritoryReading,
@@ -105,6 +106,21 @@ def territory_vector(reading: TerritoryReading) -> Vector:
     return out
 
 
+def rooms_vector(reading: RoomReading | None) -> Vector:
+    """The rooms readings: the lane and open shares of the walkable tiles, the core rooms'
+    count, median size and largest share, and the largest blocked component's share."""
+    if reading is None:
+        return {}
+    return {
+        "lane_share": reading.lane_share,
+        "open_ground_share": reading.open_share,
+        "room_count": float(reading.room_count),
+        "room_median": reading.room_median,
+        "room_largest": reading.room_largest,
+        "blocked_giant": reading.blocked_giant,
+    }
+
+
 def _content(
     catalog: Catalog, map_state: MapState, inferred: InferredPlaces
 ) -> tuple[PlaceContent, ...]:
@@ -150,6 +166,7 @@ def map_vector(catalog: Catalog, map_state: MapState, owners: Mapping[TownKey, i
     inferred = read_places(ground, owners)
     content = _content(catalog, map_state, inferred)
     out = ground_vector(ground, inferred, content, map_state.roads.get(LEVEL, {}))
+    out.update(rooms_vector(read_rooms(map_state, LEVEL)))
     territories = read_territories(catalog, map_state, LEVEL, owners)
     if territories is not None:
         out.update(territory_vector(territory_reading(territories)))
