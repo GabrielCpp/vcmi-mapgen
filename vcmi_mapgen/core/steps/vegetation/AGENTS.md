@@ -6,7 +6,8 @@
   It reads the zone owners and the closing pairs from `core/planning/borders.py`, so an open
   pair stays walkable. A web tile is sealed only when its open neighbours stay joined inside
   its own zone and no open tile of either zone is shut away. Any other cell stays open when
-  sealing it would shut a web tile away from the rest of the web.
+  sealing it would shut a web tile away from the rest of the web. A closed tile takes a larger
+  piece when its other blocking cells fall on tiles already blocked.
 - `canvas.py`: `ZoneCanvas`, the zone grids every sampler grows on, in a window of the zone's
   box grown by its largest decoration's reach plus one. It owns the hard rules:
   `blocked_cells` is the legality check, which also refuses a solid cell on a tile whose

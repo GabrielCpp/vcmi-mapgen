@@ -275,31 +275,93 @@ def _split(
 
 @final
 class _Decor:
-    """The 1x1 blocking decorations a seal draws from, one pool per terrain."""
+    """The blocking decorations a seal draws from, one pool per terrain."""
 
     def __init__(self, catalog: Catalog, tname: Mapping[Tile, str], ground: Ground) -> None:
         self._catalog = catalog
         self._tname = tname
         self._ground = ground
         self._kinds: dict[str, list[Identity]] = {}
+        self._larger: dict[str, list[tuple[Identity, tuple[Tile, ...]]]] = {}
 
     def _pool(self, terrain: str, cell: Tile) -> list[Identity]:
         if terrain not in self._kinds:
             self._kinds[terrain] = self._catalog.decor(terrain, blocking=True, max_cells=1)
         return [i for i in self._kinds[terrain] if stands(self._catalog, i, cell, self._ground)]
 
-    def draw(self, cells: Sequence[Tile], rng: random.Random) -> list[Identity] | None:
-        """One decoration for each of ``cells``, drawn for its zone's terrain, or for the
+    def _terrains(self, cell: Tile) -> list[str]:
+        out = [self._tname[cell]]
+        if self._ground:
+            out.append(self._catalog.terrain_name(self._ground[cell[1]][cell[0]]))
+        return out
+
+    def _single(self, cell: Tile) -> list[Identity]:
+        pool = self._pool(self._tname[cell], cell)
+        if not pool and self._ground:
+            ground = self._ground[cell[1]][cell[0]]
+            pool = self._pool(self._catalog.terrain_name(ground), cell)
+        return pool
+
+    def _multi(self, terrain: str) -> list[tuple[Identity, tuple[Tile, ...]]]:
+        if terrain not in self._larger:
+            found: list[tuple[Identity, tuple[Tile, ...]]] = []
+            for ident in self._catalog.decor(terrain, blocking=True):
+                blk = FP.cell_offsets(ident.footprint)[1]
+                if len(blk) >= 2:
+                    found.append((ident, blk))
+            self._larger[terrain] = found
+        return self._larger[terrain]
+
+    def _fits(
+        self, cell: Tile, cells: AbstractSet[Tile], shut: Container[Tile]
+    ) -> list[tuple[Identity, Tile, tuple[Tile, ...]]]:
+        fits: list[tuple[Identity, Tile, tuple[Tile, ...]]] = []
+        for terrain in self._terrains(cell):
+            for ident, blk in self._multi(terrain):
+                for ox, oy in blk:
+                    anchor = (cell[0] - ox, cell[1] - oy)
+                    covered = tuple((anchor[0] + dx, anchor[1] + dy) for dx, dy in blk)
+                    if all(c in cells or c in shut for c in covered) and stands(
+                        self._catalog, ident, anchor, self._ground
+                    ):
+                        fits.append((ident, anchor, covered))
+            if fits:
+                break
+        return sorted(fits, key=lambda f: (f[0].type or "", f[0].subtype or "", f[1]))
+
+    def draw(self, cells: Sequence[Tile], rng: random.Random) -> list[tuple[Identity, Tile]] | None:
+        """One 1x1 decoration for each of ``cells``, drawn for its zone's terrain, or for the
         tile's own terrain when none of those stands there. None when a cell takes none."""
-        out: list[Identity] = []
+        out: list[tuple[Identity, Tile]] = []
         for cell in cells:
-            pool = self._pool(self._tname[cell], cell)
-            if not pool and self._ground:
-                ground = self._ground[cell[1]][cell[0]]
-                pool = self._pool(self._catalog.terrain_name(ground), cell)
+            pool = self._single(cell)
             if not pool:
                 return None
-            out.append(rng.choice(pool))
+            out.append((rng.choice(pool), cell))
+        return out
+
+    def draw_pieces(
+        self, cells: Sequence[Tile], shut: Container[Tile], rng: random.Random
+    ) -> list[tuple[Identity, Tile]] | None:
+        """The pieces that close ``cells``. A cell takes a piece of two or more blocking cells
+        when the rest of its blocking cells fall on other ``cells`` or on tiles in ``shut``,
+        and a 1x1 decoration otherwise. None when a cell takes none."""
+        members = frozenset(cells)
+        done: set[Tile] = set()
+        out: list[tuple[Identity, Tile]] = []
+        for cell in cells:
+            if cell in done:
+                continue
+            pool = self._single(cell)
+            if not pool:
+                return None
+            if fits := self._fits(cell, members, shut):
+                ident, anchor, covered = rng.choice(fits)
+                out.append((ident, anchor))
+                done.update(covered)
+            else:
+                out.append((rng.choice(pool), cell))
+                done.add(cell)
         return out
 
 
@@ -354,14 +416,20 @@ def seal_borders(
             sealer.held.add(pick)
             continue
         cells = [pick, *sorted(cut)]
-        idents = decor_of.draw(cells, rng) or []
-        decor = [
-            PlacedObject.at(i, c, level=level, purpose="")
-            for i, c in zip(idents, cells, strict=False)
-        ]
+        shut = blocked | sealed
         mark = cover.mark()
-        if not idents or not all(cover.try_add(d) for d in decor):
+        decor: list[PlacedObject] = []
+        pieces = decor_of.draw_pieces(cells, shut, rng)
+        tries = [pieces]
+        if pieces and any(len(FP.cell_offsets(i.footprint)[1]) > 1 for i, _a in pieces):
+            tries.append(decor_of.draw(cells, rng))
+        for drawn in tries:
+            decor = [PlacedObject.at(i, a, level=level, purpose="") for i, a in (drawn or [])]
+            if drawn and all(cover.try_add(d) for d in decor):
+                break
             cover.rollback(mark)
+            decor = []
+        if not decor:
             (sealer.dead if not cut else sealer.held).add(pick)
             continue
         new_objs += decor
