@@ -70,3 +70,14 @@ def test_the_flood_takes_no_more_than_half_of_a_place() -> None:
     layout, _ = water_on_walls(_shore(), target, SIDE, random.Random(1))
     area = Counter(z for row in layout.label for z in row if z >= 0)
     assert all(area[z] * 2 >= (SIDE // 2) ** 2 for z in range(4))
+
+
+def test_no_more_walled_fronts_take_water_than_the_target_has_masses() -> None:
+    third = SIDE // 3
+    label = [[(y // third) * 3 + x // third for x in range(SIDE)] for y in range(SIDE)]
+    anchors = tuple((x * third + 4, y * third + 4) for y in range(3) for x in range(3))
+    shore = Shore(Layout(label, anchors, 9), tuple(range(9)), frozenset(), {}, frozenset())
+    for masses in (1, 2):
+        target = WaterTarget(0.3, 0.0, masses)
+        _, fronts = water_on_walls(shore, target, SIDE, random.Random(0))
+        assert fronts == masses

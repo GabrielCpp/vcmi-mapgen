@@ -240,7 +240,7 @@ def water_on_walls(
     deep on either side of the line where the two territories touch. The edge water then
     takes the noise arcs of the ring. While the share stays under the target the carved
     fronts and the edge deepen one layer each in turn, and the next walled front joins when
-    none of them can."""
+    none of them can, until ``target.masses`` of them or one have taken water."""
     label = np.array(shore.layout.label, dtype=np.int64)
     owner = np.where(label >= 0, np.array(shore.territory, dtype=np.int64)[label], -1)
     area = np.bincount(label[label >= 0], minlength=shore.layout.places).astype(np.int64)
@@ -251,14 +251,15 @@ def water_on_walls(
         [front_of(label, owner, pair, walls[pair]) for pair in ranked],
         [],
     )
-    count = _open(flood, fronts, max(1, target.masses), target.share)
+    cap = max(1, target.masses)
+    count = _open(flood, fronts, cap, target.share)
     edge = edge_front(side, target.edge, rng)
     if flood.share() < target.share:
         _ = flood.carve(edge)
     fronts[1].append(edge)
     while flood.share() < target.share:
         live = [f for f in fronts[1] if f.open and f.wet.any()]
-        if not live and not fronts[0]:
+        if not live and (not fronts[0] or count >= cap):
             break
         if not live:
             count += _open(flood, fronts, 1, target.share)
