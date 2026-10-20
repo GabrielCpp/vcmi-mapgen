@@ -19,6 +19,7 @@ from vcmi_mapgen.corpus.macro import load_macro
 from vcmi_mapgen.corpus.markov import load_inside, load_tables
 from vcmi_mapgen.corpus.places import load_places
 from vcmi_mapgen.corpus.remote import load_remote
+from vcmi_mapgen.corpus.spacing import load_spacing
 from vcmi_mapgen.corpus.territories import load_territories
 from vcmi_mapgen.corpus.vegetation import load_vegetation, vegetation_terrains
 from vcmi_mapgen.corpus.water import load_water
@@ -31,7 +32,7 @@ def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
     vegetation statistics of every terrain that has them, the effort priors, the water
     priors, the territory spread, the resource mine, town, keymaster tent and two-way
     monolith pair curves, the family curves
-    and the remote distance per map size, all read from
+    the remote distance per map size and the spacing law per kind, all read from
     ``pp_dir``, and the pocket masks drawn in ``pockets_file``."""
     return Priors(
         terrain={
@@ -54,4 +55,5 @@ def load_priors(pp_dir: Path, pockets_file: Path) -> Priors:
         portals=load_curve(pp_dir, PORTALS_FILE),
         families=load_families(pp_dir),
         remote=load_remote(pp_dir),
+        spacing=load_spacing(pp_dir),
     )

@@ -20,6 +20,7 @@ from vcmi_mapgen.core.priors.markov import MarkovTables, empty_tables
 from vcmi_mapgen.core.priors.places import PlaceStats
 from vcmi_mapgen.core.priors.pocket_masks import PocketMask
 from vcmi_mapgen.core.priors.remote import RemotePriors
+from vcmi_mapgen.core.priors.spacing import SpacingPriors
 from vcmi_mapgen.core.priors.territories import TerritoryStats
 from vcmi_mapgen.core.priors.vegetation import VegetationStats
 from vcmi_mapgen.core.priors.water import WaterPriors
@@ -42,7 +43,8 @@ class Priors:
     orientation of the drawn pocket masks, the guard toll and effort bands, the fitted odds
     of surface water with the corpus water targets, the territory spread per level, and the
     resource mine, town, keymaster tent and two-way monolith pair count curves, the count
-    curve and effort stretch of each gameplay family, and the remote distance per map size."""
+    curve and effort stretch of each gameplay family, the remote distance per map size, and the
+    spacing law of each kind of copy."""
 
     terrain: Mapping[int, TerrainPriors]
     gameplay: Mapping[int, GameplayStats]
@@ -59,3 +61,4 @@ class Priors:
     portals: CountCurve = PORTAL_CURVE
     families: FamilyCurves = field(default_factory=FamilyCurves)
     remote: RemotePriors = field(default_factory=RemotePriors)
+    spacing: SpacingPriors = field(default_factory=SpacingPriors)

@@ -79,7 +79,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       over a tile: the days between the first player to reach it and that player's
       nearest enemy, and each gold mine's days from home and its contest (`contest.py`).
       It measures how far each visitable stands from the nearest copy of its kind
-      (`repeats.py`). It reads the value each player claims first within 5, 10, 20 and 40
+      (`repeats.py`), and reads each copy's nearest-copy distance as the normalised u that the spacing prior fits. It reads the value each player claims first within 5, 10, 20 and 40
       hero-days, against the best player's (`claimed.py`). It reads the free land far from
       every object worth the walk (`remote.py`). It reads the lanes and rooms of the walkable land: the share of tiles outside every open 2x2 square, the share inside an open 3x3, the count, median size and largest share of the core rooms, and the largest blocked component's share (`rooms.py`).
     - `steps/terrain_gen/`: the places terrain model. It grows the place shapes on

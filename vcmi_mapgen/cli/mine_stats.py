@@ -38,6 +38,7 @@ from vcmi_mapgen.corpus.mine.macro import mine_macro
 from vcmi_mapgen.corpus.mine.markov import learn, learn4, learn_inside
 from vcmi_mapgen.corpus.mine.places import map_players, mine_places, place_labels
 from vcmi_mapgen.corpus.mine.remote import mine_remote
+from vcmi_mapgen.corpus.mine.spacing import mine_spacing
 from vcmi_mapgen.corpus.mine.territories import mine_territories
 from vcmi_mapgen.corpus.mine.tiler import corpus_tile_grids
 from vcmi_mapgen.corpus.mine.tiler import learn as learn_tiler
@@ -45,6 +46,7 @@ from vcmi_mapgen.corpus.mine.vegetation import mine as mine_vegetation
 from vcmi_mapgen.corpus.mine.water import mine_water
 from vcmi_mapgen.corpus.places import save_places
 from vcmi_mapgen.corpus.remote import save_remote
+from vcmi_mapgen.corpus.spacing import save_spacing
 from vcmi_mapgen.corpus.territories import save_territories
 from vcmi_mapgen.corpus.tiler import save_tiler
 from vcmi_mapgen.corpus.vegetation import save_vegetation
@@ -119,6 +121,10 @@ def _remote(m: MineInput) -> None:
     save_remote(m.pp_dir, mine_remote(m.maps))
 
 
+def _spacing(m: MineInput) -> None:
+    save_spacing(m.pp_dir, mine_spacing(m.catalog, m.maps))
+
+
 def _territories(m: MineInput) -> None:
     mp = [map_players(m.h3m_dir, name) for name in m.names]
     owners, players = [p.owners for p in mp], [p.players for p in mp]
@@ -155,6 +161,7 @@ MINERS: dict[str, Callable[[MineInput], None]] = {
     "territories": _territories,
     "counts": _counts,
     "remote": _remote,
+    "spacing": _spacing,
 }
 
 
