@@ -32,7 +32,7 @@ from vcmi_mapgen.core.steps.terrain_gen.streams import stream
 from vcmi_mapgen.core.steps.terrain_gen.territories import settle
 
 JITTER = 0.03
-NOISE_CELLS = 6
+OCTAVES = ((6, 1.0), (18, 0.4))
 type Point = tuple[float, float]
 
 
@@ -111,13 +111,17 @@ def snap_sites(land: Land, points: Sequence[Point]) -> list[Tile]:
 
 
 def noise_fields(count: int, side: int, seed: int) -> list[Field]:
-    """One border noise field per territory, in [-1, 1], with a wavelength of a sixth of
-    the side."""
-    cell = max(2, side // NOISE_CELLS)
-    return [
-        np.asarray(value_noise(side, side, cell, stream(seed, "plan_noise", i)), dtype=np.float64)
-        for i in range(count)
-    ]
+    """One border noise field per territory, the sum of two octaves of ``OCTAVES``: a
+    wavelength of a sixth of the side at amplitude 1 and of an eighteenth at 0.4."""
+    out: list[Field] = []
+    for i in range(count):
+        total = np.zeros((side, side), dtype=np.float64)
+        for k, (cells, amp) in enumerate(OCTAVES):
+            rng = stream(seed, "plan_noise", i, k)
+            octave = value_noise(side, side, max(2, side // cells), rng)
+            total += amp * np.asarray(octave, dtype=np.float64)
+        out.append(total)
+    return out
 
 
 def partition(land: Mask, sites: Sequence[Site], seed: int) -> tuple[Labels, list[Tile], float]:

@@ -1,9 +1,11 @@
 """A quota flood of land: every territory floods outward from its site over 4-connected
-land, all at the same share of their area targets, and stops at its target. Land left over
+land, nearest the site first in a straight line, swayed by ``REACH`` tiles of noise, all at
+the same share of their area targets, and stops at its target. Land left over
 joins the territory that reaches it first, and border tiles then pass from territories over
 their share to neighbours under it."""
 
 import heapq
+import math
 from collections import deque
 from collections.abc import Sequence
 from typing import cast
@@ -17,7 +19,7 @@ type Mask = npt.NDArray[np.bool_]
 type Field = npt.NDArray[np.float64]
 type Labels = npt.NDArray[np.int64]
 
-SWAY = 0.5
+REACH = 4.0
 BALANCE_ROUNDS = 400
 RING = ((-1, -1), (0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0))
 NEIGHBOURS = ((1, 0), (-1, 0), (0, 1), (0, -1))
@@ -31,11 +33,11 @@ def quota_flood(
 ) -> Labels:
     """The territory of each land tile, -1 off land. Territories take turns, the one holding
     the smallest share of its target first, and each takes the free tile on its frontier
-    that lies cheapest from its site, entering a tile ``t`` at ``1 + SWAY * noise_i(t)``. A
-    territory stops at its target. The land left over is taken by a plain flood from the
-    assigned tiles, and land no site touches by the nearest site in a straight line. Border
-    tiles then pass from a territory to a neighbour holding a smaller share of its target,
-    never a site and never one that cuts its territory in two."""
+    that lies nearest its site in a straight line, swayed by ``REACH`` tiles of
+    ``noise_i``. A territory stops at its target. The land left over is taken by a plain
+    flood from the assigned tiles, and land no site touches by the nearest site in a straight
+    line. Border tiles then pass from a territory to a neighbour holding a smaller share of
+    its target, never a site and never one that cuts its territory in two."""
     h, w = land.shape
     rows = cast("list[list[bool]]", land.tolist())
     label: Grid = [[-1] * w for _ in range(h)]
@@ -55,7 +57,9 @@ def _flood(
     h, w = len(rows), len(rows[0])
     grids = [cast("list[list[float]]", f.tolist()) for f in noise]
     held = [0] * len(sites)
-    edges: list[list[tuple[float, int, int]]] = [[(0.0, y, x)] for x, y in sites]
+    edges: list[list[tuple[float, int, int]]] = [
+        [(REACH * grids[i][y][x], y, x)] for i, (x, y) in enumerate(sites)
+    ]
     turns = [(0.0, i) for i in range(len(sites))]
     heapq.heapify(turns)
     while turns:
@@ -65,13 +69,15 @@ def _flood(
             _ = heapq.heappop(edge)
         if not edge or held[i] >= targets[i]:
             continue
-        cost, y, x = heapq.heappop(edge)
+        _, y, x = heapq.heappop(edge)
         label[y][x] = i
         held[i] += 1
         for dx, dy in NEIGHBOURS:
             nx, ny = x + dx, y + dy
             if 0 <= nx < w and 0 <= ny < h and rows[ny][nx] and label[ny][nx] < 0:
-                heapq.heappush(edge, (cost + 1.0 + SWAY * grids[i][ny][nx], ny, nx))
+                sx, sy = sites[i]
+                key = math.hypot(nx - sx, ny - sy) + REACH * grids[i][ny][nx]
+                heapq.heappush(edge, (key, ny, nx))
         heapq.heappush(turns, (held[i] / targets[i], i))
 
 
