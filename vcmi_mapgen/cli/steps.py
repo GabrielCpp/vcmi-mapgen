@@ -64,6 +64,7 @@ FRONTS: dict[str, TerritoryFront] = {
     "planned": PlannedFront(),
 }
 DEFAULT_FRONT = "shapes"
+COASTS: dict[str, float] = {"shapes": 0.0, "planned": 4.0}
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,7 +93,12 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     seed, size, players, subterrain = config.seed, config.size, config.players, config.subterrain
     terrain = TerrainOptions(size, config.water_mode, subterrain, players)
     sampler = SAMPLERS[config.vegetation]
-    model = PlacesTerrain(SURFACE_FORMS[config.water_mode], FRONTS[config.front])
+    form = (
+        TopologyForm(COASTS[config.front])
+        if config.water_mode == "topology"
+        else SURFACE_FORMS[config.water_mode]
+    )
+    model = PlacesTerrain(form, FRONTS[config.front])
     gameplay = GameplayStep(priors, seed, players, subterrain, config.density)
     gameplay.zone_quota = config.zone_quota
     return [
