@@ -61,7 +61,7 @@ def repeat_share(gaps: Iterable[int], within: int) -> float:
     return sum(g <= within for g in seen) / len(seen) if seen else 0.0
 
 
-def copy_u(x: float, n: int, land: int) -> float:
+def copy_u(x: float, n: float, land: int) -> float:
     """The normalised nearest-copy distance u = n * pi * x^2 / land of a copy ``x`` tiles from
     its nearest of ``n`` on ``land`` land tiles. Random placement gives u an exponential law
     of scale 1."""
@@ -74,6 +74,13 @@ def kind_key(kind: Kind) -> str:
     return f"{kind[0] or ''}:{kind[1] or ''}"
 
 
+def level_land(state: MapState) -> dict[int, int]:
+    """The land tiles of each level of ``state``."""
+    return {
+        level: sum(t.is_land for row in grid for t in row) for level, grid in state.terrain.items()
+    }
+
+
 def copy_spacing(catalog: Catalog, state: MapState) -> list[tuple[Kind, str, float]]:
     """Per spaced object whose kind stands at least twice on its level, its kind, its purpose
     and the u of its Euclidean distance to the nearest other copy there, in level and object
@@ -83,9 +90,7 @@ def copy_spacing(catalog: Catalog, state: MapState) -> list[tuple[Kind, str, flo
         purpose = purpose_of(catalog, o)
         if purpose in SPACED:
             groups[(kind_of(catalog.identity_of(o.kind)), o.level)].append((index, o, purpose))
-    land = {
-        level: sum(t.is_land for row in grid for t in row) for level, grid in state.terrain.items()
-    }
+    land = level_land(state)
     out: list[tuple[int, int, Kind, str, float]] = []
     for (kind, level), members in groups.items():
         n = len(members)

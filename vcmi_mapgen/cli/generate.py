@@ -150,7 +150,6 @@ class GenerateOptions:
     vegetation: str
     content: ContentSetting = BASE_CONTENT
     density: float = 1.0
-    zone_quota: bool = False
     name: str | None = None
     install: bool = False
     front: str = DEFAULT_FRONT
@@ -361,7 +360,6 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.vegetation,
         opts.density,
         tuple(parse_teams(opts.teams, opts.players)),
-        opts.zone_quota,
         opts.front,
     )
     catalog = open_catalog(install, opts.content)

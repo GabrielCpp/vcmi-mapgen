@@ -12,17 +12,20 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.priors.effort import BANDS
 from vcmi_mapgen.core.reading.families import FAR_DAYS, family_purpose
+from vcmi_mapgen.core.reading.repeats import Kind
 
 
 @dataclass(frozen=True, slots=True)
 class Slot:
-    """One object to place: its family, the player and band it serves, and its target effort
-    in days. A map without players leaves the three None."""
+    """One object to place: its family, the player and band it serves, its target effort in
+    days, and the kind the roster drew for it. A map without players leaves the player, band
+    and target None, and a slot the roster leaves out has no kind."""
 
     family: str
     player: int | None = None
     band: int | None = None
     target: int | None = None
+    kind: Kind | None = None
 
 
 def player_split(n: int, players: int, start: int) -> list[int]:

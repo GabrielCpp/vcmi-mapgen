@@ -1,37 +1,74 @@
+import math
 import random
 
 from vcmi_mapgen.core.catalog import Catalog, Trait
-from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
-from vcmi_mapgen.core.steps.gameplay.pick import Picker
+from vcmi_mapgen.core.reading.families import dwelling_family, mine_family
+from vcmi_mapgen.core.reading.repeats import kind_of
+from vcmi_mapgen.core.steps.gameplay.pick import RANDOM_DWELLING_SHARE, Picker
 
 
-def _picker(catalog: Catalog, x: int, y: int) -> Picker:
+def _stats() -> TerrainStats:
+    return TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
+
+
+def test_the_chances_of_the_kinds_sum_to_one(catalog: Catalog) -> None:
     picker = Picker(catalog, random.Random(1))
-    ident = catalog.candidates(Purpose.MANA, "grass")[0]
-    picker.use(ident, PlacedObject(x, y, 0, Purpose.MANA, ident.kind, ident.footprint))
-    return picker
+    for family in (
+        Purpose.MANA,
+        mine_family("sawmill"),
+        dwelling_family(0),
+        dwelling_family(3),
+    ):
+        got = picker.kinds(family, "grass", _stats())
+        assert got, family
+        assert math.isclose(sum(got.values()), 1.0)
 
 
-def test_a_copy_counts_near_on_its_level_only(catalog: Catalog) -> None:
-    picker = _picker(catalog, 10, 10)
-    ident = catalog.candidates(Purpose.MANA, "grass")[0]
-    assert picker.near(ident, (0, 18, 10)) == 1
-    assert picker.near(ident, (0, 30, 10)) == 0
-    assert picker.near(ident, (1, 10, 10)) == 0
-    assert picker.near(ident, None) == 0
+def test_a_random_dwelling_takes_its_share_of_the_kinds(catalog: Catalog) -> None:
+    picker = Picker(catalog, random.Random(1))
+    rand = kind_of(catalog.random_dwelling(3))
+    got = picker.kinds(dwelling_family(3), "grass", _stats())
+    assert math.isclose(got[rand], RANDOM_DWELLING_SHARE)
+    assert picker.kinds(dwelling_family(0), "grass", _stats()) == {
+        kind_of(catalog.random_dwelling(None)): 1.0
+    }
 
 
-def test_the_centres_with_no_copy_near_come_first(catalog: Catalog) -> None:
-    picker = _picker(catalog, 10, 10)
-    ident = catalog.candidates(Purpose.MANA, "grass")[0]
-    centres = [(11, 10), (40, 10), (12, 12), (50, 50)]
-    assert picker.clear_first(ident, 0, centres) == [(40, 10), (50, 50), (11, 10), (12, 12)]
+def test_a_pick_of_a_kind_draws_only_that_kind(catalog: Catalog) -> None:
+    picker = Picker(catalog, random.Random(2))
+    st = _stats()
+    for family in (Purpose.MANA, mine_family("sawmill"), dwelling_family(2)):
+        for kind in picker.kinds(family, "grass", st):
+            for _ in range(8):
+                picked = picker.pick(family, "grass", st, kind)
+                assert picked is not None
+                assert kind_of(picked.ident) == kind
+
+
+def test_a_kind_the_terrain_does_not_offer_draws_nothing(catalog: Catalog) -> None:
+    picker = Picker(catalog, random.Random(2))
+    st = _stats()
+    absent = ("noSuchType", "noSuchSubtype")
+    assert picker.pick(Purpose.MANA, "grass", st, absent) is None
+    assert not picker.offers(Purpose.MANA, "grass", st, absent)
+    kind = next(iter(picker.kinds(Purpose.MANA, "grass", st)))
+    assert picker.offers(Purpose.MANA, "grass", st, kind)
+
+
+def test_a_pick_of_a_kind_keeps_the_whole_family_as_its_pool(catalog: Catalog) -> None:
+    picker = Picker(catalog, random.Random(2))
+    st = _stats()
+    kinds = picker.kinds(Purpose.BONUS_TEMP, "grass", st)
+    assert len(kinds) > 1
+    picked = picker.pick(Purpose.BONUS_TEMP, "grass", st, next(iter(kinds)))
+    assert picked is not None
+    assert {kind_of(i) for i in picked.pool} == set(kinds)
 
 
 def test_a_town_dwelling_stands_only_as_a_random_dwelling(catalog: Catalog) -> None:
-    st = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
+    st = _stats()
     randoms = catalog.types_with(Trait.RANDOM_DWELLING)
     picker = Picker(catalog, random.Random(3))
     picked = [

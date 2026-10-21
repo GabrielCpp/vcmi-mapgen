@@ -48,6 +48,7 @@ from vcmi_mapgen.core.reading.promise import (
     promise_from,
     promise_ways,
 )
+from vcmi_mapgen.core.reading.repeats import level_land
 from vcmi_mapgen.core.reading.routes import Spot, route_map
 from vcmi_mapgen.core.reading.supply import supply_gaps
 from vcmi_mapgen.core.steps.doors.result import DoorGuards
@@ -127,8 +128,6 @@ class GameplayStep(PipelineStep):
         players     Number of player zones to designate (0 = neutral map).
         subterrain  Whether a second underground level is active.
         density     The multiplier on the corpus rate of gameplay objects per tile.
-        zone_quota  Whether each zone holds a share of the dwellings, banks and visitables
-                    proportional to its tiles.
 
     inject(ctx): ``ZonePlan`` (each zone's plan, the player zones and the sea objects),
     ``VegetationResult`` (each zone's open and walkable tiles), ``Segmentation`` (the surface
@@ -182,7 +181,6 @@ class GameplayStep(PipelineStep):
         self.players = players
         self.subterrain = subterrain
         self.density = density
-        self.zone_quota = False
         self.objs: list[PlacedObject] = []
         self._log: list[str] = []
         self._short = Shortfall({}, {})
@@ -317,7 +315,8 @@ class GameplayStep(PipelineStep):
             self.density,
             enemies,
             self.priors.families,
-            self.zone_quota,
+            self.priors.spacing,
+            level_land(map_state),
         )
         rng = random.Random(self.seed ^ PLACER_SALT)
         toll = self.priors.effort.toll

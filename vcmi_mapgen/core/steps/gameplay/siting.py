@@ -1,13 +1,14 @@
 """Where each planned object stands. Each object first draws its own guard from its family's
-corpus record, and every tile is ranked once under that guard. An object of no player stands
-first on the tiles that keep the players' reach of its family even, nearest its band, furthest
-from every object already standing, nearest its target in days. A rare mine stands first on
-the even tiles its player reaches first, nearest its band and its target. Either tries an
+corpus record, and every tile is ranked once under that guard. An object of no player is drawn
+over the whole map, nearest its band first, by the spacing weight of its kind: a tile weighs
+the more the closer its distance to the nearest copy of the kind comes to the corpus law, and
+a zone with its share of the objects already standing is passed over. A rare mine stands first
+on the even tiles its player reaches first, nearest its band and its target, and tries an
 uneven tile only after every even one. Every object tries every group in rank order, so it
-fills every site of its band before it drops to a worse band. A neutral town stands on the even
-tiles furthest from every town already standing. A gold mine stands where the gold rule admits
-it, the best of its rank first, and where the loose gold rule admits it when no such tile takes
-it.
+fills every site of its band before it drops to a worse band. A neutral town stands on the
+even tiles furthest from every town already standing. A gold mine stands where the gold rule
+admits it, the best of its rank first, and where the loose gold rule admits it when no such
+tile takes it.
 
 A tile's tier code is its spread change times ARRIVALS plus its arrival rank, so codes order
 as the pair does and a code below ARRIVALS widens no gap."""
@@ -51,6 +52,7 @@ from vcmi_mapgen.core.reading.families import (
 )
 from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES, GOLD
 from vcmi_mapgen.core.reading.promise import doors
+from vcmi_mapgen.core.reading.repeats import Kind
 from vcmi_mapgen.core.reading.routes import Spot
 from vcmi_mapgen.core.reading.supply import NEAR, entrance
 from vcmi_mapgen.core.steps.gameplay.allocate import keeps_even, promised_guard
@@ -66,6 +68,7 @@ from vcmi_mapgen.core.steps.gameplay.result import (
     SlotRanking,
     Stood,
 )
+from vcmi_mapgen.core.steps.gameplay.spacing import SpotWeight
 from vcmi_mapgen.core.steps.gameplay.turn import Stop, Turn, near
 
 CENTRES = 40
@@ -226,8 +229,12 @@ class Siting:
     _firsts: dict[int, tuple[NDArray[np.bool_], Codes, Codes]] = field(
         default_factory=dict[int, tuple[NDArray[np.bool_], Codes, Codes]]
     )
-    _gap: Codes | None = None
-    _seen: int = 0
+    spacing: SpotWeight | None = None
+    _kind: Kind | None = None
+    _offers: dict[tuple[str, Kind, int], bool] = field(
+        default_factory=dict[tuple[str, Kind, int], bool]
+    )
+    _cells: NDArray[np.int64] | None = None
     _rows: dict[int, tuple[list[Bands], NDArray[np.intp]]] = field(
         default_factory=dict[int, tuple[list[Bands], NDArray[np.intp]]]
     )
@@ -282,7 +289,7 @@ class Siting:
         self._first_view = self._last_view = self._stood = None
         self._walk, self._ranked = ((), 0), ()
         stood = self._stand_drawn(slot, purpose, guard)
-        if stood is None and self._capping(purpose):
+        if stood is None and self._capping(purpose, slot.family):
             self._lax = True
             try:
                 stood = self._stand_drawn(slot, purpose, guard)
@@ -350,8 +357,13 @@ class Siting:
         self._last_view = view
         return groups
 
-    def _capping(self, purpose: str) -> bool:
-        return self.caps is not None and not self._lax and purpose in self.capped
+    def _capping(self, purpose: str, family: str) -> bool:
+        return (
+            self.caps is not None
+            and not self._lax
+            and purpose in self.capped
+            and family != GOLD_FAMILY
+        )
 
     def _full(self, site: ZoneSite) -> bool:
         caps = self.caps
@@ -359,8 +371,11 @@ class Siting:
         return caps.get(self.sites.index(site), 0) <= 0
 
     def _stand_drawn(self, slot: Slot, purpose: str, guard: int) -> tuple[str, PlacedObject] | None:
+        self._kind = None
         if self.gold is not None and slot.family == GOLD_FAMILY:
             return self._stand_gold(slot, purpose, guard)
+        if self._weighted(slot, purpose):
+            return self._stand_spread(slot, purpose, guard)
         groups = self._pool = self._groups(slot, purpose, guard)
         picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
         stops = self._stops(slot.family)
@@ -370,6 +385,18 @@ class Siting:
             if stood is not None:
                 return stood
         return None
+
+    def _weighted(self, slot: Slot, purpose: str) -> bool:
+        """Whether ``slot`` is drawn over the whole map by the spacing weight of its kind: it
+        serves no player, is no town, and takes no turn."""
+        return slot.player is None and purpose != Purpose.TOWN and self._stops(slot.family) is None
+
+    def _stand_spread(
+        self, slot: Slot, purpose: str, guard: int
+    ) -> tuple[str, PlacedObject] | None:
+        self._kind = slot.kind
+        groups = self._pool = self._groups(slot, purpose, guard)
+        return self._stand(slot.family, groups, ({}, None), False)
 
     def _stand_gold(self, slot: Slot, purpose: str, guard: int) -> tuple[str, PlacedObject] | None:
         picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
@@ -388,7 +415,7 @@ class Siting:
         strict: bool,
     ) -> tuple[str, PlacedObject] | None:
         purpose = family_purpose(dealt)
-        capping = self._capping(purpose)
+        capping = self._capping(purpose, dealt)
         cols = () if self._last_view is None else self._last_view[2]
         index = {id(g[2]): i for i, g in enumerate(self._pool)}
         for footing, (fallback, shape) in enumerate(PASSES):
@@ -500,12 +527,11 @@ class Siting:
         families: list[str],
         k: int,
     ) -> tuple[str, Pick] | None:
-        tiles = self.tiles
-        assert tiles is not None
         for family in families:
             if (site, family, k) not in picks:
-                at = tiles.keys[k]
-                picks[site, family, k] = self.picker.pick(family, site.zone.terrain, site.st, at)
+                picks[site, family, k] = self.picker.pick(
+                    family, site.zone.terrain, site.st, self._kind
+                )
             pick = picks[site, family, k]
             if pick is not None:
                 return family, pick
@@ -552,14 +578,13 @@ class Siting:
         for ident in idents:
             opens = large(ident) or shape is OpenFooting
             at = self._open_first(site, centres) if opens else centres
-            spots = self.picker.clear_first(ident, site.lf.level, at)
-            obj = site.place(purpose, ident, spots, footing, guard)
+            obj = site.place(purpose, ident, at, footing, guard)
             if obj is not None:
                 self._smaller = fallback and ident != pick.ident
                 self._centre = next(
                     (
                         (i, c)
-                        for i, c in enumerate(spots)
+                        for i, c in enumerate(at)
                         if max(abs(c[0] - obj.x), abs(c[1] - obj.y)) <= NEIGHBOURHOOD
                     ),
                     (-1, (obj.x, obj.y)),
@@ -578,11 +603,13 @@ class Siting:
         """The tiles under a guard of level ``guard``, those that widen the gap least first,
         grouped by tier and site, at most CENTRES per group. A tier is the spread change, or the
         bands off for an object of no player, then the guard level and the arrival rank. A gold
-        mine keeps only the tiles the gold rule admits, or the ``loose`` gold rule. A neutral
+        mine keeps only the tiles the gold rule admits with every tile within NEIGHBOURHOOD of them
+        admitted too, or the tiles the ``loose`` gold rule admits. The gold mine is drawn over the
+        admitted tiles by the spacing weight of its kind, an uncrowded tile first. A neutral
         town keeps only the tiles with TOWN_ROOM tiles of land around them, ranks those that
         widen the gap least first, then furthest from every town. Any other object of no player
-        ranks by its band, then furthest from every object standing, then by its target,
-        whatever spread it leaves between the players."""
+        is drawn over the tiles by the spacing weight of its kind, band by band, as `_drawn`
+        says."""
         tiles = self.tiles
         if tiles is None:
             return []
@@ -593,13 +620,30 @@ class Siting:
         held = np.full(n, guard, dtype=np.int64)
         code, band, target = zero, zero, zero
         names = ("spread", "arrival")
+        crowded, shown = zero, zero
+        key: NDArray[np.float64] = np.zeros(n, dtype=np.float64)
+        spaced = False
         ok = np.ones(n, dtype=np.bool_)
         days = cast(Codes, tiles.days[0])
         if self.gold is not None and slot.family == GOLD_FAMILY:
             gold = replace(self.gold, guard=self.toll[guard])
             ok, target = gold.rank(days, loose)
+            if not loose:
+                out = tiles.grid.worst_within(np.logical_not(ok).astype(np.int64), NEIGHBOURHOOD)
+                ok = cast(NDArray[np.bool_], out == 0)
             code = self._code(slot.family, level, zero)
             names = ("spread", "arrival", "target")
+            if slot.kind is not None and self.spacing is not None:
+                spaced = True
+                weight, tight = self.spacing.spots(
+                    slot.kind,
+                    purpose,
+                    self._cells_of(tiles),
+                    self.picker.stood.get(slot.kind, ()),
+                )
+                key = np.log(np.maximum(r, np.finfo(np.float64).tiny)) / weight
+                crowded, shown = tight.astype(np.int64), (weight * 1000).astype(np.int64)
+                names = ("spread", "arrival", "target", "weight")
         elif purpose == Purpose.TOWN and slot.player is None:
             code = self._code(slot.family, level, zero)
             spread = code // ARRIVALS
@@ -609,14 +653,8 @@ class Siting:
             kept = order[ok[order]]
             grouped = self._grouped(tiles, kept, np.stack((spread, held, zero))[:, kept])
             return self.note(grouped, ("spread", "gap"), (spread, gap))
-        elif slot.player is None and slot.band is not None and slot.target is not None:
-            reached, at, arrival = self._arrival(level)
-            off = np.where(reached, np.abs(arrival - slot.band), BANDS)
-            target = np.where(reached, np.abs(at - slot.target), 0)
-            gap = self._gaps()
-            order = cast(NDArray[np.intp], np.lexsort((r, target, -gap, off)))
-            grouped = self._grouped(tiles, order, np.stack((off, held, zero))[:, order])
-            return self.note(grouped, ("band_off", "gap", "target"), (off, gap, target))
+        elif self._weighted(slot, purpose):
+            return self._drawn(slot, purpose, (level, guard), r)
         elif slot.player is not None and slot.band is not None and slot.target is not None:
             mine = days[:, slot.player]
             own = np.where(mine < 0, 2, (mine > soonest(days)).astype(np.int64))
@@ -626,10 +664,19 @@ class Siting:
             code = self._code(slot.family, level, own)
             names = ("spread", "arrival", "band_off", "target")
         spread, own = np.divmod(code, ARRIVALS)
-        order = cast(NDArray[np.intp], np.lexsort((r, target, band, own, spread)))
+        if spaced:
+            order = cast(NDArray[np.intp], np.lexsort((-key, crowded, own, spread)))
+        else:
+            order = cast(NDArray[np.intp], np.lexsort((r, target, band, own, spread)))
         kept = order[ok[order]]
         grouped = self._grouped(tiles, kept, np.stack((spread, held, own))[:, kept])
-        columns = {"spread": spread, "arrival": own, "band_off": band, "target": target}
+        columns = {
+            "spread": spread,
+            "arrival": own,
+            "band_off": band,
+            "target": target,
+            "weight": shown,
+        }
         return self.note(grouped, names, tuple(columns[n] for n in names))
 
     def _code(self, family: str, level: int, own: Codes) -> Codes:
@@ -650,18 +697,76 @@ class Siting:
             self._firsts[level] = (first < len(self._band), at, self._band[at])
         return self._firsts[level]
 
-    def _gaps(self) -> Codes:
-        """Per tile, the tiles to the nearest gameplay object or home on its level, as
-        `town_gap` reads them."""
+    def _drawn(
+        self, slot: Slot, purpose: str, how: tuple[int, int], r: NDArray[np.float64]
+    ) -> list[Group]:
+        """The tiles of an object of no player, band by band. A tile where the slot's kind would
+        stand crowded ranks one band further out. Inside a band the open tiles come in a
+        weighted random order without replacement, a tile weighing the spacing weight of the
+        slot's kind there, from the draw ``r`` of each tile. A band's walk takes at most
+        CENTRES tiles for each site it holds, cut into blocks of CENTRES tiles, each block split
+        by site, so a block is a group and a failed spot leaves the pool. ``how`` is the level
+        the tiles are priced at and the guard."""
         tiles = self.tiles
         assert tiles is not None
-        if self._gap is None:
-            self._gap, self._seen = town_gap(tiles, self.homes), 0
-        new = [o for _f, o, _g in self.held[self._seen :]]
-        if new:
-            self._gap = np.minimum(self._gap, town_gap(tiles, new))
-        self._seen = len(self.held)
-        return self._gap
+        level, guard = how
+        n = len(tiles.keys)
+        if slot.band is None:
+            off = np.zeros(n, dtype=np.int64)
+        else:
+            reached, _at, arrival = self._arrival(level)
+            off = np.where(reached, np.abs(arrival - slot.band), BANDS)
+        cells = self._cells_of(tiles)
+        weight = np.ones(n, dtype=np.float64)
+        crowded = np.zeros(n, dtype=np.bool_)
+        if slot.kind is not None and self.spacing is not None:
+            copies = self.picker.stood.get(slot.kind, ())
+            weight, crowded = self.spacing.spots(slot.kind, purpose, cells, copies)
+        tier = off + crowded.astype(np.int64)
+        key = np.log(np.maximum(r, np.finfo(np.float64).tiny)) / weight
+        order = cast(NDArray[np.intp], np.lexsort((-key, tier)))
+        kept = order[self._open(slot, purpose, tiles)[order]]
+        groups: list[Group] = []
+        if len(kept) == 0:
+            return groups
+        for band in np.split(kept, np.flatnonzero(np.diff(tier[kept])) + 1):
+            walk = band[: CENTRES * len(np.unique(tiles.site[band]))]
+            for start in range(0, len(walk), CENTRES):
+                block = walk[start : start + CENTRES]
+                sites = tiles.site[block]
+                ids, first = np.unique(sites, return_index=True)
+                at: Tier = (int(tier[block[0]]), guard, 0)
+                for site in cast(list[int], ids[np.argsort(first)].tolist()):
+                    groups.append((at, self.sites[site], block[sites == site]))
+        shown = (weight * 1000).astype(np.int64)
+        return self.note(
+            groups, ("band_off", "crowded", "weight"), (off, crowded.astype(np.int64), shown)
+        )
+
+    def _cells_of(self, tiles: Tiles) -> NDArray[np.int64]:
+        if self._cells is None or len(self._cells) != len(tiles.keys):
+            self._cells = np.array(tiles.keys, dtype=np.int64).reshape(-1, 3)
+        return self._cells
+
+    def _open(self, slot: Slot, purpose: str, tiles: Tiles) -> NDArray[np.bool_]:
+        """Per tile, whether its site offers the slot's kind and, while capping, is not full."""
+        capping = self._capping(purpose, slot.family)
+        site_ok = np.ones(len(self.sites), dtype=np.bool_)
+        for i, site in enumerate(self.sites):
+            if capping and self._full(site):
+                site_ok[i] = False
+            elif slot.kind is not None:
+                site_ok[i] = self._offers_kind(slot, i, site)
+        return site_ok[tiles.site]
+
+    def _offers_kind(self, slot: Slot, i: int, site: ZoneSite) -> bool:
+        assert slot.kind is not None
+        key = (slot.family, slot.kind, i)
+        if key not in self._offers:
+            self._offers[key] = self.picker.offers(
+                slot.family, site.zone.terrain, site.st, slot.kind
+            )
+        return self._offers[key]
 
     def _grouped(self, tiles: Tiles, kept: NDArray[np.intp], tier: Codes) -> list[Group]:
         if len(kept) == 0:

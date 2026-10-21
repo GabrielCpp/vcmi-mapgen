@@ -1,5 +1,7 @@
 import math
+from typing import cast
 
+import numpy as np
 from scipy import stats
 
 from vcmi_mapgen.core.priors.spacing import SpacingFit, SpacingPriors, baseline
@@ -27,6 +29,28 @@ def test_each_parametric_density_matches_scipy() -> None:
             stats.lognorm.pdf(u, 0.7, 0, math.exp(-0.2)),
             rel_tol=1e-9,
         )
+
+
+def test_the_array_density_matches_the_scalar_one_of_each_family() -> None:
+    us = np.array([-0.3, 0.0, 0.05, 0.5, 1.7, 4.0])
+    samples = tuple(i / 50 for i in range(1, 100))
+    fits = (
+        _fit("exponential", (1.3,)),
+        _fit("weibull", (1.4, 0.9)),
+        _fit("gamma", (2.2, 0.6)),
+        _fit("lognormal", (0.7, -0.2)),
+        _fit("kde", (0.3,), samples),
+    )
+    for fit in fits:
+        got = fit.density_of(us)
+        assert got[0] == 0.0
+        for u, g in zip(
+            cast(list[float], us.tolist()), cast(list[float], got.tolist()), strict=True
+        ):
+            if u >= 0:
+                assert math.isclose(fit.density(u), g, rel_tol=1e-12, abs_tol=1e-12)
+    assert np.allclose(fits[1].density_of(us[2:]), stats.weibull_min.pdf(us[2:], 1.4, 0, 0.9))
+    assert np.allclose(fits[2].density_of(us[2:]), stats.gamma.pdf(us[2:], 2.2, 0, 0.6))
 
 
 def test_a_negative_u_has_no_density() -> None:

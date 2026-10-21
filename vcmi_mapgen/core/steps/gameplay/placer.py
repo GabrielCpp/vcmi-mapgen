@@ -20,6 +20,7 @@ from vcmi_mapgen.core.placement.guard_draw import GuardDraw
 from vcmi_mapgen.core.placement.site import MINE_GUARD_LVL, ZoneSite
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.effort import EffortPriors
+from vcmi_mapgen.core.priors.spacing import SpacingPriors
 from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
     TOP_LEVEL,
@@ -44,12 +45,14 @@ from vcmi_mapgen.core.steps.gameplay.quota import (
 )
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
 from vcmi_mapgen.core.steps.gameplay.result import Shortfall, SlotRanking
+from vcmi_mapgen.core.steps.gameplay.roster import roster
 from vcmi_mapgen.core.steps.gameplay.siting import (
     GOLD_FAMILY,
     Siting,
     place_slots,
     standing_visit,
 )
+from vcmi_mapgen.core.steps.gameplay.spacing import SpotWeight
 from vcmi_mapgen.core.steps.gameplay.supply import Supply
 from vcmi_mapgen.core.steps.gameplay.turn import Turn, nearest_first, rare_slots
 
@@ -61,7 +64,8 @@ RARE_FAMILIES = frozenset(mine_family(r) for r in RARE_MINE_RES)
 class Demand:
     """What the pass asks of the map: its measure, the resource mine and town curves its
     measure reads, the density multiplier on every count, the pairs of enemy players, and
-    the corpus fit of each gameplay family."""
+    the corpus fit of each gameplay family, the spacing law of the kinds and the land tiles of
+    each level."""
 
     measure: MapMeasure
     mines: CountCurve
@@ -69,7 +73,8 @@ class Demand:
     density: float = 1.0
     enemies: tuple[tuple[int, int], ...] = ()
     families: FamilyCurves = field(default_factory=FamilyCurves)
-    zone_quota: bool = False
+    spacing: SpacingPriors = field(default_factory=SpacingPriors)
+    land: Mapping[int, int] = field(default_factory=dict[int, int])
 
     @property
     def players(self) -> int:
@@ -220,8 +225,11 @@ class Placement:
         new = [o for o in self._towns() if id(o) not in before]
         stood = supply(new)
         siting.held.extend((f, o, 0) for f, o in stood)
+        picker.see(o for _f, o in stood)
         rest = slot_order([*rest, *self._pairs(plan, len(new), len(stood), price())], RANKS)
         rest = nearest_first(rest, RARE_FAMILIES)
+        rest, counts = roster(picker, self.sites, rest, self.rng)
+        siting.spacing = SpotWeight(self.demand.spacing, counts, self.demand.land)
         pool = Counter(s.family for s in rest if s.family in RARE_FAMILIES)
         held = [f for f, _o in [*plan.standing, *stood] if f in RARE_FAMILIES]
         offered = {*pool, *held}
@@ -233,15 +241,14 @@ class Placement:
         for f, o in [*plan.standing, *stood]:
             if f in RARE_FAMILIES:
                 siting.turn.guards[o.level, o.x, o.y] = door_guard(guards, o)
-        shares = self._cap(siting, rest) if self.demand.zone_quota else None
+        shares = self._cap(siting, rest)
         placed += place_slots(siting, rest, rank, price)
-        if shares is not None:
-            self._report(siting, shares)
+        self._report(siting, shares)
         short = Shortfall(Counter(s.family for s in [*towns, *rest]), placed)
         return short, tuple(siting.ranking)
 
     def _cap(self, siting: Siting, rest: Sequence[Slot]) -> dict[str, int]:
-        capped = frozenset([Purpose.DWELLING, Purpose.BANK, *VISIT_PURPOSES])
+        capped = frozenset([Purpose.MINE, Purpose.DWELLING, Purpose.BANK, *VISIT_PURPOSES])
         siting.capped = capped
         total = sum(family_purpose(s.family) in capped for s in rest) + sum(
             o.purpose in capped for s in self.sites for o in s.objs

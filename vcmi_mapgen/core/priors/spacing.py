@@ -4,6 +4,10 @@ distance u = n * pi * x^2 / land. Random placement gives u an exponential law of
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import cast
+
+import numpy as np
+from numpy.typing import NDArray
 
 MIN_SAMPLES = 30
 EXPONENTIAL = "exponential"
@@ -13,14 +17,13 @@ LOGNORMAL = "lognormal"
 KDE = "kde"
 FAMILIES = (EXPONENTIAL, WEIBULL, GAMMA, LOGNORMAL, KDE)
 
+type Floats = NDArray[np.float64]
+type Flags = NDArray[np.bool_]
+
 
 def baseline(u: float) -> float:
     """The density of u under random placement: the exponential of scale 1."""
     return math.exp(-u) if u >= 0 else 0.0
-
-
-def _normal_pdf(z: float) -> float:
-    return math.exp(-0.5 * z * z) / math.sqrt(2 * math.pi)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,33 +47,46 @@ class SpacingFit:
 
     def density(self, u: float) -> float:
         """The probability density of u under this fit, zero below zero."""
-        if u < 0:
-            return 0.0
+        return cast(float, self.density_of(np.array([u], dtype=np.float64)).tolist()[0])
+
+    def density_of(self, u: Floats) -> Floats:
+        """The probability density of each u under this fit, zero below zero."""
+        pos: Floats = np.maximum(u, 0.0)
+        out = self._positive(pos, np.equal(pos, 0))
+        return np.where(np.less(u, 0), 0.0, out)
+
+    def _positive(self, pos: Floats, zero: Flags) -> Floats:
+        safe: Floats = np.where(zero, 1.0, pos)
         if self.family == EXPONENTIAL:
             scale = self.params[0]
-            return math.exp(-u / scale) / scale
+            return np.exp(-pos / scale) / scale
         if self.family == WEIBULL:
             k, scale = self.params
-            if u == 0:
-                return 1 / scale if k == 1 else (math.inf if k < 1 else 0.0)
-            z = u / scale
-            return k / scale * math.pow(z, k - 1) * math.exp(-math.pow(z, k))
+            z: Floats = safe / scale
+            out: Floats = k / scale * np.power(z, k - 1) * np.exp(-np.power(z, k))
+            return np.where(zero, 1 / scale if k == 1 else (math.inf if k < 1 else 0.0), out)
         if self.family == GAMMA:
             a, scale = self.params
-            if u == 0:
-                return 1 / scale if a == 1 else (math.inf if a < 1 else 0.0)
-            return math.exp(
-                (a - 1) * math.log(u) - u / scale - math.lgamma(a) - a * math.log(scale)
+            logs: Floats = (
+                (a - 1) * np.log(safe) - safe / scale - math.lgamma(a) - a * math.log(scale)
+            )
+            return np.where(
+                zero, 1 / scale if a == 1 else (math.inf if a < 1 else 0.0), np.exp(logs)
             )
         if self.family == LOGNORMAL:
             sigma, mu = self.params
-            if u == 0:
-                return 0.0
-            return _normal_pdf((math.log(u) - mu) / sigma) / (u * sigma)
+            z = (np.log(safe) - mu) / sigma
+            return np.where(
+                zero, 0.0, np.exp(-0.5 * z * z) / math.sqrt(2 * math.pi) / (safe * sigma)
+            )
         if self.family == KDE:
             h = self.params[0]
-            total = sum(_normal_pdf((u - s) / h) + _normal_pdf((u + s) / h) for s in self.samples)
-            return total / (len(self.samples) * h)
+            samples = np.array(self.samples, dtype=np.float64)
+            gap: Floats = (pos[:, None] - samples[None, :]) / h
+            mirror: Floats = (pos[:, None] + samples[None, :]) / h
+            both = cast(Floats, np.exp(-0.5 * gap * gap) + np.exp(-0.5 * mirror * mirror))
+            total = cast(Floats, np.sum(both, axis=1))
+            return total / math.sqrt(2 * math.pi) / (len(self.samples) * h)
         raise ValueError(f"unknown spacing family {self.family}")
 
 

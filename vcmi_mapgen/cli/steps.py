@@ -82,7 +82,6 @@ class StepConfig:
     vegetation: str = DEFAULT_VEGETATION
     density: float = 1.0
     teams: tuple[int, ...] = ()
-    zone_quota: bool = False
     front: str = DEFAULT_FRONT
 
 
@@ -100,7 +99,6 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
     )
     model = PlacesTerrain(form, FRONTS[config.front])
     gameplay = GameplayStep(priors, seed, players, subterrain, config.density)
-    gameplay.zone_quota = config.zone_quota
     return [
         ("terrain", TerrainStep(priors, model, seed, terrain)),
         ("vegetation", VegetationStep(priors, sampler, seed, players, HopContent())),

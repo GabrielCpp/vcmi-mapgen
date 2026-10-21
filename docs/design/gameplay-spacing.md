@@ -284,6 +284,23 @@ Revision log:
   Done moves to the share of copies under their kind's corpus p10, which the readings print.
 - R2. Section 2, roster: L3 confirmed the picker draws per centre while siting
   (`core/steps/gameplay/pick.py:93`). The roster is new, and the picker's near weight goes.
+- R4. Section 2, fill: slice 2 first drew inside the band before any tile one band out. At
+  seed 1028 at 144 the late band-1 slots saw about 264 open tiles in 1 or 2 zones, all near
+  a copy, so copies crowded more (0.387) than before the slice (0.301). A tile where the
+  kind would stand under its corpus p10 now ranks with the tiles one band further out.
+- R5. Section 2, fill, and 5b row 4: gold mines took the contest line first, so 88% of them
+  crowded at 144. Gold now draws by the spacing weight among the tiles the gold rule
+  admits, an uncrowded tile first. The cost is the weakest player's claimed value at 72:
+  within 10 days from 0.789 to 0.722, within 40 from 0.686 to 0.667 (0.756 before slice 2).
+  The contest line first gives 0.805 within 10 but crowds 40% of gold at 72. Crowded first,
+  then the contest gap, gives 0.694 and crowds 62% at 144. The user chose the spacing draw
+  on 2026-10-20: coverage and the full plan come before fairness, which placement fixes later.
+- R6. Section 6, slices 2 and 3, and 5b row 7: the close rare mines come from each player's
+  rare slots, which keep their own ranking until slice 3 rewrites them. Slice 2 cannot move
+  row 7 (0.256 at 144, 0.108 at 72 after it). Its at-or-below-0.05 target moves to slice 3.
+- R7. Section 2, fill: gold stays out of the zone share, because the gold rule already
+  decides where it may stand. Its strict pass keeps a tile only when every tile within the
+  neighbourhood is admitted too, so the anchor cannot drift off the rule.
 
 Parts:
 
@@ -350,7 +367,7 @@ readings' quartiles over the corpus maps of the same size and nearest player cou
 | 4. Near-home mix | value claimed within 10 and 20 days | nothing | 0.713, 0.722 (corpus 0.561, 0.558) | 0.796, 0.748 (corpus 0.950, 0.925) | measured and reported (A6) |
 | 5. Copies within 10 and 6 | the visitables' repeat shares | nothing | 0.165, 0.048 (corpus 0.133, 0.044) | 0.090, 0.045 (corpus 0.067, 0) | inside the corpus quartiles |
 | 6. Way out | each player's way repeats a resource | nothing | 4 ways repeat | 1.5 | measured and reported (A8) |
-| 7. Close rare mines | rare mines with one of their resource close | nothing | 0.267 (corpus 0) | 0.095 (corpus 0) | at or below 0.05 |
+| 7. Close rare mines | rare mines with one of their resource close | nothing | 0.267 (corpus 0) | 0.095 (corpus 0) | at or below 0.05 from slice 3 (R6) |
 | 8. Territory F near 20,135 | visitables per 100 tiles | nothing | 4.31 with the share, 0 or 1 without | not read | at or above 4.31, and no territory of 150+ tiles with 1 or fewer |
 | 9. Speed | the 144 target set 2026-10-10 | nothing | 57.2 s | 8.2 s | at or below 60 s at 144 |
 | 10. Same seed, same map | golden hashes | `make golden` test | current hashes | current hashes | new hashes, regenerated once per slice, stable across two runs |
@@ -380,11 +397,18 @@ states before and after.
 2. **Map-wide fill under the law.** Roster before siting. Open spots pooled per level over
    every zone, band and zone room as filters. Seeded draw weighted by the spot weight.
    Picker near weight and `clear_first` removed. Zone share on by default with MINE inside.
-   Touches: plan, fill. Done when rows 11, 5 and 7 hold and rows 1, 3, 8, 9 and 10 hold.
+   Touches: plan, fill. Done when rows 11 and 5 hold and rows 1, 3, 8, 9 and 10 hold.
+   Row 7 moved to slice 3 (R6). Measured 2026-10-20, before then after: copies crowded
+   0.301 to 0.155 at 144 and 0.176 to 0.092 at 72, inside the corpus quartiles. Copies
+   within 6 0.048 to 0.024 and 0.045 to 0.019, inside. Copies within 10 0.165 to 0.032 at
+   144, under the quartile, a fixed 10-tile reading at every size. Claimed within 10 at 72
+   0.796 to 0.722 (R5). Rows 1, 3, 8 (4.90 per 100, no empty territory), 9 (48.2 s) and 10
+   hold.
 3. **Fewest rare mines.** Candidate spots in the radius, walk prices, type round, shared
    spots, cover. The turn's rare slots removed. Extras go to the roster. The reach check
-   replaces the second promise pass. Touches: resource cover, plan. Done when row 2 holds,
-   the cover stands no more mines per type than players, and every other row still holds.
+   replaces the second promise pass. Touches: resource cover, plan. Done when rows 2 and 7
+   hold, the cover stands no more mines per type than players, and every other row still
+   holds.
 
 ## 7. Assumptions
 

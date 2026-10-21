@@ -8,7 +8,9 @@ from numpy.typing import NDArray
 from vcmi_mapgen.core.model import PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.site import ZoneSite
+from vcmi_mapgen.core.priors.spacing import SpacingFit, SpacingPriors
 from vcmi_mapgen.core.reading.families import dwelling_family, family_purpose
+from vcmi_mapgen.core.reading.repeats import Kind, Spot, kind_key
 from vcmi_mapgen.core.steps.gameplay.bands import Slot
 from vcmi_mapgen.core.steps.gameplay.pick import Pick, Picker
 from vcmi_mapgen.core.steps.gameplay.reach import Reach
@@ -22,6 +24,7 @@ from vcmi_mapgen.core.steps.gameplay.siting import (
     Tiles,
     owner,
 )
+from vcmi_mapgen.core.steps.gameplay.spacing import SpotWeight
 
 
 def test_the_first_player_to_arrive_owns_a_tile() -> None:
@@ -209,3 +212,88 @@ def test_a_slot_records_the_groups_it_walked_and_ranks_the_group_it_stood_in() -
     stood = got.stood
     assert stood is not None
     assert (stood.group, stood.centre, stood.rank, stood.tried_at) == (1, (7, 0), 1, 0)
+
+
+@final
+class _Standing:
+    def __init__(self, stood: dict[Kind, list[Spot]]) -> None:
+        self.stood: dict[Kind, list[Spot]] = stood
+
+    def offers(self, _family: str, _terrain: str, _st: object, _kind: Kind) -> bool:
+        return True
+
+
+@final
+class _Grown:
+    def __init__(self, zid: int) -> None:
+        self.zid = zid
+        self.zone = SimpleNamespace(terrain="grass")
+        self.st = None
+
+
+def _spread_siting(
+    stood: dict[Kind, list[Spot]], law: SpotWeight | None, seed: int, caps: dict[int, int] | None
+) -> Siting:
+    sites = [cast(ZoneSite, cast(object, _Grown(i))) for i in (7, 9)]
+    tiles = Tiles(
+        [(0, x, 0) for x in range(1, 13)],
+        np.array([0] * 6 + [1] * 6, dtype=np.intp),
+        np.zeros((1, 12, 1), dtype=np.int64),
+        TileGrid((1, 1, 13), (np.zeros(12, np.intp), np.zeros(12, np.intp), np.arange(1, 13))),
+    )
+    siting = Siting(
+        sites,
+        cast(Picker, cast(object, _Standing(stood))),
+        lambda d: d,
+        random.Random(seed),
+        Reach(0),
+        tiles=tiles,
+    )
+    siting.spacing = law
+    siting.caps = caps
+    siting.capped = frozenset({Purpose.MANA})
+    return siting
+
+
+def _first_tile(siting: Siting, slot: Slot) -> tuple[int, int]:
+    groups = siting._groups(slot, Purpose.MANA, 0)  # pyright: ignore[reportPrivateUsage]
+    assert groups
+    _tier, site, rows = groups[0]
+    tiles = siting.tiles
+    assert tiles is not None
+    return site.zid, tiles.keys[cast(list[int], rows.tolist())[0]][1]
+
+
+def test_the_spread_path_never_offers_a_full_zone_while_capping() -> None:
+    siting = _spread_siting({}, None, 0, {0: 0, 1: 3})
+    groups = siting._groups(Slot(Purpose.MANA), Purpose.MANA, 0)  # pyright: ignore[reportPrivateUsage]
+    assert {g[1].zid for g in groups} == {9}
+    assert sum(len(g[2]) for g in groups) == 6
+    siting._lax = True  # pyright: ignore[reportPrivateUsage]
+    lax = siting._groups(Slot(Purpose.MANA), Purpose.MANA, 0)  # pyright: ignore[reportPrivateUsage]
+    assert {g[1].zid for g in lax} == {7, 9}
+
+
+def test_the_spread_path_is_the_same_for_a_seed() -> None:
+    kind: Kind = ("mana", None)
+    slot = Slot(Purpose.MANA, kind=kind)
+    law = _law(kind)
+    one = _first_tile(_spread_siting({kind: [(0, 0, 0)]}, law, 4, None), slot)
+    two = _first_tile(_spread_siting({kind: [(0, 0, 0)]}, law, 4, None), slot)
+    assert one == two
+
+
+def test_the_spread_path_lands_away_from_a_copy_more_often_than_a_uniform_draw() -> None:
+    kind: Kind = ("mana", None)
+    slot = Slot(Purpose.MANA, kind=kind)
+    law = _law(kind)
+    near = sum(
+        int(_first_tile(_spread_siting({kind: [(0, 0, 0)]}, law, seed, None), slot)[1] <= 2)
+        for seed in range(300)
+    )
+    assert near / 300 < 0.5 * (2 / 12)
+
+
+def _law(kind: Kind) -> SpotWeight:
+    fit = SpacingFit("gamma", (3.0, 0.5), 100, 0.3, 1.4, 3.0, 0.0, 0.5)
+    return SpotWeight(SpacingPriors({kind_key(kind): fit}), {kind: 2}, {0: 40})
