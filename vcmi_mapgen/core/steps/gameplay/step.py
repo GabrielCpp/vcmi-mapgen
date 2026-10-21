@@ -237,8 +237,10 @@ class GameplayStep(PipelineStep):
         towns = [o for s in sites for o in s.objs if o.purpose == Purpose.TOWN]
         _ = stand_pairs(sites, site_variants(catalog), towns, self._guarding)
         self._place_landmarks(catalog, indexes, map_state)
-        for line in self._keep_promise(catalog, indexes, map_state).warnings:
+        first = self._keep_promise(catalog, indexes, map_state)
+        for line in first.warnings:
             print(f"  WARNING: mine promise: {line}")
+        print(f"  rare cover: {', '.join(f'{r} {n}' for r, n in first.cover)}")
         if 0 in indexes:
             indexes[0].lf.avoid = NO_TILES
         self._place_all(catalog, indexes, map_state)

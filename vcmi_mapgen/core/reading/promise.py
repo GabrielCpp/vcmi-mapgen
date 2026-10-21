@@ -6,7 +6,7 @@ includes the toll of the guard covering the entrance."""
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -18,6 +18,7 @@ from vcmi_mapgen.core.reading.routes import Spot, route_map
 
 PROMISE_DAYS = 14
 PROMISE_GAP = 3
+OWN_MINE_RES = ("sawmill", "orePit")
 
 
 def mine_resource(catalog: Catalog, obj: PlacedObject) -> str | None:
@@ -56,9 +57,14 @@ class Promise:
         reached = [v for v in found if v is not None]
         return max(reached) - min(reached)
 
-    def broken(self, limit: int = PROMISE_DAYS, gap: int = PROMISE_GAP) -> list[str]:
+    def broken(
+        self,
+        limit: int = PROMISE_DAYS,
+        gap: int = PROMISE_GAP,
+        even: Collection[str] = OWN_MINE_RES,
+    ) -> list[str]:
         """Each breach as one line: a player past ``limit`` days of a resource, or a resource
-        whose gap passes ``gap``."""
+        of ``even`` whose gap passes ``gap``."""
         out: list[str] = []
         resources = sorted({r for d in self.days for r in d})
         for i, d in enumerate(self.days):
@@ -68,7 +74,7 @@ class Promise:
                 if d.get(r) is None or (v := d[r]) is None or v > limit
             )
         for r in resources:
-            g = self.gap(r)
+            g = self.gap(r) if r in even else None
             if g is not None and g > gap:
                 out.append(f"{r}: gap {g} days")
         return out

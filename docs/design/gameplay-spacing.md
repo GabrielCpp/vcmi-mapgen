@@ -1,7 +1,7 @@
 # Gameplay spacing
 
-Status 2026-10-20: settled with the user. Slice 1 is built: the spacing prior and the
-readings.
+Status 2026-10-20: settled with the user. Slices 1 to 3 are built: the spacing prior and
+the readings, the map-wide fill under the law, and the fewest rare mines.
 
 Disclosure: I read the gameplay step, its siting, picker, quota, bands, promise and turn
 code before this skill loaded, while diagnosing seed 1028 at 144. Every design decision
@@ -298,6 +298,18 @@ Revision log:
 - R6. Section 6, slices 2 and 3, and 5b row 7: the close rare mines come from each player's
   rare slots, which keep their own ranking until slice 3 rewrites them. Slice 2 cannot move
   row 7 (0.256 at 144, 0.108 at 72 after it). Its at-or-below-0.05 target moves to slice 3.
+- R7. Section 2, cover: a pick can pass the site fit and still fail to stand, and the same
+  pick then won every round. On seed 1 at 48 only one rare mine stood. When a pick fails to
+  stand, the cover stands the next best offer of that resource instead.
+- R8. Section 1, done, and 5b row 2: the settled process promises each rare resource within
+  14 days and nothing about the gap between players. Only wood and ore keep the 3-day gap.
+  The promise reading stops warning about a rare gap. Slice 3 printed that warning 12 times
+  over the 10 maps at 72, and for 4 resources at 144 with gaps of 6 to 8 days.
+- R9. 5b rows 5 and 11: seeds 1 to 10 at 72 put copies within 6 at 0.060 and kinds spaced
+  at 0.811 after slice 3, both outside the quartiles. Seeds 11 to 20 put them at 0.000 and
+  0.924, against 0.038 and 0.860 before. The kinds that crowded on seeds 1 to 10 were witch
+  huts, shrines and fountains, which slice 3 does not place. The slip is seed noise, and
+  the done-when reads both seed sets.
 - R7. Section 2, fill: gold stays out of the zone share, because the gold rule already
   decides where it may stand. Its strict pass keeps a tile only when every tile within the
   neighbourhood is admitted too, so the anchor cannot drift off the rule.
@@ -362,7 +374,7 @@ readings' quartiles over the corpus maps of the same size and nearest player cou
 | Receiver | Gets today | Enforced by | Before 144 | Before 72 | Holds when |
 |---|---|---|---|---|---|
 | 1. Player supply | windmill, mercury, gold and sawmill counts per 1k land | nothing | 0.736, 0.606, 0.389, 0.692 | not read | each inside the corpus p10 to p90 (0.155 to 1.122, 0.338 to 1.042, 0.340 to 0.864, 0.498 to 1.500) |
-| 2. Player reach | each rare resource within 14 days | promise warnings | not read (A7) | not read (A7) | no new warning |
+| 2. Player reach | each rare resource within 14 days | promise warnings | none | gemPond out of reach for one player on seed 7, and a 5-day gemPond gap | no new warning |
 | 3. Total resource mines | the corpus curve | quota | 82, curve 78.9 | 32.5, curve 31.5 | within 10% of the curve |
 | 4. Near-home mix | value claimed within 10 and 20 days | nothing | 0.713, 0.722 (corpus 0.561, 0.558) | 0.796, 0.748 (corpus 0.950, 0.925) | measured and reported (A6) |
 | 5. Copies within 10 and 6 | the visitables' repeat shares | nothing | 0.165, 0.048 (corpus 0.133, 0.044) | 0.090, 0.045 (corpus 0.067, 0) | inside the corpus quartiles |
@@ -408,7 +420,18 @@ states before and after.
    spots, cover. The turn's rare slots removed. Extras go to the roster. The reach check
    replaces the second promise pass. Touches: resource cover, plan. Done when rows 2 and 7
    hold, the cover stands no more mines per type than players, and every other row still
-   holds.
+   holds. Measured 2026-10-20, before then after. Row 2: no reach warning on any map, against
+   one at 72 before. Row 7: close rare share 0.26 to 0.00 at 144 and 0.13 to 0.00 at 72, and
+   0.10 to 0.00 on seeds 11 to 20. The cover stood 2, 2, 2 and 3 mines at 144 with 4
+   players, and 1 or 2 per type at 72. Row 11: copies crowded 0.155 to 0.139 at 144 and
+   0.123 to 0.102 on seeds 11 to 20, kinds spaced 0.923 to 0.938 and 0.860 to 0.924. Seeds 1
+   to 10 at 72 read 0.092 to 0.104 and 0.845 to 0.811 (R9). Row 5: copies within 6 at 72
+   0.038 to 0.000 on seeds 11 to 20, 0.019 to 0.060 on seeds 1 to 10 (R9). Rows 1, 3 (80
+   mines at 144, 30.8 at 72), 8 (6.36 per 100, no empty territory), 9 (46.3 s) and 10 hold.
+   Row 4 moved: claimed within 10 at 72 0.722 to 0.709 on seeds 1 to 10 and 0.751 to 0.672
+   on seeds 11 to 20, within 20 at 144 0.595 to 0.686. The zone quota now overflows by up to
+   3 objects on 5 of 10 maps at 72 and by 2 at 144, where it overflowed by none before. Two
+   dwelling slots at 72 found no spot.
 
 ## 7. Assumptions
 
@@ -431,8 +454,9 @@ states before and after.
 6. **The near-home mix may move.** Decided: measured, not designed. Basis: the user, 2026-10-19.
    If wrong: fill; a band filter tightened near homes.
 7. **Today's console shows no promise warning on seed 1028 at 144 or on seeds 1 to 10 at
-   72.** Decided: slice 3 reads the warnings before its change. Basis: none measured; the
-   readings tool silences the pipeline's console. If wrong: 5b row 2.
+   72.** Decided: slice 3 reads the warnings before its change. Basis: measured before slice
+   3: seed 7 at 72 left one player out of gemPond reach with a 5-day gap, and the other maps
+   warned of nothing. Resolved: 5b row 2 holds that before.
 8. **Repeating ways may move freely.** Decided: row 6 is measured and reported. Basis: the
    readings print no corpus spread for it, so no target exists. If wrong: row 6 needs a
    corpus reading first.

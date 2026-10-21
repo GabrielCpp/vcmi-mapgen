@@ -45,16 +45,14 @@ from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
     TOP_LEVEL,
     UNGUARDED,
-    door_guard,
     family_purpose,
-    guard_levels,
     mine_family,
 )
 from vcmi_mapgen.core.reading.mines import BASIC_MINE_RES, GOLD
 from vcmi_mapgen.core.reading.promise import doors
 from vcmi_mapgen.core.reading.repeats import Kind
 from vcmi_mapgen.core.reading.routes import Spot
-from vcmi_mapgen.core.reading.supply import NEAR, entrance
+from vcmi_mapgen.core.reading.supply import NEAR
 from vcmi_mapgen.core.steps.gameplay.allocate import keeps_even, promised_guard
 from vcmi_mapgen.core.steps.gameplay.bands import Slot
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
@@ -69,7 +67,6 @@ from vcmi_mapgen.core.steps.gameplay.result import (
     Stood,
 )
 from vcmi_mapgen.core.steps.gameplay.spacing import SpotWeight
-from vcmi_mapgen.core.steps.gameplay.turn import Stop, Turn, near
 
 CENTRES = 40
 TOWN_ROOM = 238
@@ -218,7 +215,6 @@ class Siting:
         default_factory=list[tuple[str, PlacedObject, int]]
     )
     maps: Sequence[EffortMap] = ()
-    turn: Turn | None = None
     gold: GoldSpot | None = None
     homes: Sequence[PlacedObject] = ()
     caps: dict[int, int] | None = None
@@ -281,9 +277,8 @@ class Siting:
         snug for its size, then for a spot with one closed side, then for any spot in the open.
         It then gives way to a smaller object of the same family, which looks for the same
         spots in the same order. A large object, and any object in the open, tries the most
-        open ground of a group first. Every object tries every group in rank order. A rare mine
-        takes its family from the turn where it stands. None when no site takes any, and nothing
-        stands."""
+        open ground of a group first. Every object tries every group in rank order. None when no
+        site takes any, and nothing stands."""
         purpose = family_purpose(slot.family)
         guard = min(self.draws.draw(self.rng, slot.family), self._top())
         self._first_view = self._last_view = self._stood = None
@@ -377,32 +372,25 @@ class Siting:
         if self._weighted(slot, purpose):
             return self._stand_spread(slot, purpose, guard)
         groups = self._pool = self._groups(slot, purpose, guard)
-        picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
-        stops = self._stops(slot.family)
-        for strict in (True, False) if stops is not None and groups else (False,):
-            near = [g for g in groups if g[0] == groups[0][0]] if strict else groups
-            stood = self._stand(slot.family, near, (picks, stops), strict)
-            if stood is not None:
-                return stood
-        return None
+        return self._stand(slot.family, groups, {})
 
     def _weighted(self, slot: Slot, purpose: str) -> bool:
         """Whether ``slot`` is drawn over the whole map by the spacing weight of its kind: it
-        serves no player, is no town, and takes no turn."""
-        return slot.player is None and purpose != Purpose.TOWN and self._stops(slot.family) is None
+        serves no player and is no town."""
+        return slot.player is None and purpose != Purpose.TOWN
 
     def _stand_spread(
         self, slot: Slot, purpose: str, guard: int
     ) -> tuple[str, PlacedObject] | None:
         self._kind = slot.kind
         groups = self._pool = self._groups(slot, purpose, guard)
-        return self._stand(slot.family, groups, ({}, None), False)
+        return self._stand(slot.family, groups, {})
 
     def _stand_gold(self, slot: Slot, purpose: str, guard: int) -> tuple[str, PlacedObject] | None:
         picks: dict[tuple[ZoneSite, str, int], Pick | None] = {}
         for loose in (False, True):
             groups = self._pool = self._groups(slot, purpose, guard, loose)
-            stood = self._stand(slot.family, groups, (picks, None), False)
+            stood = self._stand(slot.family, groups, picks)
             if stood is not None:
                 return stood
         return None
@@ -411,8 +399,7 @@ class Siting:
         self,
         dealt: str,
         groups: Sequence[Group],
-        seen: tuple[dict[tuple[ZoneSite, str, int], Pick | None], Sequence[Stop] | None],
-        strict: bool,
+        picks: dict[tuple[ZoneSite, str, int], Pick | None],
     ) -> tuple[str, PlacedObject] | None:
         purpose = family_purpose(dealt)
         capping = self._capping(purpose, dealt)
@@ -428,14 +415,14 @@ class Siting:
                 if capping and self._full(site):
                     outcome = "zone_full"
                 else:
-                    parts = self._parts(dealt, site, rows, seen, strict)
+                    parts = self._parts(dealt, site, rows, picks)
                     outcome = "no_room" if parts else "no_object"
                 for family, pick, part in parts:
                     centres = self._centres(part)
                     guard = self._even_guard(family, cast(list[int], part[:1].tolist())[0], tier[1])
                     obj = self._try(family, site, centres, pick, (fallback, shape, guard))
                     if obj is not None:
-                        self._took(family, site, obj)
+                        self._took(family, site)
                         at = index[id(rows)]
                         kept = walk[: GROUPS_KEEP - 1] if len(walk) >= GROUPS_KEEP else walk
                         here = self._step(at, group, cols, "stood")
@@ -452,7 +439,7 @@ class Siting:
                             FOOTINGS[footing % len(FOOTINGS)],
                             self._smaller,
                             at,
-                            strict,
+                            False,
                             self._lax,
                             centre,
                             heads.index(centre) if centre in heads else -1,
@@ -482,43 +469,27 @@ class Siting:
 
     def _nearest(self, family: str) -> Days:
         """Per player, the fewest days to a standing object of ``family`` past its own guard."""
-        turn = self.turn
         best: list[int | None] = [None] * len(self.maps)
         for f, obj, guard in self.held:
             if f == family:
-                least = turn.guard_of(f, obj) if turn is not None and f in turn.offered else guard
-                for p, d in enumerate(visit_days(obj, self.maps, least)):
+                for p, d in enumerate(visit_days(obj, self.maps, guard)):
                     best[p] = _sooner(best[p], d)
         return tuple(best)
 
-    def _took(self, family: str, site: ZoneSite, obj: PlacedObject) -> None:
+    def _took(self, family: str, site: ZoneSite) -> None:
         if self.caps is not None and family_purpose(family) in self.capped:
             i = self.sites.index(site)
             self.caps[i] = max(0, self.caps.get(i, 0) - 1)
-        turn = self.turn
-        if turn is not None and family in turn.offered:
-            turn.took(family)
-            guards = guard_levels(self.picker.catalog, site.objs)
-            turn.guards[obj.level, obj.x, obj.y] = door_guard(guards, obj)
 
     def _parts(
         self,
         dealt: str,
         site: ZoneSite,
         rows: NDArray[np.intp],
-        seen: tuple[dict[tuple[ZoneSite, str, int], Pick | None], Sequence[Stop] | None],
-        strict: bool,
+        picks: dict[tuple[ZoneSite, str, int], Pick | None],
     ) -> list[tuple[str, Pick, NDArray[np.intp]]]:
-        picks, stops = seen
-        if stops is None:
-            drawn = self._first(picks, site, [dealt], cast(list[int], rows[:1].tolist())[0])
-            return [] if drawn is None else [(*drawn, rows)]
-        parts: dict[str, tuple[Pick, list[int]]] = {}
-        for k in cast(list[int], rows.tolist()):
-            drawn = self._first(picks, site, self._turns(dealt, site, k, stops, strict), k)
-            if drawn is not None:
-                parts.setdefault(drawn[0], (drawn[1], []))[1].append(k)
-        return [(f, p, np.array(ks, dtype=np.intp)) for f, (p, ks) in parts.items()]
+        drawn = self._first(picks, site, [dealt], cast(list[int], rows[:1].tolist())[0])
+        return [] if drawn is None else [(*drawn, rows)]
 
     def _first(
         self,
@@ -536,32 +507,6 @@ class Siting:
             if pick is not None:
                 return family, pick
         return None
-
-    def _stops(self, family: str) -> list[Stop] | None:
-        turn = self.turn
-        if turn is None or family not in turn.offered:
-            return None
-        stops: list[Stop] = []
-        for f, obj, _guard in self.held:
-            if f in turn.offered:
-                reach = near(visit_days(obj, self.maps, turn.guard_of(f, obj)))
-                stops.append(Stop(f, reach, obj.level, entrance(obj)))
-        return stops
-
-    def _turns(
-        self,
-        dealt: str,
-        site: ZoneSite,
-        k: int,
-        stops: Sequence[Stop],
-        strict: bool,
-    ) -> list[str]:
-        tiles, turn = self.tiles, self.turn
-        assert tiles is not None and turn is not None
-        days = cast(list[int], cast(Codes, tiles.days[0, k]).tolist())
-        reach = near([None if d < 0 else d for d in days])
-        at = Stop(dealt, reach, site.lf.level, tiles.keys[k][1:])
-        return [f for f, clean in turn.order(at, stops) if clean or not strict]
 
     def _try(
         self,

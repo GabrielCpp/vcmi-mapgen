@@ -9,10 +9,11 @@ from dataclasses import dataclass
 
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.reading.families import mine_family
+from vcmi_mapgen.core.reading.promise import OWN_MINE_RES
 
 RARE_MINE_RES = ("alchemistLab", "sulfurDune", "crystalCavern", "gemPond")
 
-BASIC_MINE_RES = ("sawmill", "orePit", *RARE_MINE_RES)
+BASIC_MINE_RES = (*OWN_MINE_RES, *RARE_MINE_RES)
 
 GOLD = "goldMine"
 

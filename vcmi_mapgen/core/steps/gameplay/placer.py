@@ -2,9 +2,10 @@
 map holds each family at the count its group rule gives, split over the bands by the
 family's corpus effort, map-wide. No object serves a player: each stands where the players'
 reach of its family stays even, under the guard that lifts it into its band. The rare mines
-alone go in turn along each player's way. The neutral towns stand furthest from every other
-town. Each neutral town takes its own sawmill and ore pit right after the towns, before any
-mine. The gold mines stand last among the mines, on contested land far from every home."""
+each player needs within reach stand before this pass, and every other rare mine is drawn
+like any other family. The neutral towns stand furthest from every other town. Each neutral
+town takes its own sawmill and ore pit right after the towns, before any mine. The gold mines
+stand last among the mines, on contested land far from every home."""
 
 from __future__ import annotations
 
@@ -17,7 +18,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.guard_draw import GuardDraw
-from vcmi_mapgen.core.placement.site import MINE_GUARD_LVL, ZoneSite
+from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.effort import EffortPriors
 from vcmi_mapgen.core.priors.spacing import SpacingPriors
@@ -25,13 +26,11 @@ from vcmi_mapgen.core.reading.effort import EffortMap
 from vcmi_mapgen.core.reading.families import (
     TOP_LEVEL,
     Families,
-    door_guard,
     family_purpose,
     guard_levels,
-    mine_family,
     reach_guard,
 )
-from vcmi_mapgen.core.reading.mines import RARE_MINE_RES, MapMeasure
+from vcmi_mapgen.core.reading.mines import MapMeasure
 from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order, stretched
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
@@ -54,10 +53,8 @@ from vcmi_mapgen.core.steps.gameplay.siting import (
 )
 from vcmi_mapgen.core.steps.gameplay.spacing import SpotWeight
 from vcmi_mapgen.core.steps.gameplay.supply import Supply
-from vcmi_mapgen.core.steps.gameplay.turn import Turn, nearest_first, rare_slots
 
 VISIT_RANK = 4
-RARE_FAMILIES = frozenset(mine_family(r) for r in RARE_MINE_RES)
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,13 +82,11 @@ class Demand:
 class Plan:
     """The slots still to place in placing order, the objects already standing on the
     sites by family, the count of each family each new town's own objects count against,
-    dealt once the towns stand, the player each family's split starts from, and the player
-    towns."""
+    dealt once the towns stand, and the player towns."""
 
     slots: Sequence[Slot]
     standing: Sequence[tuple[str, PlacedObject]]
     paired: Mapping[str, int] = field(default_factory=dict[str, int])
-    starts: Mapping[str, int] = field(default_factory=dict[str, int])
     homes: Sequence[PlacedObject] = ()
 
 
@@ -155,25 +150,20 @@ class Placement:
         groups = group_rules(demand.mines, demand.towns, count, demand.families)
         quota = family_quota(groups, corpus, demand.density, len(homes), self.rng)
         pairs = paired(groups)
-        starts = {
-            f: i % demand.players if demand.players else 0 for i, f in enumerate(sorted(quota))
-        }
         now = {f: n for f, n in sorted(quota.items()) if f not in pairs}
-        slots = self._deal(now, standing, starts, maps)
+        slots = self._deal(now, standing, maps)
         later = {f: n for f, n in sorted(quota.items()) if f in pairs}
-        return Plan(slot_order(slots, RANKS), held, later, starts, list(homes))
+        return Plan(slot_order(slots, RANKS), held, later, list(homes))
 
     def _deal(
         self,
         quota: Mapping[str, int],
         standing: Mapping[str, Sequence[PlacedObject]],
-        starts: Mapping[str, int],
         maps: Sequence[EffortMap],
     ) -> list[Slot]:
-        """The slots of ``quota`` once the objects ``standing`` count against it: the rare
-        mines dealt in turn along each player's way, the towns and the gold mines for no
-        player, every other family band by band, each family's corpus effort stretched with
-        the map's land."""
+        """The slots of ``quota`` once the objects ``standing`` count against it: the towns
+        and the gold mines for no player, every other family band by band, each family's corpus
+        effort stretched with the map's land."""
         band_of = self.effort.band
         land = self.demand.measure.land
         corpus = {
@@ -186,13 +176,11 @@ class Placement:
             unowned = family == GOLD_FAMILY or family_purpose(family) == Purpose.TOWN
             if unowned and self.demand.players:
                 slots += [Slot(family)] * max(0, n - len(standing.get(family, [])))
-            elif family not in RARE_FAMILIES:
+            else:
                 visits = [standing_visit(o, maps) for o in standing.get(family, [])]
                 bands = [None if v is None else band_of(v[1]) for v in visits]
                 slots += plan.shared(family, n, bands)
-        rare = {f: n for f, n in quota.items() if f in RARE_FAMILIES}
-        visits = {f: [standing_visit(o, maps) for o in standing.get(f, [])] for f in rare}
-        return slots + rare_slots(plan, rare, visits, starts)
+        return slots
 
     def place(
         self,
@@ -204,8 +192,7 @@ class Placement:
         """Stand every slot of ``plan`` and tally what stood against what the plan asked,
         with the ranking each slot tried.
         The towns stand first, then ``supply`` stands each new town's own mines. Each of
-        those takes one object off the paired families, which are dealt then. Each rare mine
-        takes its family from the turn where it stands."""
+        those takes one object off the paired families, which are dealt then."""
         reach = Reach(self.demand.players)
         top = min(TOP_LEVEL, len(self.effort.toll) - 1)
         draws = GuardDraw(self.demand.families, top)
@@ -227,20 +214,8 @@ class Placement:
         siting.held.extend((f, o, 0) for f, o in stood)
         picker.see(o for _f, o in stood)
         rest = slot_order([*rest, *self._pairs(plan, len(new), len(stood), price())], RANKS)
-        rest = nearest_first(rest, RARE_FAMILIES)
         rest, counts = roster(picker, self.sites, rest, self.rng)
         siting.spacing = SpotWeight(self.demand.spacing, counts, self.demand.land)
-        pool = Counter(s.family for s in rest if s.family in RARE_FAMILIES)
-        held = [f for f, _o in [*plan.standing, *stood] if f in RARE_FAMILIES]
-        offered = {*pool, *held}
-        levels = {
-            mine_family(r): MINE_GUARD_LVL[r] for r in RARE_MINE_RES if mine_family(r) in offered
-        }
-        siting.turn = Turn(pool, levels, self.effort.toll, self.demand.players)
-        guards = guard_levels(self.catalog, (o for s in self.sites for o in s.objs))
-        for f, o in [*plan.standing, *stood]:
-            if f in RARE_FAMILIES:
-                siting.turn.guards[o.level, o.x, o.y] = door_guard(guards, o)
         shares = self._cap(siting, rest)
         placed += place_slots(siting, rest, rank, price)
         self._report(siting, shares)
@@ -281,7 +256,7 @@ class Placement:
         quota, over = trim(plan.paired, floor, stood)
         if over:
             print(f"  WARNING: the pairs of {towns} towns pass the mine curve by {over}")
-        return self._deal(quota, standing, plan.starts, maps)
+        return self._deal(quota, standing, maps)
 
     def _towns(self) -> list[PlacedObject]:
         return [o for s in self.sites for o in s.objs if o.purpose == Purpose.TOWN]

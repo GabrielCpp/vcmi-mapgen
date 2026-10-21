@@ -87,8 +87,7 @@ class _Spy(Siting):
         dealt: str,
         site: ZoneSite,
         rows: NDArray[np.intp],
-        seen: object,
-        strict: bool,
+        picks: object,
     ) -> list[tuple[str, Pick, NDArray[np.intp]]]:
         self.asked.append(site)
         return []
@@ -116,7 +115,7 @@ def test_a_site_with_no_cap_left_gets_no_capped_object() -> None:
     assert family_purpose(family) == Purpose.DWELLING
     _spy_asked = _Spy.asked
     _spy_asked.clear()
-    assert spy._stand(family, groups, ({}, None), False) is None  # pyright: ignore[reportPrivateUsage]
+    assert spy._stand(family, groups, {}) is None  # pyright: ignore[reportPrivateUsage]
     assert open_ in _spy_asked
     assert full not in _spy_asked
 
@@ -136,8 +135,7 @@ class _Walk(Siting):
         dealt: str,
         site: ZoneSite,
         rows: NDArray[np.intp],
-        seen: object,
-        strict: bool,
+        picks: object,
     ) -> list[tuple[str, Pick, NDArray[np.intp]]]:
         if site.zid == 7:
             return []
@@ -198,7 +196,7 @@ def test_a_slot_records_the_groups_it_walked_and_ranks_the_group_it_stood_in() -
     siting = _ranked_siting(sites, _Walk)
     _ = siting.note(groups, ("spread", "arrival"), cols)
     siting._pool = groups  # pyright: ignore[reportPrivateUsage]
-    assert siting._stand("MINE:x", groups, ({}, None), False) is not None  # pyright: ignore[reportPrivateUsage]
+    assert siting._stand("MINE:x", groups, {}) is not None  # pyright: ignore[reportPrivateUsage]
     slot = Slot("MINE:x", 0, 1, 2)
     siting.record(slot, 1, siting._stood)  # pyright: ignore[reportPrivateUsage]
     (got,) = siting.ranking

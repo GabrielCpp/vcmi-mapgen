@@ -1,7 +1,7 @@
 """Which effort band each gameplay object serves. A family's count splits over the bands by
 the corpus effort of the family, map-wide, and each object gets a target in days drawn from
 the corpus inside its band. No object serves a player: the reach gate keeps the players
-even. Rare mines alone split over the players, through the turn."""
+even."""
 
 from __future__ import annotations
 
@@ -26,13 +26,6 @@ class Slot:
     band: int | None = None
     target: int | None = None
     kind: Kind | None = None
-
-
-def player_split(n: int, players: int, start: int) -> list[int]:
-    """``n`` split evenly over ``players``, the remainder going to the players from
-    ``start`` on."""
-    base, rest = divmod(n, players)
-    return [base + int((p - start) % players < rest) for p in range(players)]
 
 
 def stretched(days: Sequence[int], factor: float) -> tuple[int, ...]:

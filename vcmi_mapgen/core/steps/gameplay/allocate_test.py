@@ -19,10 +19,14 @@ from vcmi_mapgen.core.steps.gameplay.allocate import (
     Offer,
     Pricer,
     Survey,
+    _pick,  # pyright: ignore[reportPrivateUsage]
+    _stand,  # pyright: ignore[reportPrivateUsage]
     drawn_guard,
     keep_promise,
     keeps_even,
+    offers,
     promised_guard,
+    prune,
     rank,
     site_variants,
 )
@@ -43,34 +47,11 @@ def _offer(site: ZoneSite, catalog: Catalog, days: Days) -> Offer:
     return Offer(site, ident, (5, 5), days)
 
 
-def test_the_rare_offer_serving_more_waiting_players_wins(catalog: Catalog) -> None:
-    site = _site(catalog)
-    one, both = _offer(site, catalog, (10, None)), _offer(site, catalog, (12, 12))
-    best: Days = (None, None)
-    assert rank(both, best, "gemPond") < rank(one, best, "gemPond")
-
-
-def test_the_rare_offer_keeping_the_gap_wins(catalog: Catalog) -> None:
-    site = _site(catalog)
-    wide, even = _offer(site, catalog, (5, 12)), _offer(site, catalog, (10, 12))
-    best: Days = (None, None)
-    assert rank(even, best, "gemPond") < rank(wide, best, "gemPond")
-
-
-def test_the_rare_offer_bringing_a_late_player_in_time_wins_over_the_gap(
-    catalog: Catalog,
-) -> None:
-    site = _site(catalog)
-    near, idle = _offer(site, catalog, (5, None)), _offer(site, catalog, (20, 20))
-    best: Days = (15, 10)
-    assert rank(near, best, "gemPond") < rank(idle, best, "gemPond")
-
-
 def test_a_wood_offer_serves_its_own_player(catalog: Catalog) -> None:
     site = _site(catalog)
     near_first, near_second = _offer(site, catalog, (3, 9)), _offer(site, catalog, (9, 4))
     best: Days = (None, None)
-    assert rank(near_second, best, "sawmill", 1) < rank(near_first, best, "sawmill", 1)
+    assert rank(near_second, best, 1) < rank(near_first, best, 1)
 
 
 def _survey(missing: str, calls: list[int]) -> Survey:
@@ -89,35 +70,84 @@ def _mines(site: ZoneSite) -> int:
     return sum(1 for o in site.objs if o.purpose == Purpose.MINE)
 
 
-def test_one_rare_mine_serves_both_players(catalog: Catalog) -> None:
-    site, calls = _site(catalog), list[int]()
-    kept = keep_promise([site], site_variants(catalog), _survey("gemPond", calls))
-    assert kept.warnings == ()
-    assert _mines(site) == 1
-    assert len(calls) == 2
+class _Flat(Pricer):
+    flat: Days = (3, 14)
 
-
-_REGIONS: tuple[Days, ...] = ((5, 12), (14, 9), (12, 4))
-
-
-class _Regions(Pricer):
     @override
     def days(self, spot: Spot, level: int, shut: frozenset[Spot]) -> Days:
-        return _REGIONS[min(spot.x * len(_REGIONS) // _SIDE, len(_REGIONS) - 1)]
+        return self.flat
 
     @override
     def prime(self, level: int, wants: Iterable[tuple[Spot, frozenset[Spot]]]) -> None:
         return None
 
 
-def test_rare_mines_pull_each_player_in_until_the_gap_closes(catalog: Catalog) -> None:
+def _rare_survey(site: ZoneSite, missing: tuple[str, ...], stood: int, days: Days) -> Survey:
+    def survey() -> tuple[Pricer, Mapping[str, Days]]:
+        pricer = _Flat([])
+        pricer.flat = days
+        done = _mines(site) >= stood
+        have: Mapping[str, Days] = {
+            r: days if done and r in missing else (None, None) if r in missing else (4, 4)
+            for r in BASIC_MINE_RES
+        }
+        return pricer, have
+
+    return survey
+
+
+def test_one_rare_mine_serves_both_players_whatever_their_gap(catalog: Catalog) -> None:
     site = _site(catalog)
-    have: Mapping[str, Days] = {
-        r: (None, None) if r == "gemPond" else (4, 4) for r in BASIC_MINE_RES
-    }
-    kept = keep_promise([site], site_variants(catalog), lambda: (_Regions([]), have))
+    kept = keep_promise(
+        [site], site_variants(catalog), _rare_survey(site, ("gemPond",), 1, (3, 14))
+    )
     assert kept.warnings == ()
-    assert [o.days for o in kept.stood] == [_REGIONS[1], _REGIONS[0], _REGIONS[2]]
+    assert _mines(site) == 1
+    assert dict(kept.cover)["gemPond"] == 1
+
+
+def test_a_pick_that_fails_to_stand_gives_way_to_the_next_offer(catalog: Catalog) -> None:
+    site = _site(catalog)
+    pool = list(offers([site], site_variants(catalog), _Flat([]), "gemPond", 3))
+    top = _pick(pool, (None, None), set())
+    assert top is not None
+    assert not _stand(top, 3)
+    survey = _rare_survey(site, ("gemPond",), 1, (3, 14))
+    kept = keep_promise([site], site_variants(catalog), survey)
+    assert kept.warnings == ()
+    assert [o.anchor for o in kept.stood] != [top.anchor]
+    assert _mines(site) == 1
+
+
+def test_two_rare_resources_stand_on_disjoint_cells(catalog: Catalog) -> None:
+    site = _site(catalog)
+    missing = ("gemPond", "crystalCavern")
+    kept = keep_promise([site], site_variants(catalog), _rare_survey(site, missing, 2, (3, 14)))
+    assert kept.warnings == ()
+    first, second = kept.stood
+    assert first.cells.isdisjoint(second.cells)
+    assert first.anchor != second.anchor
+
+
+def test_the_prune_drops_a_pick_a_later_pick_reaches_in_time(catalog: Catalog) -> None:
+    site = _site(catalog)
+    early, late = _offer(site, catalog, (10, 10, None)), _offer(site, catalog, (12, 12, 12))
+    assert prune([early, late], (None, None, None)) == [late]
+
+
+def test_the_prune_keeps_picks_that_each_reach_a_player_alone(catalog: Catalog) -> None:
+    site = _site(catalog)
+    left, right = _offer(site, catalog, (10, None)), _offer(site, catalog, (None, 12))
+    assert prune([left, right], (None, None)) == [left, right]
+
+
+def test_a_player_no_spot_reaches_in_time_is_named_and_gets_no_mine(catalog: Catalog) -> None:
+    site = _site(catalog)
+    kept = keep_promise(
+        [site], site_variants(catalog), _rare_survey(site, ("gemPond",), 1, (3, 30))
+    )
+    assert any("gemPond" in w and "[1]" in w for w in kept.warnings)
+    assert _mines(site) == 1
 
 
 def test_each_player_gets_its_own_wood_mine(catalog: Catalog) -> None:

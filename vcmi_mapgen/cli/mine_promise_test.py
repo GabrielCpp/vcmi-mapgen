@@ -1,6 +1,7 @@
 """Every player reaches a mine of each basic resource within PROMISE_DAYS hero-days of its
 town, the players stay within PROMISE_GAP days of each other, and no gold mine stands within
-FAR_FLOOR days of a town. The promise is a target: the small map keeps it, and the seed sweep
+FAR_FLOOR days of a town. Only wood and ore keep the gap: the rare resources promise the
+days alone. The promise is a target: the small map keeps it, and the seed sweep
 prints each breach instead of failing on it."""
 
 import contextlib
@@ -39,7 +40,8 @@ def _breaches(catalog: Catalog, priors: Priors, config: StepConfig) -> list[str]
 
 
 def test_a_small_map_keeps_the_mine_promise(catalog: Catalog, priors: Priors) -> None:
-    assert _breaches(catalog, priors, StepConfig(1, 48)) == []
+    breaches = _breaches(catalog, priors, StepConfig(1, 48))
+    assert breaches == []
 
 
 @pytest.mark.slow

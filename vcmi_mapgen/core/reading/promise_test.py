@@ -19,6 +19,11 @@ def test_a_late_player_and_a_wide_gap_break_the_promise() -> None:
     assert promise.broken() == ["player 0 gemPond: 15 days", "sawmill: gap 5 days"]
 
 
+def test_a_rare_gap_breaks_no_promise() -> None:
+    promise = Promise(({"gemPond": 2}, {"gemPond": 12}))
+    assert promise.broken() == []
+
+
 def test_an_unreached_resource_breaks_the_promise() -> None:
     promise = Promise(({"gemPond": None},))
     assert promise.broken() == ["player 0 gemPond: None days"]

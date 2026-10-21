@@ -8,7 +8,6 @@ from vcmi_mapgen.core.steps.gameplay.bands import (
     Slot,
     band_sequence,
     band_shares,
-    player_split,
     slot_order,
     stretched,
 )
@@ -17,11 +16,6 @@ from vcmi_mapgen.core.steps.gameplay.quota import RANKS
 
 def _band(d: int) -> int:
     return 1 if d < 5 else 2 if d < 10 else 3 if d < 15 else 4
-
-
-def test_the_remainder_goes_to_the_players_from_start() -> None:
-    assert player_split(5, 2, 0) == [3, 2]
-    assert player_split(5, 2, 1) == [2, 3]
 
 
 def test_band_shares_follow_the_corpus_days() -> None:
