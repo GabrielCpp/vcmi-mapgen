@@ -45,7 +45,6 @@ def mouth_key(
 def find_pockets(
     reach: Collection[Tile],
     masks: Sequence[PocketMask],
-    access: Container[Tile],
     occupied: Container[Tile],
 ) -> dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]]:
     found: dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]] = {}
@@ -56,7 +55,7 @@ def find_pockets(
         if blocked == 0:
             continue
         for mask in masks:
-            if mask.walls_by_guard > blocked or not _matches(reach, access, g, mask):
+            if mask.walls_by_guard > blocked or not _matches(reach, g, mask):
                 continue
             pocket = frozenset((g[0] + dx, g[1] + dy) for dx, dy in mask.free)
             if not _has_exit(reach, g, pocket):
@@ -118,11 +117,11 @@ def _bounded_region(
     return frozenset(seen)
 
 
-def _matches(reach: Container[Tile], access: Container[Tile], g: Tile, mask: PocketMask) -> bool:
+def _matches(reach: Container[Tile], g: Tile, mask: PocketMask) -> bool:
     gx, gy = g
     for dx, dy, free in mask.cells:
         t = (gx + dx, gy + dy)
-        if free != (t in reach) or (free and t in access):
+        if free != (t in reach):
             return False
     return True
 

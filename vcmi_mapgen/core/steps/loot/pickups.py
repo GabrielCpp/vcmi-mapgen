@@ -413,7 +413,7 @@ class _PocketCachePass:
             t
             for t in cand[1]
             if t != cand[0]
-            and t not in self.cover.claims
+            and self._open_tile(t)
             and t in self.global_place
             and self._on_terrain(t, terrain)
             and self._pickup_fits(t, *covers)
@@ -521,6 +521,9 @@ class _PocketCachePass:
             return False
         return self.cover.accepts(PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD))
 
+    def _open_tile(self, t: Tile) -> bool:
+        return t not in self.cover.claims and t not in self.approach
+
     def _pickup_fits(self, t: Tile, *covers: CoverIndex) -> bool:
         probe = PlacedObject.at(self.pickup_ident, t, purpose=Purpose.REWARD_PICKUP)
         return all(cover.accepts(probe) for cover in (self.cover, *covers))
@@ -528,7 +531,7 @@ class _PocketCachePass:
     def _leaves_cache_spot(self, cand_g: Tile, cand_pocket: frozenset[Tile]) -> bool:
         with_guard = CoverIndex([PlacedObject.at(self.guard_ident, cand_g, purpose=Purpose.GUARD)])
         return any(
-            t not in self.cover.claims
+            self._open_tile(t)
             and t in self.global_place
             and t != cand_g
             and self._pickup_fits(t, with_guard)
@@ -577,9 +580,7 @@ class _PocketCachePass:
         cache_spots = [
             t
             for t in pocket
-            if t not in self.cover.claims
-            and t in self.global_place
-            and self._on_terrain(t, terrain)
+            if self._open_tile(t) and t in self.global_place and self._on_terrain(t, terrain)
         ]
         if not cache_spots:
             self._why = PocketOutcome.NO_CACHE_SPOT
@@ -615,7 +616,7 @@ class _PocketCachePass:
             return
         self._guard = None if guard_tile is None else (guard_tile, lvl)
 
-        avail = [t for t in cache_spots if t not in self.cover.claims and self._pickup_fits(t)]
+        avail = [t for t in cache_spots if self._open_tile(t) and self._pickup_fits(t)]
         avail.sort(key=lambda t: max(abs(t[0] - ref[0]), abs(t[1] - ref[1])))
         if not avail:
             self._why = PocketOutcome.NO_FREE_TILE

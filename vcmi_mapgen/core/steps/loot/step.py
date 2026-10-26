@@ -30,13 +30,12 @@ from vcmi_mapgen.core.steps.loot.result import LootResult, PocketDecision, Quest
 def _precompute_pockets(
     zone_records: list[ZoneRecord],
     masks: Sequence[PocketMask],
-    access: AbstractSet[Tile],
     occupied: AbstractSet[Tile],
 ) -> tuple[dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]], set[Tile]]:
     _global_true_pkt: set[Tile] = set()
     for _zr_pkt in zone_records:
         _global_true_pkt |= _zr_pkt.passable
-    _raw_pkt = find_pockets(_global_true_pkt, masks, access, occupied)
+    _raw_pkt = find_pockets(_global_true_pkt, masks, occupied)
     _pocket_tiles_pkt: set[Tile] = set()
     for _g_pkt, (_pt_pkt, _mf_pkt) in _raw_pkt.items():
         if len(_pt_pkt) >= 3:
@@ -117,12 +116,12 @@ class LootStep(PipelineStep):
         zone_records = self._zone_records[level]
         access, occupied = access_tiles(objs), occupied_tiles(objs)
         _raw_pkt, _pocket_tiles_pkt = _precompute_pockets(
-            zone_records, self.priors.pocket_masks, access, occupied
+            zone_records, self.priors.pocket_masks, occupied
         )
         intents = {z: i for (lvl, z), i in self._plan.intents.items() if lvl == level}
         plan = PP.level_plan(intents, zone_records)
         if plan is not None:
-            _raw_pkt = _with_rooms(_raw_pkt, zone_records, access | occupied)
+            _raw_pkt = _with_rooms(_raw_pkt, zone_records, occupied)
         cover = CoverIndex(objs, self._claims.get(level, ()), rules)
         qobjs, quests = QU.place_seer_hut_quests(
             catalog,

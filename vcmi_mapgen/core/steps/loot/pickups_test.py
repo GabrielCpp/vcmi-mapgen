@@ -20,7 +20,7 @@ from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.steps.loot import pickups as CA
 from vcmi_mapgen.core.steps.loot.pocket_plan import PocketPlan
-from vcmi_mapgen.core.steps.loot.pockets import access_tiles, occupied_tiles
+from vcmi_mapgen.core.steps.loot.pockets import occupied_tiles
 from vcmi_mapgen.core.steps.loot.result import PocketOutcome
 
 
@@ -130,7 +130,7 @@ def test_scatter_places_resource_piles(catalog: Catalog, priors: Priors) -> None
 def _pockets(
     priors: Priors, zr: ZoneRecord, objs: Sequence[PlacedObject] = ()
 ) -> dict[Tile, tuple[frozenset[Tile], frozenset[Tile]]]:
-    return find_pockets(zr.passable, priors.pocket_masks, access_tiles(objs), occupied_tiles(objs))
+    return find_pockets(zr.passable, priors.pocket_masks, occupied_tiles(objs))
 
 
 def _type_of(catalog: Catalog, o: PlacedObject) -> str:
@@ -374,6 +374,18 @@ def test_a_deep_pocket_behind_an_approach_tile_is_filled_without_a_guard(
     assert fill.objs and all((o.x, o.y) in ROOM6 for o in fill.objs)
     [decision] = fill.decisions
     assert decision.outcome == PocketOutcome.UNGUARDED
+
+
+def test_a_deep_nook_holding_a_door_is_guarded_and_nothing_stands_on_the_door(
+    catalog: Catalog, priors: Priors
+) -> None:
+    door = (6, 7)
+    fill = _planned(catalog, priors, ROOM6, frozenset({door}))
+    [decision] = fill.decisions
+    assert decision.outcome == PocketOutcome.GUARDED
+    assert any(o.purpose == Purpose.GUARD for o in fill.objs)
+    standing = {(o.x, o.y) for o in fill.objs} | {h.tile for h in fill.held}
+    assert door not in standing
 
 
 def test_a_shallow_pocket_is_filled_without_a_guard(catalog: Catalog, priors: Priors) -> None:

@@ -13,7 +13,7 @@ def _field(w: int, h: int, walls: set[Tile]) -> set[Tile]:
 
 def test_find_pockets_drawn_shapes(priors: Priors) -> None:
     def best_mouths(reach: set[Tile], pocket_tiles: set[Tile]) -> list[frozenset[Tile]]:
-        found = find_pockets(reach, priors.pocket_masks, NO_ACCESS, NO_ACCESS)
+        found = find_pockets(reach, priors.pocket_masks, NO_ACCESS)
         raw = {g: c for g, c in found.items() if set(pocket_tiles) <= c[0]}
         return [cands[0][2] for cands in dedupe_pockets(raw, frozenset(reach))]
 
@@ -33,4 +33,4 @@ def test_find_pockets_drawn_shapes(priors: Priors) -> None:
     assert mouth_fs == frozenset({(7, 6)})
 
     reach = _field(12, 12, {(x, 6) for x in range(12)})
-    assert find_pockets(reach, priors.pocket_masks, NO_ACCESS, NO_ACCESS) == {}
+    assert find_pockets(reach, priors.pocket_masks, NO_ACCESS) == {}

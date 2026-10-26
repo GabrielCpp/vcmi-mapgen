@@ -9,8 +9,9 @@
 - `pocket_plan.py`: the pure pocket decisions: shallow or deep, and which places the plan
   covers. The guard level and the ward's artifact tier it earns come from
   `core/planning/guarding.py`.
-- `pockets.py`: the pocket guard tile, the approach tiles no pocket may hold, and the
-  town-to-mine routes a pocket guard must not cut. Pocket detection and dedupe live in
+- `pockets.py`: the pocket guard tile, the approach tiles, and the town-to-mine routes a
+  pocket guard must not cut. An approach tile is a door: a pocket may hold it, but no
+  guard, ward or pickup stands on it. Pocket detection and dedupe live in
   `core/grid/pockets.py`.
 - `quests.py`: the seer-hut quests, each linking an artifact to the hut that asks for it. No quest asks for a set part or a combined artifact.
 - `result.py`: `LootResult`, which carries the pockets, the held prize slots, the `QuestDecision` of each seer-hut quest and the `PocketDecision` of each pocket examined, with its outcome and the reason a pocket stood empty. `LootStep` publishes it.
