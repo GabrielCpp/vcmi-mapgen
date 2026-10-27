@@ -21,17 +21,6 @@ keeps guards and walls off a player town's start. The same `CoverIndex` owns the
 cells placements have claimed: `claim(cells)` adds them, `mark()` records a point, and
 `rollback(mark)` forgets every object and claim since that point.
 
-## Map
-
-- `map_state.py`: `MapState`, the tile grid and the objects on it, and the grid API.
-- `objects.py`: the object and zone records: `PlacedObject`, its `Identity` and `Entrance` and `Zone`, and the `Footprint` an object covers, a set of cells each with its `Role`. A placed object carries its `kind` and its payload, never an engine type or engine options.
-- `payload.py`: `Payload`, what a placed object holds for the game: a `Guard`, a `Reward`, a seer hut's `Quest`, a `Scroll`'s spell, a `Town` or a `Dwelling` tied to its town.
-- `terrain.py`: `Terrain`, the terrain vocabulary, and which terrains are water, barrier or land.
-- `artifact.py`: `ArtifactTier`, the four artifact classes a map's treasure draws from, and `ArtifactSet`, a combined artifact with its parts.
-- `purpose.py`: `Purpose`, the purposes objects are placed for, and the groups `VISIT_PURPOSES` and `COUNTED`.
-- `resource.py`: `Resource`, the resources a map's economy counts.
-- `road.py`: `Road`, the three road surfaces a tile can carry, by VCMI road index.
-
 ## `MapState`
 
 `MapState` is the render-only view of a finished map: exactly what `PngRenderer`,

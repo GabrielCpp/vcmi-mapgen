@@ -18,8 +18,8 @@ up" without a target cleans toward its own taste, which differs per session. Thi
 fixes the destination first, gets the operator to sign it, and then cuts the route into
 slices small enough that each one ends green.
 
-Load `codebase-map`, `python-dead-code` and `code-structure` with this skill. The inventory uses
-all three.
+Load `python-dead-code` and `code-structure` with this skill. The inventory uses
+both.
 
 ## Outputs
 
@@ -45,8 +45,8 @@ Work in this order. Each phase writes its section of `target.md` before the next
 
 ### 1. Inventory the present
 
-- **Map.** Read every `## Map` section. Where a directory has none, write one line per
-  file from reading it. A file whose line needs "and" holds two concerns.
+- **Map.** Write one line per source file from reading it: what the file owns, not how
+  it works. A file whose line needs "and" holds two concerns.
 - **Dead code.** Run the `python-dead-code` procedure to its classify step. Dead modules get the
   fate `delete` and go in the first slice. Do not design around code nobody runs.
 - **Rule hits.** Walk the `code-structure` trigger table over the tree. Record each hit as
