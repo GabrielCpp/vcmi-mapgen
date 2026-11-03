@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 SIZES = [36, 72, 108, 144]
 COUNT = 100
 WORKERS = max(1, (os.cpu_count() or 2) // 2)
+OFFSET = 1000
 
 
 def generate(seed: int) -> tuple[int, int, int]:
@@ -28,7 +29,7 @@ def main() -> None:
     count = int(sys.argv[1]) if len(sys.argv) > 1 else COUNT
     failed = 0
     with ThreadPoolExecutor(WORKERS) as pool:
-        for seed, size, code in pool.map(generate, range(1, count + 1)):
+        for seed, size, code in pool.map(generate, range(OFFSET, OFFSET + count + 1)):
             failed += code != 0
             print(f"seed {seed:3d} size {size:3d} {'ok' if code == 0 else 'FAILED'}", flush=True)
     print(f"{count - failed}/{count} maps in out/")
