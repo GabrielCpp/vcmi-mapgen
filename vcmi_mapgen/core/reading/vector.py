@@ -21,6 +21,7 @@ from vcmi_mapgen.core.reading.territories import (
     read_territories,
     territory_reading,
 )
+from vcmi_mapgen.core.reading.winding import read_winding
 
 HOP_CAP = 4
 FAR_HOP = 2
@@ -167,6 +168,7 @@ def map_vector(catalog: Catalog, map_state: MapState, owners: Mapping[TownKey, i
     content = _content(catalog, map_state, inferred)
     out = ground_vector(ground, inferred, content, map_state.roads.get(LEVEL, {}))
     out.update(rooms_vector(read_rooms(map_state, LEVEL)))
+    _put(out, "route_winding", read_winding(map_state, LEVEL))
     territories = read_territories(catalog, map_state, LEVEL, owners)
     if territories is not None:
         out.update(territory_vector(territory_reading(territories)))
