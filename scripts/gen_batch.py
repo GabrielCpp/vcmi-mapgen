@@ -15,7 +15,7 @@ COUNT = 100
 WORKERS = max(1, (os.cpu_count() or 2) // 2)
 INT64_MAX = 2**63 - 1
 OUT_DIR = Path(__file__).resolve().parent.parent / "out"
-VCMI_DIR = Path.home() / ".local" / "share" / "vcmi" / "Maps" / "VcmiMapsGen"
+VCMI_DIR = Path.home() / ".var" / "app" / "eu.vcmi.VCMI" / "data" / "vcmi" / "Maps" / "VcmiMapsGen"
 PLAYERS = 4
 
 
