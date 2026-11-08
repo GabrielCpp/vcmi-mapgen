@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import os
 import random
@@ -13,9 +15,11 @@ WORKERS = max(1, (os.cpu_count() or 2) // 2)
 INT64_MAX = 2**63 - 1
 OUT_DIR = Path(__file__).resolve().parent.parent / "out"
 VCMI_DIR = Path.home() / ".local" / "share" / "vcmi" / "Maps" / "VcmiMapsGen"
+PLAYERS = 4
+TEAMS = "2v2"
 
 
-def generate(seed: int, vcmi_dir: Path | None) -> tuple[int, int, int]:
+def generate(seed: int, args: Args, vcmi_dir: Path | None) -> tuple[int, int, int]:
     size = SIZES[seed % len(SIZES)]
     cmd = [
         "uv",
@@ -29,9 +33,9 @@ def generate(seed: int, vcmi_dir: Path | None) -> tuple[int, int, int]:
         "--size",
         str(size),
         "--players",
-        "4",
+        str(args.players),
         "--teams",
-        "2v2",
+        args.teams,
         "--no-water",
         "--subterrain",
     ]
@@ -56,6 +60,8 @@ class Args(argparse.Namespace):
     count: int = COUNT
     dest: str = "out"
     vcmi_dir: Path = VCMI_DIR
+    players: int = PLAYERS
+    teams: str = TEAMS
 
 
 def parse_args() -> Args:
@@ -75,6 +81,14 @@ def parse_args() -> Args:
         default=VCMI_DIR,
         help=f"VCMI maps folder for --dest vcmi (default {VCMI_DIR})",
     )
+    _ = parser.add_argument(
+        "--players", type=int, default=PLAYERS, help=f"players per map (default {PLAYERS})"
+    )
+    _ = parser.add_argument(
+        "--teams",
+        default=TEAMS,
+        help=f"team matrix: 'ffa', '2v2'-style, or explicit '0,0,1,1' (default {TEAMS})",
+    )
     return parser.parse_args(namespace=Args())
 
 
@@ -90,7 +104,7 @@ def main() -> None:
     with ThreadPoolExecutor(WORKERS) as pool:
         # pick seeds up front (find_seed mutates `seeds`, so keep it single-threaded)
         chosen = [find_seed(seeds) for _ in range(count)]
-        futures = {pool.submit(generate, seed, vcmi_dir): seed for seed in chosen}
+        futures = {pool.submit(generate, seed, args, vcmi_dir): seed for seed in chosen}
 
         for fut in as_completed(futures):
             seed = futures[fut]
