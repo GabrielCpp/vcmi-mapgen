@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 SIZES = [36, 72, 108, 144]
+NAMED_SIZES = {"S": 36, "M": 72, "L": 108, "XL": 144, "H": 180}
 COUNT = 100
 WORKERS = max(1, (os.cpu_count() or 2) // 2)
 INT64_MAX = 2**63 - 1
@@ -19,7 +20,7 @@ PLAYERS = 4
 
 
 def generate(seed: int, args: Args, vcmi_dir: Path | None) -> tuple[int, int, int]:
-    size = SIZES[seed % len(SIZES)]
+    size = NAMED_SIZES[args.size] if args.size is not None else SIZES[seed % len(SIZES)]
     cmd = [
         "uv",
         "run",
@@ -61,6 +62,7 @@ class Args(argparse.Namespace):
     vcmi_dir: Path = VCMI_DIR
     players: int = PLAYERS
     teams: str | None = None
+    size: str | None = None
 
 
 def parse_args() -> Args:
@@ -87,6 +89,14 @@ def parse_args() -> Args:
         "--teams",
         default=None,
         help="team matrix: '2v2'-style or explicit '0,0,1,1' (default: everyone against everyone)",
+    )
+    _ = parser.add_argument(
+        "--size",
+        choices=list(NAMED_SIZES),
+        default=None,
+        help="VCMI map size: "
+        + ", ".join(f"{name}={tiles}" for name, tiles in NAMED_SIZES.items())
+        + " (default: each seed picks S, M, L or XL)",
     )
     return parser.parse_args(namespace=Args())
 
