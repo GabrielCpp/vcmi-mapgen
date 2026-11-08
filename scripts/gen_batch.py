@@ -16,7 +16,6 @@ INT64_MAX = 2**63 - 1
 OUT_DIR = Path(__file__).resolve().parent.parent / "out"
 VCMI_DIR = Path.home() / ".local" / "share" / "vcmi" / "Maps" / "VcmiMapsGen"
 PLAYERS = 4
-TEAMS = "2v2"
 
 
 def generate(seed: int, args: Args, vcmi_dir: Path | None) -> tuple[int, int, int]:
@@ -34,11 +33,11 @@ def generate(seed: int, args: Args, vcmi_dir: Path | None) -> tuple[int, int, in
         str(size),
         "--players",
         str(args.players),
-        "--teams",
-        args.teams,
         "--no-water",
         "--subterrain",
     ]
+    if args.teams is not None:
+        cmd += ["--teams", args.teams]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         print(f"seed {seed} size {size} failed:\n{result.stderr[-2000:]}", file=sys.stderr)
@@ -61,7 +60,7 @@ class Args(argparse.Namespace):
     dest: str = "out"
     vcmi_dir: Path = VCMI_DIR
     players: int = PLAYERS
-    teams: str = TEAMS
+    teams: str | None = None
 
 
 def parse_args() -> Args:
@@ -86,8 +85,8 @@ def parse_args() -> Args:
     )
     _ = parser.add_argument(
         "--teams",
-        default=TEAMS,
-        help=f"team matrix: 'ffa', '2v2'-style, or explicit '0,0,1,1' (default {TEAMS})",
+        default=None,
+        help="team matrix: '2v2'-style or explicit '0,0,1,1' (default: everyone against everyone)",
     )
     return parser.parse_args(namespace=Args())
 
