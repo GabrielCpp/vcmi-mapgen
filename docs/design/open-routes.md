@@ -303,3 +303,40 @@ maps and the golden hashes do not change. Two 6-player maps at 144 with an under
 corpus spread (0.24 against 0.03 [0, 0.5]).
 
 Open: seed 1 at 144 still reads 1.57.
+
+## 11. The bar at 144 (2026-11-09)
+
+The 1.22 the corpus reads at 144 is not a fair bar. The 144 corpus holds 13 distinct maps,
+because six are Allied copies. Twelve of the 13 are a quarter water or more, 0.44 at the
+median, against 0.07 on generated maps. The reading counts only pairs a hero reaches on
+foot, so an island map reads low. Twelve seeds at 144 also read 1.41, not the 1.35 six
+seeds gave, and seeds 1, 9 and 12 read 1.54 to 1.62.
+
+Two readings now judge a map, each against the corpus maps under 15% water at 72 and under
+36% at 144, Allied copies dropped. The town walk is the walk between two towns at least a
+seventh of the side apart, over their straight line, the median over a map's town pairs.
+It reads what a player crosses on the way to a neighbour.
+
+| | Town walk, quartiles | Random pairs, quartiles |
+|---|---|---|
+| Corpus 72, land, 21 and 27 maps | 1.11, 1.24, 1.48 | 1.29, 1.31, 1.44 |
+| Generated 72, 4 players, 12 seeds | 1.16, 1.21, 1.40 | 1.34, 1.41, 1.56 |
+| Corpus 144, land, 5 maps | 0.97, 1.12, 1.38 | 1.17, 1.22, 1.43 |
+| Generated 144, 2 players, 12 seeds | 1.23, 1.29, 1.40 | 1.31, 1.41, 1.52 |
+
+The town walk matches the corpus at 72, and sits inside its spread at 144. Seed 1 at 144
+reads 1.35 there. The random-pair walk sits about 0.1 above the land corpus at both sides,
+so 144 no longer has a gap of its own. That shared gap shows before any object stands: at
+144 the walk after vegetation reads 1.33 at the median over 12 seeds, and gameplay adds
+0.08.
+
+Seed 1's own excess comes from gameplay. A side decoration or a guard seal closes the short
+way round an object that passed its own detour check, so the pair forces a detour that
+neither check sees. Checking each seal and side plant together with its object brings seed 1
+from 1.57 to 1.42, but over 12 seeds the median does not move (1.41, 1.42, 1.42 with a
+one-tile margin), and seed 2 or 5 gets worse by as much. Dropping the region rim from the
+vegetation border leaves the total flat. None of these is kept. On the corpus at 144, 10% of
+the gameplay objects force a detour at a two-tile margin, against 6% on seed 1, so the count
+of detouring objects is not what differs. The ground around them is.
+
+Open: the random-pair walk at every side, from the vegetation.
