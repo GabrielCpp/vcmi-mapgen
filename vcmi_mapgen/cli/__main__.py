@@ -326,8 +326,9 @@ def _add_vegetation_arg(parser: argparse.ArgumentParser) -> None:
         "--vegetation",
         choices=list(SAMPLERS),
         default=DEFAULT_VEGETATION,
-        help="vegetation sampler: 'gibbs' (the marked point process) or 'field' (the cellular "
-        + f"field) (default: {DEFAULT_VEGETATION})",
+        help="vegetation sampler: 'gibbs' (the marked point process), 'field' (the cellular "
+        + "field) or 'routes' (open bands along near-straight routes) "
+        + f"(default: {DEFAULT_VEGETATION})",
     )
 
 

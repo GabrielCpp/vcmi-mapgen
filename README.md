@@ -36,7 +36,8 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
    terrain borders look hand-drawn.
 3. **Vegetation.** A cellular field covered with corpus-weighted trees, rocks
    and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
-   point process instead. A protected walkable web keeps every planned passage
+   point process instead. The `--vegetation routes` option draws open bands along
+   near-straight routes between each region's ways in first, and plants around them. A protected walkable web keeps every planned passage
    reachable. A wall between two territories one door apart is one tree line.
    Two doors apart it is 3 tiles thick at side 72, and further apart 4, both
    growing with the map side. A player reads a thin line as one fight away and

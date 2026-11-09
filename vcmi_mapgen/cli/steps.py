@@ -27,6 +27,7 @@ from vcmi_mapgen.core.steps.terrain_gen.shapes_first import ShapesFirst
 from vcmi_mapgen.core.steps.terrain_gen.water import TopologyForm
 from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
 from vcmi_mapgen.core.steps.vegetation.gibbs.sampler import GibbsSampler
+from vcmi_mapgen.core.steps.vegetation.routes.sampler import RoutesSampler
 from vcmi_mapgen.core.steps.vegetation.sampler import Sampler
 
 GENERATE_STOP_POINTS = (
@@ -48,6 +49,7 @@ GENERATE_STOP_POINTS = (
 SAMPLERS: dict[str, Sampler] = {
     "gibbs": GibbsSampler(),
     "field": FieldSampler(),
+    "routes": RoutesSampler(),
 }
 DEFAULT_VEGETATION = "field"
 

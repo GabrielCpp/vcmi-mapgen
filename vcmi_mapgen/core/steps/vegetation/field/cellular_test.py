@@ -6,9 +6,9 @@ from typing import cast
 import numpy as np
 
 from vcmi_mapgen.core.reading.rooms import component_sizes
-from vcmi_mapgen.core.steps.vegetation.field.cellular import (
+from vcmi_mapgen.core.steps.vegetation.field.cellular import cellular_field
+from vcmi_mapgen.core.steps.vegetation.planting import (
     MAX_COVERAGE,
-    cellular_field,
     coverage_by_ebin,
     target_mask,
 )

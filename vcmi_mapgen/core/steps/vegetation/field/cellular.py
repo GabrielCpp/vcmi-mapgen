@@ -20,7 +20,6 @@ SEED_DENSITY = 0.02
 SPACING = 0.7
 TRIES = 30
 PAD = 4
-MAX_COVERAGE = 0.95
 
 
 def cellular_field(
@@ -47,35 +46,3 @@ def cellular_field(
     d = np.sort(np.hypot(xx - sx, yy - sy), axis=-1)
     jitter = np.array([rng.random() for _ in range(w * h)]).reshape(h, w)
     return cast(NDArray[np.float64], d[..., 1] - d[..., 0] + 1e-3 * jitter)
-
-
-def coverage_by_ebin(
-    profile: NDArray[np.float64], tiles_per_ebin: NDArray[np.int64], target: float
-) -> NDArray[np.float64]:
-    """Each edge bin's blocked share: the corpus `profile` of blocked mass by edge bin,
-    scaled so the zone's mean over its `tiles_per_ebin` is `target`."""
-    n = cast(int, tiles_per_ebin.sum())
-    mean = cast(float, (profile * tiles_per_ebin).sum()) / n if n else 0.0
-    if mean <= 0:
-        return np.full(profile.shape, min(target, MAX_COVERAGE))
-    return np.clip(target * profile / mean, 0.0, MAX_COVERAGE)
-
-
-def target_mask(
-    field: NDArray[np.float64],
-    dom: NDArray[np.bool_],
-    ebins: NDArray[np.int8],
-    coverage: NDArray[np.float64],
-    forced: NDArray[np.bool_],
-) -> NDArray[np.bool_]:
-    """The tiles to block: every `forced` tile of `dom`, and in each edge bin the free tiles
-    whose `field` lies in the bottom `coverage[e]` share of that bin, the tiles nearest the
-    Voronoi edges."""
-    mask: NDArray[np.bool_] = forced & dom
-    free: NDArray[np.bool_] = dom & ~forced
-    for e, p in enumerate(cast(list[float], coverage.tolist())):
-        sel = cast(NDArray[np.bool_], free & (ebins == e))
-        if p > 0 and bool(sel.any()):
-            cut = float(np.quantile(field[sel], p))
-            mask = mask | (sel & (field < cut))
-    return mask

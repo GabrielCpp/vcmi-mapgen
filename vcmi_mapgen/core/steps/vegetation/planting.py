@@ -1,0 +1,175 @@
+"""The planting every shaping sampler shares: the planting plan, the tiles a shaping field
+marks to block at the corpus share per edge bin, and the planter that covers it with real
+decorations under the canvas's hard rules."""
+
+import random
+from typing import cast, final
+
+import numpy as np
+from numpy.typing import NDArray
+
+from vcmi_mapgen.core.grid.geometry import EBINS
+from vcmi_mapgen.core.model import Tile
+from vcmi_mapgen.core.steps.vegetation.canvas import ZoneCanvas
+from vcmi_mapgen.core.steps.vegetation.mix import ZoneMix
+from vcmi_mapgen.core.steps.vegetation.model import VegModel
+from vcmi_mapgen.core.steps.vegetation.sampler import ZoneGrowth
+
+MAX_COVERAGE = 0.95
+FILL_TRIES = 12
+FILL_CHECKS = 3
+
+
+def coverage_by_ebin(
+    profile: NDArray[np.float64], tiles_per_ebin: NDArray[np.int64], target: float
+) -> NDArray[np.float64]:
+    """Each edge bin's blocked share: the corpus `profile` of blocked mass by edge bin,
+    scaled so the zone's mean over its `tiles_per_ebin` is `target`."""
+    n = cast(int, tiles_per_ebin.sum())
+    mean = cast(float, (profile * tiles_per_ebin).sum()) / n if n else 0.0
+    if mean <= 0:
+        return np.full(profile.shape, min(target, MAX_COVERAGE))
+    return np.clip(target * profile / mean, 0.0, MAX_COVERAGE)
+
+
+def target_mask(
+    field: NDArray[np.float64],
+    dom: NDArray[np.bool_],
+    ebins: NDArray[np.int8],
+    coverage: NDArray[np.float64],
+    forced: NDArray[np.bool_],
+) -> NDArray[np.bool_]:
+    """The tiles to block: every `forced` tile of `dom`, and in each edge bin the free tiles
+    whose `field` lies in the bottom `coverage[e]` share of that bin."""
+    mask: NDArray[np.bool_] = forced & dom
+    free: NDArray[np.bool_] = dom & ~forced
+    for e, p in enumerate(cast(list[float], coverage.tolist())):
+        sel = cast(NDArray[np.bool_], free & (ebins == e))
+        if p > 0 and bool(sel.any()):
+            cut = float(np.quantile(field[sel], p))
+            mask = mask | (sel & (field < cut))
+    return mask
+
+
+def _edge_profile(model: VegModel) -> list[float]:
+    """The corpus blocked mass per edge bin: each category's intensity in that bin times its
+    mean blocking cells, summed over the categories."""
+    return [
+        sum(model.L[c, e] * model.blk_cells[c] for c in range(len(model.cats)))
+        for e in range(EBINS)
+    ]
+
+
+def plantable(canvas: ZoneCanvas) -> NDArray[np.bool_]:
+    """The zone tiles a decoration may block: off the protected web and off `forbid`."""
+    return canvas.inz & ~canvas.protm & ~canvas.box_mask(canvas.forbid)
+
+
+def planting_plan(
+    canvas: ZoneCanvas,
+    model: VegModel,
+    field: NDArray[np.float64],
+    keep: NDArray[np.bool_] | None = None,
+) -> NDArray[np.bool_]:
+    """The tiles to block: the forced border, and in each edge bin of the plantable ground
+    the corpus blocked share of it where `field` is lowest. A `keep` tile is never chosen,
+    and its bin's share falls on the bin's other tiles."""
+    dom = plantable(canvas)
+    tiles_per_ebin = np.bincount(canvas.eb[dom].ravel(), minlength=EBINS)
+    profile = np.array(_edge_profile(model))
+    coverage = coverage_by_ebin(profile, tiles_per_ebin, model.target)
+    if keep is not None:
+        field = cast(NDArray[np.float64], np.where(keep, np.inf, field))
+    return target_mask(field, dom, canvas.eb, coverage, canvas.border)
+
+
+@final
+class Planter:
+    """Decorations of the zone's corpus mix placed on `canvas` to cover a planting plan."""
+
+    def __init__(self, canvas: ZoneCanvas, model: VegModel, rng: random.Random) -> None:
+        self.canvas: ZoneCanvas = canvas
+        self.model: VegModel = model
+        self.rng: random.Random = rng
+        self.mix: ZoneMix = ZoneMix(model, canvas.tiles_per_ebin, rng)
+
+    def cover(
+        self, target: NDArray[np.bool_], keep_open: NDArray[np.bool_] | None = None
+    ) -> ZoneGrowth:
+        """Place decorations until `target` is covered, one uncovered target tile at a time:
+        draw a category from the corpus mix, try FILL_TRIES identities, each at the first
+        position that blocks that tile legally, and keep the one that blocks the most
+        uncovered target tiles for the fewest uncovered tiles off it. A position that blocks a
+        `keep_open` tile is illegal. The forced border tiles fill first, from the zone edge
+        inward."""
+        cv = self.canvas
+        ys, xs = target.nonzero()
+        order = [
+            (cv.x0 + lx, cv.y0 + ly)
+            for ly, lx in zip(
+                cast(list[int], ys.tolist()), cast(list[int], xs.tolist()), strict=True
+            )
+        ]
+        self.rng.shuffle(order)
+        for t in self._forced_first(order):
+            if cv.blkcnt[t[1] - cv.y0, t[0] - cv.x0] == 0:
+                self._fill_tile(t, target, keep_open)
+        return cv.result()
+
+    def _forced_first(self, order: list[Tile]) -> list[Tile]:
+        cv = self.canvas
+
+        def forced(t: Tile) -> bool:
+            return cast(bool, cv.border[t[1] - cv.y0, t[0] - cv.x0])
+
+        edge = [t for t in order if forced(t)]
+        edge.sort(key=lambda t: cast(int, cv.eb[t[1] - cv.y0, t[0] - cv.x0]))
+        return edge + [t for t in order if not forced(t)]
+
+    def _fill_tile(
+        self, t: Tile, target: NDArray[np.bool_], keep_open: NDArray[np.bool_] | None
+    ) -> None:
+        rng, model, cv = self.rng, self.model, self.canvas
+        c = self.mix.draw_category()
+        scored: list[tuple[int, int, int, int, int, list[Tile]]] = []
+        for k in range(FILL_TRIES):
+            ii = self.mix.draw_identity(c)
+            if not model.iblk[c][ii]:
+                continue
+            offsets = list(model.iblk[c][ii])
+            rng.shuffle(offsets)
+            for dx, dy in offsets:
+                x, y = t[0] - dx, t[1] - dy
+                if not self._in_window(x, y) or (x, y) in cv.forbid:
+                    continue
+                cells = cv.blocked_cells(c, ii, x, y)
+                if cells is None:
+                    continue
+                score = self._fill_score(cells, target, keep_open)
+                if score >= 0:
+                    scored.append((score, -k, x, y, ii, cells))
+                    break
+        scored.sort(key=lambda s: (s[0], s[1]), reverse=True)
+        for _score, _k, x, y, ii, cells in scored[:FILL_CHECKS]:
+            if cv.try_place((x, y, c, ii), cells):
+                return
+
+    def _in_window(self, x: int, y: int) -> bool:
+        cv = self.canvas
+        return 0 <= x - cv.x0 < cv.W and 0 <= y - cv.y0 < cv.H
+
+    def _fill_score(
+        self, cells: list[Tile], target: NDArray[np.bool_], keep_open: NDArray[np.bool_] | None
+    ) -> int:
+        cv = self.canvas
+        gain = spill = 0
+        for bx, by in cells:
+            lx, ly = bx - cv.x0, by - cv.y0
+            if keep_open is not None and keep_open[ly, lx]:
+                return -1
+            if cv.blkcnt[ly, lx] == 0:
+                if target[ly, lx]:
+                    gain += 1
+                else:
+                    spill += 1
+        return gain - spill if gain else -1
