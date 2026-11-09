@@ -64,6 +64,7 @@ from vcmi_mapgen.core.steps.terrain_gen.territories import (
     draw_territory_record,
     islanded,
     merge_dull,
+    place_centres,
     settle,
     stranded,
     territory_plan,
@@ -156,7 +157,12 @@ def surface(
         fd.record,
     )
     grown = label_adjacency(layout.label)
-    doors = draw_doors(territory, grown, spread.pair_doors, stream(seed, "water_doors"))
+    doors = draw_doors(
+        territory,
+        (grown, place_centres(layout.label, len(territory))),
+        spread.pair_doors,
+        stream(seed, "water_doors"),
+    )
     keep = frozenset(t for point in homes.points for t in room_tiles(point, room_side()))
     shore = Shore(
         layout,
@@ -345,7 +351,13 @@ def bordered(
     inner = [e for e in sorted(realised) if territory[e[0]] == territory[e[1]]]
     drawn_kinds = draw_kinds(roles, inner, stats.adjacency, _stream(seed, "borders", level))
     links = front.across.links(territory)
-    doors = draw_doors(territory, realised, spread.pair_doors, _stream(seed, "doors", level), links)
+    doors = draw_doors(
+        territory,
+        (realised, place_centres(plan.label, len(owners))),
+        spread.pair_doors,
+        _stream(seed, "doors", level),
+        links,
+    )
     kinds = wall_kinds(territory, realised, drawn_kinds, doors)
     passages = plan_passages(plan.label, kinds, doors, front.gated_w)
     return replace(

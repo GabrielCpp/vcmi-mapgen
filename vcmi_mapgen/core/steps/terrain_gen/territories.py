@@ -2,12 +2,15 @@
 the territory count and the tiles each home territory grows toward, the other places group
 into neutral territories that share the rest of the land, each neutral territory too small
 to expect a prize joins its longest-bordering neighbour, and the doors join them. A door
-goes on every touching pair of territories more doors apart than ``MAX_HOP`` or not joined
-at all. A Subterranean Gate counts as a door for the hops, so the other level's territories
-join the count through ``Across``. Every border between two territories without a door is walled,
-the wall as wide as ``wall_width`` gives for the doors between them."""
+goes on every touching pair of territories, shortest first, that the doors so far leave
+apart, join more doors apart than ``MAX_HOP``, or join by a walk longer than ``STRETCH``
+times the door's own. Each door stands where the line between the two territories crosses. A
+Subterranean Gate counts as a door for the hops, so the other level's territories join the
+count through ``Across``. Every border between two territories without a door is walled, the
+wall as wide as ``wall_width`` gives for the doors between them."""
 
 import collections
+import heapq
 import math
 import random
 from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -18,14 +21,15 @@ from vcmi_mapgen.core.planning.entrances import Passages
 from vcmi_mapgen.core.priors.territories import TerritoryCount
 from vcmi_mapgen.core.reading.borders import AdjacencyKind
 from vcmi_mapgen.core.reading.territories import hop_counts
-from vcmi_mapgen.core.steps.terrain_gen.border_kinds import spanning_forest
 from vcmi_mapgen.core.steps.terrain_gen.place_draws import NEAREST_RECORDS
 from vcmi_mapgen.core.steps.terrain_gen.result import PlannedDoor, TerritoryPlan
 
 type Pair = tuple[int, int]
+type Point = tuple[float, float]
 
 MAX_DOORS = 2
 MAX_HOP = 2
+STRETCH = 1.4
 LAND_BAND = 2.0
 WALL_WIDTHS = ((1, 72), (3, 24), (4, 18))
 """The least width and the map side per extra tile of a wall between two territories one
@@ -269,46 +273,123 @@ def _fronts(territory: Sequence[int], realised: Iterable[Pair]) -> dict[Pair, li
     return fronts
 
 
-def detour_doors(
-    choices: Mapping[Pair, Sequence[Pair]],
-    joined: Iterable[Pair],
-    max_hop: int,
-    rng: random.Random,
-) -> dict[Pair, int]:
-    """The doors to add on the touching territory pairs, keys of ``choices``, that more than
-    ``max_hop`` of the ``joined`` territory pairs part or none joins. The walk goes in sorted
-    order, each door counts for the pairs after it, and each stands on a zone pair drawn
-    from the pair's ``choices``."""
-    graph = set(joined)
-    count = max((t for tp in (*choices, *graph) for t in tp), default=-1) + 1
-    out: dict[Pair, int] = {}
-    for (ta, tb), pairs in sorted(choices.items()):
-        hop = hop_counts(count, graph, ta)[tb]
-        if hop is not None and hop <= max_hop:
+def place_centres(label: Sequence[Sequence[int]], places: int) -> list[Point]:
+    """The mean tile of each of ``places`` places in ``label``."""
+    sx = [0.0] * places
+    sy = [0.0] * places
+    n = [0] * places
+    for y, row in enumerate(label):
+        for x, z in enumerate(row):
+            if 0 <= z < places:
+                sx[z] += x
+                sy[z] += y
+                n[z] += 1
+    return [(sx[z] / n[z], sy[z] / n[z]) if n[z] else (0.0, 0.0) for z in range(places)]
+
+
+def _territory_centres(territory: Sequence[int], centres: Sequence[Point]) -> dict[int, Point]:
+    members: dict[int, list[Point]] = collections.defaultdict(list)
+    for z, t in enumerate(territory):
+        if z < len(centres):
+            members[t].append(centres[z])
+    return {
+        t: (sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps))
+        for t, ps in members.items()
+    }
+
+
+def _span(a: Point, b: Point) -> float:
+    return math.hypot(a[0] - b[0], a[1] - b[1])
+
+
+def _door_spot(
+    territory: Sequence[int], centres: Sequence[Point], home: Mapping[int, Point], zp: Pair
+) -> float:
+    a, b = zp
+    mid = ((centres[a][0] + centres[b][0]) / 2, (centres[a][1] + centres[b][1]) / 2)
+    return _span(home[territory[a]], mid) + _span(mid, home[territory[b]])
+
+
+def _walk(edges: Mapping[Pair, float], start: int, goal: int) -> float:
+    nbr: dict[int, list[tuple[int, float]]] = collections.defaultdict(list)
+    for (a, b), w in edges.items():
+        nbr[a].append((b, w))
+        nbr[b].append((a, w))
+    best = {start: 0.0}
+    heap = [(0.0, start)]
+    while heap:
+        d, u = heapq.heappop(heap)
+        if u == goal:
+            return d
+        if d > best[u]:
             continue
-        out[rng.choice(pairs)] = 1
-        graph.add((ta, tb))
+        for v, w in nbr[u]:
+            if d + w < best.get(v, math.inf):
+                best[v] = d + w
+                heapq.heappush(heap, (d + w, v))
+    return math.inf
+
+
+def short_doors(
+    territory: Sequence[int],
+    choices: Mapping[Pair, Sequence[Pair]],
+    centres: Sequence[Point],
+    links: Collection[Pair] = (),
+) -> dict[Pair, int]:
+    """One door on each touching territory pair, taken shortest first, that the doors so
+    far leave apart on this level, join only by a walk longer than ``STRETCH`` times its
+    own, or join more than ``MAX_HOP`` doors apart. A door's length runs from one territory's
+    centre through the middle of its zone pair to the other's, and it stands on the zone pair
+    of its territory pair that makes it shortest. A link counts as a door as long as the line
+    between its territories' centres, or of no length when one of them lies on another
+    level."""
+    home = _territory_centres(territory, centres)
+    best: dict[Pair, tuple[float, Pair]] = {
+        tp: min((_door_spot(territory, centres, home, zp), zp) for zp in zps)
+        for tp, zps in choices.items()
+    }
+    edges: dict[Pair, float] = {
+        (min(a, b), max(a, b)): _span(home[a], home[b]) if a in home and b in home else 0.0
+        for a, b in links
+    }
+    count = max((t for tp in (*choices, *edges) for t in tp), default=-1) + 1
+    root = list(range(count))
+
+    def find(t: int) -> int:
+        while root[t] != t:
+            root[t] = root[root[t]]
+            t = root[t]
+        return t
+
+    out: dict[Pair, int] = {}
+    for tp in sorted(best, key=lambda tp: (best[tp][0], tp)):
+        length, zp = best[tp]
+        joined = find(tp[0]) == find(tp[1])
+        hop = hop_counts(count, edges, tp[0])[tp[1]]
+        near = hop is not None and hop <= MAX_HOP and _walk(edges, *tp) <= STRETCH * length
+        if joined and near:
+            continue
+        out[zp] = 1
+        edges[tp] = length
+        root[find(tp[0])] = find(tp[1])
     return out
 
 
 def draw_doors(
     territory: Sequence[int],
-    realised: Iterable[Pair],
+    places: tuple[Iterable[Pair], Sequence[Point]],
     pair_doors: Sequence[int],
     rng: random.Random,
     links: Collection[Pair] = (),
 ) -> dict[Pair, int]:
-    """The door count of each zone pair that holds a door, among the ``realised`` zone
-    pairs. A spanning forest over the bordering territory pairs puts one door on each of
-    its pairs, on one of their zone pairs. ``detour_doors`` then joins every touching pair
-    more than ``MAX_HOP`` hops apart over the forest and ``links``. For each joined
-    territory pair, a count drawn from ``pair_doors`` above one adds a second door on
-    another zone pair of the same territory pair, or on the same zone pair when it is the
-    only one."""
+    """The door count of each zone pair that holds a door, among the realised zone pairs
+    of ``places``, with each place's centre beside them. ``short_doors`` places one door on
+    each territory pair that needs one. For each, a count drawn from ``pair_doors`` above one
+    adds a second door on another zone pair of the same territory pair, or on the same zone
+    pair when it is the only one."""
+    realised, centres = places
     choices = _fronts(territory, realised)
-    forest = sorted(spanning_forest(choices, lambda _e: 1.0, rng))
-    doors = {rng.choice(choices[tp]): 1 for tp in forest}
-    doors |= detour_doors(choices, {*forest, *links}, MAX_HOP, rng)
+    doors = short_doors(territory, choices, centres, links)
     for door in sorted(doors):
         if min(MAX_DOORS, draw_count(pair_doors, rng)) < 2:
             continue

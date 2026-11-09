@@ -43,7 +43,7 @@ OPTS = GenerateOptions(
     overlays="none",
     renderers="png,vmap",
     stop_after=None,
-    vegetation="field",
+    vegetation="routes",
 )
 
 

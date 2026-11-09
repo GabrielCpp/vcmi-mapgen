@@ -79,7 +79,8 @@ def planting_plan(
     profile = np.array(_edge_profile(model))
     coverage = coverage_by_ebin(profile, tiles_per_ebin, model.target)
     if keep is not None:
-        field = cast(NDArray[np.float64], np.where(keep, np.inf, field))
+        top = cast(float, field.max()) + 1.0
+        field = cast(NDArray[np.float64], np.where(keep, top, field))
     return target_mask(field, dom, canvas.eb, coverage, canvas.border)
 
 

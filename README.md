@@ -34,11 +34,13 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
 2. **Terrain.** Each palette region of places takes one dominant terrain, and
    corpus-learned transition bands and accents paint it so coastlines and
    terrain borders look hand-drawn.
-3. **Vegetation.** A cellular field covered with corpus-weighted trees, rocks
-   and lakes. The `--vegetation gibbs` option uses a corpus-fitted Gibbs marked
-   point process instead. The `--vegetation routes` option draws open bands along
-   near-straight routes between each region's ways in first, and plants around them. A protected walkable web keeps every planned passage
-   reachable. A wall between two territories one door apart is one tree line.
+3. **Vegetation.** Each region first draws its open ground: near-straight routes
+   join its ways in, its doors and waypoints spread over it, with a loop wherever
+   the net would walk a pair far past the line. Corpus-weighted trees, rocks and
+   lakes then cover the rest at the corpus density. The `--vegetation field`
+   option covers a cellular field instead, and `--vegetation gibbs` uses a
+   corpus-fitted Gibbs marked point process. A protected walkable web keeps
+   every planned passage reachable. A wall between two territories one door apart is one tree line.
    Two doors apart it is 3 tiles thick at side 72, and further apart 4, both
    growing with the map side. A player reads a thin line as one fight away and
    a thick band as the long way round.

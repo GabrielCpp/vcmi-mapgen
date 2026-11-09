@@ -118,50 +118,53 @@ def test_settle_splits_a_territory_the_growth_cut_in_two() -> None:
     assert lords == (None, 3, None)
 
 
-def test_draw_doors_opens_a_spanning_forest_of_the_territories() -> None:
+SQUARE = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+RING = [(0, 1), (1, 2), (2, 3), (0, 3)]
+
+
+def test_draw_doors_joins_every_territory_through_a_chain() -> None:
     territory = [0, 0, 1, 1, 2]
     realised = [(0, 2), (1, 3), (3, 4), (0, 1), (2, 3)]
-    doors = TR.draw_doors(territory, realised, [1], random.Random(0))
-    assert doors == {(1, 3): 1, (3, 4): 1}
+    centres = [(0.0, 0.0), (0.0, 9.0), (10.0, 0.0), (10.0, 9.0), (20.0, 9.0)]
+    doors = TR.draw_doors(territory, (realised, centres), [1], random.Random(0))
+    assert len(doors) == 2
+    assert (3, 4) in doors
+
+
+def test_a_door_stands_on_the_zone_pair_nearest_the_line_between_territories() -> None:
+    territory = [0, 0, 1, 1, 0, 1]
+    realised = [(1, 3), (0, 2)]
+    centres = [(0.0, 0.0), (0.0, 10.0), (10.0, 0.0), (10.0, 10.0), (0.0, -10.0), (10.0, -10.0)]
+    doors = TR.draw_doors(territory, (realised, centres), [1], random.Random(0))
+    assert doors == {(0, 2): 1}
 
 
 def test_draw_doors_puts_a_second_door_on_another_pair_or_the_same_one() -> None:
     territory = [0, 0, 1, 1]
     realised = [(0, 2), (1, 3)]
-    doors = TR.draw_doors(territory, realised, [2], random.Random(0))
+    centres = [(0.0, 0.0), (0.0, 1.0), (10.0, 0.0), (10.0, 1.0)]
+    doors = TR.draw_doors(territory, (realised, centres), [2], random.Random(0))
     assert doors == {(0, 2): 1, (1, 3): 1}
-    doors = TR.draw_doors([0, 1], [(0, 1)], [5], random.Random(0))
+    doors = TR.draw_doors([0, 1], ([(0, 1)], SQUARE[:2]), [5], random.Random(0))
     assert doors == {(0, 1): 2}
 
 
-RING = {(0, 1): [(0, 1)], (1, 2): [(1, 2)], (2, 3): [(2, 3)], (0, 3): [(0, 3), (0, 7)]}
-PATH = [(0, 1), (1, 2), (2, 3)]
-
-
-def test_detour_doors_joins_a_touching_pair_too_many_doors_apart() -> None:
-    added = TR.detour_doors(RING, PATH, TR.MAX_HOP, random.Random(0))
-    assert len(added) == 1
-    assert next(iter(added)) in RING[(0, 3)]
-    assert TR.detour_doors(RING, PATH, 3, random.Random(0)) == {}
-
-
-def test_detour_doors_joins_every_far_pair_and_every_cut_off_pair() -> None:
-    chain = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5)]
-    choices = {tp: [tp] for tp in [*chain, (0, 3), (2, 5), (5, 6)]}
-    added = TR.detour_doors(choices, chain, TR.MAX_HOP, random.Random(0))
-    assert added == {(0, 3): 1, (2, 5): 1, (5, 6): 1}
-
-
-def test_detour_doors_draws_the_same_doors_from_the_same_seed() -> None:
-    first = TR.detour_doors(RING, PATH, TR.MAX_HOP, random.Random(5))
-    assert first == TR.detour_doors(RING, PATH, TR.MAX_HOP, random.Random(5))
-
-
 def test_draw_doors_closes_every_ring_of_four_territories() -> None:
-    ring = [(0, 1), (1, 2), (2, 3), (0, 3)]
-    for seed in range(8):
-        doors = TR.draw_doors([0, 1, 2, 3], ring, [1], random.Random(seed))
-        assert sorted(doors) == sorted(ring)
+    doors = TR.draw_doors([0, 1, 2, 3], (RING, SQUARE), [1], random.Random(0))
+    assert sorted(doors) == sorted(RING)
+
+
+def test_a_door_joins_a_touching_pair_the_doors_walk_far_around() -> None:
+    chain = [(0, 1), (1, 2), (2, 3)]
+    choices = {tp: [tp] for tp in RING}
+    joined = TR.short_doors([0, 1, 2, 3], {tp: [tp] for tp in chain}, SQUARE)
+    assert sorted(joined) == chain
+    assert sorted(TR.short_doors([0, 1, 2, 3], choices, SQUARE)) == sorted(RING)
+
+
+def test_the_same_places_draw_the_same_doors() -> None:
+    first = TR.draw_doors([0, 1, 2, 3], (RING, SQUARE), [2], random.Random(5))
+    assert first == TR.draw_doors([0, 1, 2, 3], (RING, SQUARE), [2], random.Random(5))
 
 
 def test_across_numbers_the_other_level_after_this_one() -> None:
@@ -169,13 +172,10 @@ def test_across_numbers_the_other_level_after_this_one() -> None:
     assert across.links([0, 0, 1, 2]) == {(0, 4), (2, 3), (3, 4)}
 
 
-def test_a_gate_counts_as_a_door_hop_so_a_ring_joined_below_needs_no_detour() -> None:
+def test_a_gate_joins_a_ring_below_so_it_needs_no_detour_door() -> None:
     hub = TR.Across(gates=((0, 0), (1, 0), (2, 0), (3, 0))).links([0, 1, 2, 3])
-    assert TR.detour_doors(RING, [*PATH, *hub], TR.MAX_HOP, random.Random(0)) == {}
-    ring = [(0, 1), (1, 2), (2, 3), (0, 3)]
-    for seed in range(8):
-        doors = TR.draw_doors([0, 1, 2, 3], ring, [1], random.Random(seed), hub)
-        assert len(doors) == 3
+    doors = TR.draw_doors([0, 1, 2, 3], (RING, SQUARE), [1], random.Random(0), hub)
+    assert len(doors) == 3
 
 
 def test_a_gate_link_narrows_the_wall_between_territories_it_brings_close() -> None:

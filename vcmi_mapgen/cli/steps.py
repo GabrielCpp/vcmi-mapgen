@@ -51,7 +51,7 @@ SAMPLERS: dict[str, Sampler] = {
     "field": FieldSampler(),
     "routes": RoutesSampler(),
 }
-DEFAULT_VEGETATION = "field"
+DEFAULT_VEGETATION = "routes"
 
 SURFACE_FORMS: dict[str, SurfaceForm] = {
     "none": NoiseForm(),

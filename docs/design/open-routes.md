@@ -229,3 +229,41 @@ Two findings fall outside slice 1's parts:
 - The 144 slowdown is in gameplay siting, not in the sampler, which costs about 6 s. Siting
   tries 64,000 spots on a routes map against 26,000 on a field map before each object finds
   its footing.
+
+## 9. Default and doors (2026-11-09)
+
+`routes` is now the default sampler. Two more changes landed with it.
+
+- Doors between territories are placed by geometry. On each level the doors first join
+  every territory, shortest pair first. A touching pair also gets a door when the doors so
+  far walk it more than 1.4 times its own length or more than `MAX_HOP` doors apart. Each
+  door stands on the zone pair nearest the line between the two territories' centres. The
+  old rule drew a random spanning forest and put each door on a random zone pair.
+- The routes sampler takes every protected rim tile as a way in, doors on taken ground
+  included. Without that, no route headed for a door.
+
+Each change alone did little. Together they matched walks between territories at 72 (1.38
+against the corpus 1.38). Walks inside a territory already matched.
+
+Finished maps, ffa, against the field default at the commit before:
+
+| Side | Corpus | Before | Now | Maps, no crash |
+|---|---|---|---|---|
+| 36 | 1.29 | 1.44 | 1.31 | 16 of 16 |
+| 72 | 1.30 | 1.65 | 1.37 to 1.50 | 20 of 20 |
+| 108 | 1.27 | 1.71 | 1.47 | 6 of 6 |
+| 144 | 1.31 | 2.07 | 1.83 | 3 of 3 |
+
+Doors per territory at 72 read 1.7, inside the corpus 1.3 to 2.0. A 144 map takes 125 s of
+CPU against 105 s for the field on the same machine.
+
+### Open: gameplay squeezes the open ground
+
+After vegetation, the walkable tiles outside every open 2x2 square make up 0.268 of the
+walkable land at 72, against 0.261 for the corpus with its gameplay objects removed. The
+gameplay step lifts that to 0.52. The corpus rises only to 0.34. Every kind of object narrows
+two to three times more than the same count does on a corpus map: the corpus sets objects
+against the tree clumps, and ours split open patches. At 144 the squeeze is worse and the
+vegetation share rises to 0.60 against 0.575. A hard rule against narrowing brought the lane
+share to 0.40 but cost a quarter of the dwellings and tripled the gameplay time. A soft
+preference kept every object and moved nothing. The fix belongs to gameplay siting.

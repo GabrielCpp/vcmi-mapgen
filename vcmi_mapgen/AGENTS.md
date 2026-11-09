@@ -8,7 +8,7 @@
   `core.model`. A module imports only from the layers below its own. `core/reading/`
   sits below `core/planning/` because `planning/content.py` counts hops with it.
 - `cli/steps.py` holds the variant tables. `SAMPLERS` names the vegetation samplers,
-  `SURFACE_FORMS` the surface forms per water mode, and `DEFAULT_VEGETATION` is `field`.
+  `SURFACE_FORMS` the surface forms per water mode, and `DEFAULT_VEGETATION` is `routes`.
 
 ## Formats and identifiers
 

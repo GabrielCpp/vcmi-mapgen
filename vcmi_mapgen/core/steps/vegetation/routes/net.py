@@ -41,6 +41,12 @@ def _middle(group: Sequence[Tile]) -> Tile:
     return min(group, key=lambda t: ((t[0] - mx) ** 2 + (t[1] - my) ** 2, t))
 
 
+def ways_in(prot: AbstractSet[Tile], ts: AbstractSet[Tile]) -> set[Tile]:
+    """The protected tiles of the zone `ts` on its rim: its entrance bands and its doors,
+    taken ground or not."""
+    return {(x, y) for x, y in prot & ts if any((x + dx, y + dy) not in ts for dx, dy in STEPS8)}
+
+
 def waypoints(ways_in: AbstractSet[Tile], room: Collection[Tile], spacing: float) -> list[Tile]:
     """One waypoint at the middle of each 8-connected group of `ways_in`, then the tiles of
     `room` farthest from every waypoint so far, until every tile of `room` lies within

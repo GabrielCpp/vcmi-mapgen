@@ -3,7 +3,13 @@ routes where the room allows, and a net no pair of waypoints walks far past the 
 
 from vcmi_mapgen.core.grid.reach import STEPS8, distances
 from vcmi_mapgen.core.model import Tile
-from vcmi_mapgen.core.steps.vegetation.routes.net import STRETCH, route, route_net, waypoints
+from vcmi_mapgen.core.steps.vegetation.routes.net import (
+    STRETCH,
+    route,
+    route_net,
+    waypoints,
+    ways_in,
+)
 
 SIDE = 30
 
@@ -38,3 +44,10 @@ def test_no_pair_of_waypoints_walks_the_net_far_past_the_line() -> None:
         for b in nodes:
             cheb = max(abs(a[0] - b[0]), abs(a[1] - b[1]))
             assert steps[b] <= STRETCH * cheb
+
+
+def test_every_protected_rim_tile_is_a_way_in_and_the_inner_web_is_not() -> None:
+    door = {(0, 8)}
+    band = {(SIDE - 1, y) for y in range(20, 23)}
+    inner = {(5, y) for y in range(3, 20)}
+    assert ways_in(door | band | inner, _room()) == door | band

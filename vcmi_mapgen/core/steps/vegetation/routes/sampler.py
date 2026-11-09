@@ -15,12 +15,12 @@ from vcmi_mapgen.core.planning.web import ZoneRef
 from vcmi_mapgen.core.steps.vegetation.canvas import ZoneCanvas, zone_rng
 from vcmi_mapgen.core.steps.vegetation.model import VegModel
 from vcmi_mapgen.core.steps.vegetation.planting import Planter, plantable, planting_plan
-from vcmi_mapgen.core.steps.vegetation.routes.net import route_net, waypoints
+from vcmi_mapgen.core.steps.vegetation.routes.net import route_net, waypoints, ways_in
 from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, ZoneGrowth
 
 SPAN = 0.6
 BEND = 1.0
-BAND = 1
+BAND = 0
 BLUR = 2
 TOP_UP = 3
 
@@ -59,12 +59,7 @@ class RoutesSampler:
         planter = Planter(canvas, model, rng)
         ts = zone.ts
         room = set(ts) - opts.forbid - set(opts.border) - opts.impassable
-        ways_in = {
-            (x, y)
-            for x, y in canvas.prot & ts
-            if (x, y) in room and any((x + dx, y + dy) not in ts for dx, dy in STEPS8)
-        }
-        nodes = waypoints(ways_in, room, SPAN * math.sqrt(len(ts)))
+        nodes = waypoints(ways_in(canvas.prot, ts), room, SPAN * math.sqrt(len(ts)))
         routes = route_net(nodes, room)
         d = _route_distance(canvas, routes, room)
         field = cast(NDArray[np.float64], -(d + BEND * _blurred(canvas.H, canvas.W, rng)))
