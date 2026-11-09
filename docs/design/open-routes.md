@@ -267,3 +267,39 @@ against the tree clumps, and ours split open patches. At 144 the squeeze is wors
 vegetation share rises to 0.60 against 0.575. A hard rule against narrowing brought the lane
 share to 0.40 but cost a quarter of the dwellings and tripled the gameplay time. A soft
 preference kept every object and moved nothing. The fix belongs to gameplay siting.
+
+## 10. Walls at 144 (2026-11-09)
+
+At 144 the extra walking sat between territories and showed before any object stood. The
+planned walls between territories two or more doors apart took 27% of the zone land at 144
+against 6% at 72. Each width grew with the map side, `side // 24` and `side // 18`, so 6 and
+8 tiles at 144. The corpus distance between such pairs barely grows with the side: the first
+quartile reads 5 and 6 tiles at 72, and 6 and 7 at 144. Each width is now fixed at its value
+at side 72: 1, 3 and 4 tiles.
+
+Tried and dropped on the way:
+
+- Alcoves, notches left in the tree edge for gameplay bodies, with a placement pass that
+  fills a notch first. Objects used few of them, because siting picks the area by hero-days
+  and spacing before the footing picks the tile. The one-tile lane share fell from 0.53 to
+  0.47 at 144, the walk barely moved, and a 144 map took twice as long. The patch is kept
+  outside the repo.
+- Capping the route distance in the planting field. Tree clumping stayed at 0.71 at 72.
+- Planting one row of each region border instead of two. It matched the corpus clumping at
+  72 (0.55 against 0.56) but walked worse at 72 and left 144 unchanged.
+
+Walk over the straight line, 2 players, seeds 1 to 6 at 144, before and after:
+
+| Seed | 1 | 2 | 3 | 4 | 5 | 6 | Median |
+|---|---|---|---|---|---|---|---|
+| Before | 1.58 | 1.45 | 1.60 | 1.46 | 1.61 | 1.55 | 1.57 |
+| After | 1.57 | 1.25 | 1.39 | 1.29 | 1.38 | 1.31 | 1.35 |
+
+The corpus reads 1.22, quartiles 1.19 to 1.30. The tree share falls from 0.56 to 0.64 down to
+0.53 to 0.59, against 0.575 on the corpus. With 4 players, seeds 1 to 4, the walk reads 1.27
+at 36, 1.35 at 72, 1.39 at 108 and 1.42 at 144. Sides 36 and 72 keep their walls, so their
+maps and the golden hashes do not change. Two 6-player maps at 144 with an underground take
+106 and 122 s of CPU. The `readings` spread at 144 keeps `close_pair_walled` inside the
+corpus spread (0.24 against 0.03 [0, 0.5]).
+
+Open: seed 1 at 144 still reads 1.57.

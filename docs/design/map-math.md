@@ -261,8 +261,9 @@ The order is shapes, then roles, then paint. Reading left to right:
    its kind from the corpus role-pair table. A door is a gated border one tile wide. A
    walled territory border is a barrier whose depth grows with the door-hop distance
    between its two territories: a thin wall where the pair sits one door apart, water or
-   a wide mountain band where the pair sits three or more doors apart. The width scales
-   with the map side. The topology water mode draws its water here, along the walled
+   a wide mountain band where the pair sits three or more doors apart. The width stays
+   the same at every map side, as the corpus distance between walled pairs barely grows
+   with it. The topology water mode draws its water here, along the walled
    fronts, so a doorless pair that touches reads as a coast and not as a fence.
 8. $p(\tau \mid \zeta, \Theta, B)$, Paint. Base coat, accent patches, transition
    grading, then a texture variant inside each place. Markov is one texture variant.

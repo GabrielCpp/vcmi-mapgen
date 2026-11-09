@@ -31,11 +31,12 @@ MAX_DOORS = 2
 MAX_HOP = 2
 STRETCH = 1.4
 LAND_BAND = 2.0
-WALL_WIDTHS = ((1, 72), (3, 24), (4, 18))
-"""The least width and the map side per extra tile of a wall between two territories one
-door apart, two doors apart, and three or more apart or cut off. Measured on the corpus:
-territories a door joins sit 3 tiles apart at the median, and the walled pairs sit at least
-4 to 6 tiles apart at the first quartile at every map side."""
+WALL_WIDTHS = (1, 3, 4)
+"""The width of a wall between two territories one door apart, two doors apart, and three or
+more apart or cut off, at every map side. Measured on the corpus: territories a door joins
+sit 3 tiles apart at the median at every side. Walled pairs two doors apart sit 5 tiles apart
+at the first quartile at side 72 and 6 at side 144, and pairs three or more apart 6 and 7, so
+the distance barely grows with the side."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,20 +403,19 @@ def draw_doors(
     return doors
 
 
-def wall_width(hops: int | None, side: int) -> int:
+def wall_width(hops: int | None) -> int:
     """The tiles a wall takes between two territories ``hops`` doors apart, None when no
-    door path joins them, on a map ``side`` tiles wide: thin one door apart, wider two
-    apart, widest three or more apart or cut off."""
-    least, per = WALL_WIDTHS[min(hops, len(WALL_WIDTHS)) - 1 if hops else -1]
-    return max(least, side // per)
+    door path joins them: thin one door apart, wider two apart, widest three or more apart
+    or cut off."""
+    return WALL_WIDTHS[min(hops, len(WALL_WIDTHS)) - 1 if hops else -1]
 
 
 def wall_depths(
-    territory: Sequence[int], doors: Collection[Pair], side: int, links: Collection[Pair] = ()
+    territory: Sequence[int], doors: Collection[Pair], links: Collection[Pair] = ()
 ) -> dict[Pair, int]:
     """The wall width between every zone pair ``(a, b)``, ``a < b``, of two territories,
-    from the hops between their territories over the doors and ``links`` on a map ``side``
-    tiles wide. A pair left out walls one tile wide."""
+    from the hops between their territories over the doors and ``links``. A pair left out
+    walls one tile wide."""
     own = max(territory, default=-1) + 1
     joined = {(territory[a], territory[b]) for a, b in doors} | set(links)
     count = max([own, *(t + 1 for tp in joined for t in tp)])
@@ -424,7 +424,7 @@ def wall_depths(
     for b, tb in enumerate(territory):
         for a in range(b):
             ta = territory[a]
-            if ta != tb and (width := wall_width(hops[ta][tb], side)) > 1:
+            if ta != tb and (width := wall_width(hops[ta][tb])) > 1:
                 out[(a, b)] = width
     return out
 

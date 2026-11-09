@@ -181,8 +181,8 @@ def test_a_gate_joins_a_ring_below_so_it_needs_no_detour_door() -> None:
 def test_a_gate_link_narrows_the_wall_between_territories_it_brings_close() -> None:
     territory = [0, 0, 1, 2]
     links = TR.Across(gates=((0, 0), (3, 0))).links(territory)
-    assert TR.wall_depths(territory, [(1, 2)], 72, links)[(0, 3)] == 3
-    assert TR.wall_depths(territory, [(1, 2)], 72)[(0, 3)] == 4
+    assert TR.wall_depths(territory, [(1, 2)], links)[(0, 3)] == 3
+    assert TR.wall_depths(territory, [(1, 2)])[(0, 3)] == 4
 
 
 def _count(players: int, land: int, territories: int) -> TerritoryCount:
@@ -217,19 +217,14 @@ def test_wall_kinds_keeps_inner_kinds_gates_doors_and_walls_the_rest() -> None:
 
 
 def test_a_wall_widens_with_the_doors_between_its_territories() -> None:
-    widths = [TR.wall_width(hops, 72) for hops in (1, 2, 3, 5, None)]
+    widths = [TR.wall_width(hops) for hops in (1, 2, 3, 5, None)]
     assert widths == [1, 3, 4, 4, 4]
-
-
-def test_a_wall_widens_with_the_map_side() -> None:
-    assert [TR.wall_width(hops, 144) for hops in (1, 2, None)] == [2, 6, 8]
-    assert [TR.wall_width(hops, 36) for hops in (1, 2, None)] == [1, 3, 4]
 
 
 def test_wall_depths_widen_the_pairs_of_far_territories_only() -> None:
     territory = [0, 0, 1, 2]
-    assert TR.wall_depths(territory, [(1, 2), (2, 3)], 72) == {(0, 3): 3, (1, 3): 3}
-    assert TR.wall_depths(territory, [(1, 2)], 72) == {(0, 3): 4, (1, 3): 4, (2, 3): 4}
+    assert TR.wall_depths(territory, [(1, 2), (2, 3)]) == {(0, 3): 3, (1, 3): 3}
+    assert TR.wall_depths(territory, [(1, 2)]) == {(0, 3): 4, (1, 3): 4, (2, 3): 4}
 
 
 def test_territory_plan_publishes_one_door_per_crossing() -> None:

@@ -168,7 +168,7 @@ def surface(
         layout,
         territory,
         frozenset(doors),
-        wall_depths(territory, doors, options.size),
+        wall_depths(territory, doors),
         keep,
     )
     layout, water_log = form.flood(shore, priors, seed, options)
@@ -365,7 +365,7 @@ def bordered(
         kinds=kinds,
         passages=passages,
         territories=territory_plan(territory, lords, doors, passages),
-        depths=wall_depths(territory, doors, len(plan.label), links),
+        depths=wall_depths(territory, doors, links),
     )
 
 
@@ -374,9 +374,7 @@ def relinked(plan: LevelPlaces, across: Across) -> LevelPlaces:
     tp = plan.territories
     territory = [tp.zones[z] for z in sorted(tp.zones)]
     doors = {d.zones for d in tp.doors}
-    return replace(
-        plan, depths=wall_depths(territory, doors, len(plan.label), across.links(territory))
-    )
+    return replace(plan, depths=wall_depths(territory, doors, across.links(territory)))
 
 
 def underground_places(

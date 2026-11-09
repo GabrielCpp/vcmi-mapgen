@@ -322,7 +322,7 @@ def edge_front(side: int, edge: float, rng: random.Random, coast: Field | None =
     ring[1:-1, 1:-1] = False
     cut = float(np.quantile(noise[ring], 1 - edge)) if edge > 0 else math.inf
     region = noise > cut
-    first = max(1, wall_width(None, side) // 2)
+    first = max(1, wall_width(None) // 2)
     return _front(region, region & ring, first, coast)
 
 
