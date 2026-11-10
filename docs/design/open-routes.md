@@ -385,3 +385,29 @@ noise of about 0.02.
 
 Open: large objects still stand in the open, and guard seals and side plants still narrow
 lanes. Together they hold the remaining 0.1 of walk at 72.
+
+## 13. The web cuts the trees into blocks (2026-11-09)
+
+Corpus trees form one continuous mass with open rooms cut into it. Ours were islands between
+open lanes: 21 tree masses per 1000 land tiles at 72 against 9 on corpus land maps, two to
+three and a half times as many at every mass size. The cause is the protected web. It reaches
+a node every `SPACING` tiles through shortest 4-connected paths, so it lays a lattice of
+straight one-tile lanes over every zone, and each lane splits the 8-connected tree mass. Route
+noise, rooms around waypoints, one tree threshold per zone and the web counted as a route
+left the mass count where it was.
+
+Drawing the web with 8-connected paths, a probe on 8 seeds at 72 after vegetation:
+
+| | 4-connected web | 8-connected web | Corpus |
+|---|---|---|---|
+| Tree share | 0.558 | 0.585 | 0.596 |
+| Walk | 1.276 | 1.304 | 1.310 |
+| Tree masses per 1000 land tiles | 20.7 | 11.6 | 8.9 |
+| Masses of 32 tiles or more | 4.0 | 2.0 | 1.4 |
+| Straight one-tile corridors | 3.6% | 1.5% | 0.5% |
+| Nooks per 1000 land tiles | 18 | 48 | 44 |
+| One-tile lanes | 0.29 | 0.35 | 0.27 |
+
+A diagonal path one tile wide counts as a lane, so the lane share rises. The finished map
+then fails `PortalStep.check_reach`: some later code still links or mends the web with
+4-connected walks. Open: carry the 8-connected web through every consumer.
