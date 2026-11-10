@@ -14,7 +14,7 @@ from typing import final
 from vcmi_mapgen.core.catalog import Catalog, Trait
 from vcmi_mapgen.core.grid.geometry import NB8, edge_dist
 from vcmi_mapgen.core.grid.paths import geodesic_path
-from vcmi_mapgen.core.grid.reach import STEPS4
+from vcmi_mapgen.core.grid.reach import HERO_STEPS
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import Entrance, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -130,7 +130,9 @@ def _connect_landings(zones: Mapping[int, PlanZone], landings: Landings) -> dict
             goals = sorted(
                 zone.prot & free, key=lambda t: (abs(t[0] - appr[0]) + abs(t[1] - appr[1]), t)
             )
-            path = next((p for g in goals if (p := geodesic_path(appr, g, free))), list[Tile]())
+            path = next(
+                (p for g in goals if (p := geodesic_path(appr, g, free, HERO_STEPS))), list[Tile]()
+            )
             out[zid] = replace(zone, prot=zone.prot | frozenset(path))
     return out
 
@@ -154,7 +156,7 @@ class _LandingCheck:
             t = q.popleft()
             if t in self.web:
                 return set()
-            for dx, dy in STEPS4:
+            for dx, dy in HERO_STEPS:
                 n = (t[0] + dx, t[1] + dy)
                 if n in self.land and n not in cut and n not in seen:
                     seen.add(n)
@@ -168,7 +170,7 @@ class _LandingCheck:
             return False
         stranded: set[Tile] = set()
         for x, y in sorted(cut):
-            for dx, dy in STEPS4:
+            for dx, dy in HERO_STEPS:
                 n = (x + dx, y + dy)
                 if n in self.land and n not in cut and n not in stranded:
                     stranded |= self._pocket(n, cut)

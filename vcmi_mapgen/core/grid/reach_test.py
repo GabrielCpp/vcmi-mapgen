@@ -1,12 +1,12 @@
 """Tests for the BFS family over tile sets."""
 
-from vcmi_mapgen.core.grid.reach import STEPS8, distances, entry_reach, reach, walk
+from vcmi_mapgen.core.grid.reach import distances, entry_reach, reach, walk
 
 
-def test_reach8_crosses_a_diagonal_that_entry_reach_does_not() -> None:
+def test_entry_reach_crosses_a_diagonal_as_a_hero_does() -> None:
     tiles = {(0, 0), (1, 1), (2, 1)}
-    assert reach(tiles, [(0, 0)], STEPS8) == tiles
-    assert entry_reach(tiles, (0, 0)) == {(0, 0)}
+    assert reach(tiles, [(0, 0)]) == {(0, 0)}
+    assert entry_reach(tiles, (0, 0)) == tiles
 
 
 def test_entry_reach_leaves_out_a_blocked_entry_but_spreads_past_it() -> None:

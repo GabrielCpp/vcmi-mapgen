@@ -6,7 +6,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.catalog import Catalog, Trait
-from vcmi_mapgen.core.grid.reach import distances
+from vcmi_mapgen.core.grid.reach import HERO_STEPS, distances
 from vcmi_mapgen.core.model import (
     CoverIndex,
     Guard,
@@ -25,9 +25,9 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 
 
 def web_dist(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> dict[Tile, int]:
-    """4-connected BFS steps from the protected web through the open field. Tiles absent
-    from the result are UNREACHABLE (sealed by vegetation) — nothing may be placed there."""
-    return distances(open_set, [t for t in prot if t in open_set])
+    """A hero's steps from the protected web through the open field. Tiles absent from the
+    result are UNREACHABLE (sealed by vegetation) — nothing may be placed there."""
+    return distances(open_set, [t for t in prot if t in open_set], HERO_STEPS)
 
 
 def scatter_reach(open_set: AbstractSet[Tile], prot: Collection[Tile]) -> set[Tile]:

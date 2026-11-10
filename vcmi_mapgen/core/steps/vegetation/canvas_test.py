@@ -22,12 +22,12 @@ def _zone(ts: set[Tile]) -> Zone:
 def test_the_canvas_never_walls_off_the_next_zones_land(catalog: Catalog, priors: Priors) -> None:
     model = build_model(catalog, "grass", priors.vegetation["grass"])
     ts = {(x, y) for x in range(6) for y in range(6)}
-    tip = (6, 2)
+    tip = (6, 6)
     ref = ZoneRef(ts, label_zones({1: _zone(ts), 2: _zone({tip})}), 1, (2.5, 2.5))
     alone = ZoneCanvas(ref, model, SampleOptions(prot={(0, 0)}))
     beside = ZoneCanvas(ref, model, SampleOptions(prot={(0, 0)}, land=frozenset({tip})))
-    assert alone.try_place((5, 2, 0, 0), [(5, 2)])
-    assert not beside.try_place((5, 2, 0, 0), [(5, 2)])
+    assert alone.try_place((5, 5, 0, 0), [(5, 5)])
+    assert not beside.try_place((5, 5, 0, 0), [(5, 5)])
 
 
 def test_the_canvas_never_walls_off_a_cove_from_its_own_zone(

@@ -411,3 +411,38 @@ Drawing the web with 8-connected paths, a probe on 8 seeds at 72 after vegetatio
 A diagonal path one tile wide counts as a lane, so the lane share rises. The finished map
 then fails `PortalStep.check_reach`: some later code still links or mends the web with
 4-connected walks. Open: carry the 8-connected web through every consumer.
+
+## 14. A hero steps diagonally (2026-11-09)
+
+A hero steps to any of the eight tiles around it, diagonals included, even between two blocked
+tiles. The readings and the portal check already walked that way, but the web and every check
+that keeps open ground joined walked 4-way. `HERO_STEPS` in `grid/reach.py` now names the
+eight steps, and the protected web, the zone site's reach, its links and mends, the landing
+check, the vegetation's keep-open checks, its border sealer and island check, the hoard reach
+and the remote landings use it. The border sealer's walls join 4-way, the dual of a hero who
+slips past two walls touching at a corner. Road routing, home spacing, the land masses of the
+terrain step and the portal step's island rule stay 4-way: none asks where a hero walks.
+
+A cut that keeps every piece whole for a hero may still leave two parts joined only through
+a diagonal squeeze. Placement refuses that too: `ZoneSite.reach_without` keeps every 4-way
+piece whole as well as every 8-way one. Without that rule the finished map walked 1.44.
+
+Measured on 12 seeds at 72, against the build of section 12:
+
+| | Before | After | Corpus land maps |
+|---|---|---|---|
+| Trees only: tree masses per 1000 land tiles | 20.7 | 10.4 | 8.9 |
+| Trees only: straight one-tile corridors | 3.6% | 1.6% | 0.5% |
+| Trees only: nooks per 1000 land tiles | 18 | 55 | 44 |
+| Trees only: walk | 1.28 | 1.29 | 1.31 |
+| Finished: walk, median | 1.41 | 1.37 | 1.31 |
+| Finished: walk, change per seed | | -0.04, 3 seeds worse | |
+| Objects per 1000 land tiles | 29.0 | 29.1 | 29.5 |
+| Poorest over richest value at 40 days, 16 maps at 48 and 72 | 0.45 | 0.46 | |
+
+A 6-player map at 144 with an underground takes 119 s against 146 s, seed 3. A diagonal
+path one tile wide sits outside every open 2x2, so the one-tile lane share reads higher, 0.35
+after vegetation against 0.27 on the corpus. The compensation test moved from seed 2 to seed 3
+at 48: on the new seed 2 the poorest player has no spot it reaches first, a case the step
+already reports. The field sampler's single-tile share in a 5-tile strip may now run 10%
+over the corpus share, because the diagonal web zigzags across the strip.

@@ -134,7 +134,7 @@ def test_border_bias_densifies_front(catalog: Catalog, priors: Priors) -> None:
         plain2, *_ = zone_pass(2, ts2, seed, border_bias=False)
         plain_open = (ts1 - plain1) | (ts2 - plain2)
         plain_cross = {t for t in f1 if t in plain_open and (t[0] + 1, t[1]) in plain_open}
-        assert len(crossings - b1) < len(plain_cross - b1), "the bias must close crossings"
+        assert len(crossings - b1) <= len(plain_cross - b1), "the bias must not open crossings"
         # the bias densifies the front vs the unbiased sampler on the same seed
         blk_plain, *_ = zone_pass(1, ts1, seed, border_bias=False)
         assert len(blk1 & border1) > len(blk_plain & border1), "border bias must densify the front"

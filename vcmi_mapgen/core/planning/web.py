@@ -7,6 +7,7 @@ from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 
 from vcmi_mapgen.core.grid.paths import SPACING, farthest_points, geodesic_path
+from vcmi_mapgen.core.grid.reach import HERO_STEPS
 from vcmi_mapgen.core.grid.segment import ZoneLabel
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.planning.entrances import Gate, zone_fronts, zone_gate_bands
@@ -15,15 +16,14 @@ _NO_TILES: frozenset[Tile] = frozenset()
 
 
 def _band_component(rep: Tile, band: AbstractSet[Tile]) -> set[Tile]:
-    """The 4-connected part of `band` containing `rep`. A diagonal-only band tile would be
-    a protected fragment that no walkable path reaches."""
+    """The part of `band` a hero walks to from `rep`."""
     if rep not in band:
         return set()
     comp = {rep}
     stack = [rep]
     while stack:
         x, y = stack.pop()
-        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+        for n in ((x + dx, y + dy) for dx, dy in HERO_STEPS):
             if n in band and n not in comp:
                 comp.add(n)
                 stack.append(n)
@@ -67,7 +67,9 @@ def _span(
                 d = (r[0] - c[0]) ** 2 + (r[1] - c[1]) ** 2
                 if d < bd:
                     bd, best_r, best_c = d, r, c
-        path = next((p for ts in domains if (p := geodesic_path(best_c, best_r, ts))), None)
+        path = next(
+            (p for ts in domains if (p := geodesic_path(best_c, best_r, ts, HERO_STEPS))), None
+        )
         remaining.remove(best_r)
         if not path:
             continue

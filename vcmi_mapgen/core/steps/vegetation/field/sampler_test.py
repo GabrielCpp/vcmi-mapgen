@@ -62,4 +62,4 @@ def test_a_thin_strip_gets_single_tile_blockers_at_the_corpus_share(
     ]
     spec = [catalog.spec(o.kind) for o in placed]
     singles = sum(1 for s in spec if s and sum(r.blocks for *_d, r in s.footprint.cells) == 1)
-    assert singles / len(placed) <= _single_share(model)
+    assert singles / len(placed) <= 1.1 * _single_share(model)

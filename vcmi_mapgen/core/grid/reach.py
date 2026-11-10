@@ -12,6 +12,9 @@ type Steps = Sequence[tuple[int, int]]
 
 STEPS4: Steps = ((1, 0), (-1, 0), (0, 1), (0, -1))
 STEPS8: Steps = tuple((dx, dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1) if dx or dy)
+HERO_STEPS: Steps = STEPS8
+"""The tiles a hero steps to from a tile: all eight around it, diagonals included, even
+between two blocked tiles."""
 
 
 def distances(
@@ -66,9 +69,9 @@ def walk(
 
 
 def entry_reach(passable: Container[Tile], entry: Tile) -> set[Tile]:
-    """The 4-connected reach from ``entry``. A blocked entry is left out, and the reach
+    """The tiles a hero reaches from ``entry``. A blocked entry is left out, and the reach
     still spreads through its passable neighbours."""
-    out = reach(passable, [entry])
+    out = reach(passable, [entry], HERO_STEPS)
     if entry not in passable:
         out.discard(entry)
     return out

@@ -14,6 +14,7 @@ from numpy.typing import NDArray
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
+from vcmi_mapgen.core.grid.reach import HERO_STEPS
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
@@ -94,7 +95,7 @@ def landings(
     """The tiles where a hero steps onto each part of a zone's walkable land that the zone's
     web never reaches: the tiles beside water, or beside walkable land of another zone."""
     size = len(grid)
-    comp = components(set(passable))
+    comp = components(set(passable), HERO_STEPS)
     webbed = {comp[t] for t in prot if t in comp}
     out: set[Tile] = set()
     for t in passable:

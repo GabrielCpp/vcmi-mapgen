@@ -33,7 +33,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.components import components
 from vcmi_mapgen.core.grid.detour import detours
 from vcmi_mapgen.core.grid.flanks import closed_flanks, flank_tiles
-from vcmi_mapgen.core.grid.reach import walk
+from vcmi_mapgen.core.grid.reach import HERO_STEPS, STEPS4, walk
 from vcmi_mapgen.core.grid.snug import SIZE_CLASSES, in_field, sided, size_class, snug
 from vcmi_mapgen.core.grid.splits import MIN_AREA, splits
 from vcmi_mapgen.core.model import (
@@ -119,21 +119,21 @@ def walk_on_only(fp: Footprint) -> bool:
 
 
 def path_to_web(start: Tile, web: AbstractSet[Tile], passable: AbstractSet[Tile]) -> list[Tile]:
-    """The shortest 4-connected walk from ``start`` to the nearest web tile, both ends
-    included, or an empty list when none exists."""
-    return walk([start], web, passable)
+    """A hero's shortest walk from ``start`` to the nearest web tile, both ends included, or
+    an empty list when none exists."""
+    return walk([start], web, passable, HERO_STEPS)
 
 
 def _walk(src: AbstractSet[Tile], dst: AbstractSet[Tile], passable: AbstractSet[Tile]) -> set[Tile]:
-    return set(walk(sorted(src), dst, passable))
+    return set(walk(sorted(src), dst, passable, HERO_STEPS))
 
 
 def mend(web: AbstractSet[Tile], cut: AbstractSet[Tile], passable: AbstractSet[Tile]) -> set[Tile]:
     """The web without ``cut``, each piece the cut split off rejoined by a shortest walk
     through ``passable``."""
-    before = components(web)
+    before = components(web, HERO_STEPS)
     left = set(web) - set(cut)
-    after = components(left)
+    after = components(left, HERO_STEPS)
     pieces: dict[int, dict[int, set[Tile]]] = collections.defaultdict(dict)
     for t in left:
         pieces[before[t]].setdefault(after[t], set()).add(t)
@@ -329,6 +329,7 @@ class ZoneSite:
         self.prot: set[Tile] = set(zone.prot)
         self.reach: set[Tile] = set()
         self.comp: dict[Tile, int] = {}
+        self.comp4: dict[Tile, int] = {}
         self.set_reach(set(web_dist(self.passable, self.prot)))
         self.objs: list[PlacedObject] = []
         self.cells: set[Tile] = set()
@@ -416,14 +417,18 @@ class ZoneSite:
 
     def set_reach(self, reach: set[Tile]) -> None:
         self.reach = reach
-        self.comp = components(reach)
+        self.comp = components(reach, HERO_STEPS)
+        self.comp4 = components(reach, STEPS4)
 
     def reach_without(self, blk: Iterable[Tile], spare: int = 0) -> set[Tile] | None:
+        """The reach once ``blk`` closes, or None when the cut splits a piece a hero walks or
+        leaves one joined only through a diagonal squeeze, or strands more than ``spare``
+        tiles or a reserved one."""
         cut = set(blk) & self.reach
         left = self.reach - cut
         if not cut:
             return left
-        after = components(left)
+        after = components(left, HERO_STEPS)
         webbed = {after[t] for t in self.prot - cut if t in left}
         kept: dict[int, int] = {}
         stranded: set[Tile] = set()
@@ -434,7 +439,12 @@ class ZoneSite:
                 return None
         if len(stranded) > spare or stranded & self.reserved:
             return None
-        return left - stranded
+        left -= stranded
+        after4 = components(left, STEPS4)
+        kept4: dict[int, int] = {}
+        if any(kept4.setdefault(self.comp4[t], after4[t]) != after4[t] for t in left):
+            return None
+        return left
 
     def detours(self, blk: Iterable[Tile]) -> bool:
         return detours(blk, lambda t: not self.lf.closed(t))

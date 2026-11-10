@@ -3,7 +3,7 @@
 from collections.abc import Collection, Container, Iterable
 
 from vcmi_mapgen.core.grid.geometry import NB4
-from vcmi_mapgen.core.grid.reach import walk
+from vcmi_mapgen.core.grid.reach import Steps, walk
 from vcmi_mapgen.core.model import Tile
 
 SPACING = (
@@ -11,9 +11,9 @@ SPACING = (
 )
 
 
-def geodesic_path(a: Tile, b: Tile, ts: Container[Tile]) -> list[Tile]:
-    """Shortest 4-connected path a->b staying inside the zone `ts`; [] if unreachable."""
-    return walk([a], {b}, ts, NB4)
+def geodesic_path(a: Tile, b: Tile, ts: Container[Tile], steps: Steps = NB4) -> list[Tile]:
+    """Shortest path a->b by `steps` staying inside the zone `ts`; [] if unreachable."""
+    return walk([a], {b}, ts, steps)
 
 
 def farthest_points(

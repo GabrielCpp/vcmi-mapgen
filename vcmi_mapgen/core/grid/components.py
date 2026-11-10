@@ -1,44 +1,48 @@
-"""4-connected components of a tile set, and the open ground walled off from every walkable
-anchor."""
+"""Connected components of a tile set, 4-connected unless told otherwise, and the open ground
+walled off from every walkable anchor."""
 
 from __future__ import annotations
 
 from collections.abc import Collection
 from collections.abc import Set as AbstractSet
 
-from vcmi_mapgen.core.grid.reach import distances, reach
+from vcmi_mapgen.core.grid.reach import STEPS4, Steps, distances, reach
 from vcmi_mapgen.core.model import Tile
 
 
 def open_islands(
-    land: AbstractSet[Tile], blocking: AbstractSet[Tile], anchors: Collection[Tile]
+    land: AbstractSet[Tile],
+    blocking: AbstractSet[Tile],
+    anchors: Collection[Tile],
+    steps: Steps = STEPS4,
 ) -> list[set[Tile]]:
-    """4-connected open components of `land - blocking` that contain no anchor tile or
-    tile next to one."""
+    """The open components of `land - blocking`, joined by `steps`, that contain no anchor
+    tile or tile one step from one."""
     anchor_zone: set[Tile] = set()
     for x, y in anchors:
-        anchor_zone.update(((x, y), (x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+        anchor_zone.add((x, y))
+        anchor_zone.update((x + dx, y + dy) for dx, dy in steps)
     open_tiles = land - blocking
     seen: set[Tile] = set()
     islands: list[set[Tile]] = []
     for start in sorted(open_tiles):
         if start in seen:
             continue
-        comp = reach(open_tiles, [start])
+        comp = reach(open_tiles, [start], steps)
         seen |= comp
         if not comp & anchor_zone:
             islands.append(comp)
     return islands
 
 
-def components(tiles: AbstractSet[Tile]) -> dict[Tile, int]:
-    """Label each tile with its 4-connected component inside ``tiles``."""
+def components(tiles: AbstractSet[Tile], steps: Steps = STEPS4) -> dict[Tile, int]:
+    """Label each tile with its component inside ``tiles``, joined by ``steps``."""
     label: dict[Tile, int] = {}
     n = 0
     for s in sorted(tiles):
         if s in label:
             continue
-        for t in distances(tiles, [s]):
+        for t in distances(tiles, [s], steps):
             label[t] = n
         n += 1
     return label

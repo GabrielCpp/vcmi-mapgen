@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 
 from vcmi_mapgen.core.jit import njit
 
-_STEPS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+_STEPS = ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
 _CLOSED, _OPEN, _WEB = 0, 1, 2
 
 
@@ -62,7 +62,7 @@ def keeps_connected(
     xs: NDArray[np.int64],
     ys: NDArray[np.int64],
 ) -> bool:
-    """Whether every open 4-neighbour of the cells (xs, ys) still reaches the protected web
+    """Whether every open tile around the cells (xs, ys) still reaches the protected web
     once those cells are blocked."""
     H, W = solid.shape
     ground = _ground(solid, protm, blkcnt)

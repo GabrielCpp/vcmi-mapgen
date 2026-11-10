@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import final
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.grid.reach import STEPS4, STEPS8
+from vcmi_mapgen.core.grid.reach import HERO_STEPS, STEPS4
 from vcmi_mapgen.core.model import CoverIndex, Identity, PlacedObject, Tile, Zone
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.ground import Ground, stands
@@ -60,13 +60,13 @@ class _Sealer:
             self._walls.add(c)
 
     def bridges(self, t: Tile) -> bool:
-        """True when the open 4-neighbours of `t` in its own zone stay joined inside that zone
-        once `t` is closed."""
+        """True when the open tiles around `t` in its own zone stay joined, by a hero's steps,
+        inside that zone once `t` is closed."""
         open_all, owner = self._open_all, self._owner
         zid = owner.get(t)
         around = [
             n
-            for n in ((t[0] + 1, t[1]), (t[0] - 1, t[1]), (t[0], t[1] + 1), (t[0], t[1] - 1))
+            for n in ((t[0] + dx, t[1] + dy) for dx, dy in HERO_STEPS)
             if n in open_all and owner.get(n) == zid
         ]
         if len(around) < 2:
@@ -76,7 +76,7 @@ class _Sealer:
         queue = collections.deque([around[0]])
         while queue and want:
             u = queue.popleft()
-            for m in ((u[0] + 1, u[1]), (u[0] - 1, u[1]), (u[0], u[1] + 1), (u[0], u[1] - 1)):
+            for m in ((u[0] + dx, u[1] + dy) for dx, dy in HERO_STEPS):
                 if m == t or m in seen or m not in open_all or owner.get(m) != zid:
                     continue
                 seen.add(m)
@@ -151,9 +151,10 @@ _RING = ((0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1))
 
 @final
 class _Walls:
-    """The tiles shut to a hero, joined 8-way, with everything past the open land one wall.
-    Two open 4-neighbours of a tile fall apart once it closes exactly when a wall on one side
-    of it, between them, is joined to a wall on the other side."""
+    """The tiles shut to a hero, joined 4-way, since a hero slips diagonally between two walls
+    that only touch at a corner, with everything past the open land one wall. Two open tiles
+    around a tile fall apart once it closes exactly when a wall on one side of it, between
+    them, is joined to a wall on the other side."""
 
     def __init__(self, open_all: AbstractSet[Tile]) -> None:
         self._open = open_all
@@ -183,7 +184,7 @@ class _Walls:
         return t
 
     def _join(self, t: Tile) -> None:
-        for dx, dy in STEPS8:
+        for dx, dy in STEPS4:
             n = (t[0] + dx, t[1] + dy)
             if n not in self._open and (b := self._find(n)) != (a := self._find(t)):
                 self._root[b] = a
@@ -193,7 +194,7 @@ class _Walls:
         self._join(t)
 
     def joined(self, t: Tile, a: Tile, b: Tile) -> bool:
-        """True when the open 4-neighbours `a` and `b` of `t` stay joined once `t` closes."""
+        """True when the open tiles `a` and `b` around `t` stay joined once `t` closes."""
         ring = [(t[0] + dx, t[1] + dy) for dx, dy in _RING]
         i, j = sorted((ring.index(a), ring.index(b)))
         one = {self._find(c) for c in ring[i + 1 : j] if c not in self._open}
@@ -202,12 +203,12 @@ class _Walls:
 
 
 def _around(t: Tile) -> tuple[Tile, ...]:
-    return tuple((t[0] + dx, t[1] + dy) for dx, dy in STEPS4)
+    return tuple((t[0] + dx, t[1] + dy) for dx, dy in HERO_STEPS)
 
 
 @final
 class _Flood:
-    """The pieces the open 4-neighbours of a closed tile fall into. Each piece floods in step
+    """The pieces the open tiles around a closed tile fall into. Each piece floods in step
     with the others, and a piece that runs dry is whole."""
 
     def __init__(self, open_all: AbstractSet[Tile], t: Tile) -> None:
@@ -261,7 +262,7 @@ def _small(open_all: AbstractSet[Tile], t: Tile, start: Tile) -> bool:
 def _split(
     open_all: AbstractSet[Tile], t: Tile, big: AbstractSet[Tile]
 ) -> tuple[bool, list[set[Tile]]]:
-    """The pieces the open 4-neighbours of `t` fall into once `t` closes. The flood stops
+    """The pieces the open tiles around `t` fall into once `t` closes. The flood stops
     once a single piece still grows, or once only pieces grown from `big` grow, which the
     caller knows to be one. Returns whether that piece remains, and the whole pieces."""
     flood = _Flood(open_all, t)
@@ -380,7 +381,7 @@ def seal_borders(
     open pairs a hero can walk or diagonal-step through. This pass picks, greedily, the tile
     that kills the most remaining pairs. `avoid` holds tiles that must stay open (protected
     web, approaches, tunnels). A pair whose both sides are in `avoid` stays open and is left
-    to the guard pass. A cell is only sealed when every open 4-neighbour still reaches the
+    to the guard pass. A cell is only sealed when every open tile around it still reaches the
     web, or when the few tiles it would shut away are sealed with it. A cell that fails that
     test is tried again once another cell is sealed. A decoration only seals a cell whose
     terrain it may stand on. A crossing between an `open_pairs` zone pair stays open.
