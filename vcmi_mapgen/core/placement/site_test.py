@@ -1,5 +1,6 @@
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role
+from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.site import (
     LevelField,
@@ -179,3 +180,36 @@ def test_openness_counts_the_open_tiles_around_a_centre(catalog: Catalog) -> Non
     assert openness(site, (5, 5), 1) == 9
     assert openness(site, (9, 5), 1) == 6
     assert openness(site, (0, 0), 1) == 4
+
+
+_PAIR = Footprint(2, 1, ((0, 0, Role.BLOCKING), (1, 0, Role.BLOCKING)))
+_SHRINE = Identity("artifact", "x", "ava0001", Footprint.one(Role.ENTRANCE))
+
+
+def _wooded(catalog: Catalog, obj: PlacedObject) -> ZoneSite:
+    """A 12x10 open grass zone holding ``obj``."""
+    grid = [[int(Terrain.GRASS)] * 12 for _ in range(10)]
+    ts = frozenset((x, y) for x in range(12) for y in range(10))
+    zone = SiteZone("grass", _ST, ts, frozenset(), frozenset({(0, 9)}), ts, ts)
+    return ZoneSite(catalog, 1, zone, LevelField.build(0, grid, [obj]), 3)
+
+
+def test_a_door_takes_the_place_of_the_tree_under_it(catalog: Catalog) -> None:
+    tree = PlacedObject(4, 4, 0, "", "tree", _PAIR)
+    site = _wooded(catalog, tree)
+    fit = ZoneFooting().fit(site, _SHRINE, (4, 4))
+    assert fit is not None
+    obj = site.try_commit(Purpose.STAT_PERMANENT, _SHRINE, (4, 4), fit)
+    assert obj is not None
+    assert site.lifted == [tree]
+    planted = [o for o in site.objs if not o.purpose and (o.x, o.y) == (5, 4)]
+    assert len(planted) == 1
+    assert not site.lf.walkable((5, 4))
+    assert all(c.obj is not tree for c in site.lf.covers.covers_at((5, 4)))
+
+
+def test_a_door_never_lifts_a_gameplay_object(catalog: Catalog) -> None:
+    shrine = PlacedObject(4, 4, 0, Purpose.STAT_PERMANENT, "shrine", _PAIR)
+    site = _wooded(catalog, shrine)
+    assert not site.liftable((4, 4))
+    assert ZoneFooting().fit(site, _SHRINE, (4, 4)) is None

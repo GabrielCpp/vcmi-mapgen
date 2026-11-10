@@ -66,7 +66,10 @@ and `water_test.py` do, because no step package may import another step.
 ## Every placement step is additive
 
 A step appends its own objects with `map_state.add_objs(new)`. It never removes,
-moves or replaces an object an earlier step placed. Plan into a scratch list and commit only what fits: pre-check
+moves or replaces an object an earlier step placed, with one exception. `GameplayStep` lifts
+the trees under a new object's door with `map_state.lift`, and plants a one-tile tree on each
+of their blocking cells the body leaves bare, so the object takes the trees' place.
+`MapState.lift` refuses any object that is not a decoration. Plan into a scratch list and commit only what fits: pre-check
 each object with `CoverIndex.try_claim`, and try the next candidate when one is refused.
 A step draws each identity from the catalog for its zone's terrain, but a zone may hold
 tiles of another terrain: the places model paints accents and transitions inside a zone. So

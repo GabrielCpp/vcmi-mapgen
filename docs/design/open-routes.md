@@ -340,3 +340,48 @@ the gameplay objects force a detour at a two-tile margin, against 6% on seed 1, 
 of detouring objects is not what differs. The ground around them is.
 
 Open: the random-pair walk at every side, from the vegetation.
+
+## 12. Objects take the trees' place (2026-11-09)
+
+Section 11 put the shared gap on the vegetation. That was wrong: it set our map after
+vegetation against a finished corpus map. With every gameplay object lifted, corpus land maps
+walk 1.31 at 72 and 1.30 at 144, and ours 1.29 at both, with the same spread. The trees match.
+On corpus land maps the objects add 0.03 to the walk. On ours they add 0.10 at 72.
+
+Corpus objects sit tucked into the tree edge: 60% of the tiles around an object are trees.
+Ours stood in the open: 40%, in every family alike. The object count matches, 29 per 1000
+land tiles, and so does the share that forces a detour, 8% against 9%. On a finished map
+the gameplay narrows our open patches into lanes. A one-tile lane holds 44% of our open
+ground at 72 against 33% on the corpus, and straight one-tile corridors 5% against 1.4%,
+while after vegetation alone the lanes read 30% against 27%.
+
+A one-tile object could never stand in the tree edge, because its door had to be open ground.
+A door may now land on a tree: `ZoneSite.carve` lifts the trees under the door and plants a
+one-tile tree on each of their blocking cells the body leaves bare, so the ground walks as it
+did except under the body. `GameplayStep` takes the lifted trees off the map with
+`MapState.lift`, the one exception to the additive rule, which refuses any gameplay object. A
+town keeps its open door. The mine allocator now breaks a tie on days by the sprite's cover,
+as siting does.
+
+Measured on 12 seeds at 72, against the build before:
+
+| | Before | After | Corpus |
+|---|---|---|---|
+| Trees around a small object (shrine, spell, mana) | 0.26 to 0.46 | 0.44 to 0.54 | 0.45 to 0.60 |
+| Trees around a mine, a dwelling | 0.47, 0.43 | 0.49, 0.44 | 0.59, 0.60 |
+| Walk, median | 1.41 | 1.41 | 1.31 |
+| Walk, change per seed | | -0.02 | |
+| Objects per 1000 land tiles | 28.8 | 29.0 | 29.5 |
+
+A 6-player map at 144 with an underground takes 146 s against 150 s before, seed 3. The two
+golden maps change.
+
+Tried and dropped: a penalty on open tiles a body takes in the spot ranking (the 7x7 window
+holds no better spot), large objects without the most-open-centre-first rule, guard seals
+beside the door only or none (-0.02 and -0.035 per seed, inside the seed noise), side plants
+off, the web counted as a route, per-tile noise in the planting field, and a stronger or
+wider route noise. None moved the vegetation's straight corridors or the walk past the seed
+noise of about 0.02.
+
+Open: large objects still stand in the open, and guard seals and side plants still narrow
+lanes. Together they hold the remaining 0.1 of walk at 72.

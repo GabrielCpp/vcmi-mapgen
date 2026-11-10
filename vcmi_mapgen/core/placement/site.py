@@ -9,7 +9,10 @@ two bodies may stand side by side, and off the entrance bands and earlier approa
 spill out of the zone onto unwalkable land that is not water or rock. Under either footing the
 entrance and its approach are walkable and reachable from the web, and the blocking cells split no
 reachable area in two nor part the open tiles beside them that joined through them. Blocking cells
-may land on vegetation, the zone rim and the web, and the web then walks around them.
+may land on vegetation, the zone rim and the web, and the web then walks around them. Outside a
+town, a door may land on a tree too: the object takes the tree's place. The trees under its doors
+are lifted, and each of their blocking cells the body leaves bare gets a one-tile tree, so the
+ground walks as it did except under the body.
 ``SnugFooting`` narrows a footing to the anchors where the object sits snug for its size, and
 ``SidedFooting`` to the anchors with a closed tile on or around the sprite. Among the legal
 anchors of a neighbourhood the one whose sprite top and flanks rest most against unwalkable tiles
@@ -45,7 +48,7 @@ from vcmi_mapgen.core.model import (
     Tile,
     Town,
 )
-from vcmi_mapgen.core.model.purpose import FLANKED, Purpose
+from vcmi_mapgen.core.model.purpose import DECOR, FLANKED, Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.footprint import footprint_cells, overlay_cells
 from vcmi_mapgen.core.placement.ground import Ground, stands
@@ -300,13 +303,15 @@ class PlacedZone:
     open_set: frozenset[Tile]
     passable: frozenset[Tile]
     prot: frozenset[Tile]
+    lifted: tuple[PlacedObject, ...] = ()
 
 
 @final
 class ZoneSite:
     """One zone's placement state after vegetation. ``reserved`` (entrance bands and
     approaches) is off-limits to any footprint; ``reach`` is every tile the web reaches
-    through ``passable`` and ``comp`` labels its connected pieces."""
+    through ``passable`` and ``comp`` labels its connected pieces. ``lifted`` holds the trees
+    the zone's objects took the place of."""
 
     def __init__(
         self, catalog: Catalog, zid: int, zone: SiteZone, lf: LevelField, seed: int
@@ -332,6 +337,7 @@ class ZoneSite:
         self.approaches: list[Tile] = []
         self.town_center: tuple[float, float] | None = None
         self.gates: int = 0
+        self.lifted: list[PlacedObject] = []
 
     def fit(
         self, ident: Identity, anchor: Tile, mine: bool = False, spill: bool = False
@@ -346,11 +352,22 @@ class ZoneSite:
         approach = fit[2]
         if approach not in self.reach or not lf.walkable(approach):
             return None
-        if not all(lf.walkable(t) for t in door_cells(ident.footprint, anchor)):
+        if not all(lf.walkable(t) or self.liftable(t) for t in door_cells(ident.footprint, anchor)):
             return None
         if mine and not self.guard_fits(ident, fit):
             return None
         return fit
+
+    def liftable(self, t: Tile) -> bool:
+        """Whether a door may stand on ``t`` by lifting the trees there: land no gameplay
+        footprint holds, under decorations only."""
+        covers = self.lf.covers.covers_at(t)
+        return (
+            bool(covers)
+            and t not in self.lf.barrier
+            and t not in self.lf.occupied
+            and all(c.obj.purpose in DECOR for c in covers)
+        )
 
     def guard_fits(self, ident: Identity, fit: Fit) -> bool:
         """Whether a body fitted at ``fit`` keeps its front open and its guard tile legal."""
@@ -479,16 +496,59 @@ class ZoneSite:
         obj = PlacedObject.at(
             ident, anchor, level=self.lf.level, purpose=purpose, payload=payload_for(purpose)
         )
-        if not self.lf.accepts(obj) or self.detours(fit[1]):
+        mark = self.lf.covers.mark()
+        carved = self.carve(obj)
+        reach = None if carved is None else self._admit(obj, ident, fit, guard)
+        if carved is None or reach is None:
+            self.lf.covers.rollback(mark)
             return None
-        guarded = purpose == Purpose.MINE if guard is None else guard > 0
-        if guarded and self.lf.parts(self.guard_tile(ident, fit[2]), fit[1]):
-            return None
-        reach = self.reach_without(fit[1])
-        if reach is None:
-            return None
+        self._settle(*carved)
         self.commit(obj, fit, reach, guard)
         return obj
+
+    def _admit(
+        self, obj: PlacedObject, ident: Identity, fit: Fit, guard: int | None
+    ) -> set[Tile] | None:
+        if not self.lf.accepts(obj) or self.detours(fit[1]):
+            return None
+        guarded = obj.purpose == Purpose.MINE if guard is None else guard > 0
+        if guarded and self.lf.parts(self.guard_tile(ident, fit[2]), fit[1]):
+            return None
+        return self.reach_without(fit[1])
+
+    def carve(self, obj: PlacedObject) -> tuple[list[PlacedObject], list[PlacedObject]] | None:
+        """Lift the trees under ``obj``'s doors off the cover index and plant a one-tile tree
+        on each of their blocking cells ``obj`` leaves bare. Returns the trees lifted and the
+        trees planted, or None when a bare cell takes no tree."""
+        x, y = obj.x, obj.y
+        doors = [t for t in door_cells(obj.footprint, (x, y)) if not self.lf.walkable(t)]
+        trees = {id(c.obj): c.obj for t in doors for c in self.lf.covers.covers_at(t)}
+        body = {t for t, role in obj.footprint.at(x, y) if role.blocks}
+        pool = self.catalog.decor(self.zone.terrain, blocking=True, max_cells=1)
+        planted: list[PlacedObject] = []
+        for tree in trees.values():
+            self.lf.covers.lift(tree)
+            for t, role in tree.footprint.at(tree.x, tree.y):
+                if not role.blocks or t in body:
+                    continue
+                fit = [i for i in pool if stands(self.catalog, i, t, self.lf.ground)]
+                if not fit:
+                    return None
+                plant = PlacedObject.at(self.rng.choice(fit), t, level=self.lf.level, purpose="")
+                if not self.lf.covers.try_add(plant):
+                    return None
+                planted.append(plant)
+        return list(trees.values()), planted
+
+    def _settle(self, lifted: list[PlacedObject], planted: list[PlacedObject]) -> None:
+        for tree in lifted:
+            own = [i for i, o in enumerate(self.objs) if o is tree]
+            if own:
+                del self.objs[own[0]]
+            else:
+                self.lifted.append(tree)
+        self.objs.extend(planted)
+        self.cells.update((o.x, o.y) for o in planted)
 
     def commit(
         self, obj: PlacedObject, fit: Fit, reach: set[Tile], guard: int | None = None
@@ -633,6 +693,7 @@ class ZoneSite:
             self.zone.open_set - solid - frozenset(self.approaches),
             self.zone.passable - self.blk - self.stranded,
             frozenset(self.prot),
+            tuple(self.lifted),
         )
 
 

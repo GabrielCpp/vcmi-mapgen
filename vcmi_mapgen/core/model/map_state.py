@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from vcmi_mapgen.core.model.objects import PlacedObject, Role, Tile
-from vcmi_mapgen.core.model.purpose import Purpose
+from vcmi_mapgen.core.model.purpose import DECOR, Purpose
 from vcmi_mapgen.core.model.road import Road
 from vcmi_mapgen.core.model.terrain import Terrain
 
@@ -84,7 +84,6 @@ def index_of(objs: list[PlacedObject]) -> dict[tuple[int, Tile], list[Cover]]:
 
 
 _BEHIND_SPRITES = frozenset({Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP, Purpose.GUARD})
-_DECOR = frozenset({"", Purpose.DECORATION})
 _DOOR = frozenset({Role.ENTRANCE, Role.APPROACH})
 _PASSAGES = frozenset({Purpose.QUEST_GATE, Purpose.TRANSPORT})
 _PICKUPS = frozenset({Purpose.RESOURCE_PILE, Purpose.REWARD_PICKUP})
@@ -109,7 +108,7 @@ def _clash(culprit: PlacedObject, role: Role, tile: Tile, victim: Cover) -> str 
         return None
     if role is Role.OVERLAY and culprit.purpose in _PICKUPS and victim.role is Role.APPROACH:
         return None
-    if role is Role.OVERLAY and culprit.purpose in _DECOR and victim.role in _DOOR:
+    if role is Role.OVERLAY and culprit.purpose in DECOR and victim.role in _DOOR:
         return None
     if role is Role.OVERLAY and (
         culprit.purpose == Purpose.GUARD or victim.obj.purpose in _BEHIND_SPRITES
@@ -137,6 +136,11 @@ def covering_problems(obj: PlacedObject, index: dict[tuple[int, Tile], list[Cove
     return problems
 
 
+@dataclass(frozen=True, slots=True)
+class _Lifted:
+    obj: PlacedObject
+
+
 class PlacementRule(Protocol):
     """A reason a candidate may not stand where it is, read from the covers of its level."""
 
@@ -147,8 +151,8 @@ class CoverIndex:
     """The tiles of one level that objects cover, and the tiles placers have claimed, kept up
     to date as a placer adds objects. ``conflicts`` answers both ways: ``obj`` covering another
     object's interactive tile, and another object covering an interactive tile of ``obj``.
-    It then asks each of ``rules``. ``mark`` and ``rollback`` undo every object added and every
-    tile claimed since the mark."""
+    It then asks each of ``rules``. ``lift`` takes an object off the index. ``mark`` and
+    ``rollback`` undo every object added or lifted and every tile claimed since the mark."""
 
     def __init__(
         self,
@@ -158,7 +162,7 @@ class CoverIndex:
     ) -> None:
         self._at: dict[Tile, list[Cover]] = {}
         self._claimed: set[Tile] = set(claims)
-        self._log: list[PlacedObject | frozenset[Tile]] = []
+        self._log: list[PlacedObject | frozenset[Tile] | _Lifted] = []
         self._rules: tuple[PlacementRule, ...] = tuple(rules)
         for obj in objs:
             self.add(obj)
@@ -171,9 +175,24 @@ class CoverIndex:
         return self._at.get(tile, ())
 
     def add(self, obj: PlacedObject) -> None:
+        self._put(obj)
+        self._log.append(obj)
+
+    def lift(self, obj: PlacedObject) -> None:
+        self._drop(obj)
+        self._log.append(_Lifted(obj))
+
+    def _put(self, obj: PlacedObject) -> None:
         for tile, role in footprint(obj):
             self._at.setdefault(tile, []).append(Cover(obj, role))
-        self._log.append(obj)
+
+    def _drop(self, obj: PlacedObject) -> None:
+        for tile, _role in footprint(obj):
+            kept = [c for c in self._at[tile] if c.obj is not obj]
+            if kept:
+                self._at[tile] = kept
+            else:
+                del self._at[tile]
 
     def claim(self, cells: Iterable[Tile]) -> None:
         fresh = frozenset(cells) - self._claimed
@@ -188,13 +207,10 @@ class CoverIndex:
             entry = self._log.pop()
             if isinstance(entry, frozenset):
                 self._claimed -= entry
-                continue
-            for tile, _role in footprint(entry):
-                kept = [c for c in self._at[tile] if c.obj is not entry]
-                if kept:
-                    self._at[tile] = kept
-                else:
-                    del self._at[tile]
+            elif isinstance(entry, _Lifted):
+                self._put(entry.obj)
+            else:
+                self._drop(entry)
 
     def conflicts(self, obj: PlacedObject) -> list[str]:
         problems: list[str] = []
@@ -304,6 +320,16 @@ class MapState:
 
     def place(self, obj: PlacedObject) -> None:
         self.add_objs([obj])
+
+    def lift(self, gone: Iterable[PlacedObject]) -> None:
+        """Take decorations off the map: the trees a placement step's own objects replace.
+        Raises on a gameplay object, which no step ever lifts."""
+        gone = list(gone)
+        kept = [o for o in gone if o.purpose not in DECOR]
+        if kept:
+            raise PlacementError(f"cannot lift gameplay objects: {[o.kind for o in kept]}")
+        ids = {id(o) for o in gone}
+        self.objs = [o for o in self.objs if id(o) not in ids]
 
     def add_objs(self, new: list[PlacedObject]) -> None:
         """Append ``new`` to the map. Only the new objects are checked, each against every

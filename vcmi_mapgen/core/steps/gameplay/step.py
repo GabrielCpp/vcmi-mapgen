@@ -163,7 +163,8 @@ class GameplayStep(PipelineStep):
     corpus rate. From the promised mines on, no object closes a player's way to its nearest
     mine of each resource.
 
-    Produces: appends the objects to ``map_state.objs``, sets ``map_state.gate_blk`` and
+    Produces: lifts the trees its objects took the place of off ``map_state.objs`` and
+    appends the objects, sets ``map_state.gate_blk`` and
     ``map_state.player_towns``. Into ctx: ``TownsIndex``, ``GateResult``, ``GameplayResult``
     and ``PromisedWays``.
     """
@@ -591,6 +592,11 @@ class GameplayStep(PipelineStep):
                 [o for o in [*map_state.objs, *self.objs] if o.level == level],
             )
             landings[level] = ZPL.Landings(frozenset(blk), frozenset(appr))
+        lifted = {
+            id(t) for idx in indexes.values() for site in idx.sites.values() for t in site.lifted
+        }
+        self.objs = [o for o in self.objs if id(o) not in lifted]
+        map_state.lift(o for o in map_state.objs if id(o) in lifted)
         map_state.add_objs(self.objs)
         map_state.player_towns = self._player_towns(towns)
         tie_dwellings(catalog, map_state, self.priors.effort.toll)

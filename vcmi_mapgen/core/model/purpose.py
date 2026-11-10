@@ -27,6 +27,9 @@ class Purpose(StrEnum):
     WATER_TRANSPORT = "WATER_TRANSPORT"
 
 
+DECOR = frozenset({"", Purpose.DECORATION})
+"""The purposes of a decoration: trees, rocks and the like, no gameplay."""
+
 VISIT_PURPOSES = (
     Purpose.STAT_PERMANENT,
     Purpose.SPELL_SKILL,

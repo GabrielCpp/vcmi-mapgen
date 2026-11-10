@@ -190,3 +190,32 @@ def test_objs_by_level_groups_in_placement_order() -> None:
     assert by_level == {0: [a, c], 1: [b], 2: []}
     by_level[0].append(b)
     assert state.objs == [a, b, c]
+
+
+def test_cover_index_lift_frees_the_tiles_and_rollback_restores_them() -> None:
+    tree = _obj(3, 3, ("BB",))
+    mine = _obj(2, 3, ("A",), purpose=Purpose.MINE)
+    index = CoverIndex([tree])
+    assert not index.accepts(mine)
+    m = index.mark()
+    index.lift(tree)
+    assert index.accepts(mine)
+    index.rollback(m)
+    assert not index.accepts(mine)
+
+
+def test_lift_takes_a_tree_off_the_map() -> None:
+    tree = _obj(3, 3, ("BB",))
+    mine = _obj(1, 1, ("X",), purpose=Purpose.MINE)
+    state = MapState(size=5, objs=[mine, tree])
+    state.lift([tree])
+    assert state.objs == [mine]
+    assert not state.at(0, 3, 3).covers
+
+
+def test_lift_refuses_a_gameplay_object() -> None:
+    mine = _obj(1, 1, ("X",), purpose=Purpose.MINE)
+    state = MapState(size=5, objs=[mine])
+    with pytest.raises(PlacementError):
+        state.lift([mine])
+    assert state.objs == [mine]

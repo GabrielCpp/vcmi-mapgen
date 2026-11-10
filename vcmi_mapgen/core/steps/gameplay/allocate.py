@@ -7,7 +7,8 @@ mine's own. Each player gets a wood and an ore mine of its own, the nearest that
 gap within PROMISE_GAP. The rare mines stand as the fewest that bring every player within
 PROMISE_DAYS of each rare resource. The rare resources pick in turn, so no spot holds two,
 each picking the offer that reaches the most players still out, then the least gap between
-them, then the days nearest RARE_TARGET. A pick that later picks of its resource make
+them, then the days nearest RARE_TARGET. Offers that tie on days go to the anchor whose
+sprite rests most against closed tiles. A pick that later picks of its resource make
 redundant is dropped before any mine stands, and a pick that fails to stand gives way to the
 next best offer of its resource. A resource no offer brings a player in time to steps its guard
 down, and at no guard a warning names the players left out."""
@@ -55,13 +56,15 @@ def drawn_guard(draws: GuardDraw, rng: random.Random) -> Guarding:
 
 @dataclass(frozen=True, slots=True)
 class Offer:
-    """One anchor for one mine variant in one zone site, with each player's days to it."""
+    """One anchor for one mine variant in one zone site, with each player's days to it and
+    how well the sprite rests against closed tiles there."""
 
     site: ZoneSite
     ident: Identity
     anchor: Tile
     days: Days
     cells: frozenset[Spot] = frozenset()
+    cover: int = 0
 
 
 @dataclass(slots=True)
@@ -133,7 +136,8 @@ def offers(
                 found.append((site, ident, (ax, ay), Spot(lv, *guard), shut, cells))
     pricer.prime(level, ((spot, shut) for _site, _ident, _anchor, spot, shut, _cells in found))
     for site, ident, anchor, spot, shut, cells in found:
-        yield Offer(site, ident, anchor, pricer.days(spot, level, shut), cells)
+        days = pricer.days(spot, level, shut)
+        yield Offer(site, ident, anchor, days, cells, site.cover(ident, anchor))
 
 
 def _merge(a: int | None, b: int | None) -> int | None:
@@ -192,7 +196,7 @@ def _merit(days: Days, best: Days, player: int) -> tuple[int, ...]:
 
 
 def _tail(offer: Offer) -> tuple[int, ...]:
-    return (offer.site.lf.level, offer.site.zid, *offer.anchor)
+    return (-offer.cover, offer.site.lf.level, offer.site.zid, *offer.anchor)
 
 
 def _order(pool: list[Offer], best: Days, player: int = 0) -> None:
