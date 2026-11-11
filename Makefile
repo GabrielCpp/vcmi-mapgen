@@ -5,7 +5,7 @@
 # to list them. Add your own repo-specific (non-agent) targets below the include.
 include .agents/agents.mk
 
-.PHONY: check lint test sweep golden golden-update
+.PHONY: check lint test sweep golden golden-update delete-vcmi-maps
 check: lint test
 
 lint:
@@ -25,3 +25,6 @@ golden:
 
 golden-update:
 	GOLDEN_UPDATE=1 uv run python -m pytest -q -p no:xdist -m golden vcmi_mapgen/golden_test.py
+
+delete-vcmi-maps:
+	rm ~/.var/app/eu.vcmi.VCMI/data/vcmi/Maps/VcmiMapsGen/*
