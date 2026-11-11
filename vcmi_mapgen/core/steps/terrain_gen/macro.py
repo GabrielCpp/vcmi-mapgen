@@ -202,6 +202,18 @@ def pair_probs(st: MacroStats, lands: Sequence[int]) -> dict[Tile, float]:
     return padj
 
 
+def pair_lifts(st: MacroStats, lands: Sequence[int]) -> dict[Tile, float]:
+    """How much more often each pair of terrains borders in the corpus than the share of
+    border each terrain holds predicts: the joint over the product of the two marginals.
+    The corpus counts each unordered pair once, so a mixed pair splits between its two
+    orders."""
+    padj = pair_probs(st, lands)
+    joint = {(a, b): p if a == b else p / 2 for (a, b), p in padj.items()}
+    end = {a: sum(joint[(a, b)] for b in lands) for a in lands}
+    total = sum(end.values()) or 1.0
+    return {(a, b): p * total / (end[a] * end[b]) for (a, b), p in joint.items()}
+
+
 def _knn3(seeds: list[Tile]) -> list[list[int]]:
     n = len(seeds)
     knn: list[list[int]] = []

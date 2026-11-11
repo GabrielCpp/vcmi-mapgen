@@ -12,7 +12,7 @@ from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.priors.macro import MacroStats
 from vcmi_mapgen.core.priors.places import PlaceStats
 from vcmi_mapgen.core.reading.places import PlaceRole
-from vcmi_mapgen.core.steps.terrain_gen.macro import pair_probs
+from vcmi_mapgen.core.steps.terrain_gen.macro import pair_lifts
 from vcmi_mapgen.core.steps.terrain_gen.palette import neighbours
 from vcmi_mapgen.core.steps.terrain_gen.place_draws import Edge
 
@@ -65,29 +65,33 @@ def assign_dominants(
     rng: random.Random,
 ) -> list[Terrain]:
     """One terrain per palette region among the corpus surface terrains, a region holding a
-    home among the ones a town may stand on, returned per place. Energy is the role cost of
-    every member place plus minus the log corpus probability of every bordering region
-    pair. Two bordering regions never share a terrain."""
+    home among the ones a town may stand on, returned per place. Energy is the mean role cost
+    of the member places, so a region is one draw at the corpus odds however many places it
+    holds, plus minus the log corpus lift of every bordering region pair, so a terrain that
+    borders often wins no extra pull from many neighbours. The largest regions choose first.
+    Two bordering regions never share a terrain."""
     places, macro = stats
     roles, adjacency, groups = palette.roles, palette.adjacency, palette.groups
     domain = sorted(Terrain(t) for t in macro.terr_share)
     allowed = _domains(roles, groups, domain, town)
     cost = role_costs(places, set(roles), domain)
     pair: Mapping[tuple[int, int], float] = {
-        k: -math.log(p) for k, p in pair_probs(macro, [t.value for t in domain]).items()
+        k: -math.log(p) for k, p in pair_lifts(macro, [t.value for t in domain]).items()
     }
     members: list[list[PlaceRole]] = [[] for _ in allowed]
     for r, g in zip(roles, groups, strict=True):
         members[g].append(r)
-    own = [{t: sum(cost[r][t] for r in m) for t in domain} for m in members]
+    own = [{t: sum(cost[r][t] for r in m) / max(len(m), 1) for t in domain} for m in members]
     nbr = neighbours(
         len(allowed), {(groups[a], groups[b]) for a, b in adjacency if groups[a] != groups[b]}
     )
-    terr: list[Terrain] = []
-    for k, ok in enumerate(allowed):
-        taken = {terr[j] for j in nbr[k] if j < k}
-        free = [t for t in ok if t not in taken] or ok
-        terr.append(min(free, key=lambda t: (own[k][t], t)))
+    terr: list[Terrain] = [domain[0]] * len(allowed)
+    done: set[int] = set()
+    for k in sorted(range(len(allowed)), key=lambda k: (-len(members[k]), k)):
+        taken = {terr[j] for j in nbr[k] if j in done}
+        free = [t for t in allowed[k] if t not in taken] or allowed[k]
+        terr[k] = min(free, key=lambda t: (own[k][t], t))
+        done.add(k)
 
     def local(k: int, t: Terrain) -> float:
         return own[k][t] + sum(
