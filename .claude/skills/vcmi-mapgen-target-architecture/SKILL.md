@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-target-architecture
-description: "Settle a repository's target architecture before refactoring it, then turn it into a migration plan a workflow can execute. Produces two files: docs/architecture/target.md, the human contract (target tree, core models and the facts they own, sources of truth, allowed dependency edges, behaviour oracle), and docs/architecture/plan.json, the machine contract (a fate for every source file and ordered slices with touches, depends_on and done_when). Ships a validator that checks every file has a fate and that slices able to run in parallel touch disjoint files. Nothing moves until the operator sets status to approved. Load before a repo-wide refactor or restructuring, when asked what the architecture should be, or before running a refactor workflow."
+description: "Settle a repository's target architecture before refactoring it, then turn it into a migration plan a workflow can execute. Produces docs/architecture/target.md, the human contract (target tree, core models and the facts they own, sources of truth, allowed dependency edges, behaviour oracle), and docs/architecture/plan.json, the machine contract (a fate for every source file and ordered slices with touches, depends_on and done_when). Ships a validator for file fates and parallel-slice disjointness. Load when planning a repo-wide refactor or restructuring, when asked what the architecture should be, or before running a refactor workflow."
 metadata:
   name: target-architecture
   generated_by: farrier
@@ -26,7 +26,7 @@ both.
 | File | Reader | Holds |
 |------|--------|-------|
 | `docs/architecture/target.md` | the operator, every later session | the decisions and the reason for each |
-| `docs/architecture/plan.json` | the refactor workflow, `scripts/check_plan.py` | fates and slices |
+| `docs/architecture/plan.json` | the refactor workflow, [scripts/check_plan.py](scripts/check_plan.py) | fates and slices |
 | the import contract | the repo's check suite | allowed dependency edges, enforced |
 
 Paths under a hidden directory such as `.claude/` never count as sources. Override the
