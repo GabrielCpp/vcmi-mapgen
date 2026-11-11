@@ -176,3 +176,28 @@ def test_hota_terrain_tiles_come_from_their_mods() -> None:
         assert tile.size == (RE.TILE, RE.TILE)
         assert tile.getpixel((5, 5)) not in ((40, 40, 40, 255), (80, 40, 80, 255)), tc
         assert _nonempty(tile), tc
+
+
+@pytest.mark.parametrize("river", ["rw", "ri", "rm", "rl"])
+def test_a_river_tile_draws_its_river(river: str) -> None:
+    dry = [["gr0_" for _ in range(3)] for _ in range(3)]
+    wet = [row[:] for row in dry]
+    wet[1][1] = f"gr0_{river}0_"
+    assert RE.render_map(_index(), wet, []).tobytes() != RE.render_map(_index(), dry, []).tobytes()
+
+
+def test_an_overlay_lower_down_leaves_the_object_on_it_visible() -> None:
+    surf = [["gr0_" for _ in range(8)] for _ in range(8)]
+    chest = PlacedObject(3, 3, 0, "", "AVTchst0", Footprint(0, 0, ()))
+    cursed = PlacedObject(6, 5, 0, "", "AVXcrsd0", Footprint(0, 0, ()))
+    img = RE.render_map(_index(), surf, [chest, cursed])
+    groups = RE.get_def(_index(), chest.kind)
+    assert groups
+    sprite = groups[0][0].convert("RGB")
+    solid = groups[0][0].getchannel("A").point([0] * 255 + [255])
+    left = (chest.x + 1) * RE.TILE - sprite.width
+    top = (chest.y + 1) * RE.TILE - sprite.height
+    drawn = img.crop((left, top, left + sprite.width, top + sprite.height))
+    expected = drawn.copy()
+    expected.paste(sprite, (0, 0), solid)
+    assert drawn.tobytes() == expected.tobytes()

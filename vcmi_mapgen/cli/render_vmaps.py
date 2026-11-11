@@ -1,7 +1,7 @@
 """Render every `.vmap` of a folder to PNGs with real sprites, each map's own tile art kept.
 
 The surface lands at `<png_dir>/<name>.png` and the underground of a two-level map at
-`<png_dir>/<name>_underground.png`.
+`<png_dir>/<name> Underground.png`, titled the same.
 """
 
 from pathlib import Path
@@ -11,7 +11,7 @@ from vcmi_mapgen.renderers import PngRenderer
 from vcmi_mapgen.vcmi.formats import vmap as VM
 from vcmi_mapgen.vcmi.load import map_colours
 
-UNDERGROUND_SUFFIX = "_underground"
+UNDERGROUND_SUFFIX = " Underground"
 
 
 def render_vmap(renderer: PngRenderer, vmap_dir: Path, png_dir: Path, name: str) -> list[Path]:
@@ -22,8 +22,9 @@ def render_vmap(renderer: PngRenderer, vmap_dir: Path, png_dir: Path, name: str)
     owners = map_colours(source)
     written: list[Path] = []
     for level, surface in enumerate(doc.terrain):
-        path = png_dir / f"{name}{UNDERGROUND_SUFFIX if level else ''}.png"
-        renderer.render(state, level, name, surface, owners).save(path)
+        title = f"{name}{UNDERGROUND_SUFFIX if level else ''}"
+        path = png_dir / f"{title}.png"
+        renderer.render(state, level, title, surface, owners).save(path)
         written.append(path)
     return written
 

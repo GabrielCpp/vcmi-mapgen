@@ -44,6 +44,12 @@ ROAD_DEF: dict[Road, str] = {
     Road.GRAVEL: "gravrd.def",
     Road.COBBLESTONE: "cobbrd.def",
 }
+RIVER_DEF: dict[int, str] = {
+    1: "clrrvr.def",
+    2: "icyrvr.def",
+    3: "mudrvr.def",
+    4: "lavrvr.def",
+}
 DEF_SUFFIX = ".def"
 JSON_SUFFIX = ".json"
 TILE = 32  # pixels per map tile
@@ -175,12 +181,49 @@ def road_tile_img(index: ContentArchive, tile_str: str) -> Image.Image | None:
     return _flipped(frames[cell.od % len(frames)].convert("RGBA"), cell.om)
 
 
+def river_tile_img(index: ContentArchive, tile_str: str) -> Image.Image | None:
+    """The river sprite a tile string carries, flipped as it says, or None for no river."""
+    cell = decode_tile_string(tile_str)
+    if not cell.rt:
+        return None
+    groups = get_def(index, RIVER_DEF[cell.rt])
+    if not groups or not groups[0]:
+        return None
+    frames = groups[0]
+    return _flipped(frames[cell.rd % len(frames)].convert("RGBA"), cell.rm)
+
+
+def _paste_rivers(
+    canvas: Image.Image, index: ContentArchive, surf: Sequence[Sequence[str]]
+) -> None:
+    for y, row in enumerate(surf):
+        for x, tile_str in enumerate(row):
+            img = river_tile_img(index, tile_str)
+            if img is not None:
+                canvas.paste(img.convert("RGB"), (x * TILE, y * TILE), img.split()[3])
+
+
 def _paste_roads(canvas: Image.Image, index: ContentArchive, surf: Sequence[Sequence[str]]) -> None:
     for y, row in enumerate(surf):
         for x, tile_str in enumerate(row):
             img = road_tile_img(index, tile_str)
             if img is not None:
                 canvas.paste(img.convert("RGB"), (x * TILE, y * TILE + TILE // 2), img.split()[3])
+
+
+@cache
+def overlay_kinds(index: ContentArchive) -> frozenset[str]:
+    """The animations the editor table ``objects.txt`` marks as overlays, lowercased. The
+    editor draws them under every other object, as ground."""
+    raw = index.read("objects.txt")
+    if raw is None:
+        return frozenset()
+    rows = (line.split() for line in raw.decode("latin1", "replace").splitlines()[1:])
+    return frozenset(
+        p[0].lower().removesuffix(DEF_SUFFIX)
+        for p in rows
+        if len(p) >= 7 and p[0].lower().endswith(DEF_SUFFIX) and p[-1] != "0"
+    )
 
 
 # --------------------------------------------------------------------------- compositing
@@ -204,10 +247,14 @@ def render_map(
         for x in range(W):
             tile_img = terr_tile_img(index, surf[y][x])
             canvas.paste(tile_img.convert("RGB"), (x * TILE, y * TILE))
+    _paste_rivers(canvas, index, surf)
     _paste_roads(canvas, index, surf)
 
-    # 2) objects: painter's order = sort by y asc, then by x asc (back-to-front)
-    sorted_objs = sorted(objs, key=lambda o: (o.level != 0, o.y, o.x))
+    # 2) objects: overlays first, then painter's order by y asc, then by x asc
+    overlays = overlay_kinds(index)
+    sorted_objs = sorted(
+        objs, key=lambda o: (o.level != 0, o.kind.lower() not in overlays, o.y, o.x)
+    )
     miss = 0
     for o in sorted_objs:
         if o.level != 0:
