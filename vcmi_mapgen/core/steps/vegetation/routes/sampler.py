@@ -19,9 +19,9 @@ from vcmi_mapgen.core.steps.vegetation.routes.net import route_net, waypoints, w
 from vcmi_mapgen.core.steps.vegetation.sampler import SampleOptions, ZoneGrowth
 
 SPAN = 0.6
-BEND = 1.0
+BEND = 3.0
 BAND = 0
-BLUR = 2
+BLUR = 1
 TOP_UP = 3
 
 

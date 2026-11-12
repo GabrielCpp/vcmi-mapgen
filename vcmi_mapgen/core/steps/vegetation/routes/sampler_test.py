@@ -1,6 +1,8 @@
 """The routes sampler on one open zone: it is deterministic, keeps the web open, blocks
-about the corpus share, and leaves ground a hero crosses straighter than the cellular
-field's."""
+about the corpus share, leaves ground a hero crosses straighter than the cellular
+field's, and breaks its open ground into fields no wider than the corpus leaves."""
+
+import numpy as np
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.grid.reach import STEPS8, distances
@@ -9,6 +11,7 @@ from vcmi_mapgen.core.model import Zone
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.planning.web import ZoneRef
 from vcmi_mapgen.core.priors.bundle import Priors
+from vcmi_mapgen.core.reading.rooms import component_sizes, covered
 from vcmi_mapgen.core.reading.winding import route_winding
 from vcmi_mapgen.core.steps.vegetation.field.sampler import FieldSampler
 from vcmi_mapgen.core.steps.vegetation.model import build_model
@@ -83,3 +86,15 @@ def test_a_hero_walks_between_two_ways_in_close_to_the_straight_line(
         _, blocked, _ = RoutesSampler().sample(ref, model, seed, SampleOptions(prot=west | east))
         steps = distances(set(ref.ts) - blocked, [(0, 8)], STEPS8)
         assert steps[(W - 1, 27)] <= STRETCH * (W - 1)
+
+
+def test_no_open_field_holds_a_quarter_of_the_walkable_ground(
+    catalog: Catalog, priors: Priors
+) -> None:
+    model = build_model(catalog, "grass", priors.vegetation["grass"])
+    ref = _ref()
+    for seed in range(6):
+        _, blocked, _ = RoutesSampler().sample(ref, model, seed, SampleOptions())
+        walk = np.array([[(x, y) not in blocked for x in range(W)] for y in range(H)])
+        fields = component_sizes(covered(walk, 3))
+        assert max(fields, default=0) < 0.25 * np.count_nonzero(walk)

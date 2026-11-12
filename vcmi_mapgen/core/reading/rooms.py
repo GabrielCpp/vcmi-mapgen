@@ -32,7 +32,7 @@ class RoomReading:
     blocked_giant: float
 
 
-def _covered(mask: Mask, k: int) -> Mask:
+def covered(mask: Mask, k: int) -> Mask:
     """The tiles of `mask` inside some all-true `k` x `k` square of it."""
     h, w = mask.shape
     out = np.zeros_like(mask)
@@ -95,13 +95,13 @@ def read_rooms(map_state: MapState, level: int) -> RoomReading | None:
     count = _count(walk)
     if not count:
         return None
-    core = _covered(walk, 2)
+    core = covered(walk, 2)
     rooms = [n for n in component_sizes(core) if n >= ROOM_MIN]
     blocked = land & blocking
     giants = component_sizes(blocked)
     return RoomReading(
         lane_share=_count(walk & ~core) / count,
-        open_share=_count(_covered(walk, 3)) / count,
+        open_share=_count(covered(walk, 3)) / count,
         room_count=len(rooms),
         room_median=float(statistics.median(rooms)) if rooms else 0.0,
         room_largest=max(rooms, default=0) / count,
