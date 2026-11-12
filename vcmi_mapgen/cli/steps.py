@@ -13,6 +13,7 @@ from vcmi_mapgen.core.steps import (
     RemoteStep,
     RoadsStep,
     ScatterStep,
+    SeaStep,
     SetsStep,
     TerrainStep,
     TreasureStep,
@@ -43,6 +44,7 @@ GENERATE_STOP_POINTS = (
     "scatter",
     "remote",
     "compensation",
+    "sea",
     "roads",
 )
 
@@ -114,5 +116,6 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
         ("scatter", ScatterStep(priors, seed, size)),
         ("remote", RemoteStep(priors, seed, size)),
         ("compensation", CompensationStep(priors)),
+        ("sea", SeaStep(priors, seed)),
         ("roads", RoadsStep(priors, PassageRoads(), seed)),
     ]

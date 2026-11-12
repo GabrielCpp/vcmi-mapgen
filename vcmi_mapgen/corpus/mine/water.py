@@ -1,7 +1,9 @@
 """Fit the logistic odds of water on each surface tile over every corpus map with water, and
 keep each corpus map's water target."""
 
+from collections import Counter
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import cast
 
 import numpy as np
@@ -9,6 +11,7 @@ import numpy as np
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import MapState
 from vcmi_mapgen.core.model.terrain import Terrain
+from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.priors.water import WaterPriors, WaterTarget
 from vcmi_mapgen.core.reading.ground import read_ground
 from vcmi_mapgen.core.reading.places import read_places
@@ -28,13 +31,36 @@ RIDGE = 1e-3
 ITERATIONS = 30
 
 
+def dress_of(kinds: frozenset[str], state: MapState, water: Mask) -> tuple[float, Counter[str]]:
+    """The surface water tiles that water decoration blocks per water tile, and how many
+    water decorations of each kind stand on it."""
+    h, w = water.shape
+    blocked: set[tuple[int, int]] = set()
+    found: Counter[str] = Counter()
+    for o in state.objs:
+        kind = o.kind.lower()
+        if o.level or kind not in kinds:
+            continue
+        cells = [
+            (x, y, b)
+            for x, y, b in FP.anchored_cells(o.footprint, o.x, o.y)
+            if 0 <= x < w and 0 <= y < h and water[y, x]
+        ]
+        if cells:
+            found[kind] += 1
+            blocked.update((x, y) for x, y, b in cells if b)
+    return len(blocked) / max(1, int(np.count_nonzero(water))), found
+
+
 def map_rows(catalog: Catalog, state: MapState) -> tuple[WaterTarget, tuple[Floats, Floats] | None]:
     """One surface's water target, and its feature rows and water labels over every tile
     off the rock when it holds water."""
     grid = np.array([[t.value for t in row] for row in state.terrain[0]], dtype=np.int64)
     water = cast("Mask", grid == Terrain.WATER.value)
     rock = cast("Mask", grid == Terrain.ROCK.value)
-    target = water_target(water, rock)
+    kinds = frozenset(i.kind.lower() for i in catalog.water_decor())
+    dress, _found = dress_of(kinds, state, water)
+    target = replace(water_target(water, rock), dress=dress)
     ground = read_ground(catalog, state, 0)
     if target.share < MIN_WATER or ground is None:
         return target, None
@@ -67,11 +93,16 @@ def irls(x: Floats, y: Floats) -> Floats:
 
 def mine_water(catalog: Catalog, maps: Sequence[MapState]) -> WaterPriors:
     targets: list[WaterTarget] = []
+    kinds = frozenset(i.kind.lower() for i in catalog.water_decor())
+    found: Counter[str] = Counter()
     xs: list[Floats] = []
     ys: list[Floats] = []
     for state in maps:
         target, rows = map_rows(catalog, state)
         targets.append(target)
+        if target.share >= MIN_WATER:
+            grid = np.array([[t.value for t in row] for row in state.terrain[0]], dtype=np.int64)
+            found.update(dress_of(kinds, state, cast("Mask", grid == Terrain.WATER.value))[1])
         if rows is not None:
             xs.append(rows[0])
             ys.append(rows[1])
@@ -82,4 +113,5 @@ def mine_water(catalog: Catalog, maps: Sequence[MapState]) -> WaterPriors:
         tuple(cast("list[float]", beta.tolist())),
         tuple(cast("list[float]", static_beta.tolist())),
         tuple(targets),
+        tuple(sorted(found.items())),
     )

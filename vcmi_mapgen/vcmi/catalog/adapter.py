@@ -98,6 +98,10 @@ class VcmiCatalog:
         )
         return self._kept(pool)
 
+    def water_decor(self) -> list[Identity]:
+        kept = DC.EXCLUDE_DECOR_TYPES - {"KELP", "REEF"}
+        return self._kept(DC.decor_pool("water", exclude_types=kept))
+
     def decor_categories(self) -> list[str]:
         return DC.veg_categories()
 

@@ -9,6 +9,7 @@ from vcmi_mapgen.core.steps.portal.step import PortalStep
 from vcmi_mapgen.core.steps.remote.step import RemoteStep
 from vcmi_mapgen.core.steps.roads.step import RoadsStep
 from vcmi_mapgen.core.steps.scatter.step import ScatterStep
+from vcmi_mapgen.core.steps.sea.step import SeaStep
 from vcmi_mapgen.core.steps.sets.step import SetsStep
 from vcmi_mapgen.core.steps.terrain_gen.step import TerrainStep
 from vcmi_mapgen.core.steps.treasure.step import TreasureStep
@@ -24,6 +25,7 @@ __all__ = [
     "RemoteStep",
     "RoadsStep",
     "ScatterStep",
+    "SeaStep",
     "SetsStep",
     "TerrainStep",
     "TreasureStep",

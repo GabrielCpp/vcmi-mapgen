@@ -108,6 +108,10 @@ class Catalog(Protocol):
         """The decoration candidates for a terrain, water features left out."""
         ...
 
+    def water_decor(self) -> list[Identity]:
+        """The decoration that stands on water: rocks, reefs and kelp."""
+        ...
+
     def decor_categories(self) -> list[str]:
         """Every decoration category, water features included."""
         ...

@@ -54,6 +54,10 @@ class FakeCatalog:
         self.asked.append(("decor", str(terrain), str(blocking), str(max_cells)))
         return []
 
+    def water_decor(self) -> list[Identity]:
+        self.asked.append(("water_decor",))
+        return []
+
     def decor_categories(self) -> list[str]:
         return []
 
