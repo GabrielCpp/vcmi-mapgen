@@ -20,6 +20,7 @@ from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.water import WaterTarget
 from vcmi_mapgen.core.reading.water import edge_water_share
 from vcmi_mapgen.core.steps.terrain_gen.coastline import Coastline, Shore, gate_tiles
+from vcmi_mapgen.core.steps.terrain_gen.islands import raise_islands
 from vcmi_mapgen.core.steps.terrain_gen.layout import Layout
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
 from vcmi_mapgen.core.steps.terrain_gen.streams import stream
@@ -578,8 +579,16 @@ class TopologyForm:
                 dtype=np.float64,
             )
             field = self.coast * (n0 + 0.5 * n1)
-        layout, fronts = water_on_walls(shore, target, size, stream(seed, "water_walls"), field)
-        water = np.array(layout.label) < 0
+        isles = replace(target, share=target.share + sum(target.islands))
+        layout, fronts = water_on_walls(shore, isles, size, stream(seed, "water_walls"), field)
+        label, places = raise_islands(
+            np.array(layout.label, dtype=np.int64),
+            target.islands,
+            layout.places,
+            stream(seed, "islands"),
+        )
+        layout = replace(layout, label=cast("list[list[int]]", label.tolist()), places=places)
+        water = label < 0
         return layout, (_line(target, water, fronts, self.coast),)
 
 
@@ -588,5 +597,6 @@ def _line(target: WaterTarget, water: Mask, fronts: int, coast: float = 0.0) -> 
     return (
         f"  water: target share {target.share:.2f}, edge {target.edge:.2f}, "
         + f"{target.masses} masses; drawn share {float(np.mean(water)):.2f}, "
-        + f"edge {edge_water_share(water):.2f}, {fronts} fronts carved{swayed}"
+        + f"edge {edge_water_share(water):.2f}, {fronts} fronts carved{swayed}, "
+        + f"{len(target.islands)} islands drawn"
     )

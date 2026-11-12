@@ -79,6 +79,7 @@ rendering. Load `vcmi-mapgen-pipeline` before adding or changing a pipeline step
       palette regions, one dominant terrain each. A `TerritoryFront` draws the layout, homes and
       territories: `ShapesFirst` (`shapes_first.py`) grows the shapes first, and `PlannedFront`
       (`planned.py`) cuts the land by a corpus territory plan first. `--front shapes|planned` picks it.
+      `islands.py` raises the corpus islands out of the flooded sea, each a new place.
     - `priors/`: the corpus priors as frozen values.
   - `vcmi/`: everything that knows VCMI. `catalog/` is `VcmiCatalog`, the production
     `Catalog`, with its tables in `data/catalog/`. `content/` resolves the enabled mods

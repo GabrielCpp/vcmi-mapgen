@@ -150,10 +150,25 @@ def big_masses(land: Mask) -> int:
     return int(np.count_nonzero(areas >= MASS_SHARE * max(1, land_tiles)))
 
 
+def island_shares(land: Mask) -> tuple[float, ...]:
+    """The land components below 5% of the land, each as a share of the map, largest
+    first."""
+    areas: Labels = np.bincount(land_labels(land).ravel())[1:]
+    cut = MASS_SHARE * max(1, int(np.count_nonzero(land)))
+    small = sorted((a for a in cast("list[int]", areas.tolist()) if 0 < a < cut), reverse=True)
+    return tuple(a / land.size for a in small)
+
+
 def water_target(water: Mask, rock: Mask) -> WaterTarget:
-    """One map's water share, edge water share and big land masses, with rock off the
-    land."""
-    return WaterTarget(float(np.mean(water)), edge_water_share(water), big_masses(~water & ~rock))
+    """One map's water share, edge water share, big land masses and islands, with rock off
+    the land."""
+    land = ~water & ~rock
+    return WaterTarget(
+        float(np.mean(water)),
+        edge_water_share(water),
+        big_masses(land),
+        islands=island_shares(land),
+    )
 
 
 def water_places(labels: Sequence[Sequence[int]], masses: Labels) -> list[WaterPlace]:

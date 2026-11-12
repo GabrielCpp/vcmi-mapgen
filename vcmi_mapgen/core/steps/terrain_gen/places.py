@@ -172,6 +172,12 @@ def surface(
         keep,
     )
     layout, water_log = form.flood(shore, priors, seed, options)
+    isles = layout.places - len(territory)
+    territory = (
+        *territory,
+        *range(1 + max(territory, default=-1), 1 + max(territory, default=-1) + isles),
+    )
+    owners = [*owners, *([None] * isles)]
     adjacency = label_adjacency(layout.label)
     territory, _ = settle(territory, owners, adjacency)
     roles = label_roles(layout, homes.places, territory, stats, stream(seed, "roles"))

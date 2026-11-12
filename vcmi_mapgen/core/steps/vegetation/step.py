@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Mapping
+from collections.abc import Set as AbstractSet
 from typing import override
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -14,6 +15,7 @@ from vcmi_mapgen.core.model.map_state import index_of
 from vcmi_mapgen.core.pipeline import PipelineStep, ProviderRegistry
 from vcmi_mapgen.core.placement import footprint as FP
 from vcmi_mapgen.core.placement.intensity import stoch_round
+from vcmi_mapgen.core.placement.water import ISLAND_MIN_AREA
 from vcmi_mapgen.core.planning import zone_plan as ZPL
 from vcmi_mapgen.core.planning.content import ContentPlan, ContentPlanner, HopContent
 from vcmi_mapgen.core.planning.loot_zones import choose_loot_zones, draw_loot_zones
@@ -37,8 +39,19 @@ def _land(zones: Mapping[int, Zone]) -> set[Tile]:
     return {t for z in zones.values() if not z.terrain_type.is_barrier for t in z.tiles_set}
 
 
+def _unvisited(land: set[Tile], landings: AbstractSet[Tile]) -> set[Tile]:
+    """The land pieces too small for a seaport that hold no landing, which no hero reaches."""
+    return {
+        t
+        for piece in open_islands(land, set(), landings, HERO_STEPS)
+        if len(piece) < ISLAND_MIN_AREA
+        for t in piece
+    }
+
+
 def _check_islands(map_state: MapState, level: int, pl: ZPL.PlanLevel, land: set[Tile]) -> None:
     anchors: set[Tile] = set(pl.landings.blk | pl.landings.appr)
+    land = land - _unvisited(land, anchors)
     for zone in pl.zones.values():
         anchors |= zone.prot
     blocking = {

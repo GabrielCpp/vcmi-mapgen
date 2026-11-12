@@ -9,7 +9,7 @@ from vcmi_mapgen.corpus import cache
 from vcmi_mapgen.vcmi.formats import json_value as jv
 
 WATER_FILE = "water.json"
-WATER_VERSION = 2
+WATER_VERSION = 3
 WATER_SOURCE = "vcmi_mapgen.corpus.mine.water.mine_water"
 
 
@@ -24,6 +24,7 @@ def _target(value: JsonValue) -> WaterTarget:
         jv.as_float(obj.get("edge")),
         jv.as_int(obj.get("masses")),
         jv.as_float(obj.get("dress")),
+        _floats(obj.get("islands")),
     )
 
 
@@ -46,7 +47,13 @@ def save_water(pp_dir: Path, st: WaterPriors) -> None:
             "beta": list(st.beta),
             "static_beta": list(st.static_beta),
             "targets": [
-                {"share": t.share, "edge": t.edge, "masses": t.masses, "dress": t.dress}
+                {
+                    "share": t.share,
+                    "edge": t.edge,
+                    "masses": t.masses,
+                    "dress": t.dress,
+                    "islands": list(t.islands),
+                }
                 for t in st.targets
             ],
             "dress_kinds": dict(st.dress_kinds),

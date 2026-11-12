@@ -6,13 +6,15 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class WaterTarget:
     """One corpus map's water: its share of the surface, its share of the map edge, its
-    land masses above 5% of the land, and the water tiles its water decoration blocks per
-    water tile."""
+    land masses above 5% of the land, the water tiles its water decoration blocks per
+    water tile, and the area of each island, a land piece below 5% of the land, as a share
+    of the map."""
 
     share: float
     edge: float
     masses: int
     dress: float = 0.0
+    islands: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
