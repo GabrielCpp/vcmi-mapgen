@@ -1,6 +1,7 @@
 """Each town's own sawmill and ore pit, stood whatever already stands near it: per town and
 supply resource, the first mine variant that fits on a site of the town's level with its
-entrance within NEAR tiles of the town's, the town's nearest sites first."""
+entrance within NEAR tiles of the town's, the town's nearest sites first, a snug spot before
+any other."""
 
 from __future__ import annotations
 
@@ -10,7 +11,13 @@ from dataclasses import dataclass
 from vcmi_mapgen.core.model import Identity, PlacedObject, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.placement.guards import Fit
-from vcmi_mapgen.core.placement.site import SUPPLY_FOOTING, Footing, ZoneSite, door_cells
+from vcmi_mapgen.core.placement.site import (
+    SUPPLY_FOOTING,
+    Footing,
+    SnugFooting,
+    ZoneSite,
+    door_cells,
+)
 from vcmi_mapgen.core.reading.families import mine_family
 from vcmi_mapgen.core.reading.supply import NEAR, SUPPLY, apart, entrance
 from vcmi_mapgen.core.steps.gameplay.allocate import Guarding, Variants, promised_guard
@@ -58,11 +65,12 @@ def _stand(
     res: str,
     guarding: Guarding,
 ) -> PlacedObject | None:
-    for site, tiles in spots:
-        for ident in variants(site, res):
-            obj = site.place(Purpose.MINE, ident, tiles, footing, guarding(res))
-            if obj is not None:
-                return obj
+    for pass_footing in (SnugFooting(footing), footing):
+        for site, tiles in spots:
+            for ident in variants(site, res):
+                obj = site.place(Purpose.MINE, ident, tiles, pass_footing, guarding(res))
+                if obj is not None:
+                    return obj
     return None
 
 

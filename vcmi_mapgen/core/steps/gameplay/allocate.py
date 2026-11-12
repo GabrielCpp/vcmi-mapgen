@@ -56,8 +56,8 @@ def drawn_guard(draws: GuardDraw, rng: random.Random) -> Guarding:
 
 @dataclass(frozen=True, slots=True)
 class Offer:
-    """One anchor for one mine variant in one zone site, with each player's days to it and
-    how well the sprite rests against closed tiles there."""
+    """One anchor for one mine variant in one zone site, with each player's days to it,
+    whether the sprite sits snug there, and how well it rests against closed tiles."""
 
     site: ZoneSite
     ident: Identity
@@ -65,6 +65,7 @@ class Offer:
     days: Days
     cells: frozenset[Spot] = frozenset()
     cover: int = 0
+    snug: bool = False
 
 
 @dataclass(slots=True)
@@ -137,7 +138,9 @@ def offers(
     pricer.prime(level, ((spot, shut) for _site, _ident, _anchor, spot, shut, _cells in found))
     for site, ident, anchor, spot, shut, cells in found:
         days = pricer.days(spot, level, shut)
-        yield Offer(site, ident, anchor, days, cells, site.cover(ident, anchor))
+        yield Offer(
+            site, ident, anchor, days, cells, site.cover(ident, anchor), site.snug(ident, anchor)
+        )
 
 
 def _merge(a: int | None, b: int | None) -> int | None:
@@ -196,7 +199,7 @@ def _merit(days: Days, best: Days, player: int) -> tuple[int, ...]:
 
 
 def _tail(offer: Offer) -> tuple[int, ...]:
-    return (-offer.cover, offer.site.lf.level, offer.site.zid, *offer.anchor)
+    return (-offer.snug, -offer.cover, offer.site.lf.level, offer.site.zid, *offer.anchor)
 
 
 def _order(pool: list[Offer], best: Days, player: int = 0) -> None:
