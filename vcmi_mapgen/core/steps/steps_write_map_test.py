@@ -193,15 +193,13 @@ def test_every_step_keeps_the_objects_before_it(
     transitions: dict[str, tuple[Snapshot, Snapshot]], name: str
 ) -> None:
     before, after = transitions[name]
-    left = list(after.objs)
+    kept: list[str] = []
     lifted: list[str] = []
     for o in before.objs:
-        if o in left:
-            left.remove(o)
+        if len(kept) < len(after.objs) and after.objs[len(kept)] == o:
+            kept.append(o)
         else:
             lifted.append(o)
-    kept = [o for o in before.objs if o not in lifted]
-    assert after.objs[: len(kept)] == tuple(kept)
     assert not lifted or name == "gameplay", f"{name} lifted objects"
     assert all("purpose=''" in o for o in lifted), f"{name} lifted gameplay objects"
 

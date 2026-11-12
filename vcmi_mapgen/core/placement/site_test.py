@@ -213,3 +213,23 @@ def test_a_door_never_lifts_a_gameplay_object(catalog: Catalog) -> None:
     site = _wooded(catalog, shrine)
     assert not site.liftable((4, 4))
     assert ZoneFooting().fit(site, _SHRINE, (4, 4)) is None
+
+
+_ROW3 = Footprint(3, 1, ((-2, 0, Role.BLOCKING), (-1, 0, Role.BLOCKING), (0, 0, Role.BLOCKING)))
+
+
+def test_the_cells_a_door_leaves_bare_take_the_largest_pieces_that_fit(catalog: Catalog) -> None:
+    tree = PlacedObject(6, 4, 0, "", "tree", _ROW3)
+    site = _wooded(catalog, tree)
+    fit = ZoneFooting().fit(site, _SHRINE, (4, 4))
+    assert fit is not None
+    assert site.try_commit(Purpose.STAT_PERMANENT, _SHRINE, (4, 4), fit) is not None
+    bare = {(5, 4), (6, 4)}
+    planted = [
+        o
+        for o in site.objs
+        if not o.purpose and any(t in bare for t, r in o.footprint.at(o.x, o.y) if r.blocks)
+    ]
+    assert len(planted) == 1
+    assert not site.lf.walkable((5, 4))
+    assert not site.lf.walkable((6, 4))

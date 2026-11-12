@@ -527,28 +527,56 @@ class ZoneSite:
         return self.reach_without(fit[1])
 
     def carve(self, obj: PlacedObject) -> tuple[list[PlacedObject], list[PlacedObject]] | None:
-        """Lift the trees under ``obj``'s doors off the cover index and plant a one-tile tree
-        on each of their blocking cells ``obj`` leaves bare. Returns the trees lifted and the
-        trees planted, or None when a bare cell takes no tree."""
+        """Lift the trees under ``obj``'s doors off the cover index and cover the blocking cells
+        ``obj`` leaves bare with the largest pieces that fit inside them, of the lifted tree's
+        category first. Returns the trees lifted and the pieces planted, or None when a bare
+        cell takes no piece."""
         x, y = obj.x, obj.y
         doors = [t for t in door_cells(obj.footprint, (x, y)) if not self.lf.walkable(t)]
         trees = {id(c.obj): c.obj for t in doors for c in self.lf.covers.covers_at(t)}
         body = {t for t, role in obj.footprint.at(x, y) if role.blocks}
-        pool = self.catalog.decor(self.zone.terrain, blocking=True, max_cells=1)
         planted: list[PlacedObject] = []
         for tree in trees.values():
             self.lf.covers.lift(tree)
-            for t, role in tree.footprint.at(tree.x, tree.y):
-                if not role.blocks or t in body:
+        for tree in trees.values():
+            bare = {
+                t for t, role in tree.footprint.at(tree.x, tree.y) if role.blocks and t not in body
+            }
+            for t in sorted(bare):
+                if t not in bare:
                     continue
-                fit = [i for i in pool if stands(self.catalog, i, t, self.lf.ground)]
-                if not fit:
-                    return None
-                plant = PlacedObject.at(self.rng.choice(fit), t, level=self.lf.level, purpose="")
-                if not self.lf.covers.try_add(plant):
+                plant = self._refill(t, bare, self.catalog.decor_category(tree.kind))
+                if plant is None:
                     return None
                 planted.append(plant)
+                bare -= {c for c, role in plant.footprint.at(plant.x, plant.y) if role.blocks}
         return list(trees.values()), planted
+
+    def _refill(
+        self, t: Tile, bare: AbstractSet[Tile], category: str | None
+    ) -> PlacedObject | None:
+        """The largest blocking decoration that covers ``t`` with every blocking cell inside
+        ``bare``, of ``category`` before any other, added to the cover index."""
+        pool = self.catalog.decor(self.zone.terrain, blocking=True)
+        self.rng.shuffle(pool)
+        pool.sort(
+            key=lambda i: (
+                self.catalog.decor_category(i.kind) != category,
+                -sum(1 for c in i.footprint.cells if c[2].blocks),
+            )
+        )
+        for ident in pool:
+            offsets = [(dx, dy) for dx, dy, role in ident.footprint.cells if role.blocks]
+            for dx, dy in offsets:
+                anchor = (t[0] - dx, t[1] - dy)
+                if any((anchor[0] + ox, anchor[1] + oy) not in bare for ox, oy in offsets):
+                    continue
+                if not stands(self.catalog, ident, anchor, self.lf.ground):
+                    continue
+                plant = PlacedObject.at(ident, anchor, level=self.lf.level, purpose="")
+                if self.lf.covers.try_add(plant):
+                    return plant
+        return None
 
     def _settle(self, lifted: list[PlacedObject], planted: list[PlacedObject]) -> None:
         for tree in lifted:
