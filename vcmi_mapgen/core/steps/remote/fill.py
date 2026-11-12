@@ -53,11 +53,12 @@ class RemoteLevel:
 
 @dataclass(frozen=True, slots=True)
 class RemoteFill:
-    """One level's new objects in placement order, guards included, and one log line per
-    run left empty."""
+    """One level's new objects in placement order, guards included, one log line per run
+    left empty, and the trees the new objects took the place of."""
 
     objs: tuple[PlacedObject, ...]
     log: tuple[str, ...]
+    lifted: tuple[PlacedObject, ...] = ()
 
 
 def approaches(
@@ -178,7 +179,8 @@ def fill_level(catalog: Catalog, lv: RemoteLevel, seed: int) -> RemoteFill:
         runs = [r.tiles - failed for r in remote_runs(distance, free, lv.far)]
         left = next((frozenset(t) for t in runs if t), None)
         if left is None:
-            return RemoteFill(tuple(new), tuple(log))
+            lifted = tuple(t for _z, s in sorted(sites.items()) for t in s.lifted)
+            return RemoteFill(tuple(new), tuple(log), lifted)
         heart = spot_order(left, distance)[0]
         zid = lv.zone_of.get(heart)
         spot = frozenset(t for t in left if lv.zone_of.get(t) == zid)

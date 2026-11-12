@@ -11,7 +11,7 @@ metadata:
 The generator is one procedural pipeline. `cli/steps.py` builds it in `build_steps`, and
 that list is the source of truth for which steps run and in what order. At the time of
 writing it runs `terrain -> vegetation -> doors -> gameplay -> gated -> treasure ->
-portal -> loot -> sets -> scatter -> remote -> compensation -> roads`.
+portal -> loot -> sets -> scatter -> remote -> compensation -> sea -> roads`.
 
 Two hand-written files hold the rest of the contract. Read them before changing a step:
 
@@ -118,8 +118,8 @@ raises `MissingProviderError` when it requires the missing value.
 ## Every placement step is additive
 
 A step appends its objects with `map_state.add_objs(new)`. It never removes or moves an
-object an earlier step placed, except that `GameplayStep` lifts the trees under a new door
-with `map_state.lift` and replants their bare cells. It checks each candidate with a `CoverIndex` first, and it
+object an earlier step placed, except that `GameplayStep` and `RemoteStep` lift the trees under a new
+door with `map_state.lift` and replants their bare cells. It checks each candidate with a `CoverIndex` first, and it
 treats a refusal as "try the next candidate". Terrain holds by construction: the step
 draws identities from the catalog for the zone's terrain and keeps solid cells in the zone. Only `VegetationStep` may raise, when it walls off a pocket.
 `core/steps/AGENTS.md` has the full rule, including guard spacing.

@@ -1,7 +1,7 @@
 import numpy as np
 
 from vcmi_mapgen.core.catalog import Catalog
-from vcmi_mapgen.core.model import Footprint, Identity, PlacedObject, Role, Tile
+from vcmi_mapgen.core.model import Footprint, Identity, MapState, PlacedObject, Role, Tile
 from vcmi_mapgen.core.model.purpose import Purpose
 from vcmi_mapgen.core.model.terrain import Terrain
 from vcmi_mapgen.core.placement.site import LevelField, SiteZone
@@ -94,3 +94,19 @@ def test_a_run_no_hero_reaches_is_logged_and_left(catalog: Catalog) -> None:
     assert fill.log and all("zone 1" in line for line in fill.log)
     objs = [*lv.objs, *fill.objs]
     assert remote_runs(level_distance(objs, 20), free_land(lv.grid, objs), 5)
+
+
+def test_a_landmark_that_takes_a_trees_place_lifts_it(catalog: Catalog) -> None:
+    base = _level()
+    trees = [_obj((x, y), "", _TREE) for y in range(11, 20) for x in range(20) if (x + y) % 2 == 0]
+    objs = [*base.objs, *trees]
+    lf = LevelField.build(0, base.grid, objs)
+    kept = approaches(objs, lf.unwalkable, 20)
+    lv = RemoteLevel(0, base.grid, objs, base.zone_of, base.zones, lf, kept, frozenset(), 5)
+    fill = fill_level(catalog, lv, seed=3)
+    assert fill.lifted
+    assert all(any(t is tree for tree in trees) for t in fill.lifted)
+    state = MapState(size=20)
+    state.objs = list(objs)
+    state.lift(fill.lifted)
+    state.add_objs(list(fill.objs))

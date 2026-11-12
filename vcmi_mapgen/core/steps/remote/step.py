@@ -32,7 +32,8 @@ class RemoteStep(PipelineStep):
     inject(ctx): ``ZonePlan``, ``GameplayResult``, the ``ZoneIndex`` claims and the
     ``PromisedWays`` when present.
 
-    Produces: appends each landmark and its guard to ``map_state.objs``.
+    Produces: lifts the trees its landmarks took the place of off ``map_state.objs`` and
+    appends each landmark, its guard and the trees replanted around it.
     """
 
     def __init__(self, priors: Priors, seed: int = 3, size: int = 72) -> None:
@@ -54,11 +55,14 @@ class RemoteStep(PipelineStep):
     @override
     def run(self, catalog: Catalog, map_state: MapState) -> None:
         new: list[PlacedObject] = []
+        lifted: list[PlacedObject] = []
         for level in sorted(self._plan.levels):
             fill = fill_level(catalog, self._level(map_state, level), self.seed)
             new.extend(fill.objs)
+            lifted.extend(fill.lifted)
             for line in fill.log:
                 print(line)
+        map_state.lift(lifted)
         map_state.add_objs(new)
 
     def _level(self, map_state: MapState, level: int) -> RemoteLevel:
