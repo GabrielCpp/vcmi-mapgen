@@ -66,7 +66,7 @@ FRONTS: dict[str, TerritoryFront] = {
     "planned": PlannedFront(),
 }
 DEFAULT_FRONT = "shapes"
-COASTS: dict[str, float] = {"shapes": 0.0, "planned": 4.0}
+COASTS: dict[str, float] = {"shapes": 2.0, "planned": 4.0}
 
 
 @dataclass(frozen=True, slots=True)

@@ -35,6 +35,16 @@ SHORE_MARGIN = 2.0
 NO_WATER = WaterTarget(0.0, 0.0, 1)
 EDGE_CELLS = 8
 """How many noise cells span the map side for the edge water's arcs."""
+SMOOTH = 2.5
+"""The blur, in tiles, that rounds the edge water's coast."""
+TAPER = 4.0
+"""How many levels the edge water's arc takes to reach its ends from its crest."""
+WIDTHS = (2.5, 4.0)
+"""The widths, in tiles, a coast-mode channel network is drawn for: corpus channels run two
+to four tiles wide."""
+EDGE_REACH = 6.0
+"""How far, in tiles, the edge sea reaches inland on average, so the inland channels take
+the rest of the water share."""
 
 
 def draw_target(targets: Sequence[WaterTarget], rng: random.Random) -> WaterTarget:
@@ -69,6 +79,17 @@ def _one_piece(mask: Mask) -> bool:
     return len(queue) == total
 
 
+def _thick(mask: Mask) -> Mask:
+    """The tiles of ``mask`` inside a 2x2 square of ``mask``: the land the despeckle keeps."""
+    square = mask[:-1, :-1] & mask[1:, :-1] & mask[:-1, 1:] & mask[1:, 1:]
+    out = np.zeros(mask.shape, np.bool_)
+    out[:-1, :-1] |= square
+    out[1:, :-1] |= square
+    out[:-1, 1:] |= square
+    out[1:, 1:] |= square
+    return out
+
+
 def _is(label: Labels, value: int) -> Mask:
     return cast("Mask", np.equal(label, value))
 
@@ -98,26 +119,47 @@ def _pieces(mask: Mask) -> list[Mask]:
     return out
 
 
-def _layers(region: Mask, line: Mask) -> Field:
-    """Each tile of ``region``'s 4-connected steps from ``line`` inside ``region``, 0 on the
-    line, infinite off the region and where the line does not reach."""
-    out: Field = np.full(region.shape, math.inf)
-    seen = line & region
-    out[seen] = 0.0
-    step = 0
-    while (more := _grow(seen) & region & ~seen).any():
-        step += 1
-        out[more] = float(step)
-        seen |= more
+DIAG = math.sqrt(2.0)
+BEHIND = ((0, -1, 1.0), (-1, 0, 1.0), (-1, -1, DIAG), (-1, 1, DIAG))
+AHEAD = ((0, 1, 1.0), (1, 0, 1.0), (1, 1, DIAG), (1, -1, DIAG))
+
+
+@njit
+def _chamfer_pass(out: Field, steps: tuple[tuple[int, int, float], ...], back: bool) -> None:
+    h, w = out.shape
+    n = h * w
+    for i in range(n):
+        k = n - 1 - i if back else i
+        y = k // w
+        x = k - y * w
+        for dy, dx, cost in steps:
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and out[ny, nx] + cost < out[y, x]:
+                out[y, x] = out[ny, nx] + cost
+
+
+def _chamfer(seed: Mask) -> Field:
+    out: Field = np.where(seed, 0.0, float(seed.shape[0] + seed.shape[1]))
+    _chamfer_pass(out, BEHIND, False)
+    _chamfer_pass(out, AHEAD, True)
     return out
 
 
-def _rank(region: Mask, line: Mask, coast: Field) -> Field:
-    layer = _layers(region, line)
-    on_line = cast("Mask", np.equal(layer, 0.0))
-    inland = _layers(np.ones(region.shape, np.bool_), ~region)
-    held = inland <= SHORE_MARGIN + 0.5 * coast
-    return cast("Field", np.where(on_line, 0.0, np.where(held, math.inf, layer + coast)))
+def _blur(field: Field, sigma: float) -> Field:
+    radius = max(1, math.ceil(3 * sigma))
+    taps = [math.exp(-0.5 * (d / sigma) ** 2) for d in range(-radius, radius + 1)]
+    total = sum(taps)
+    out: Field = field
+    for axis in (0, 1):
+        pad = [(0, 0), (0, 0)]
+        pad[axis] = (radius, radius)
+        padded: Field = np.pad(out, pad, mode="edge")
+        n = out.shape[axis]
+        acc: Field = np.zeros(out.shape, np.float64)
+        for k, tap in enumerate(taps):
+            acc += (tap / total) * np.take(padded, np.arange(k, k + n), axis=axis)
+        out = acc
+    return out
 
 
 @dataclass(slots=True)
@@ -139,28 +181,30 @@ class Front:
     rank: Field | None = None
     level: float = 0.0
     top: float = 0.0
+    limit: float = math.inf
 
 
 @dataclass(slots=True)
 class Flood:
     """The label grid as the carve goes, each place's tile count before it, the tiles
-    that stay land, and whether a refused piece is split and tried again."""
+    that stay land, and whether the flood is loose: a refused piece is then split and tried
+    again, and a place may fall in pieces, which `rejoin` hands to their neighbours."""
 
     label: Labels
     area: NDArray[np.int64]
     keep: Mask
-    split: bool = False
+    loose: bool = False
 
     def take(self, tiles: Mask) -> Mask:
         """The tiles of ``tiles`` the flood takes: each 4-connected piece in turn that
-        leaves the land one piece and every place it touches one piece with half its old
-        tiles or more. A splitting flood also takes the smaller parts of a place the piece
-        cuts in two, and cuts a refused piece in two across its longer side and tries each
-        half's pieces again, down to single tiles."""
+        leaves the land one piece through its 2x2 squares and every place it touches one
+        piece with half its old tiles or more. A loose flood lets the place fall in pieces
+        while its largest piece keeps half its old tiles, and cuts a refused piece in two
+        across its longer side and tries each half's pieces again, down to single tiles."""
         tiles = tiles & ~self.keep & (self.label >= 0)
         taken = np.zeros(tiles.shape, np.bool_)
         for piece in _pieces(tiles):
-            if self.split:
+            if self.loose:
                 taken |= self._take_split(piece)
             elif (got := self._try(piece)) is not None:
                 taken |= got
@@ -173,23 +217,19 @@ class Flood:
         touched = cast("list[int]", np.unique(self.label[piece]).tolist())
         trial = self.label.copy()
         trial[piece] = -1
-        if self.split:
-            for p in touched:
-                parts = sorted(_pieces(_is(trial, p)), key=np.count_nonzero)
-                for part in parts[:-1]:
-                    if (part & self.keep).any():
-                        return None
-                    trial[part] = -1
-        if not _one_piece(trial >= 0):
+        if not _one_piece(_thick(trial >= 0)):
             return None
-        if any(
-            np.count_nonzero(_is(trial, p)) * 2 < self.area.item(p) or not _one_piece(_is(trial, p))
-            for p in touched
-        ):
+        if any(self._kept(trial, p) * 2 < self.area.item(p) for p in touched):
             return None
         got = (trial < 0) & (self.label >= 0)
         self.label = trial
         return got
+
+    def _kept(self, trial: Labels, p: int) -> int:
+        mine = _is(trial, p)
+        if not self.loose:
+            return np.count_nonzero(mine) if _one_piece(mine) else 0
+        return max((np.count_nonzero(m) for m in _pieces(mine)), default=0)
 
     def _take_split(self, piece: Mask) -> Mask:
         if (got := self._try(piece)) is not None:
@@ -210,6 +250,18 @@ class Flood:
             for sub in _pieces(part & (self.label >= 0)):
                 taken |= self._take_split(sub)
         return taken
+
+    def rejoin(self) -> None:
+        """Hand every piece of a place but its largest to the place it borders on the most
+        tiles, so each place is one piece again."""
+        for p in range(self.area.size):
+            pieces = sorted(_pieces(_is(self.label, p)), key=lambda m: -np.count_nonzero(m))
+            for piece in pieces[1:]:
+                rim = cast("Mask", _grow(piece) & ~piece & (self.label >= 0) & (self.label != p))
+                if not rim.any():
+                    continue
+                votes = np.bincount(self.label[rim], minlength=self.area.size)
+                self.label[piece] = int(np.argmax(votes))
 
     def share(self) -> float:
         """The share of the map under water so far."""
@@ -257,6 +309,9 @@ class Flood:
         passes its top rank."""
         if front.rank is not None:
             while True:
+                if front.level + 1 > front.limit:
+                    front.open = False
+                    return
                 front.level += 1
                 if self._take_level(front).any():
                     front.open = True
@@ -290,27 +345,60 @@ def walled_fronts(
     return out
 
 
-def _front(region: Mask, line: Mask, first: int, coast: Field | None) -> Front:
+def _front(region: Mask, line: Mask, first: int, rank: Field | None) -> Front:
     wet: Mask = np.zeros(region.shape, np.bool_)
-    if coast is None:
+    if rank is None:
         return Front(region, line, first, wet)
-    rank = _rank(region, line, coast)
     finite = rank[np.isfinite(rank)]
-    top = float(np.max(finite)) if finite.size else 0.0
-    return Front(region, line, first, wet, rank=rank, top=top)
+    if not finite.size:
+        return Front(region, line & False, first, wet, rank=rank)
+    low = float(np.min(finite))
+    line = region & (rank <= max(low, 0.5))
+    return Front(region, line, first, wet, rank=rank - low, top=float(np.max(finite)) - low)
 
 
-def front_of(
-    label: Labels, owner: Labels, pair: Pair, width: int, coast: Field | None = None
-) -> Front:
+def front_of(label: Labels, owner: Labels, pair: Pair, width: int) -> Front:
     """The front between the two territories of ``pair``: their tiles, the line where they
-    touch, and half ``width`` rounded up as its first layers. A ``coast`` field gives it a
-    ranked coast."""
+    touch, and half ``width`` rounded up as its first layers."""
     a = _is(owner, pair[0])
     b = _is(owner, pair[1])
     line = (a & _grow(b)) | (b & _grow(a))
     region = (a | b) & (label >= 0)
-    return _front(region, line, math.ceil(width / 2), coast)
+    return _front(region, line, math.ceil(width / 2), None)
+
+
+def _contour(noise: Field, land: Mask) -> Mask:
+    high = noise > float(np.median(noise[land]))
+    out = np.zeros(high.shape, np.bool_)
+    out[:, :-1] |= high[:, :-1] != high[:, 1:]
+    out[:-1, :] |= high[:-1, :] != high[1:, :]
+    return out & land
+
+
+def contour_front(land: Mask, share: float, coast: Field, rng: random.Random) -> Front:
+    """One front over the median isolines of a smooth noise field, its wavelength chosen so
+    the target share spread along the lines makes a channel about as wide as a width drawn
+    between ``WIDTHS``. Each land tile ranks by its distance to the nearest line, swayed by
+    half the coast field and blurred, so the channels keep an even width and round corners."""
+    side = land.shape[0]
+    width = rng.uniform(*WIDTHS)
+    best: tuple[float, Mask] | None = None
+    for cell in range(4, side + 1, 2):
+        noise = _blur(np.asarray(value_noise(side, side, cell, rng), dtype=np.float64), 1.0)
+        line = _contour(noise, land)
+        tiles = np.count_nonzero(line)
+        if tiles == 0:
+            continue
+        miss = abs(math.log(share * side * side / tiles / width))
+        if best is None or miss < best[0]:
+            best = (miss, line)
+    if best is None:
+        empty = np.zeros(land.shape, np.bool_)
+        return Front(land, empty, 1, empty, rank=None)
+    sway = 0.5 * (coast - float(np.mean(coast)))
+    rank = _blur(_chamfer(best[1]) + sway, 1.0)
+    rank = rank - float(np.min(rank[best[1]]))
+    return _front(land, land, 1, cast("Field", np.where(land, rank, math.inf)))
 
 
 def edge_front(side: int, edge: float, rng: random.Random, coast: Field | None = None) -> Front:
@@ -323,7 +411,20 @@ def edge_front(side: int, edge: float, rng: random.Random, coast: Field | None =
     cut = float(np.quantile(noise[ring], 1 - edge)) if edge > 0 else math.inf
     region = noise > cut
     first = max(1, wall_width(None) // 2)
-    return _front(region, region & ring, first, coast)
+    if coast is None:
+        return _front(region, region & ring, first, None)
+    touching: Mask = np.zeros((side, side), np.bool_)
+    for piece in _pieces(region):
+        if (piece & ring).any():
+            touching |= piece
+    region = touching
+    crest = float(cast("float", np.max(noise)))
+    height = np.clip((noise - cut) / max(crest - cut, 1e-9), 0.0, 1.0)
+    axis = np.arange(side)
+    depth = np.minimum.outer(np.minimum(axis, side - 1 - axis), np.minimum(axis, side - 1 - axis))
+    sway = _blur(coast, SMOOTH)
+    rank = depth + TAPER * (1.0 - height) + sway - float(np.min(sway))
+    return _front(region, region, first, cast("Field", np.where(region, rank, math.inf)))
 
 
 def _keep_mask(keep: Collection[Tile], side: int) -> Mask:
@@ -383,16 +484,18 @@ def water_on_walls(
     keep = _keep_mask(shore.keep, side)
     if coast is not None:
         keep |= _keep_margin(keep, coast)
-    flood = Flood(label, area, keep, split=coast is not None)
+    flood = Flood(label, area, keep, loose=coast is not None)
     walls = walled_fronts(label, shore.territory, sorted(shore.doors), shore.depths)
+    if coast is not None:
+        return _water_by_network(shore, target, rng, coast, flood)
     ranked = sorted(walls, key=lambda p: (-walls[p], rng.random(), p))
     fronts: tuple[list[Front], list[Front]] = (
-        [front_of(label, owner, pair, walls[pair], coast) for pair in ranked],
+        [front_of(label, owner, pair, walls[pair]) for pair in ranked],
         [],
     )
     cap = max(1, target.masses)
     count = _open(flood, fronts, cap, target.share)
-    edge = edge_front(side, target.edge, rng, coast)
+    edge = edge_front(side, target.edge, rng)
     if flood.share() < target.share:
         _ = flood.carve(edge)
     fronts[1].append(edge)
@@ -407,6 +510,40 @@ def water_on_walls(
                 break
             flood.deepen(front)
     return replace(shore.layout, label=cast("list[list[int]]", flood.label.tolist())), count
+
+
+def _water_by_network(
+    shore: Shore, target: WaterTarget, rng: random.Random, coast: Field, flood: Flood
+) -> tuple[Layout, int]:
+    """The coast-mode flood: the edge sea and a channel network over the contour lines of a
+    noise field, deepened in turn to the target share, the places then made one piece each.
+    Returns the layout and how many walled territory pairs a channel touches on both sides."""
+    side = flood.label.shape[0]
+    owner = np.where(flood.label >= 0, np.array(shore.territory, dtype=np.int64)[flood.label], -1)
+    walls = walled_fronts(flood.label, shore.territory, sorted(shore.doors), shore.depths)
+    edge = edge_front(side, target.edge, rng, coast)
+    inland = max(target.share - target.edge * 4 / side * EDGE_REACH, 0.5 * target.share)
+    network = contour_front(flood.label >= 0, inland, coast, rng)
+    growing = [f for f in (network, edge) if f.rank is not None]
+    for front in growing:
+        if flood.share() < target.share:
+            _ = flood.carve(front)
+    while flood.share() < target.share:
+        live = [f for f in growing if f.open and f.wet.any()]
+        if not live:
+            if network.rank is None or not network.wet.any() or network.limit >= network.top:
+                break
+            network.limit += 1.0
+            network.open = True
+            continue
+        for front in live:
+            if flood.share() >= target.share:
+                break
+            flood.deepen(front)
+    flood.rejoin()
+    owner_wet: Labels = owner[network.wet]
+    carved = sum(1 for a, b in walls if a in owner_wet and b in owner_wet)
+    return replace(shore.layout, label=cast("list[list[int]]", flood.label.tolist())), carved
 
 
 class TopologyForm:

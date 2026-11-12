@@ -15,6 +15,10 @@ from vcmi_mapgen.core.reading.borders import AdjacencyKind
 from vcmi_mapgen.core.reading.places import PlaceRole
 from vcmi_mapgen.core.steps.terrain_gen.result import LevelPlaces, PlannedPlace
 
+MAX_SPLIT_PASSES = 4
+"""How many times the places split their stray pieces before the strays left become
+pockets."""
+
 type Grid = Sequence[Sequence[Terrain]]
 
 
@@ -171,23 +175,34 @@ def _piece_home(
 
 def _split_pieces(label: list[list[int]], places: dict[int, PlannedPlace]) -> None:
     """Keep each place's largest piece. Every other piece joins a touching place of the
-    same terrain, or becomes a pocket of its own."""
-    for pid, tiles in sorted(_tiles_of(label).items()):
+    same terrain, or becomes a pocket of its own. A piece that joins a place cut in pieces
+    itself may stand apart from the piece that place keeps, so the passes repeat until
+    every place is one piece, and the last pass turns every stray piece into a pocket."""
+    for n in range(MAX_SPLIT_PASSES):
+        if not _split_pass(label, places, last=n == MAX_SPLIT_PASSES - 1):
+            return
+
+
+def _split_pass(label: list[list[int]], places: dict[int, PlannedPlace], *, last: bool) -> bool:
+    split = False
+    for pid in sorted(_tiles_of(label)):
         pieces: dict[int, list[Tile]] = collections.defaultdict(list)
-        for tile, c in components(tiles).items():
+        for tile, c in components(_tiles_of(label)[pid]).items():
             pieces[c].append(tile)
         if len(pieces) < 2:
             continue
+        split = True
         keep = max(pieces, key=lambda c: (len(pieces[c]), -c))
         for c in sorted(pieces):
             if c == keep:
                 continue
-            target = _piece_home(pieces[c], label, places, pid)
+            target = None if last else _piece_home(pieces[c], label, places, pid)
             if target is None:
                 target = max(places) + 1
                 places[target] = PlannedPlace(PlaceRole.POCKET, None, places[pid].dominant)
             for x, y in pieces[c]:
                 label[y][x] = target
+    return split
 
 
 def _renumber(label: list[list[int]], places: Mapping[int, PlannedPlace]) -> LevelPlaces:

@@ -123,7 +123,7 @@ def test_a_splitting_flood_keeps_the_part_of_a_refused_piece_that_passes() -> No
     piece = np.zeros((6, 6), np.bool_)
     piece[:4] = True
     whole = Flood(label.copy(), np.array([36]), keep)
-    split = Flood(label.copy(), np.array([36]), keep, split=True)
+    split = Flood(label.copy(), np.array([36]), keep, loose=True)
     assert not whole.take(piece).any()
     taken = split.take(piece)
     assert 0 < np.count_nonzero(taken) <= 18
