@@ -1,6 +1,6 @@
-"""Which object of a family stands on a site's terrain: the corpus sprite weights draw it, and a
-sprite the map already shows weighs less. The roster names the kind of a spaced slot first, and
-the picker then draws only a sprite of that kind. A town's creatures come only from a random
+"""Which object of a family stands on a site's terrain: each sprite is drawn in proportion to its
+corpus count on that terrain. The roster names the kind of a spaced slot first, and the picker
+then draws only a sprite of that kind. A town's creatures come only from a random
 dwelling, which takes the faction of the town nearest in hero-days, so only a dwelling of
 neutral creatures stands fixed."""
 
@@ -9,7 +9,6 @@ from __future__ import annotations
 import random
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import cast
 
 from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import Identity, PlacedObject
@@ -23,7 +22,6 @@ from vcmi_mapgen.core.steps.gameplay.economy import mine_variants
 
 RANDOM_SHARE = 0.7
 RANDOM_DWELLING_SHARE = 0.8
-USED_WEIGHT = 0.05
 
 
 def info_pool(
@@ -59,13 +57,10 @@ class Picker:
     rng: random.Random
     has_water: bool = False
     has_subterrain: bool = False
-    used: set[str] = field(default_factory=set[str])
     stood: dict[Kind, list[Spot]] = field(default_factory=dict[Kind, list[Spot]])
 
     def use(self, ident: Identity, obj: PlacedObject | None = None) -> None:
-        """Mark ``ident``'s sprite as shown and, when ``obj`` is given, its kind as standing
-        where ``obj`` stands."""
-        self.used.add(ident.kind.lower())
+        """Mark ``ident``'s kind as standing where ``obj`` stands, when ``obj`` is given."""
         if obj is not None:
             self.stood.setdefault(kind_of(ident), []).append((obj.level, obj.x, obj.y))
 
@@ -91,8 +86,8 @@ class Picker:
         return self._weighted(self._pool(family, terrain, st), purpose, st, kind)
 
     def kinds(self, family: str, terrain: str, st: TerrainStats) -> dict[Kind, float]:
-        """The chance of each kind of ``family`` on ``terrain`` under the draw of `pick`, the
-        used penalty left out, summing to 1. Empty when the terrain offers none, and for a
+        """The chance of each kind of ``family`` on ``terrain`` under the draw of `pick`, summing
+        to 1. Empty when the terrain offers none, and for a
         town."""
         purpose = family_purpose(family)
         if purpose == Purpose.TOWN:
@@ -165,14 +160,14 @@ class Picker:
         w = st.anim_w.get(purpose, {})
         ident = pick_kind(
             [i for i in ids if kind is None or kind_of(i) == kind],
-            lambda i: _weight(i, w) * (USED_WEIGHT if i.kind.lower() in self.used else 1.0),
+            lambda i: _weight(i, w),
             self.rng,
         )
         return None if ident is None else Pick(ident, ids)
 
 
 def _weight(ident: Identity, w: dict[str, int]) -> float:
-    return cast(float, w.get(ident.kind.lower(), 0) ** 0.5 + 0.3)
+    return w.get(ident.kind.lower(), 0) + 0.3
 
 
 def _normalised(weights: dict[Kind, float]) -> dict[Kind, float]:

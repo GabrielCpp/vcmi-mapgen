@@ -174,8 +174,7 @@ as a promised one, counts toward its player's share and keeps its place on the w
 
 | Concept | Owns | Never knows |
 |---|---|---|
-| Kind weight | Each kind's corpus weight on the spot's terrain. | Other objects. |
-| Map-wide variety | Weighing down a kind the map already shows. | Distance. |
+| Kind weight | Each kind's corpus weight on the spot's terrain, in proportion to its corpus count. | Other objects. |
 | Near repeat | Weighing down a kind by the copies of it standing near the spot. | Kinds elsewhere on the map. |
 
 **Checking the map**
@@ -242,8 +241,7 @@ Patterns:
 - Resource turn: a plain function, the largest-deficit sequence the band plan already uses
   for bands, applied to the rare resources over a player's rare mines sorted by target day.
 - Contest: a plain function over the per-player days the placement already holds per tile.
-- Map-wide variety and Near repeat: two plain weight factors multiplied into the kind
-  weight. Two factors, not a role with variants, because both always apply.
+- Near repeat: a plain weight factor multiplied into the kind weight.
 
 The three mine resources differ in how they choose a spot, but nothing swaps one for
 another. Each is a plain function its own part calls. No role is needed.
@@ -258,7 +256,10 @@ Claims:
 3. Reshaped. The curve still counts all resource mines. Wood and ore come off it first as
    one pair per town. Rare and gold split the rest by corpus count.
 4. Reshaped. The kind is drawn at a known spot, because near repeat needs the spot.
-5. Re-derived as map-wide variety. It stays.
+5. Re-derived as map-wide variety, then dropped on 2026-11-11. Weighing down a kind the map
+   already shows drew the rare kinds as often as the common ones, so gazebos and star axes
+   fell short of the corpus. The kind weight follows the corpus counts, and the spacing law
+   keeps copies apart.
 6. Re-derived and split. Towns stand first, then their pairs, then the rare mines, then
    gold, then the rest. Each needs the one before it standing.
 7. Reshaped for the rare mines, rejected for gold. The rare mines share one way per player,
@@ -336,7 +337,7 @@ Concepts:
 - Contest, Far floor: **New**, in `core/reading/contest.py`, so the step and the readings
   share them. Far floor is the first band edge, 8 days (`data/pp/effort.json`).
 - Gold spot: **New** order in `Siting._groups`.
-- Kind weight, Map-wide variety: **Exist**, in `Picker._weighted` (`pick.py:98`).
+- Kind weight: **Exist**, in `Picker._weighted`.
 - Near repeat: **New** factor in `Picker._weighted`.
 - Supply reading, Way reading, Gold reading, Repeat reading: **New**, in
   `core/reading/supply.py`, `core/reading/contest.py` and a repeat reader beside them.

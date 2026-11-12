@@ -14,8 +14,8 @@ from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.roster import roster
 
 
-def _sites(*terrains: str) -> list[ZoneSite]:
-    st = TerrainStats(0, {}, {}, {}, {}, {}, [], [], [], 0.0, {})
+def _sites(*terrains: str, anim_w: dict[str, dict[str, int]] | None = None) -> list[ZoneSite]:
+    st = TerrainStats(0, {}, anim_w or {}, {}, {}, {}, [], [], [], 0.0, {})
     return [
         cast(
             ZoneSite,
@@ -77,3 +77,12 @@ def test_the_counts_add_the_copies_standing_and_the_slots_drawn(catalog: Catalog
     kinds = [s.kind for s in got]
     assert counts[kind_of(ident)] == 1 + kinds.count(kind_of(ident))
     assert sum(counts.values()) == 1 + len(kinds)
+
+
+def test_a_kind_already_standing_is_drawn_at_its_corpus_odds(catalog: Catalog) -> None:
+    picker = Picker(catalog, random.Random(1))
+    ident = catalog.candidates(Purpose.BONUS_TEMP, "grass")[0]
+    picker.use(ident, PlacedObject(3, 3, 0, Purpose.BONUS_TEMP, ident.kind, ident.footprint))
+    sites = _sites("grass", anim_w={Purpose.BONUS_TEMP: {ident.kind.lower(): 200}})
+    got, _counts = roster(picker, sites, [Slot(Purpose.BONUS_TEMP)] * 40, random.Random(2))
+    assert [s.kind for s in got].count(kind_of(ident)) >= 32
