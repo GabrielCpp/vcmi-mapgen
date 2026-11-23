@@ -64,6 +64,7 @@ from vcmi_mapgen.core.steps.gameplay.allocate import (
 from vcmi_mapgen.core.steps.gameplay.economy import tie_dwellings
 from vcmi_mapgen.core.steps.gameplay.gate_pairs import place_gate_pairs
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
+from vcmi_mapgen.core.steps.gameplay.homes import player_towns
 from vcmi_mapgen.core.steps.gameplay.landmark import (
     LANDMARK_FLOOR,
     dragon_order,
@@ -193,6 +194,8 @@ class GameplayStep(PipelineStep):
         self._segmentation = Segmentation({}, {})
         self._player_zids: list[tuple[int, int]] = []
         self._starts: dict[int, StartRoomRule] = {}
+        self._homes: dict[tuple[int, int], PlacedObject] = {}
+        self._moved: list[PlacedObject] = []
         self._ways: dict[int, WayRule] = {}
         self._content = ContentPlan()
         self._accents = Accents()
@@ -405,6 +408,7 @@ class GameplayStep(PipelineStep):
         return gates
 
     def _place_player_towns(self, catalog: Catalog, indexes: dict[int, SiteIndex]) -> None:
+        self._homes, self._moved = {}, []
         for level, zid in sorted(self._player_zids):
             idx = indexes.get(level)
             site = idx.sites.get(zid) if idx is not None else None
@@ -416,6 +420,7 @@ class GameplayStep(PipelineStep):
             if town is None:
                 print(f"  WARNING: player zone {zid} (level {level}) could not fit its town")
             else:
+                self._homes[level, zid] = town
                 self._starts[level].protect(town)
         self._move_player_towns(catalog, indexes)
 
@@ -428,6 +433,7 @@ class GameplayStep(PipelineStep):
                 return
             town = site.place(Purpose.TOWN, ident, _town_order(site, ident))
             if town is not None:
+                self._moved.append(town)
                 self._starts[site.lf.level].protect(town)
                 need -= 1
                 print(f"  player town moved to zone {site.zid} (level {site.lf.level})")
@@ -607,11 +613,4 @@ class GameplayStep(PipelineStep):
         )
 
     def _player_towns(self, towns: dict[tuple[int, int], list[PlacedObject]]) -> list[PlacedObject]:
-        out = [towns[k][0] for k in self._player_zids if k in towns]
-        if not self.players:
-            return out
-        spare: Sequence[PlacedObject] = [
-            t for zone_towns in towns.values() for t in zone_towns if t not in out
-        ]
-        out += spare[: max(0, self.players - len(out))]
-        return out[: self.players]
+        return player_towns(self._homes, self._player_zids, self._moved, towns, self.players)
