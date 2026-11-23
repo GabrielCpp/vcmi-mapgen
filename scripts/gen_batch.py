@@ -21,6 +21,7 @@ PLAYERS = 4
 
 def generate(seed: int, args: Args, vcmi_dir: Path | None) -> tuple[int, int, int]:
     size = NAMED_SIZES[args.size] if args.size is not None else SIZES[seed % len(SIZES)]
+    name = f"ppmap_s{seed}-{size}"
     cmd = [
         "uv",
         "run",
@@ -39,12 +40,13 @@ def generate(seed: int, args: Args, vcmi_dir: Path | None) -> tuple[int, int, in
     ]
     if args.teams is not None:
         cmd += ["--teams", args.teams]
+        name += f"-{args.teams.replace(',', '-')}"
+    cmd += ["--name", name]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         print(f"seed {seed} size {size} failed:\n{result.stderr[-2000:]}", file=sys.stderr)
     elif vcmi_dir is not None:
-        stem = f"ppmap_s{seed}_{size}"
-        _ = shutil.copy2(OUT_DIR / stem / f"{stem}.vmap", vcmi_dir / f"{stem}.vmap")
+        _ = shutil.copy2(OUT_DIR / name / f"{name}.vmap", vcmi_dir / f"{name}.vmap")
     return seed, size, result.returncode
 
 

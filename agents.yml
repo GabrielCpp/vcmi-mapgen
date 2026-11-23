@@ -6,6 +6,3 @@ skills:
   - stacks/python/python-dead-code
 packs:
   - python
-
-workflow:
-  branch: main
