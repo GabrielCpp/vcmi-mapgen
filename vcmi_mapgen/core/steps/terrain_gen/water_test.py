@@ -3,12 +3,15 @@
 import random
 from collections import Counter
 from dataclasses import replace
+from typing import cast
 
 import numpy as np
+from numpy.typing import NDArray
 
 from vcmi_mapgen.core.grid.noise import value_noise
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.water import WaterPriors, WaterTarget
+from vcmi_mapgen.core.reading.water import big_masses
 from vcmi_mapgen.core.steps.terrain_gen.coastline import Shore
 from vcmi_mapgen.core.steps.terrain_gen.layout import Layout
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions
@@ -89,17 +92,8 @@ def test_no_more_walled_fronts_take_water_than_the_target_has_masses() -> None:
         assert fronts == masses
 
 
-def _one_piece(label: list[list[int]]) -> bool:
-    cells = {(x, y) for y, row in enumerate(label) for x, z in enumerate(row) if z >= 0}
-    start = next(iter(cells))
-    stack, reached = [start], {start}
-    while stack:
-        x, y = stack.pop()
-        for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if n in cells and n not in reached:
-                reached.add(n)
-                stack.append(n)
-    return reached == cells
+def _big_masses(label: list[list[int]]) -> int:
+    return big_masses(np.array(label) >= 0)
 
 
 def test_a_coast_field_moves_the_coast_and_keeps_the_land_whole() -> None:
@@ -112,7 +106,7 @@ def test_a_coast_field_moves_the_coast_and_keeps_the_land_whole() -> None:
     field = 4 * np.asarray(value_noise(SIDE, SIDE, 4, random.Random(5)), dtype=np.float64)
     swayed, _ = water_on_walls(shore, target, SIDE, random.Random(0), field)
     assert swayed.label != plain.label
-    assert _one_piece(swayed.label)
+    assert _big_masses(swayed.label) <= 2
     area = Counter(z for row in swayed.label for z in row if z >= 0)
     assert all(area[z] * 2 >= third * third for z in range(9))
 
@@ -128,3 +122,27 @@ def test_a_splitting_flood_keeps_the_part_of_a_refused_piece_that_passes() -> No
     taken = split.take(piece)
     assert 0 < np.count_nonzero(taken) <= 18
     assert np.count_nonzero(split.label >= 0) >= 18
+
+
+def _channel_flood(masses: int) -> tuple[Flood, NDArray[np.bool_]]:
+    side = 16
+    label = np.zeros((side, side), np.int64)
+    label[:, side // 2 :] = 1
+    keep = np.zeros((side, side), np.bool_)
+    channel = np.zeros((side, side), np.bool_)
+    channel[:, side // 2 - 1 : side // 2 + 1] = True
+    flood = Flood(label, np.array([128, 128]), keep, loose=True, masses=masses)
+    return flood, channel
+
+
+def test_a_channel_parts_the_land_when_the_target_holds_two_masses() -> None:
+    flood, channel = _channel_flood(2)
+    assert np.array_equal(flood.take(channel), channel)
+    assert _big_masses(cast("list[list[int]]", flood.label.tolist())) == 2
+
+
+def test_a_one_mass_target_keeps_the_land_whole_across_a_channel() -> None:
+    flood, channel = _channel_flood(1)
+    taken = flood.take(channel)
+    assert taken.any()
+    assert _big_masses(cast("list[list[int]]", flood.label.tolist())) == 1

@@ -1,8 +1,8 @@
 """The topology surface form: all land while the places grow, then water carved on the
 walls between touching territories no door joins, each band as wide as the wall between
 them, and along the map edge, steered to one corpus map's water target. The land stays one
-piece, every place stays one piece with half its tiles or more, and the home rooms and the
-gate sites stay land."""
+piece, or in coast mode as many big masses as the target holds, every place stays one piece
+with half its tiles or more, and the home rooms and the gate sites stay land."""
 
 import math
 import random
@@ -18,7 +18,7 @@ from vcmi_mapgen.core.jit import njit
 from vcmi_mapgen.core.model import Tile
 from vcmi_mapgen.core.priors.bundle import Priors
 from vcmi_mapgen.core.priors.water import WaterTarget
-from vcmi_mapgen.core.reading.water import edge_water_share
+from vcmi_mapgen.core.reading.water import MASS_SHARE, edge_water_share
 from vcmi_mapgen.core.steps.terrain_gen.coastline import Coastline, Shore, gate_tiles
 from vcmi_mapgen.core.steps.terrain_gen.islands import raise_islands
 from vcmi_mapgen.core.steps.terrain_gen.layout import Layout
@@ -78,6 +78,36 @@ def _one_piece(mask: Mask) -> bool:
                 seen[ny, nx] = True
                 queue.append(ny * w + nx)
     return len(queue) == total
+
+
+@njit
+def _piece_size(mask: Mask, seen: Mask, y0: int, x0: int) -> int:
+    h, w = mask.shape
+    seen[y0, x0] = True
+    queue = [y0 * w + x0]
+    head = 0
+    while head < len(queue):
+        y, x = divmod(queue[head], w)
+        head += 1
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                seen[ny, nx] = True
+                queue.append(ny * w + nx)
+    return len(queue)
+
+
+@njit
+def _big_pieces(mask: Mask, share: float) -> int:
+    h, w = mask.shape
+    seen = np.zeros((h, w), np.bool_)
+    cut = share * max(np.count_nonzero(mask), 1)
+    big = 0
+    for y0 in range(h):
+        for x0 in range(w):
+            if mask[y0, x0] and not seen[y0, x0] and _piece_size(mask, seen, y0, x0) >= cut:
+                big += 1
+    return big
 
 
 def _thick(mask: Mask) -> Mask:
@@ -189,19 +219,22 @@ class Front:
 class Flood:
     """The label grid as the carve goes, each place's tile count before it, the tiles
     that stay land, and whether the flood is loose: a refused piece is then split and tried
-    again, and a place may fall in pieces, which `rejoin` hands to their neighbours."""
+    again, a place may fall in pieces, which `rejoin` hands to their neighbours, and the land
+    may part in up to ``masses`` big masses, each with ``MASS_SHARE`` of the land or more."""
 
     label: Labels
     area: NDArray[np.int64]
     keep: Mask
     loose: bool = False
+    masses: int = 1
 
     def take(self, tiles: Mask) -> Mask:
         """The tiles of ``tiles`` the flood takes: each 4-connected piece in turn that
-        leaves the land one piece through its 2x2 squares and every place it touches one
-        piece with half its old tiles or more. A loose flood lets the place fall in pieces
-        while its largest piece keeps half its old tiles, and cuts a refused piece in two
-        across its longer side and tries each half's pieces again, down to single tiles."""
+        leaves the land one piece through its 2x2 squares, or a loose flood's land in no more
+        big masses than ``masses``, and every place it touches one piece with half its old
+        tiles or more. A loose flood lets the place fall in pieces while its largest piece
+        keeps half its old tiles, and cuts a refused piece in two across its longer side and
+        tries each half's pieces again, down to single tiles."""
         tiles = tiles & ~self.keep & (self.label >= 0)
         taken = np.zeros(tiles.shape, np.bool_)
         for piece in _pieces(tiles):
@@ -218,13 +251,18 @@ class Flood:
         touched = cast("list[int]", np.unique(self.label[piece]).tolist())
         trial = self.label.copy()
         trial[piece] = -1
-        if not _one_piece(_thick(trial >= 0)):
+        if not self._whole(_thick(trial >= 0)):
             return None
         if any(self._kept(trial, p) * 2 < self.area.item(p) for p in touched):
             return None
         got = (trial < 0) & (self.label >= 0)
         self.label = trial
         return got
+
+    def _whole(self, land: Mask) -> bool:
+        if not self.loose or self.masses <= 1:
+            return _one_piece(land)
+        return _big_pieces(land, MASS_SHARE) <= self.masses
 
     def _kept(self, trial: Labels, p: int) -> int:
         mine = _is(trial, p)
@@ -485,7 +523,7 @@ def water_on_walls(
     keep = _keep_mask(shore.keep, side)
     if coast is not None:
         keep |= _keep_margin(keep, coast)
-    flood = Flood(label, area, keep, loose=coast is not None)
+    flood = Flood(label, area, keep, loose=coast is not None, masses=target.masses)
     walls = walled_fronts(label, shore.territory, sorted(shore.doors), shore.depths)
     if coast is not None:
         return _water_by_network(shore, target, rng, coast, flood)
