@@ -69,6 +69,13 @@ def test_mines_go_before_banks_and_far_bands_first() -> None:
     assert [(s.family, s.band) for s in order] == [(ore, 3), (ore, 1), (Purpose.BANK, 1)]
 
 
+def test_a_gold_mine_of_no_band_goes_before_the_far_bands_of_its_rank() -> None:
+    ore, gold = mine_family("ore"), mine_family("goldMine")
+    slots = [Slot(ore, 0, 1), Slot(Purpose.BANK, 0, 3), Slot(ore, 1, BANDS - 1), Slot(gold)]
+    order = slot_order(slots, RANKS)
+    assert [s.family for s in order] == [gold, ore, ore, Purpose.BANK]
+
+
 def test_a_unit_factor_leaves_the_corpus_days_in_place() -> None:
     days = [0, 2, 5, 1]
     assert stretched(days, 1.0)[: len(days)] == tuple(days)

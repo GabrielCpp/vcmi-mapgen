@@ -107,7 +107,9 @@ class BandPlan:
 
 def slot_order(slots: Sequence[Slot], ranks: Sequence[str]) -> list[Slot]:
     """The slots in placing order: by purpose rank, then the far bands first, then one slot
-    per family and player in turn."""
+    per family and player in turn. A slot of no band, a gold mine or a town of no player,
+    goes before every band of its rank, as its own rule keeps it the farthest and the
+    least room."""
     seen: Counter[tuple[str, int | None, int | None]] = Counter()
     keyed: list[tuple[tuple[int, int, int, int, int], Slot]] = []
     families = sorted({s.family for s in slots})
@@ -115,6 +117,7 @@ def slot_order(slots: Sequence[Slot], ranks: Sequence[str]) -> list[Slot]:
         turn = seen[s.family, s.player, s.band]
         seen[s.family, s.player, s.band] += 1
         rank = ranks.index(family_purpose(s.family))
-        key = (rank, -(s.band or 0), turn, families.index(s.family), s.player or 0)
+        far = BANDS if s.band is None else s.band
+        key = (rank, -far, turn, families.index(s.family), s.player or 0)
         keyed.append((key, s))
     return [s for _k, s in sorted(keyed, key=lambda ks: ks[0])]
