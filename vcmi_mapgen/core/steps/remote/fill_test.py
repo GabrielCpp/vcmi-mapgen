@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import numpy as np
 
 from vcmi_mapgen.core.catalog import Catalog
@@ -110,3 +112,23 @@ def test_a_landmark_that_takes_a_trees_place_lifts_it(catalog: Catalog) -> None:
     state.objs = list(objs)
     state.lift(fill.lifted)
     state.add_objs(list(fill.objs))
+
+
+def test_an_island_with_a_sealed_shore_gets_no_landmark(catalog: Catalog) -> None:
+    base = _level()
+    island = {(x, y) for x in range(12, 19) for y in range(12, 19)}
+    grid = [
+        [GRASS if (x, y) in island or x < 10 or y < 10 else WATER for x in range(20)]
+        for y in range(20)
+    ]
+    ring = [_obj(t, "", _TREE) for t in sorted(island) if t[0] in (12, 18) or t[1] in (12, 18)]
+    objs = [*base.objs, *ring]
+    lf = LevelField.build(0, grid, objs)
+    kept = approaches(objs, lf.unwalkable, 20)
+    zone = base.zones[1]
+    zones = {1: replace(zone, prot=zone.prot | {(15, 15)}, passable=zone.passable - lf.unwalkable)}
+    lv = RemoteLevel(0, grid, objs, base.zone_of, zones, lf, kept, frozenset(), 5)
+    fill = fill_level(catalog, lv, seed=3)
+    pocket = {(x, y) for x in range(13, 18) for y in range(13, 18)}
+    assert fill.objs
+    assert not any(t in pocket for o in fill.objs for t, _r in o.footprint.at(o.x, o.y))

@@ -1,5 +1,6 @@
 """One level's remote fill: a landmark in every run of free land farther than the remote
-distance from every object worth the walk, the largest run first, down to a pickup."""
+distance from every object worth the walk, the largest run first, down to a pickup. An island whose
+shore no hero lands on takes none."""
 
 from __future__ import annotations
 
@@ -163,11 +164,43 @@ def _claimed(size: int, claims: frozenset[Tile]) -> NDArray[np.bool_]:
     return mask
 
 
+def sealed(lv: RemoteLevel) -> NDArray[np.bool_]:
+    """The walkable land of each island no hero reaches: an island with no walkable tile beside
+    water and no town or transport on it."""
+    size = len(lv.grid)
+    water = {
+        (x, y) for y, row in enumerate(lv.grid) for x, c in enumerate(row) if c == Terrain.WATER
+    }
+    land = {(x, y) for x in range(size) for y in range(size)} - water
+    entered = {
+        t
+        for o in lv.objs
+        if o.purpose in (Purpose.TOWN, Purpose.TRANSPORT)
+        for t, _r in o.footprint.at(o.x, o.y)
+    }
+    mass = components(land, HERO_STEPS)
+    coast: set[int] = set()
+    open_: set[int] = set()
+    for (x, y), m in mass.items():
+        beside = any((x + dx, y + dy) in water for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+        if beside:
+            coast.add(m)
+            if (x, y) not in lv.lf.unwalkable:
+                open_.add(m)
+        if (x, y) in entered:
+            open_.add(m)
+    mask = np.zeros((size, size), dtype=np.bool_)
+    for (x, y), m in mass.items():
+        if m in coast and m not in open_ and (x, y) not in lv.lf.unwalkable:
+            mask[y, x] = True
+    return mask
+
+
 def fill_level(catalog: Catalog, lv: RemoteLevel, seed: int) -> RemoteFill:
     """Fill the level's remote runs one spot at a time, reading the runs again after each
     landmark. A zone's share of a run with no room is logged and left."""
     size = len(lv.grid)
-    claimed = _claimed(size, lv.claims)
+    claimed = _claimed(size, lv.claims) | sealed(lv)
     sites: dict[int, ZoneSite] = {}
     failed: set[Tile] = set()
     log: list[str] = []
