@@ -3,6 +3,7 @@ resource mine, keymaster tent and two-way monolith pair counts over its land are
 gameplay family its count curve over its land area, the power its efforts from home stretch by
 with the land and its guard record."""
 
+import math
 import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
@@ -70,20 +71,22 @@ def _log_fit(x: Floats, y: Floats) -> tuple[list[float], float]:
 
 def fit_curve(rows: Sequence[tuple[MapMeasure, int]]) -> CountCurve:
     """The least squares fit of log count on log land and log players over the ``rows``
-    holding at least one, with the intercept raised by half the residual variance."""
+    holding at least one, with the intercept raised by half the residual variance and the
+    spread of a log-normal factor of that variance."""
     kept = [(m, n) for m, n in rows if n > 0 and m.land > 0 and m.players > 0]
     x = np.array([[1.0, np.log(m.land), np.log(m.players)] for m, _n in kept])
     (b0, b1, b2), var = _log_fit(x, np.array([np.log(n) for _m, n in kept]))
-    return CountCurve(b0 + var / 2, b1, b2)
+    return CountCurve(b0 + var / 2, b1, b2, math.expm1(var))
 
 
 def fit_land_curve(rows: Sequence[tuple[int, int]]) -> CountCurve:
     """The least squares fit of log count on log land over the ``(land, count)`` rows holding
-    at least one, with the intercept raised by half the residual variance."""
+    at least one, with the intercept raised by half the residual variance and the spread of a
+    log-normal factor of that variance."""
     kept = [(land, n) for land, n in rows if n > 0 and land > 0]
     x = np.array([[1.0, np.log(land)] for land, _n in kept])
     (b0, b1), var = _log_fit(x, np.array([np.log(n) for _land, n in kept]))
-    return CountCurve(b0 + var / 2, b1, 0.0)
+    return CountCurve(b0 + var / 2, b1, 0.0, math.expm1(var))
 
 
 def mine_curve(catalog: Catalog, maps: Sequence[MapState]) -> CountCurve:
@@ -141,16 +144,17 @@ def _negbin(y: Floats, x: Floats, offset: Floats) -> list[float]:
 
 def fit_count(land: Sequence[int], counts: Sequence[int], cap: float | None = None) -> CountCurve:
     """The negative binomial fit of ``counts`` on log land over every map, the maps holding
-    none included. A land exponent above ``cap`` is pinned at it and the intercept refitted,
-    so a count the corpus shows saturating does not outgrow the map."""
+    none included, its dispersion as the spread. A land exponent above ``cap`` is pinned at
+    it and the intercept refitted, so a count the corpus shows saturating does not outgrow
+    the map."""
     y = np.asarray(counts, dtype=np.float64)
     log_land = np.log(np.asarray(land, dtype=np.float64))
     ones = np.ones(len(y))
-    b0, b1, _a = _negbin(y, np.column_stack([ones, log_land]), np.zeros(len(y)))
+    b0, b1, a = _negbin(y, np.column_stack([ones, log_land]), np.zeros(len(y)))
     if cap is None or b1 <= cap:
-        return CountCurve(b0, b1, 0.0)
-    b0, _a = _negbin(y, ones[:, None], cap * log_land)
-    return CountCurve(b0, cap, 0.0)
+        return CountCurve(b0, b1, 0.0, math.exp(a), poisson=True)
+    b0, a = _negbin(y, ones[:, None], cap * log_land)
+    return CountCurve(b0, cap, 0.0, math.exp(a), poisson=True)
 
 
 def fit_stretch(land: Sequence[int], days: Sequence[int]) -> float:

@@ -40,7 +40,7 @@ def _breaches(catalog: Catalog, priors: Priors, config: StepConfig) -> list[str]
 
 
 def test_a_small_map_keeps_the_mine_promise(catalog: Catalog, priors: Priors) -> None:
-    breaches = _breaches(catalog, priors, StepConfig(1, 48))
+    breaches = _breaches(catalog, priors, StepConfig(1, 48, spread=0.0))
     assert breaches == []
 
 

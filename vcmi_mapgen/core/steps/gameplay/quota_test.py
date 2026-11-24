@@ -14,6 +14,7 @@ from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.families import dwelling_family, mine_family
 from vcmi_mapgen.core.reading.mines import MapMeasure
 from vcmi_mapgen.core.steps.gameplay.quota import (
+    Abundance,
     CountRule,
     CurveRule,
     Group,
@@ -46,13 +47,13 @@ def test_the_curve_rule_reads_the_curve_at_the_map_measure() -> None:
 def test_the_density_multiplier_scales_every_count() -> None:
     st = _stats(100, {Purpose.BANK: 10})
     groups = [Group((Purpose.BANK,), RateRule([(100, st)], Purpose.BANK))]
-    assert family_quota(groups, {}, 0.5, 0, random.Random(1))[Purpose.BANK] == 5
+    assert family_quota(groups, {}, Abundance(0.5, 0.0), 0, random.Random(1))[Purpose.BANK] == 5
 
 
 def test_standing_towns_count_inside_the_town_quota() -> None:
     st = _stats(100, {Purpose.TOWN: 3})
     groups = [Group((Purpose.TOWN,), RateRule([(100, st)], Purpose.TOWN))]
-    assert family_quota(groups, {}, 1.0, 2, random.Random(1))[Purpose.TOWN] == 1
+    assert family_quota(groups, {}, Abundance(1.0, 0.0), 2, random.Random(1))[Purpose.TOWN] == 1
 
 
 def test_split_gives_the_remainder_to_the_largest_fractions() -> None:
@@ -67,7 +68,7 @@ def test_resource_mines_follow_the_curve_and_split_by_corpus_count() -> None:
     corpus = {GEMS: [3, 3], SULFUR: [1, 1]}
     count = MapCount([], MapMeasure(64, 1), ["gemPond", "sulfurDune"], corpus)
     groups = group_rules(CountCurve(0.0, 0.5, 0.0), TOWN_CURVE, count)
-    quota = family_quota(groups, corpus, 1.0, 0, random.Random(1))
+    quota = family_quota(groups, corpus, Abundance(1.0, 0.0), 0, random.Random(1))
     assert (quota[GEMS], quota[SULFUR]) == (6, 2)
 
 
@@ -75,13 +76,13 @@ def test_the_town_pair_stays_out_of_the_mine_quota() -> None:
     corpus = {ORE: [3], WOOD: [3], GEMS: [3]}
     count = MapCount([], MapMeasure(64, 1), ["orePit", "sawmill", "gemPond"], corpus)
     groups = group_rules(CountCurve(0.0, 0.5, 0.0), TOWN_CURVE, count)
-    quota = family_quota(groups, corpus, 1.0, 0, random.Random(1))
+    quota = family_quota(groups, corpus, Abundance(1.0, 0.0), 0, random.Random(1))
     assert (ORE in quota, WOOD in quota, quota[GEMS]) == (False, False, 8)
 
 
 def test_each_town_takes_its_pair_off_the_mine_quota() -> None:
     groups = [Group((GEMS,), CurveRule(CountCurve(0.0, 0.5, 0.0), MapMeasure(64, 1)), 2)]
-    assert family_quota(groups, {}, 1.0, 3, random.Random(1))[GEMS] == 2
+    assert family_quota(groups, {}, Abundance(1.0, 0.0), 3, random.Random(1))[GEMS] == 2
 
 
 def test_the_paired_families_are_the_ones_towns_take_off() -> None:

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
-from vcmi_mapgen.core.placement.intensity import density, stoch_round
+from vcmi_mapgen.core.placement.intensity import density, poisson, spread_factor, stoch_round
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.gameplay import TerrainStats
 from vcmi_mapgen.core.reading.families import TOP_LEVEL, dwelling_family, mine_family
@@ -41,6 +41,11 @@ class CountRule(Protocol):
         """The objects a group should hold on the map, before the density multiplier."""
         ...
 
+    def draw(self, rng: random.Random, mean: float, scale: float, /) -> int:
+        """One map's count of a group whose mean count is ``mean``, its corpus spread times
+        ``scale``."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class RateRule:
@@ -54,6 +59,9 @@ class RateRule:
         rate = sum(area * density(st).get(self.purpose, 0.0) for area, st in self.grounds)
         return rate * self.share
 
+    def draw(self, rng: random.Random, mean: float, _scale: float, /) -> int:
+        return stoch_round(rng, mean)
+
 
 @dataclass(frozen=True, slots=True)
 class CurveRule:
@@ -64,6 +72,12 @@ class CurveRule:
 
     def expected(self) -> float:
         return self.curve.expected(self.measure.land, self.measure.players)
+
+    def draw(self, rng: random.Random, mean: float, scale: float, /) -> int:
+        factored = mean * spread_factor(rng, self.curve.spread * scale)
+        if self.curve.poisson and scale > 0:
+            return poisson(rng, factored)
+        return stoch_round(rng, factored)
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,16 +159,33 @@ def group_rules(
     ]
 
 
+@dataclass(frozen=True, slots=True)
+class Abundance:
+    """How rich a map is: ``density`` multiplies every count, ``spread`` multiplies the
+    corpus spread of each count between maps, 0 for the mean alone, and ``zone_spread`` is
+    the variance of each zone's factor on its area share of the capped objects, 0 for the
+    area share alone."""
+
+    density: float = 1.0
+    spread: float = 1.0
+    zone_spread: float = 0.0
+
+
+CORPUS_ABUNDANCE = Abundance()
+
+
 def family_quota(
-    groups: Sequence[Group], corpus: Corpus, mult: float, towns: int, rng: random.Random
+    groups: Sequence[Group], corpus: Corpus, abundance: Abundance, towns: int, rng: random.Random
 ) -> dict[str, int]:
     """Per family, its share of its group's count by the corpus count of each family. Each
-    group draws one rounding of its expectation times ``mult``, in order. The ``towns``
+    group draws its count around its expectation times the density, in order, by its corpus
+    spread times the abundance's spread. The ``towns``
     already standing count inside the town quota and take their group's ``per_town`` off
     each later group."""
     out: dict[str, int] = {}
     for group in groups:
-        n = stoch_round(rng, group.rule.expected() * mult)
+        mean = group.rule.expected() * abundance.density
+        n = group.rule.draw(rng, mean, abundance.spread)
         if group.families == (Purpose.TOWN,):
             n = max(0, n - towns)
         n = max(0, n - group.per_town * towns)

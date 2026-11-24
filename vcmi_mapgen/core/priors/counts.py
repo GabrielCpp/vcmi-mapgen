@@ -11,12 +11,16 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True, slots=True)
 class CountCurve:
-    """``exp(intercept) * land ** land_exp * players ** players_exp``, fitted in log space
-    over the corpus maps, the intercept corrected for the bias of the log mean."""
+    """``exp(intercept) * land ** land_exp * players ** players_exp``, fitted over the corpus
+    maps. ``spread`` is the variance of one map's factor on that mean, a factor of mean 1.
+    ``poisson`` tells whether a map's count also scatters as a Poisson count around its
+    factored mean, as in a negative binomial fit, or only rounds, as in a log fit."""
 
     intercept: float
     land_exp: float
     players_exp: float
+    spread: float = 0.0
+    poisson: bool = False
 
     def expected(self, land: int, players: int) -> float:
         """The expected count on a map of ``land`` tiles and ``players`` players."""

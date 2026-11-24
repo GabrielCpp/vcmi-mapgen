@@ -73,6 +73,7 @@ from vcmi_mapgen.core.steps.gameplay.landmark import (
 )
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.placer import Demand, Placement
+from vcmi_mapgen.core.steps.gameplay.quota import CORPUS_ABUNDANCE, Abundance
 from vcmi_mapgen.core.steps.gameplay.result import (
     GameplayResult,
     GateResult,
@@ -128,7 +129,9 @@ class GameplayStep(PipelineStep):
         seed        RNG seed.
         players     Number of player zones to designate (0 = neutral map).
         subterrain  Whether a second underground level is active.
-        density     The multiplier on the corpus rate of gameplay objects per tile.
+        abundance   How rich the map is: the multiplier on the corpus count of gameplay
+                    objects, on its spread between maps, and the spread of each zone's
+                    share.
 
     inject(ctx): ``ZonePlan`` (each zone's plan, the player zones and the sea objects),
     ``VegetationResult`` (each zone's open and walkable tiles), ``Segmentation`` (the surface
@@ -160,9 +163,9 @@ class GameplayStep(PipelineStep):
     Each player should reach a mine of each basic resource within ``PROMISE_DAYS``
     hero-days, and the step warns when one does not: the promised mines stand before the
     map-wide pass, and a repair pass after it adds any mine a player lost. The pass spreads
-    each family evenly between the players band by band, and ``density`` multiplies its
-    corpus rate. From the promised mines on, no object closes a player's way to its nearest
-    mine of each resource.
+    each family evenly between the players band by band, and the abundance's density
+    multiplies its corpus rate. From the promised mines on, no object closes a player's way
+    to its nearest mine of each resource.
 
     Produces: lifts the trees its objects took the place of off ``map_state.objs`` and
     appends the objects, sets ``map_state.gate_blk`` and
@@ -176,13 +179,13 @@ class GameplayStep(PipelineStep):
         seed: int = 3,
         players: int = 0,
         subterrain: bool = False,
-        density: float = 1.0,
+        abundance: Abundance = CORPUS_ABUNDANCE,
     ) -> None:
         self.priors = priors
         self.seed = seed
         self.players = players
         self.subterrain = subterrain
-        self.density = density
+        self.abundance = abundance
         self.objs: list[PlacedObject] = []
         self._log: list[str] = []
         self._short = Shortfall({}, {})
@@ -318,7 +321,7 @@ class GameplayStep(PipelineStep):
             measure,
             self.priors.mines,
             self.priors.towns,
-            self.density,
+            self.abundance,
             enemies,
             self.priors.families,
             self.priors.spacing,

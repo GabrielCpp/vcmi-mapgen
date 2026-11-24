@@ -150,6 +150,8 @@ class GenerateOptions:
     vegetation: str
     content: ContentSetting = BASE_CONTENT
     density: float = 1.0
+    spread: float = 1.0
+    zone_spread: float = 0.0
     name: str | None = None
     install: bool = False
     front: str = DEFAULT_FRONT
@@ -359,6 +361,8 @@ def generate(install: VcmiInstall, settings: Settings, opts: GenerateOptions) ->
         opts.subterrain,
         opts.vegetation,
         opts.density,
+        opts.spread,
+        opts.zone_spread,
         tuple(parse_teams(opts.teams, opts.players)),
         opts.front,
     )

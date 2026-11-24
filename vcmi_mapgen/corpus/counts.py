@@ -15,8 +15,8 @@ TOWNS_FILE = "towns.json"
 KEYMASTERS_FILE = "keymasters.json"
 PORTALS_FILE = "portals.json"
 FAMILIES_FILE = "families.json"
-CURVE_VERSION = 1
-FAMILIES_VERSION = 2
+CURVE_VERSION = 2
+FAMILIES_VERSION = 3
 MINES_SOURCE = "vcmi_mapgen.corpus.mine.counts.mine_curve"
 TOWNS_SOURCE = "vcmi_mapgen.corpus.mine.counts.town_curve"
 KEYMASTERS_SOURCE = "vcmi_mapgen.corpus.mine.counts.keymaster_curve"
@@ -24,44 +24,48 @@ PORTALS_SOURCE = "vcmi_mapgen.corpus.mine.counts.portal_curve"
 FAMILIES_SOURCE = "vcmi_mapgen.corpus.mine.counts.family_curves"
 
 
-def load_curve(pp_dir: Path, name: str) -> CountCurve:
-    st = cache.read(pp_dir / name, version=CURVE_VERSION)
+def _curve(obj: dict[str, JsonValue]) -> CountCurve:
     return CountCurve(
-        jv.as_float(st.get("intercept")),
-        jv.as_float(st.get("land_exp")),
-        jv.as_float(st.get("players_exp")),
+        jv.as_float(obj.get("intercept")),
+        jv.as_float(obj.get("land_exp")),
+        jv.as_float(obj.get("players_exp")),
+        jv.as_float(obj.get("spread")),
+        obj.get("poisson") is True,
     )
+
+
+def _curve_json(curve: CountCurve) -> dict[str, JsonValue]:
+    return {
+        "intercept": curve.intercept,
+        "land_exp": curve.land_exp,
+        "players_exp": curve.players_exp,
+        "spread": curve.spread,
+        "poisson": curve.poisson,
+    }
+
+
+def load_curve(pp_dir: Path, name: str) -> CountCurve:
+    return _curve(cache.read(pp_dir / name, version=CURVE_VERSION))
 
 
 def save_curve(pp_dir: Path, name: str, source: str, curve: CountCurve) -> None:
     cache.write(
         pp_dir / name,
         source,
-        {
-            "_version": CURVE_VERSION,
-            "intercept": curve.intercept,
-            "land_exp": curve.land_exp,
-            "players_exp": curve.players_exp,
-        },
+        {"_version": CURVE_VERSION, **_curve_json(curve)},
     )
 
 
 def _fit(value: JsonValue) -> FamilyFit:
     obj = jv.as_object(value)
-    curve = CountCurve(
-        jv.as_float(obj.get("intercept")),
-        jv.as_float(obj.get("land_exp")),
-        jv.as_float(obj.get("players_exp")),
-    )
+    curve = _curve(obj)
     guards = tuple(jv.as_float(g) for g in jv.as_list(obj.get("guards")))
     return FamilyFit(curve, jv.as_float(obj.get("stretch")), guards)
 
 
 def _fit_json(fit: FamilyFit) -> JsonValue:
     return {
-        "intercept": fit.count.intercept,
-        "land_exp": fit.count.land_exp,
-        "players_exp": fit.count.players_exp,
+        **_curve_json(fit.count),
         "stretch": fit.stretch,
         "guards": list(fit.guards),
     }

@@ -117,6 +117,8 @@ class Args(argparse.Namespace):
     no_water: bool = False
     players: int = 2
     density: float = 1.0
+    spread: float = 1.0
+    zone_spread: float = 0.0
     teams: str = "ffa"
     water_mode: str | None = None
     subterrain: bool = False
@@ -199,6 +201,8 @@ def cmd_generate(args: Args) -> None:
             vegetation=args.vegetation,
             content=_content(args),
             density=args.density,
+            spread=args.spread,
+            zone_spread=args.zone_spread,
             name=args.name,
             install=args.install,
             front=args.front,
@@ -476,6 +480,18 @@ def main() -> None:
         type=float,
         default=1.0,
         help="multiplier on the corpus count of gameplay objects per tile",
+    )
+    _ = pg.add_argument(
+        "--spread",
+        type=float,
+        default=1.0,
+        help="multiplier on the corpus spread of each object count between maps, 0 for the mean",
+    )
+    _ = pg.add_argument(
+        "--zone-spread",
+        type=float,
+        default=0.0,
+        help="variance of each zone's factor on its area share of the rich objects",
     )
     _ = pg.add_argument(
         "--teams", default="ffa", help="team matrix: 'ffa', '2v2'-style, or explicit '0,0,1,1'"

@@ -18,6 +18,7 @@ from vcmi_mapgen.core.catalog import Catalog
 from vcmi_mapgen.core.model import PlacedObject
 from vcmi_mapgen.core.model.purpose import VISIT_PURPOSES, Purpose
 from vcmi_mapgen.core.placement.guard_draw import GuardDraw
+from vcmi_mapgen.core.placement.intensity import spread_factor
 from vcmi_mapgen.core.placement.site import ZoneSite
 from vcmi_mapgen.core.priors.counts import CountCurve, FamilyCurves
 from vcmi_mapgen.core.priors.effort import EffortPriors
@@ -35,7 +36,9 @@ from vcmi_mapgen.core.steps.gameplay.bands import BandPlan, Slot, slot_order, st
 from vcmi_mapgen.core.steps.gameplay.gold import GoldSpot
 from vcmi_mapgen.core.steps.gameplay.pick import Picker
 from vcmi_mapgen.core.steps.gameplay.quota import (
+    CORPUS_ABUNDANCE,
     RANKS,
+    Abundance,
     MapCount,
     family_quota,
     group_rules,
@@ -60,14 +63,14 @@ VISIT_RANK = 4
 @dataclass(frozen=True, slots=True)
 class Demand:
     """What the pass asks of the map: its measure, the resource mine and town curves its
-    measure reads, the density multiplier on every count, the pairs of enemy players, and
+    measure reads, how rich the map is, the pairs of enemy players, and
     the corpus fit of each gameplay family, the spacing law of the kinds and the land tiles of
-    each level."""
+    each level. ``abundance`` sets how rich the map is."""
 
     measure: MapMeasure
     mines: CountCurve
     towns: CountCurve
-    density: float = 1.0
+    abundance: Abundance = CORPUS_ABUNDANCE
     enemies: tuple[tuple[int, int], ...] = ()
     families: FamilyCurves = field(default_factory=FamilyCurves)
     spacing: SpacingPriors = field(default_factory=SpacingPriors)
@@ -148,7 +151,7 @@ class Placement:
         corpus = self.effort.families
         count = MapCount(grounds, demand.measure, map_resources(catalog, self.sites), corpus)
         groups = group_rules(demand.mines, demand.towns, count, demand.families)
-        quota = family_quota(groups, corpus, demand.density, len(homes), self.rng)
+        quota = family_quota(groups, corpus, demand.abundance, len(homes), self.rng)
         pairs = paired(groups)
         now = {f: n for f, n in sorted(quota.items()) if f not in pairs}
         slots = self._deal(now, standing, maps)
@@ -228,7 +231,11 @@ class Placement:
         total = sum(family_purpose(s.family) in capped for s in rest) + sum(
             o.purpose in capped for s in self.sites for o in s.objs
         )
-        shares = split(total, {str(i): float(len(s.ts)) for i, s in enumerate(self.sites)})
+        weights = {
+            str(i): len(s.ts) * spread_factor(self.rng, self.demand.abundance.zone_spread)
+            for i, s in enumerate(self.sites)
+        }
+        shares = split(total, weights)
         siting.caps = {
             i: max(0, shares[str(i)] - sum(o.purpose in capped for o in s.objs))
             for i, s in enumerate(self.sites)

@@ -19,6 +19,7 @@ from vcmi_mapgen.core.steps import (
     TreasureStep,
     VegetationStep,
 )
+from vcmi_mapgen.core.steps.gameplay.quota import Abundance
 from vcmi_mapgen.core.steps.roads.network import PassageRoads
 from vcmi_mapgen.core.steps.terrain_gen.coastline import NoiseForm, SurfaceForm
 from vcmi_mapgen.core.steps.terrain_gen.model import TerrainOptions, TerritoryFront
@@ -85,6 +86,8 @@ class StepConfig:
     subterrain: bool = False
     vegetation: str = DEFAULT_VEGETATION
     density: float = 1.0
+    spread: float = 1.0
+    zone_spread: float = 0.0
     teams: tuple[int, ...] = ()
     front: str = DEFAULT_FRONT
 
@@ -102,7 +105,8 @@ def build_steps(priors: Priors, config: StepConfig) -> list[tuple[str, PipelineS
         else SURFACE_FORMS[config.water_mode]
     )
     model = PlacesTerrain(form, FRONTS[config.front])
-    gameplay = GameplayStep(priors, seed, players, subterrain, config.density)
+    abundance = Abundance(config.density, config.spread, config.zone_spread)
+    gameplay = GameplayStep(priors, seed, players, subterrain, abundance)
     return [
         ("terrain", TerrainStep(priors, model, seed, terrain)),
         ("vegetation", VegetationStep(priors, sampler, seed, players, HopContent())),

@@ -20,6 +20,27 @@ def stoch_round(rng: random.Random, x: float) -> int:
     return int(x) + (1 if rng.random() < x - int(x) else 0)
 
 
+def poisson(rng: random.Random, mean: float) -> int:
+    """A Poisson count of ``mean``: by product of uniforms up to 30, by rounded normal
+    above."""
+    if mean <= 0:
+        return 0
+    if mean > 30:
+        return max(0, round(rng.gauss(mean, math.sqrt(mean))))
+    limit, n, p = math.exp(-mean), 0, rng.random()
+    while p > limit:
+        n += 1
+        p *= rng.random()
+    return n
+
+
+def spread_factor(rng: random.Random, spread: float) -> float:
+    """A gamma factor of mean 1 and variance ``spread``, 1 when ``spread`` is 0."""
+    if spread <= 0:
+        return 1.0
+    return rng.gammavariate(1 / spread, spread)
+
+
 def density(st: TerrainStats) -> dict[str, float]:
     return {p: c / max(st.tiles, 1) for p, c in st.counts.items()}
 
