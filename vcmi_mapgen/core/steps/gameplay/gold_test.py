@@ -36,3 +36,16 @@ def test_the_mine_guard_counts_toward_the_far_floor() -> None:
     days = np.array([[5, 6]], dtype=np.int64)
     assert not GoldSpot([(0, 1)]).rank(days)[0].item(0)
     assert GoldSpot.of([(0, 1)], (0, 3, 5, 8, 12, 18, 28, 45)).rank(days)[0].item(0)
+
+
+def test_a_close_spot_takes_the_lowest_guard_that_passes_the_far_floor() -> None:
+    walk = np.array([[2, 9], [7, 9], [12, 14], [-1, -1], [0, 0]], dtype=np.int64)
+    toll = (0, 3, 5, 8)
+    days = np.stack([np.where(walk >= 0, walk + t, -1) for t in toll])
+    assert GoldSpot([(0, 1)]).guards(days, 1, 3).tolist() == [3, 1, 1, -1, -1]
+    assert GoldSpot([(0, 1)]).guards(days, 0, 2).tolist() == [-1, 1, 0, -1, -1]
+
+
+def test_a_guard_no_stronger_than_the_way_in_adds_no_days() -> None:
+    days = np.array([[[6, 9]], [[6, 9]], [[7, 9]], [[10, 12]]], dtype=np.int64)
+    assert GoldSpot([(0, 1)]).guards(days, 1, 3).tolist() == [3]

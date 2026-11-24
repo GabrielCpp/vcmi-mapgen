@@ -51,12 +51,14 @@ Everything is **learned from real maps** (`data/corpus/h3m/`, 159 classic `.h3m`
 5. **Gameplay.** Gates, towns, mines, shipyards, dwellings, banks and shrines
    settle with their backs against the vegetation. The whole map holds each kind
    of object at a count drawn around its corpus curve for the map's land and
-   players, as widely as the corpus maps vary. `--density` scales the curve,
+   players, as widely as the corpus maps of its size vary. `--density` scales the curve,
    `--spread` scales the variation between maps, and `--zone-spread` lets one
    zone hold more than its area share. A player whose land reaches no rival gets a
    shipyard that sails to the rival's land. Each player should reach a mine of
    each basic resource within 14 hero-days, and the step log warns when one
-   cannot. Each kind of object sits at the corpus effort from home, stretched
+   cannot. A gold mine stands at least 8 hero-days from every home. Where the walk
+   is shorter, as on a small map, its guard grows until the fight makes up the
+   difference. Each kind of object sits at the corpus effort from home, stretched
    with the map's land so a large map spreads its towns and high dwellings out,
    and the players reach the same count of it band by band, within one or two.
    Reward value and guard level follow each place's hop count from home.

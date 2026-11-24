@@ -1,1 +1,1 @@
-{"_source": "vcmi_mapgen.corpus.mine.counts.mine_curve", "_version": 2, "intercept": -1.6867126205626675, "land_exp": 0.60917749780673, "players_exp": 0.0, "spread": 0.12168750498484951, "poisson": false}
+{"_source": "vcmi_mapgen.corpus.mine.counts.mine_curve", "_version": 3, "intercept": -1.6925251544066753, "land_exp": 0.60917749780673, "players_exp": 0.0, "spread": 5.0072562814379555, "poisson": false, "spread_exp": -0.4397494309909501}

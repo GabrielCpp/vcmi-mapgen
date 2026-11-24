@@ -15,8 +15,8 @@ TOWNS_FILE = "towns.json"
 KEYMASTERS_FILE = "keymasters.json"
 PORTALS_FILE = "portals.json"
 FAMILIES_FILE = "families.json"
-CURVE_VERSION = 2
-FAMILIES_VERSION = 3
+CURVE_VERSION = 3
+FAMILIES_VERSION = 4
 MINES_SOURCE = "vcmi_mapgen.corpus.mine.counts.mine_curve"
 TOWNS_SOURCE = "vcmi_mapgen.corpus.mine.counts.town_curve"
 KEYMASTERS_SOURCE = "vcmi_mapgen.corpus.mine.counts.keymaster_curve"
@@ -31,6 +31,7 @@ def _curve(obj: dict[str, JsonValue]) -> CountCurve:
         jv.as_float(obj.get("players_exp")),
         jv.as_float(obj.get("spread")),
         obj.get("poisson") is True,
+        jv.as_float(obj.get("spread_exp")),
     )
 
 
@@ -41,6 +42,7 @@ def _curve_json(curve: CountCurve) -> dict[str, JsonValue]:
         "players_exp": curve.players_exp,
         "spread": curve.spread,
         "poisson": curve.poisson,
+        "spread_exp": curve.spread_exp,
     }
 
 

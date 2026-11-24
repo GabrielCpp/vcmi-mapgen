@@ -74,7 +74,7 @@ class CurveRule:
         return self.curve.expected(self.measure.land, self.measure.players)
 
     def draw(self, rng: random.Random, mean: float, scale: float, /) -> int:
-        factored = mean * spread_factor(rng, self.curve.spread * scale)
+        factored = mean * spread_factor(rng, self.curve.spread_at(self.measure.land) * scale)
         if self.curve.poisson and scale > 0:
             return poisson(rng, factored)
         return stoch_round(rng, factored)

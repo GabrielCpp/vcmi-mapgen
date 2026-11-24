@@ -1,9 +1,9 @@
-"""Where a gold mine may stand: past the far floor from every home through its own guard and,
-where the players have enemies, on land the first player to reach it holds by at most CONTEST
-days over its nearest enemy. The spots it admits rank by that contest, the closest first.
-Without an enemy they rank by days from the nearest home, the farthest first. Where no
-admitted spot takes a gold mine, the loose rule admits the far spots past the contest bound
-instead."""
+"""Where a gold mine may stand: past the far floor from every home through its own guard, raised
+where the walk alone falls short, and, where the players have enemies, on land the first player
+to reach it holds by at most CONTEST days over its nearest enemy. The spots it admits rank by
+that contest, the closest first. Without an enemy they rank by days from the nearest home, the
+farthest first. Where no admitted spot takes a gold mine, the loose rule admits the far spots
+past the contest bound instead."""
 
 from __future__ import annotations
 
@@ -54,6 +54,18 @@ class GoldSpot:
         gap = contest(days, self.enemies)
         held = gap <= CONTEST
         return far & (held != loose), gap
+
+    def guards(self, days: Codes, drawn: int, top: int) -> Codes:
+        """Per tile, the lowest guard level from ``drawn`` up to ``top`` behind which the first
+        player arrives past the far floor, -1 where no level does or no player arrives.
+        ``days`` holds one table per guard level, each as `rank` reads it, the days to visit
+        the tile through a guard of that level."""
+        out = np.full(days.shape[1], -1, dtype=np.int64)
+        for level in range(top, drawn - 1, -1):
+            first = soonest(cast(Codes, days[level]))
+            past = cast(NDArray[np.bool_], (first != OPEN) & (first > self.floor))
+            out = np.where(past, level, out)
+        return out
 
     def admits(self, days: Sequence[int | None]) -> bool:
         """Whether a gold mine may stand where the players reach it in ``days``, None for a

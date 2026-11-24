@@ -3,7 +3,7 @@ import random
 
 import pytest
 
-from vcmi_mapgen.corpus.mine.counts import fit_count, fit_stretch
+from vcmi_mapgen.corpus.mine.counts import fit_count, fit_land_curve, fit_stretch
 
 
 def _maps(rng: random.Random, n: int) -> list[int]:
@@ -39,3 +39,28 @@ def test_fit_stretch_recovers_the_slope_of_the_days() -> None:
     land = [rng.choice([1000, 4000, 16000]) for _ in range(600)]
     days = [round(math.expm1(0.3 * math.log(x) + 0.5 + rng.gauss(0, 0.2))) for x in land]
     assert fit_stretch(land, days) == pytest.approx(0.3, abs=0.05)
+
+
+def _gamma(rng: random.Random, var: float) -> float:
+    return rng.gammavariate(1 / var, var)
+
+
+def test_fit_count_lets_a_small_map_vary_more_than_a_large_one() -> None:
+    rng = random.Random(11)
+    land = _maps(rng, 1500)
+    var = {x: 2.0 * math.pow(x / 1000, -0.5) for x in set(land)}
+    counts = [_draw(rng, 0.004 * x * _gamma(rng, var[x])) for x in land]
+    curve = fit_count(land, counts)
+    assert curve.spread_exp == pytest.approx(-0.5, abs=0.15)
+    assert curve.spread_at(1000) == pytest.approx(2.0, rel=0.25)
+
+
+def test_fit_land_curve_lets_a_small_map_vary_more_than_a_large_one() -> None:
+    rng = random.Random(13)
+    land = _maps(rng, 1500)
+    rows = [
+        (x, max(1, round(math.exp(0.5 * math.log(x) + rng.gauss(0, 6 / math.pow(x, 0.25))))))
+        for x in land
+    ]
+    curve = fit_land_curve(rows)
+    assert curve.spread_at(1000) > 2 * curve.spread_at(16000)

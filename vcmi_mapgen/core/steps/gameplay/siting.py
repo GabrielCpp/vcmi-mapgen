@@ -5,10 +5,10 @@ the more the closer its distance to the nearest copy of the kind comes to the co
 a zone with its share of the objects already standing is passed over. A rare mine stands first
 on the even tiles its player reaches first, nearest its band and its target, and tries an
 uneven tile only after every even one. Every object tries every group in rank order, so it
-fills every site of its band before it drops to a worse band. A neutral town stands on the
-even tiles furthest from every town already standing. A gold mine stands where the gold rule
-admits it, the best of its rank first, and where the loose gold rule admits it when no such
-tile takes it.
+fills every site of its band before it drops to a worse band. A neutral town stands on the even
+tiles furthest from every town already standing. A gold mine stands where the gold rule admits
+it, behind a guard raised where the walk from home alone falls short of the far floor, the best
+of its rank first, and where the loose gold rule admits it when no such tile takes it.
 
 A tile's tier code is its spread change times ARRIVALS plus its arrival rank, so codes order
 as the pair does and a code below ARRIVALS widens no gap."""
@@ -548,7 +548,8 @@ class Siting:
         """The tiles under a guard of level ``guard``, those that widen the gap least first,
         grouped by tier and site, at most CENTRES per group. A tier is the spread change, or the
         bands off for an object of no player, then the guard level and the arrival rank. A gold
-        mine keeps only the tiles the gold rule admits with every tile within NEIGHBOURHOOD of them
+        mine stands behind the guard each tile needs to pass the far floor, at least ``guard``,
+        and keeps only the tiles the gold rule admits with every tile within NEIGHBOURHOOD of them
         admitted too, or the tiles the ``loose`` gold rule admits. The gold mine is drawn over the
         admitted tiles by the spacing weight of its kind, an uncrowded tile first. A neutral
         town keeps only the tiles with TOWN_ROOM tiles of land around them, ranks those that
@@ -571,12 +572,17 @@ class Siting:
         ok = np.ones(n, dtype=np.bool_)
         days = cast(Codes, tiles.days[0])
         if self.gold is not None and slot.family == GOLD_FAMILY:
-            gold = replace(self.gold, guard=self.toll[guard])
-            ok, target = gold.rank(days, loose)
+            held = self.gold.guards(tiles.days, guard, self._top())
+            priced = tiles.days[np.maximum(held, 0), np.arange(n)]
+            ok, target = replace(self.gold, guard=0).rank(priced, loose)
+            ok = ok & (held >= 0)
             if not loose:
                 out = tiles.grid.worst_within(np.logical_not(ok).astype(np.int64), NEIGHBOURHOOD)
                 ok = cast(NDArray[np.bool_], out == 0)
-            code = self._code(slot.family, level, zero)
+            code = zero
+            for lv in cast(list[int], np.unique(held[held >= 0]).tolist()):
+                at = cast(NDArray[np.bool_], held == lv)
+                code = np.where(at, self._code(slot.family, lv, zero), code)
             names = ("spread", "arrival", "target")
             if slot.kind is not None and self.spacing is not None:
                 spaced = True
