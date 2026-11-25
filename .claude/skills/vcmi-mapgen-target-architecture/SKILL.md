@@ -1,6 +1,6 @@
 ---
 name: vcmi-mapgen-target-architecture
-description: "Settle a repository's target architecture before refactoring it, then turn it into a migration plan a workflow can execute. Produces docs/architecture/target.md, the human contract (target tree, core models and the facts they own, sources of truth, allowed dependency edges, behaviour oracle), and docs/architecture/plan.json, the machine contract (a fate for every source file and ordered slices with touches, depends_on and done_when). Ships a validator for file fates and parallel-slice disjointness. Load when planning a repo-wide refactor or restructuring, when asked what the architecture should be, or before running a refactor workflow."
+description: "Target architecture and migration plan before a refactor (target.md, plan.json, file fates, slices). Load when planning a repo-wide refactor or restructuring, when asked what the architecture should be, or before a refactor workflow."
 metadata:
   name: target-architecture
   generated_by: farrier
