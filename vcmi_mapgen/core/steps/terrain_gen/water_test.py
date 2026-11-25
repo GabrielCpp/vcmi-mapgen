@@ -146,3 +146,11 @@ def test_a_one_mass_target_keeps_the_land_whole_across_a_channel() -> None:
     taken = flood.take(channel)
     assert taken.any()
     assert _big_masses(cast("list[list[int]]", flood.label.tolist())) == 1
+
+
+def test_a_one_mass_target_joins_the_land_across_a_channel_three_tiles_wide() -> None:
+    flood, channel = _channel_flood(1)
+    _ = flood.take(channel)
+    dry = cast("NDArray[np.bool_]", np.all(flood.label[:, 7:9] >= 0, axis=1))
+    runs = "".join("#" if d else "." for d in cast("list[bool]", dry.tolist())).split(".")
+    assert max(len(r) for r in runs) >= 3

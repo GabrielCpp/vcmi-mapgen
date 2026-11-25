@@ -1,7 +1,8 @@
 """The topology surface form: all land while the places grow, then water carved on the
 walls between touching territories no door joins, each band as wide as the wall between
 them, and along the map edge, steered to one corpus map's water target. The land stays one
-piece, or in coast mode as many big masses as the target holds, every place stays one piece
+piece through land ``LINK`` tiles wide, or in coast mode as many big masses as the target
+holds, every place stays one piece
 with half its tiles or more, and the home rooms and the gate sites stay land."""
 
 import math
@@ -46,6 +47,9 @@ to four tiles wide."""
 EDGE_REACH = 6.0
 """How far, in tiles, the edge sea reaches inland on average, so the inland channels take
 the rest of the water share."""
+LINK = 3
+"""The narrowest land, in tiles, that joins two parts of the land: a thinner strip between
+two waters reads as a tunnel, which hand-made maps leave out."""
 
 
 def draw_target(targets: Sequence[WaterTarget], rng: random.Random) -> WaterTarget:
@@ -110,14 +114,19 @@ def _big_pieces(mask: Mask, share: float) -> int:
     return big
 
 
-def _thick(mask: Mask) -> Mask:
-    """The tiles of ``mask`` inside a 2x2 square of ``mask``: the land the despeckle keeps."""
-    square = mask[:-1, :-1] & mask[1:, :-1] & mask[:-1, 1:] & mask[1:, 1:]
+def _wide(mask: Mask) -> Mask:
+    """The tiles of ``mask`` inside a ``LINK`` by ``LINK`` square of ``mask``."""
     out = np.zeros(mask.shape, np.bool_)
-    out[:-1, :-1] |= square
-    out[1:, :-1] |= square
-    out[:-1, 1:] |= square
-    out[1:, 1:] |= square
+    h, w = mask.shape
+    if h < LINK or w < LINK:
+        return out
+    square = np.ones((h - LINK + 1, w - LINK + 1), np.bool_)
+    for dy in range(LINK):
+        for dx in range(LINK):
+            square &= mask[dy : dy + h - LINK + 1, dx : dx + w - LINK + 1]
+    for dy in range(LINK):
+        for dx in range(LINK):
+            out[dy : dy + h - LINK + 1, dx : dx + w - LINK + 1] |= square
     return out
 
 
@@ -230,9 +239,9 @@ class Flood:
 
     def take(self, tiles: Mask) -> Mask:
         """The tiles of ``tiles`` the flood takes: each 4-connected piece in turn that
-        leaves the land one piece through its 2x2 squares, or a loose flood's land in no more
-        big masses than ``masses``, and every place it touches one piece with half its old
-        tiles or more. A loose flood lets the place fall in pieces while its largest piece
+        leaves the land one piece through its ``LINK``-wide squares, or a loose flood's land
+        in no more big masses than ``masses``, and every place it touches one piece with half
+        its old tiles or more. A loose flood lets the place fall in pieces while its largest piece
         keeps half its old tiles, and cuts a refused piece in two across its longer side and
         tries each half's pieces again, down to single tiles."""
         tiles = tiles & ~self.keep & (self.label >= 0)
@@ -251,7 +260,7 @@ class Flood:
         touched = cast("list[int]", np.unique(self.label[piece]).tolist())
         trial = self.label.copy()
         trial[piece] = -1
-        if not self._whole(_thick(trial >= 0)):
+        if not self._whole(trial >= 0):
             return None
         if any(self._kept(trial, p) * 2 < self.area.item(p) for p in touched):
             return None
@@ -260,9 +269,10 @@ class Flood:
         return got
 
     def _whole(self, land: Mask) -> bool:
+        wide = _wide(land)
         if not self.loose or self.masses <= 1:
-            return _one_piece(land)
-        return _big_pieces(land, MASS_SHARE) <= self.masses
+            return _one_piece(wide)
+        return max(_big_pieces(wide, MASS_SHARE), _big_pieces(land, MASS_SHARE)) <= self.masses
 
     def _kept(self, trial: Labels, p: int) -> int:
         mine = _is(trial, p)
@@ -555,7 +565,7 @@ def _water_by_network(
     shore: Shore, target: WaterTarget, rng: random.Random, coast: Field, flood: Flood
 ) -> tuple[Layout, int]:
     """The coast-mode flood: the edge sea and a channel network over the contour lines of a
-    noise field, deepened in turn to the target share, the places then made one piece each.
+    noise field, deepened in turn to the target share, then the places made one piece each.
     Returns the layout and how many walled territory pairs a channel touches on both sides."""
     side = flood.label.shape[0]
     owner = np.where(flood.label >= 0, np.array(shore.territory, dtype=np.int64)[flood.label], -1)
