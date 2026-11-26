@@ -32,6 +32,18 @@ class VmapObject:
     options: dict[str, JsonValue] | None = None
 
 
+PLAYER_COLOURS: tuple[str, ...] = (
+    "red",
+    "blue",
+    "tan",
+    "green",
+    "orange",
+    "purple",
+    "teal",
+    "pink",
+)
+
+
 @dataclass
 class PlayerSlot:
     """One `header.json` `players.<color>` entry. `id` is the VCMI color key

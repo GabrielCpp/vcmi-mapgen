@@ -19,16 +19,18 @@ ALL_SIDES: tuple[str, ...] = ("+++", "+-+", "+++")
 def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
     """A real RMG-produced .vmap header if a local VCMI install has one (richer fidelity
     -- rumors, difficulty, description, ... -- preserved via VmapDocument.extra), else
-    the static template."""
+    the static template. The header always lists all 8 player colours: an RMG map made
+    for fewer players gets the template's closed slot for each colour it lacks."""
     rmg = list((install.home / "Maps" / "RandomMaps").glob("*.vmap")) if install else []
-    if rmg:
-        return VM.read_header(str(rmg[0]))
-    return VM.header_template()
-
-
-def player_colours(install: VcmiInstall | None) -> list[str]:
-    """The colour of each player slot of an exported map, in slot order."""
-    return sorted(jv.as_object(_default_header(install).get("players")))
+    template = VM.header_template()
+    if not rmg:
+        return template
+    header = dict(VM.read_header(str(rmg[0])))
+    header["players"] = {
+        **jv.as_object(template.get("players")),
+        **jv.as_object(header.get("players")),
+    }
+    return header
 
 
 def _identity(mods: ModContent, kind: str) -> Identity:
@@ -133,10 +135,9 @@ def build_document(
         objects=objects,
         **VM.header_fields(_default_header(install)),
     )
-    # Deterministic regardless of the header source's own key order (a real RMG
-    # header's dict order isn't guaranteed alphabetical -- see AGENTS.md's
+    # VCMI's player order, whatever the header source's own key order (see AGENTS.md's
     # determinism rule).
-    doc.players.sort(key=lambda p: p.id)
+    doc.players.sort(key=lambda p: VM.PLAYER_COLOURS.index(p.id))
     required = mods.requirement(o.kind for o in real_objs)
     if required:
         doc.extra["mods"] = required

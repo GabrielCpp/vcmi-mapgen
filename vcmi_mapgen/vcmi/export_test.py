@@ -1,5 +1,6 @@
 """Tests for vcmi.export: a MapState becomes an editor-shaped .vmap."""
 
+import json
 import zipfile
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from vcmi_mapgen.vcmi.content.mods_test import LAIR, fair_content
 from vcmi_mapgen.vcmi.export import build_document
 from vcmi_mapgen.vcmi.formats import json_value as jv
 from vcmi_mapgen.vcmi.formats import vmap as VM
+from vcmi_mapgen.vcmi.install import VcmiInstall
+from vcmi_mapgen.vcmi.players import apply_playability
 
 INSTALL = find_install()
 needs_vcmi = pytest.mark.skipif(
@@ -86,3 +89,27 @@ def test_a_placed_mod_object_makes_the_map_require_its_mod() -> None:
     assert (placed.type, placed.subtype, placed.mask) == ("creatureBank", "lair", ["VV", "BA"])
     without = MapState(size=8, terrain={0: terrain}, objs=[town])
     assert "mods" not in build_document(without, "test", None, corpus_tiler(), mods).extra
+
+
+def _install_with_rmg_colours(home: Path, colours: list[str]) -> VcmiInstall:
+    header = dict(VM.header_template())
+    full = jv.as_object(header["players"])
+    header["players"] = {c: full[c] for c in colours}
+    rmg = home / "Maps" / "RandomMaps"
+    rmg.mkdir(parents=True)
+    with zipfile.ZipFile(rmg / "five.vmap", "w") as z:
+        z.writestr("header.json", json.dumps(header))
+    return VcmiInstall(home=home, data_dir=home, config_dirs=())
+
+
+def test_six_players_keep_six_slots_when_the_installed_header_has_five(tmp_path: Path) -> None:
+    install = _install_with_rmg_colours(tmp_path, ["blue", "green", "orange", "red", "tan"])
+    terrain = [[Terrain.GRASS] * 64 for _ in range(64)]
+    town = ON.gameplay_pool("grass", "TOWN")[0]
+    towns = [_town(town, 5 + 9 * i, 8) for i in range(6)]
+    state = MapState(size=64, terrain={0: terrain}, objs=towns, player_towns=towns)
+    doc = build_document(state, "test", install, corpus_tiler())
+    apply_playability(doc, towns, [0, 0, 1, 1, 2, 2])
+    playable = [p for p in doc.players if p.can_play == "PlayerOrAI"]
+    assert [p.id for p in playable] == ["red", "blue", "tan", "green", "orange", "purple"]
+    assert len(doc.teams or []) == 3

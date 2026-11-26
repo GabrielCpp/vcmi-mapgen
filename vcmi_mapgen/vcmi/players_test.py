@@ -118,8 +118,8 @@ def test_playability_overlay_alliance_grouping(tmp_path: Path) -> None:
     p = _write(state, tmp_path / "test_pp_play_2v2.vmap", "2v2")
     h = jv.as_object(_load(zipfile.ZipFile(p), "header.json"))
     assert sorted(sorted(jv.str_list(g)) for g in jv.as_list(h["teams"])) == [
-        ["blue", "green"],
-        ["orange", "red"],
+        ["blue", "red"],
+        ["green", "tan"],
     ]
 
 
@@ -151,4 +151,4 @@ def test_playability_overlay_random_town_shows_random_in_lobby(tmp_path: Path) -
         if o.get("type") in ("town", "randomTown")
         and jv.as_object(o.get("options")).get("owner") is not None
     ]
-    assert owners == ["blue"], "the single town must be owned by the sole (blue) player"
+    assert owners == ["red"], "the single town must be owned by the sole (red) player"

@@ -44,7 +44,7 @@ def apply_playability(
     3. victory = DEFEAT ALL (the canonical standardWin triggered event; standardDefeat =
        7 days without town), any special victory conditions stripped.
     """
-    # doc.players is already sorted by color (fm_to_document's determinism guarantee).
+    # doc.players is already in VCMI's player order (build_document's determinism guarantee).
     for i, pl in enumerate(doc.players):
         if i < len(player_towns):
             t = player_towns[i]
