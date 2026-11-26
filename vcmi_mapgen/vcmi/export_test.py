@@ -113,3 +113,5 @@ def test_six_players_keep_six_slots_when_the_installed_header_has_five(tmp_path:
     playable = [p for p in doc.players if p.can_play == "PlayerOrAI"]
     assert [p.id for p in playable] == ["red", "blue", "tan", "green", "orange", "purple"]
     assert len(doc.teams or []) == 3
+    description = jv.str_list(jv.as_object(doc.extra["description"]).get("exactStrings"))
+    assert description == ["Generated map, 64x64, 6 players."]

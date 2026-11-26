@@ -33,6 +33,18 @@ def _default_header(install: VcmiInstall | None) -> dict[str, JsonValue]:
     return header
 
 
+def _description(doc: VM.VmapDocument, players: int) -> dict[str, JsonValue]:
+    levels = ", two levels" if doc.two_level else ""
+    text = f"Generated map, {doc.width}x{doc.height}{levels}, {players} players."
+    return {
+        "exactStrings": [text],
+        "localStrings": None,
+        "message": [0],
+        "numbers": None,
+        "stringsTextID": None,
+    }
+
+
 def _identity(mods: ModContent, kind: str) -> Identity:
     entry = mods.object(kind)
     return OB.identity_of(kind) if entry is None else entry.identity
@@ -159,4 +171,6 @@ def build_document(
         else:
             pl.main_town = None
             pl.can_play = "false"
+    wired = sum(pl.can_play != "false" for pl in doc.players)
+    doc.extra["description"] = _description(doc, len(state.player_towns) or wired)
     return doc
